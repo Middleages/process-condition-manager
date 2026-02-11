@@ -44,10 +44,13 @@ def upgrade() -> None:
         "layers",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("layer_name", sa.String(100), unique=True, nullable=False),
+        sa.Column("step_seq", sa.String(10), unique=True, nullable=False),
+        sa.Column("layer_number", sa.String(10), unique=True, nullable=False),
         sa.Column("sort_order", sa.Integer(), nullable=False, server_default=sa.text("0")),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
     )
     op.create_index("ix_layers_layer_name", "layers", ["layer_name"])
+    op.create_index("ix_layers_step_seq", "layers", ["step_seq"])
 
     # === product_layers ===
     op.create_table(

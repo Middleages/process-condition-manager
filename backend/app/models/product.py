@@ -24,6 +24,8 @@ class Layer(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     layer_name: Mapped[str] = mapped_column(String(100), unique=True, index=True)
+    step_seq: Mapped[str] = mapped_column(String(10), unique=True, index=True)  # 설비 식별자 (예: ac100000)
+    layer_number: Mapped[str] = mapped_column(String(10), unique=True)  # 레이어 번호 (예: 15.7)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

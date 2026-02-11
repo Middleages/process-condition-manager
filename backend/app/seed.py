@@ -6,10 +6,11 @@ Usage:
 
 Idempotent: checks if data already exists before inserting.
 """
+import json
 import random
 import sys
 
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -28,12 +29,20 @@ CATEGORIES = [
     {"category_code": "DEV", "category_name": "Develop", "sort_order": 4},
 ]
 
+# All scanner tool IDs in the fab (used as select options)
+SCANNER_TOOL_OPTIONS = [
+    "NSR-S322F-01", "NSR-S322F-02", "NSR-S322F-03",
+    "NSR-S631E-01", "XT-1400E-01",
+    "XT-1900Gi-01", "XT-1900Gi-02", "NXT-2000-01",
+]
+
 # (column_name, display_name, category_code, data_type, unit, is_required, select_options)
 COLUMN_DEFS: list[tuple] = [
     # --- SP (20) ---
     ("SP_PR_TYPE", "PR Type", "SP", "select", None, True,
      ["KrF-A01", "KrF-B02", "ArF-C01", "ArF-D01", "EUV-E01"]),
-    ("SP_PR_VENDOR", "PR Vendor", "SP", "string", None, False, None),
+    ("SP_PR_VENDOR", "PR Vendor", "SP", "select", None, False,
+     ["TOK", "JSR", "Shin-Etsu", "Fujifilm", "DuPont"]),
     ("SP_PR_VISCOSITY_cP", "PR Viscosity", "SP", "float", "cP", False, None),
     ("SP_DISPENSE_VOL_ml", "Dispense Vol", "SP", "float", "ml", True, None),
     ("SP_SPIN1_SPEED_rpm", "Spin1 Speed", "SP", "integer", "rpm", True, None),
@@ -56,7 +65,7 @@ COLUMN_DEFS: list[tuple] = [
     ("SP_BACKSIDE_RINSE", "Backside Rinse", "SP", "select", None, False, ["Y", "N"]),
 
     # --- SC (19) ---
-    ("SC_TOOL_ID", "Scanner Tool", "SC", "string", None, True, None),
+    ("SC_TOOL_ID", "Scanner Tool", "SC", "select", None, True, SCANNER_TOOL_OPTIONS),
     ("SC_RETICLE_ID", "Reticle ID", "SC", "string", None, True, None),
     ("SC_EXPOSE_ENERGY_mJ", "Expose Energy", "SC", "float", "mJ", True, None),
     ("SC_EXPOSE_FOCUS_um", "Expose Focus", "SC", "float", "\u03bcm", True, None),
@@ -76,7 +85,7 @@ COLUMN_DEFS: list[tuple] = [
     ("SC_SLIT_WIDTH_mm", "Slit Width", "SC", "float", "mm", False, None),
     ("SC_RETICLE_CORR_X_nm", "Reticle Corr X", "SC", "float", "nm", False, None),
     ("SC_RETICLE_CORR_Y_nm", "Reticle Corr Y", "SC", "float", "nm", False, None),
-    ("SC_WAVELENGTH_nm", "Wavelength", "SC", "integer", "nm", True, None),
+    ("SC_WAVELENGTH_nm", "Wavelength", "SC", "select", "nm", True, [248, 193, 13]),
     ("SC_MASK_TYPE", "Mask Type", "SC", "select", None, False,
      ["BINARY", "PSM", "EAPSM", "ALTPSM"]),
     ("SC_IMMERSION", "Immersion", "SC", "select", None, False, ["Y", "N"]),
@@ -84,13 +93,14 @@ COLUMN_DEFS: list[tuple] = [
     # --- OVL (14) ---
     ("OVL_SPEC_X_nm", "OVL Spec X", "OVL", "float", "nm", True, None),
     ("OVL_SPEC_Y_nm", "OVL Spec Y", "OVL", "float", "nm", True, None),
-    ("OVL_REF_LAYER", "Reference Layer", "OVL", "string", None, True, None),
+    ("OVL_REF_LAYER", "Reference Layer", "OVL", "layer_ref", None, True, None),
     ("OVL_CORRECT_X_nm", "Correction X", "OVL", "float", "nm", False, None),
     ("OVL_CORRECT_Y_nm", "Correction Y", "OVL", "float", "nm", False, None),
     ("OVL_APC_USE", "APC Use", "OVL", "select", None, False, ["Y", "N"]),
     ("OVL_APC_TYPE", "APC Type", "OVL", "select", None, False,
      ["LINEAR", "HIGHER_ORDER", "INTRAFIELD"]),
-    ("OVL_MEAS_TOOL", "Meas Tool", "OVL", "string", None, False, None),
+    ("OVL_MEAS_TOOL", "Meas Tool", "OVL", "select", None, False,
+     ["ARCHER-500", "ARCHER-600", "YS-350"]),
     ("OVL_MEAS_POINT_COUNT", "Meas Points", "OVL", "integer", None, False, None),
     ("OVL_SAMPLING_MODE", "Sampling Mode", "OVL", "select", None, False,
      ["FULL", "SPARSE", "EDGE"]),
@@ -105,7 +115,7 @@ COLUMN_DEFS: list[tuple] = [
     ("DEV_TYPE", "Developer Type", "DEV", "select", None, True,
      ["NMD-3", "TMAH_2.38", "NMD-W", "AZ300MIF"]),
     ("DEV_PUDDLE_TIME_sec", "Puddle Time", "DEV", "integer", "s", True, None),
-    ("DEV_PUDDLE_COUNT", "Puddle Count", "DEV", "integer", None, False, None),
+    ("DEV_PUDDLE_COUNT", "Puddle Count", "DEV", "select", None, False, [1, 2, 3]),
     ("DEV_RINSE_TYPE", "Rinse Type", "DEV", "select", None, False,
      ["DI_WATER", "SURFACTANT", "SOLVENT"]),
     ("DEV_RINSE_TIME_sec", "Rinse Time", "DEV", "integer", "s", False, None),
@@ -114,9 +124,11 @@ COLUMN_DEFS: list[tuple] = [
     ("DEV_CD_TARGET_nm", "CD Target", "DEV", "float", "nm", False, None),
     ("DEV_CD_SPEC_LOW_nm", "CD Spec Lower", "DEV", "float", "nm", False, None),
     ("DEV_CD_SPEC_HIGH_nm", "CD Spec Upper", "DEV", "float", "nm", False, None),
-    ("DEV_CD_MEAS_TOOL", "CD Meas Tool", "DEV", "string", None, False, None),
+    ("DEV_CD_MEAS_TOOL", "CD Meas Tool", "DEV", "select", None, False,
+     ["CD-SEM-01", "CD-SEM-02", "OCD-01"]),
     ("DEV_CD_MEAS_POINTS", "CD Meas Points", "DEV", "integer", None, False, None),
-    ("DEV_INSPECT_TOOL", "Inspect Tool", "DEV", "string", None, False, None),
+    ("DEV_INSPECT_TOOL", "Inspect Tool", "DEV", "select", None, False,
+     ["KLA-2810", "KLA-2815", "KLA-Puma"]),
     ("DEV_DEFECT_SPEC", "Defect Spec", "DEV", "integer", None, False, None),
 ]
 
@@ -188,25 +200,32 @@ USERS = [
 
 # ---------------------------------------------------------------------------
 # 4. Layers (15 Photo process steps)
+#    step_seq: 설비/전산 식별자 (문자2 + 숫자6)
+#    layer_number: 사람이 읽는 레이어 번호
 # ---------------------------------------------------------------------------
 
-LAYER_NAMES = [
-    "AA_PHOTO",       # Active Area
-    "STI_PHOTO",      # Shallow Trench Isolation
-    "NWELL_PHOTO",    # N-Well
-    "PWELL_PHOTO",    # P-Well
-    "POLY_PHOTO",     # Polysilicon
-    "LDD_N_PHOTO",    # LDD N-type
-    "LDD_P_PHOTO",    # LDD P-type
-    "CONTACT_PHOTO",  # Contact
-    "M1_PHOTO",       # Metal 1
-    "VIA1_PHOTO",     # Via 1
-    "M2_PHOTO",       # Metal 2
-    "VIA2_PHOTO",     # Via 2
-    "M3_PHOTO",       # Metal 3
-    "VIA3_PHOTO",     # Via 3
-    "PAD_PHOTO",      # Pad
+LAYERS = [
+    # (layer_name,      step_seq,    layer_number, sort_order)
+    ("AA_PHOTO",        "ac100000",  "1.0",        10),
+    ("STI_PHOTO",       "ac200000",  "2.0",        20),
+    ("NWELL_PHOTO",     "ac300000",  "3.0",        30),
+    ("PWELL_PHOTO",     "ac300500",  "3.5",        35),
+    ("POLY_PHOTO",      "ac400000",  "5.0",        50),
+    ("LDD_N_PHOTO",     "ac500000",  "6.0",        60),
+    ("LDD_P_PHOTO",     "ac500500",  "6.5",        65),
+    ("CONTACT_PHOTO",   "ac600000",  "8.0",        80),
+    ("M1_PHOTO",        "ac700000",  "10.0",       100),
+    ("VIA1_PHOTO",      "ac750000",  "11.0",       110),
+    ("M2_PHOTO",        "ac800000",  "12.0",       120),
+    ("VIA2_PHOTO",      "ac850000",  "13.0",       130),
+    ("M3_PHOTO",        "ac900000",  "15.0",       150),
+    ("VIA3_PHOTO",      "ac950000",  "16.0",       160),
+    ("PAD_PHOTO",       "ac990000",  "20.0",       200),
 ]
+
+# Convenience lookups
+LAYER_NAMES = [l[0] for l in LAYERS]
+_LAYER_STEP_SEQ = {l[0]: l[1] for l in LAYERS}  # layer_name → step_seq
 
 
 # ---------------------------------------------------------------------------
@@ -246,23 +265,24 @@ LAYER_PROFILES = {
     "PAD_PHOTO":     ("KrF-A01",  248, "N", "BINARY",  28.0, 800.0),
 }
 
-# OVL reference layers
-OVL_REFS = {
-    "AA_PHOTO": "WAFER_EDGE",
-    "STI_PHOTO": "AA_PHOTO",
-    "NWELL_PHOTO": "AA_PHOTO",
-    "PWELL_PHOTO": "AA_PHOTO",
-    "POLY_PHOTO": "AA_PHOTO",
-    "LDD_N_PHOTO": "POLY_PHOTO",
-    "LDD_P_PHOTO": "POLY_PHOTO",
-    "CONTACT_PHOTO": "POLY_PHOTO",
-    "M1_PHOTO": "CONTACT_PHOTO",
-    "VIA1_PHOTO": "M1_PHOTO",
-    "M2_PHOTO": "VIA1_PHOTO",
-    "VIA2_PHOTO": "M2_PHOTO",
-    "M3_PHOTO": "VIA2_PHOTO",
-    "VIA3_PHOTO": "M3_PHOTO",
-    "PAD_PHOTO": "M3_PHOTO",
+# OVL reference layers — mapped to step_seq (stored value in conditions)
+# AA_PHOTO의 첫 레이어 참조는 zero align (za000000) 사용
+OVL_REFS_STEP_SEQ = {
+    "AA_PHOTO":      "za000000",              # Zero Align (웨이퍼 기준)
+    "STI_PHOTO":     _LAYER_STEP_SEQ["AA_PHOTO"],
+    "NWELL_PHOTO":   _LAYER_STEP_SEQ["AA_PHOTO"],
+    "PWELL_PHOTO":   _LAYER_STEP_SEQ["AA_PHOTO"],
+    "POLY_PHOTO":    _LAYER_STEP_SEQ["AA_PHOTO"],
+    "LDD_N_PHOTO":   _LAYER_STEP_SEQ["POLY_PHOTO"],
+    "LDD_P_PHOTO":   _LAYER_STEP_SEQ["POLY_PHOTO"],
+    "CONTACT_PHOTO": _LAYER_STEP_SEQ["POLY_PHOTO"],
+    "M1_PHOTO":      _LAYER_STEP_SEQ["CONTACT_PHOTO"],
+    "VIA1_PHOTO":    _LAYER_STEP_SEQ["M1_PHOTO"],
+    "M2_PHOTO":      _LAYER_STEP_SEQ["VIA1_PHOTO"],
+    "VIA2_PHOTO":    _LAYER_STEP_SEQ["M2_PHOTO"],
+    "M3_PHOTO":      _LAYER_STEP_SEQ["VIA2_PHOTO"],
+    "VIA3_PHOTO":    _LAYER_STEP_SEQ["M3_PHOTO"],
+    "PAD_PHOTO":     _LAYER_STEP_SEQ["M3_PHOTO"],
 }
 
 
@@ -337,14 +357,14 @@ def generate_conditions(layer_name: str, product_name: str) -> dict:
         "SC_IMMERSION": immersion,
     }
 
-    # OVL
-    ovl_ref = OVL_REFS[layer_name]
+    # OVL — OVL_REF_LAYER는 step_seq로 저장
+    ref_step_seq = OVL_REFS_STEP_SEQ[layer_name]
     is_critical = layer_name in ("POLY_PHOTO", "CONTACT_PHOTO", "M1_PHOTO")
     base_spec = 5.0 if is_critical else (8.0 if is_arf else 12.0)
     ovl = {
         "OVL_SPEC_X_nm": round(base_spec + off * 0.5 + random.uniform(-0.3, 0.3), 1),
         "OVL_SPEC_Y_nm": round(base_spec + off * 0.3 + random.uniform(-0.3, 0.3), 1),
-        "OVL_REF_LAYER": ovl_ref,
+        "OVL_REF_LAYER": ref_step_seq,
         "OVL_CORRECT_X_nm": round(random.uniform(-3.0, 3.0), 2),
         "OVL_CORRECT_Y_nm": round(random.uniform(-3.0, 3.0), 2),
         "OVL_APC_USE": "Y" if is_critical else "N",
@@ -431,7 +451,7 @@ def seed():
                     "display": display,
                     "cat_id": cat_ids[cat_code],
                     "dtype": dtype,
-                    "sel": str(sel_opts).replace("'", '"') if sel_opts else None,
+                    "sel": json.dumps(sel_opts) if sel_opts else None,
                     "unit": unit,
                     "order": i + 1,
                     "req": is_req,
@@ -450,7 +470,6 @@ def seed():
             col_name, rule_type, rule_config, err_msg = rule
             if col_name not in col_ids:
                 continue
-            import json
             session.execute(
                 text(
                     "INSERT INTO column_validations (column_id, rule_type, rule_config, error_message) "
@@ -480,22 +499,22 @@ def seed():
             user_ids[u["username"]] = result.scalar()
         print(f"  Users: {len(user_ids)}")
 
-        # --- Layers ---
+        # --- Layers (with step_seq, layer_number) ---
         layer_ids = {}
-        for i, name in enumerate(LAYER_NAMES):
+        for layer_name, step_seq, layer_number, sort_order in LAYERS:
             session.execute(
-                text("INSERT INTO layers (layer_name, sort_order) VALUES (:name, :order)"),
-                {"name": name, "order": (i + 1) * 10},
+                text("INSERT INTO layers (layer_name, step_seq, layer_number, sort_order) "
+                     "VALUES (:name, :seq, :num, :order)"),
+                {"name": layer_name, "seq": step_seq, "num": layer_number, "order": sort_order},
             )
             result = session.execute(
                 text("SELECT id FROM layers WHERE layer_name = :name"),
-                {"name": name},
+                {"name": layer_name},
             )
-            layer_ids[name] = result.scalar()
+            layer_ids[layer_name] = result.scalar()
         print(f"  Layers: {len(layer_ids)}")
 
         # --- Products + ProductLayers ---
-        import json
         product_ids = {}
         pl_count = 0
         for prod in PRODUCTS:
@@ -527,7 +546,7 @@ def seed():
                 )
                 pl_count += 1
         print(f"  Products: {len(product_ids)}")
-        print(f"  Product Layers: {pl_count} ({len(PRODUCTS)} products × {len(LAYER_NAMES)} layers)")
+        print(f"  Product Layers: {pl_count} ({len(PRODUCTS)} products \u00d7 {len(LAYER_NAMES)} layers)")
 
         session.commit()
         print("\nSeed completed successfully!")
