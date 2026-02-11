@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PCM 화면 설계서</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Segoe UI', -apple-system, sans-serif; background: #f0f2f5; color: #333; }
+
+/* Nav */
+.doc-nav { position: fixed; top: 0; left: 0; width: 240px; height: 100vh; background: #1a1a2e; padding: 20px 0; overflow-y: auto; z-index: 100; }
+.doc-nav h2 { color: #fff; font-size: 14px; padding: 0 20px 16px; border-bottom: 1px solid #333; margin-bottom: 12px; }
+.doc-nav a { display: block; color: #aab; text-decoration: none; padding: 8px 20px; font-size: 13px; transition: all 0.2s; }
+.doc-nav a:hover, .doc-nav a.active { color: #fff; background: rgba(255,255,255,0.08); }
+.doc-nav .section-label { color: #667; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; padding: 16px 20px 6px; }
+
+/* Main */
+.doc-main { margin-left: 240px; padding: 40px; max-width: 1200px; }
+.screen-section { background: #fff; border-radius: 12px; padding: 32px; margin-bottom: 32px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+.screen-section h2 { font-size: 22px; color: #1a1a2e; margin-bottom: 8px; }
+.screen-section .subtitle { color: #888; font-size: 14px; margin-bottom: 24px; }
+.screen-section h3 { font-size: 16px; color: #444; margin: 24px 0 12px; padding-top: 16px; border-top: 1px solid #eee; }
+.screen-section h3:first-of-type { border-top: none; padding-top: 0; }
+
+/* Wireframe container */
+.wireframe { border: 2px solid #ddd; border-radius: 8px; overflow: hidden; margin: 16px 0; background: #fafafa; }
+.wireframe-label { background: #eee; padding: 6px 12px; font-size: 11px; color: #666; text-transform: uppercase; letter-spacing: 0.5px; }
+
+/* Spec table */
+.spec-table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 13px; }
+.spec-table th { background: #f5f7fa; padding: 8px 12px; text-align: left; font-weight: 600; border: 1px solid #e0e0e0; }
+.spec-table td { padding: 8px 12px; border: 1px solid #e0e0e0; vertical-align: top; }
+.spec-table code { background: #f0f0f0; padding: 2px 6px; border-radius: 3px; font-size: 12px; }
+
+/* Annotation */
+.annotation { background: #fff8e1; border-left: 3px solid #ffc107; padding: 10px 14px; margin: 12px 0; font-size: 13px; border-radius: 0 4px 4px 0; }
+.annotation strong { color: #e65100; }
+
+/* ═══════════════════════════════════ */
+/* Screen 1: Project List              */
+/* ═══════════════════════════════════ */
+.pl-header { background: #2F5496; color: #fff; height: 48px; display: flex; align-items: center; padding: 0 20px; font-weight: 600; font-size: 15px; }
+.pl-toolbar { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid #eee; }
+.pl-toolbar .left { display: flex; gap: 8px; }
+.pl-btn { padding: 8px 16px; border-radius: 6px; border: 1px solid #ddd; background: #fff; font-size: 13px; cursor: pointer; }
+.pl-btn.primary { background: #2F5496; color: #fff; border-color: #2F5496; }
+.pl-btn.active { background: #e8f0fe; border-color: #2F5496; color: #2F5496; }
+.pl-search { padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; width: 240px; font-size: 13px; }
+.pl-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.pl-table th { padding: 10px 16px; text-align: left; background: #f8f9fa; border-bottom: 2px solid #e0e0e0; font-weight: 600; color: #555; }
+.pl-table td { padding: 10px 16px; border-bottom: 1px solid #eee; }
+.pl-table tr:hover td { background: #f5f8ff; }
+.pl-status { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+.pl-status.draft { background: #fff3e0; color: #e65100; }
+.pl-status.review { background: #e3f2fd; color: #1565c0; }
+.pl-status.approved { background: #e8f5e9; color: #2e7d32; }
+.pl-status.rejected { background: #fce4ec; color: #c62828; }
+.pl-link { color: #2F5496; text-decoration: none; font-weight: 500; }
+.pl-link:hover { text-decoration: underline; }
+
+/* ═══════════════════════════════════ */
+/* Screen 2: Create Modal              */
+/* ═══════════════════════════════════ */
+.modal-overlay { background: rgba(0,0,0,0.15); padding: 40px; display: flex; justify-content: center; }
+.modal-box { background: #fff; border-radius: 12px; width: 480px; box-shadow: 0 8px 30px rgba(0,0,0,0.15); }
+.modal-header { padding: 20px 24px 0; }
+.modal-header h3 { font-size: 18px; margin-bottom: 4px; }
+.modal-header p { color: #888; font-size: 13px; }
+.modal-body { padding: 20px 24px; }
+.form-group { margin-bottom: 16px; }
+.form-group label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: #555; }
+.form-group input, .form-group select { width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
+.form-group .hint { font-size: 12px; color: #999; margin-top: 4px; }
+.modal-footer { padding: 16px 24px; display: flex; justify-content: flex-end; gap: 8px; border-top: 1px solid #eee; }
+
+/* ═══════════════════════════════════ */
+/* Screen 3: Condition Editor          */
+/* ═══════════════════════════════════ */
+.ce-container { display: flex; flex-direction: column; height: 640px; }
+.ce-topbar { background: #2F5496; color: #fff; height: 48px; display: flex; align-items: center; padding: 0 20px; gap: 16px; font-size: 14px; }
+.ce-topbar .product-name { font-weight: 600; font-size: 16px; }
+.ce-topbar .status-badge { padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; background: rgba(255,255,255,0.2); }
+.ce-topbar .error-badge { padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; background: #ff5252; margin-left: auto; }
+.ce-topbar .save-btn { margin-left: 8px; padding: 6px 16px; background: #fff; color: #2F5496; border: none; border-radius: 6px; font-weight: 600; font-size: 12px; cursor: pointer; }
+
+.ce-body { display: flex; flex: 1; overflow: hidden; }
+
+/* Layer Nav */
+.ce-layer-nav { width: 200px; border-right: 1px solid #e0e0e0; background: #f8f9fa; overflow-y: auto; flex-shrink: 0; }
+.ce-layer-nav .nav-header { padding: 10px 12px; font-size: 12px; font-weight: 600; color: #888; border-bottom: 1px solid #e0e0e0; text-transform: uppercase; }
+.ce-layer-item { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; font-size: 12px; cursor: pointer; border-bottom: 1px solid #eee; transition: background 0.15s; }
+.ce-layer-item:hover { background: #e8f0fe; }
+.ce-layer-item.active { background: #d4e4ff; font-weight: 600; }
+.ce-layer-item .badge { background: #ff5252; color: #fff; border-radius: 10px; padding: 1px 6px; font-size: 10px; font-weight: 600; }
+.ce-layer-item .backbone-src { font-size: 10px; color: #999; }
+
+/* Main Editor */
+.ce-editor { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+/* Category Tabs */
+.ce-tabs { display: flex; background: #fff; border-bottom: 2px solid #e0e0e0; padding: 0 16px; flex-shrink: 0; }
+.ce-tab { padding: 10px 20px; font-size: 13px; font-weight: 600; color: #888; cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -2px; transition: all 0.2s; }
+.ce-tab:hover { color: #555; }
+.ce-tab.active { color: #2F5496; border-bottom-color: #2F5496; }
+.ce-tab .col-count { font-weight: 400; color: #aaa; font-size: 11px; margin-left: 4px; }
+
+/* Grid */
+.ce-grid { flex: 1; overflow: auto; background: #fff; }
+.ce-grid table { border-collapse: collapse; width: max-content; min-width: 100%; }
+.ce-grid th { position: sticky; top: 0; background: #f0f2f5; padding: 8px 12px; font-size: 11px; font-weight: 600; color: #555; border: 1px solid #ddd; white-space: nowrap; z-index: 2; min-width: 120px; }
+.ce-grid th.layer-col { position: sticky; left: 0; z-index: 3; background: #e8ecf0; min-width: 130px; }
+.ce-grid td { padding: 6px 10px; border: 1px solid #e0e0e0; font-size: 12px; text-align: center; white-space: nowrap; }
+.ce-grid td.layer-col { position: sticky; left: 0; background: #f8f9fa; font-weight: 600; text-align: left; z-index: 1; }
+.ce-grid td.changed { background: #fffde7; }
+.ce-grid td.recipe { background: #e8f5e9; }
+.ce-grid td.error { background: #ffebee; color: #c62828; font-weight: 600; }
+.ce-grid td.editing { outline: 2px solid #2F5496; background: #fff; }
+
+/* Validation Panel */
+.ce-validation { height: 140px; border-top: 2px solid #e0e0e0; background: #fff; overflow-y: auto; flex-shrink: 0; }
+.ce-validation .panel-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #fafafa; border-bottom: 1px solid #eee; font-size: 12px; font-weight: 600; color: #555; }
+.ce-validation .panel-header .toggle { cursor: pointer; color: #888; }
+.ce-val-item { display: flex; align-items: center; padding: 6px 16px; font-size: 12px; border-bottom: 1px solid #f0f0f0; cursor: pointer; transition: background 0.15s; }
+.ce-val-item:hover { background: #fff8e1; }
+.ce-val-item .icon { width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; margin-right: 10px; flex-shrink: 0; }
+.ce-val-item .icon.err { background: #ffcdd2; color: #c62828; }
+.ce-val-item .location { font-weight: 600; color: #2F5496; min-width: 200px; }
+.ce-val-item .message { color: #666; }
+
+/* ═══════════════════════════════════ */
+/* Screen 4: Tooltips & Cell States    */
+/* ═══════════════════════════════════ */
+.cell-states { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin: 16px 0; }
+.cell-state-box { border: 1px solid #e0e0e0; border-radius: 8px; padding: 16px; text-align: center; }
+.cell-state-box .cell-demo { width: 100px; height: 36px; margin: 0 auto 10px; display: flex; align-items: center; justify-content: center; border: 1px solid #ccc; font-size: 13px; font-weight: 500; border-radius: 4px; }
+.cell-state-box .label { font-size: 12px; font-weight: 600; margin-bottom: 4px; }
+.cell-state-box .desc { font-size: 11px; color: #888; }
+
+.tooltip-demo { position: relative; display: inline-block; margin: 20px auto; }
+.tooltip-box { position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); background: #333; color: #fff; padding: 8px 12px; border-radius: 6px; font-size: 11px; white-space: nowrap; margin-bottom: 8px; }
+.tooltip-box::after { content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); border: 5px solid transparent; border-top-color: #333; }
+
+/* ═══════════════════════════════════ */
+/* Screen 5: Responsive behavior       */
+/* ═══════════════════════════════════ */
+.flow-diagram { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 16px 0; }
+.flow-step { padding: 10px 16px; background: #e8f0fe; border-radius: 8px; font-size: 12px; font-weight: 500; color: #2F5496; border: 1px solid #bbdefb; }
+.flow-arrow { color: #999; font-size: 16px; }
+
+/* Tags */
+.tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+.tag.get { background: #e8f5e9; color: #2e7d32; }
+.tag.put { background: #fff3e0; color: #e65100; }
+.tag.post { background: #e3f2fd; color: #1565c0; }
+.tag.patch { background: #f3e5f5; color: #7b1fa2; }
+</style>
+</head>
+<body>
+
+<nav class="doc-nav">
+  <h2>📐 PCM 화면 설계서</h2>
+  <div class="section-label">Pages</div>
+  <a href="#screen-1">1. 프로젝트 목록</a>
+  <a href="#screen-2">2. 프로젝트 생성</a>
+  <a href="#screen-3">3. 조건표 편집기 (핵심)</a>
+  <div class="section-label">Components</div>
+  <a href="#comp-tabs">카테고리 탭</a>
+  <a href="#comp-grid">AG Grid 그리드</a>
+  <a href="#comp-layer">레이어 네비게이션</a>
+  <a href="#comp-validation">검증 패널</a>
+  <a href="#comp-cells">셀 상태 & 툴팁</a>
+  <div class="section-label">Flows</div>
+  <a href="#flow-edit">편집 → 저장 흐름</a>
+  <a href="#flow-api">화면 ↔ API 매핑</a>
+</nav>
+
+<main class="doc-main">
+
+<!-- ════════════════════════════════════════ -->
+<!-- Screen 1: Project List                  -->
+<!-- ════════════════════════════════════════ -->
+<section id="screen-1" class="screen-section">
+  <h2>1. 프로젝트 목록 페이지</h2>
+  <p class="subtitle">경로: /projects &nbsp;|&nbsp; 역할: 전체 사용자</p>
+
+  <div class="wireframe">
+    <div class="wireframe-label">Wireframe — /projects</div>
+    <div class="pl-header">
+      <span>PCM - Process Condition Manager</span>
+    </div>
+    <div class="pl-toolbar">
+      <div class="left">
+        <button class="pl-btn active">전체</button>
+        <button class="pl-btn">Draft</button>
+        <button class="pl-btn">Review</button>
+        <button class="pl-btn">Approved</button>
+        <input class="pl-search" placeholder="🔍 제품명 검색..." />
+      </div>
+      <button class="pl-btn primary">+ 새 프로젝트</button>
+    </div>
+    <table class="pl-table">
+      <thead>
+        <tr>
+          <th style="width:50px">#</th>
+          <th>제품명</th>
+          <th>Backbone</th>
+          <th>상태</th>
+          <th>레이어</th>
+          <th>오류</th>
+          <th>생성자</th>
+          <th>수정일</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>1</td>
+          <td><a class="pl-link">PROD-2025A</a></td>
+          <td>PROD-2024X</td>
+          <td><span class="pl-status draft">Draft</span></td>
+          <td>45</td>
+          <td style="color:#c62828; font-weight:600">3</td>
+          <td>김엔지니어</td>
+          <td>2025-02-10 14:30</td>
+          <td><a class="pl-link">편집 →</a></td>
+        </tr>
+        <tr>
+          <td>2</td>
+          <td><a class="pl-link">PROD-2025B</a></td>
+          <td>PROD-2024X</td>
+          <td><span class="pl-status review">Review</span></td>
+          <td>38</td>
+          <td style="color:#2e7d32">0</td>
+          <td>이엔지니어</td>
+          <td>2025-02-09 11:00</td>
+          <td><a class="pl-link">보기 →</a></td>
+        </tr>
+        <tr>
+          <td>3</td>
+          <td><a class="pl-link">PROD-2025C</a></td>
+          <td>PROD-2024Y</td>
+          <td><span class="pl-status approved">Approved</span></td>
+          <td>52</td>
+          <td style="color:#2e7d32">0</td>
+          <td>박엔지니어</td>
+          <td>2025-02-08 09:15</td>
+          <td><a class="pl-link">보기 →</a></td>
+        </tr>
+        <tr>
+          <td>4</td>
+          <td><a class="pl-link">PROD-2025D</a></td>
+          <td>PROD-2024X</td>
+          <td><span class="pl-status rejected">Rejected</span></td>
+          <td>45</td>
+          <td style="color:#c62828; font-weight:600">1</td>
+          <td>김엔지니어</td>
+          <td>2025-02-07 16:45</td>
+          <td><a class="pl-link">편집 →</a></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>UI 동작 명세</h3>
+  <table class="spec-table">
+    <tr><th style="width:160px">요소</th><th>동작</th></tr>
+    <tr><td>상태 필터 버튼</td><td>클릭 시 해당 상태의 프로젝트만 표시. "전체"는 모든 상태. <code>GET /api/projects?status=draft</code></td></tr>
+    <tr><td>제품명 검색</td><td>입력 시 300ms debounce 후 필터링 (프론트 사이드 필터 또는 API 호출)</td></tr>
+    <tr><td>+ 새 프로젝트 버튼</td><td>프로젝트 생성 모달 오픈</td></tr>
+    <tr><td>제품명 링크</td><td>프로젝트 상세/편집 페이지로 이동 <code>/projects/{id}/edit</code></td></tr>
+    <tr><td>편집 → / 보기 →</td><td>Draft/Rejected → "편집", Review/Approved → "보기" (읽기전용)</td></tr>
+    <tr><td>오류 건수</td><td>0이면 녹색, 1이상이면 빨간색. 마지막 검증 결과 기반</td></tr>
+  </table>
+</section>
+
+<!-- ════════════════════════════════════════ -->
+<!-- Screen 2: Create Modal                  -->
+<!-- ════════════════════════════════════════ -->
+<section id="screen-2" class="screen-section">
+  <h2>2. 프로젝트 생성 모달</h2>
+  <p class="subtitle">프로젝트 목록 페이지에서 "+ 새 프로젝트" 클릭 시 표시</p>
+
+  <div class="wireframe">
+    <div class="wireframe-label">Wireframe — Create Modal</div>
+    <div class="modal-overlay">
+      <div class="modal-box">
+        <div class="modal-header">
+          <h3>새 프로젝트 생성</h3>
+          <p>Backbone 제품을 기반으로 조건표 초안을 생성합니다</p>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label>신규 제품명 *</label>
+            <input type="text" placeholder="예: PROD-2025A" />
+            <div class="hint">중복 불가. 영문/숫자/하이픈만 허용</div>
+          </div>
+          <div class="form-group">
+            <label>Backbone 제품 선택 *</label>
+            <select>
+              <option value="">Backbone 제품을 선택하세요</option>
+              <option>PROD-2024X (45 layers)</option>
+              <option>PROD-2024Y (52 layers)</option>
+              <option>PROD-2024Z (38 layers)</option>
+            </select>
+            <div class="hint">선택된 제품의 전체 조건표가 복사됩니다</div>
+          </div>
+          <div style="background:#f0f7ff; border-radius:8px; padding:12px; margin-top:8px; font-size:12px; color:#555;">
+            <strong style="color:#2F5496;">ℹ 안내</strong><br>
+            생성 후 레이어별 backbone 교체, Recipe 반영 등은 편집 화면에서 진행합니다.
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="pl-btn">취소</button>
+          <button class="pl-btn primary">생성</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h3>UI 동작 명세</h3>
+  <table class="spec-table">
+    <tr><th style="width:160px">요소</th><th>동작</th></tr>
+    <tr><td>제품명 입력</td><td>중복 확인: blur 시 <code>GET /api/products?search={name}</code>으로 중복 체크. 중복이면 인라인 에러 표시</td></tr>
+    <tr><td>Backbone 선택</td><td>backbone 제품 목록: <code>GET /api/products?is_backbone=true</code>. 레이어 수도 함께 표시</td></tr>
+    <tr><td>생성 버튼</td><td><code>POST /api/projects</code> 호출. 성공 시 바로 편집 페이지로 이동 <code>/projects/{new_id}/edit</code></td></tr>
+    <tr><td>취소 버튼</td><td>모달 닫기</td></tr>
+  </table>
+</section>
+
+<!-- ════════════════════════════════════════ -->
+<!-- Screen 3: Condition Editor              -->
+<!-- ════════════════════════════════════════ -->
+<section id="screen-3" class="screen-section">
+  <h2>3. 조건표 편집기 (핵심 화면)</h2>
+  <p class="subtitle">경로: /projects/{id}/edit &nbsp;|&nbsp; 이 시스템의 가장 중요한 화면</p>
+
+  <div class="wireframe">
+    <div class="wireframe-label">Wireframe — Condition Editor (Full Layout)</div>
+    <div class="ce-container">
+
+      <!-- Top Bar -->
+      <div class="ce-topbar">
+        <span style="cursor:pointer; margin-right: 8px;">← 목록</span>
+        <span class="product-name">PROD-2025A</span>
+        <span class="status-badge">Draft</span>
+        <span style="color:rgba(255,255,255,0.6); font-size:12px;">Backbone: PROD-2024X</span>
+        <span class="error-badge">⚠ 오류 3건</span>
+        <button class="save-btn">💾 저장</button>
+      </div>
+
+      <div class="ce-body">
+
+        <!-- Layer Navigation -->
+        <div class="ce-layer-nav">
+          <div class="nav-header">Layers (15)</div>
+          <div class="ce-layer-item active">
+            <div>
+              <div>AA_PHOTO</div>
+              <div class="backbone-src">← PROD-2024X</div>
+            </div>
+          </div>
+          <div class="ce-layer-item">
+            <div>
+              <div>GATE_PHOTO</div>
+              <div class="backbone-src">← PROD-2024X</div>
+            </div>
+          </div>
+          <div class="ce-layer-item">
+            <div>
+              <div>POLY_PHOTO</div>
+              <div class="backbone-src">← PROD-2024X</div>
+            </div>
+            <span class="badge">2</span>
+          </div>
+          <div class="ce-layer-item">
+            <div>
+              <div>CONT_PHOTO</div>
+              <div class="backbone-src">← PROD-2024X</div>
+            </div>
+          </div>
+          <div class="ce-layer-item">
+            <div>
+              <div>M1_PHOTO</div>
+              <div class="backbone-src">← PROD-2024X</div>
+            </div>
+            <span class="badge">1</span>
+          </div>
+          <div class="ce-layer-item">
+            <div>
+              <div>VIA1_PHOTO</div>
+              <div class="backbone-src">← PROD-2024X</div>
+            </div>
+          </div>
+          <div class="ce-layer-item">
+            <div>
+              <div>M2_PHOTO</div>
+              <div class="backbone-src">← PROD-2024X</div>
+            </div>
+          </div>
+          <div class="ce-layer-item">
+            <div>
+              <div>VIA2_PHOTO</div>
+              <div class="backbone-src">← PROD-2024Y</div>
+            </div>
+          </div>
+          <div class="ce-layer-item">
+            <div>
+              <div>M3_PHOTO</div>
+              <div class="backbone-src">← PROD-2024Y</div>
+            </div>
+          </div>
+          <div class="ce-layer-item">
+            <div>
+              <div>PAD_PHOTO</div>
+              <div class="backbone-src">← PROD-2024X</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Editor Area -->
+        <div class="ce-editor">
+
+          <!-- Category Tabs -->
+          <div class="ce-tabs" id="comp-tabs">
+            <div class="ce-tab active">SP (Spin/PR) <span class="col-count">20</span></div>
+            <div class="ce-tab">SC (Scanner) <span class="col-count">19</span></div>
+            <div class="ce-tab">OVL (Overlay) <span class="col-count">14</span></div>
+            <div class="ce-tab">DEV (Develop) <span class="col-count">14</span></div>
+          </div>
+
+          <!-- Grid -->
+          <div class="ce-grid" id="comp-grid">
+            <table>
+              <thead>
+                <tr>
+                  <th class="layer-col">Layer</th>
+                  <th>PR Type</th>
+                  <th>PR Vol<br><span style="font-weight:400; color:#999">ml</span></th>
+                  <th>Spin1 Speed<br><span style="font-weight:400; color:#999">rpm</span></th>
+                  <th>Spin1 Time<br><span style="font-weight:400; color:#999">s</span></th>
+                  <th>Spin2 Speed<br><span style="font-weight:400; color:#999">rpm</span></th>
+                  <th>Spin2 Time<br><span style="font-weight:400; color:#999">s</span></th>
+                  <th>EBR Speed<br><span style="font-weight:400; color:#999">rpm</span></th>
+                  <th>Prebake Temp<br><span style="font-weight:400; color:#999">℃</span></th>
+                  <th>Prebake Time<br><span style="font-weight:400; color:#999">s</span></th>
+                  <th>PR Thick<br><span style="font-weight:400; color:#999">nm</span></th>
+                  <th>Adhesion Use</th>
+                  <th>Adhesion Type</th>
+                  <th>Adhesion Temp<br><span style="font-weight:400; color:#999">℃</span></th>
+                  <th>Cool Temp<br><span style="font-weight:400; color:#999">℃</span></th>
+                  <th>Cool Time<br><span style="font-weight:400; color:#999">s</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="layer-col">AA_PHOTO</td>
+                  <td>KrF-A01</td>
+                  <td>1.85</td>
+                  <td class="changed">1800</td>
+                  <td>5</td>
+                  <td>4000</td>
+                  <td>25</td>
+                  <td>2500</td>
+                  <td class="changed">115</td>
+                  <td>90</td>
+                  <td class="recipe">850</td>
+                  <td>Y</td>
+                  <td>HMDS</td>
+                  <td>100</td>
+                  <td>23</td>
+                  <td>40</td>
+                </tr>
+                <tr>
+                  <td class="layer-col">GATE_PHOTO</td>
+                  <td>ArF-C01</td>
+                  <td>2.10</td>
+                  <td>2000</td>
+                  <td>5</td>
+                  <td>4500</td>
+                  <td>30</td>
+                  <td>3000</td>
+                  <td>120</td>
+                  <td>90</td>
+                  <td>1200</td>
+                  <td>Y</td>
+                  <td>HMDS-V2</td>
+                  <td>110</td>
+                  <td>23</td>
+                  <td>40</td>
+                </tr>
+                <tr>
+                  <td class="layer-col">POLY_PHOTO</td>
+                  <td class="error">⚠</td>
+                  <td>1.90</td>
+                  <td>1500</td>
+                  <td>7</td>
+                  <td>3500</td>
+                  <td>25</td>
+                  <td>2500</td>
+                  <td class="error">-10</td>
+                  <td>120</td>
+                  <td>950</td>
+                  <td>N</td>
+                  <td>NONE</td>
+                  <td></td>
+                  <td>23</td>
+                  <td>30</td>
+                </tr>
+                <tr>
+                  <td class="layer-col">CONT_PHOTO</td>
+                  <td>KrF-B02</td>
+                  <td>1.75</td>
+                  <td class="changed">2200</td>
+                  <td>5</td>
+                  <td>4000</td>
+                  <td>20</td>
+                  <td>2500</td>
+                  <td>100</td>
+                  <td>60</td>
+                  <td>700</td>
+                  <td>Y</td>
+                  <td>HMDS</td>
+                  <td>90</td>
+                  <td>23</td>
+                  <td>60</td>
+                </tr>
+                <tr>
+                  <td class="layer-col">M1_PHOTO</td>
+                  <td>ArF-D01</td>
+                  <td>2.30</td>
+                  <td>2000</td>
+                  <td>10</td>
+                  <td class="recipe">5000</td>
+                  <td>25</td>
+                  <td>3000</td>
+                  <td>110</td>
+                  <td>90</td>
+                  <td>1500</td>
+                  <td>Y</td>
+                  <td class="error">⚠</td>
+                  <td>100</td>
+                  <td>23</td>
+                  <td>40</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Validation Panel -->
+          <div class="ce-validation" id="comp-validation">
+            <div class="panel-header">
+              <span>⚠ 검증 오류 3건</span>
+              <span class="toggle">▼ 접기</span>
+            </div>
+            <div class="ce-val-item">
+              <div class="icon err">!</div>
+              <span class="location">POLY_PHOTO → PR Type</span>
+              <span class="message">PR Type은 필수입니다</span>
+            </div>
+            <div class="ce-val-item">
+              <div class="icon err">!</div>
+              <span class="location">POLY_PHOTO → Prebake Temp</span>
+              <span class="message">Prebake 온도는 0~300℃ 범위여야 합니다 (현재: -10)</span>
+            </div>
+            <div class="ce-val-item">
+              <div class="icon err">!</div>
+              <span class="location">M1_PHOTO → Adhesion Type</span>
+              <span class="message">Adhesion Use가 Y일 때 Adhesion Type은 필수입니다</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════ -->
+<!-- Component: Layer Navigation             -->
+<!-- ════════════════════════════════════════ -->
+<section id="comp-layer" class="screen-section">
+  <h2>컴포넌트: 레이어 네비게이션 패널</h2>
+  <p class="subtitle">좌측 패널 — LayerNavPanel.tsx</p>
+
+  <table class="spec-table">
+    <tr><th style="width:160px">요소</th><th>동작</th></tr>
+    <tr><td>레이어 항목 클릭</td><td>AG Grid에서 해당 레이어 행으로 자동 스크롤. <code>gridApi.ensureIndexVisible(rowIndex)</code></td></tr>
+    <tr><td>오류 뱃지 (숫자)</td><td>해당 레이어의 검증 오류 수. 0이면 표시 안함. 검증 결과에서 layer_id로 카운트</td></tr>
+    <tr><td>backbone 출처</td><td>각 레이어 아래에 "← PROD-2024X" 형태로 backbone 제품명 표시</td></tr>
+    <tr><td>active 상태</td><td>현재 그리드에서 선택된 행의 레이어가 active. 그리드 행 선택 시 연동</td></tr>
+  </table>
+
+  <div class="annotation">
+    <strong>Phase 2 확장:</strong> 레이어 항목에 우클릭 컨텍스트 메뉴 추가 → "backbone 교체", "레이어 추가", "레이어 삭제" 등
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════ -->
+<!-- Component: Cell States                  -->
+<!-- ════════════════════════════════════════ -->
+<section id="comp-cells" class="screen-section">
+  <h2>컴포넌트: 셀 상태 & 툴팁</h2>
+  <p class="subtitle">AG Grid cellStyle + tooltipValueGetter 활용</p>
+
+  <div class="cell-states">
+    <div class="cell-state-box">
+      <div class="cell-demo" style="background:#fffde7; border-color:#ffc107;">115</div>
+      <div class="label" style="color:#e65100;">🟡 Backbone 변경</div>
+      <div class="desc">backbone 원본값과 다른 셀</div>
+    </div>
+    <div class="cell-state-box">
+      <div class="cell-demo" style="background:#e8f5e9; border-color:#66bb6a;">850</div>
+      <div class="label" style="color:#2e7d32;">🟢 Recipe 반영</div>
+      <div class="desc">Recipe XML에서 업데이트된 셀</div>
+    </div>
+    <div class="cell-state-box">
+      <div class="cell-demo" style="background:#ffebee; border-color:#ef5350; color:#c62828; font-weight:600;">-10</div>
+      <div class="label" style="color:#c62828;">🔴 검증 오류</div>
+      <div class="desc">범위 초과, 필수값 누락 등</div>
+    </div>
+  </div>
+
+  <h3>셀 툴팁</h3>
+  <div style="text-align:center; padding: 20px;">
+    <div class="tooltip-demo">
+      <div class="tooltip-box">
+        <div style="margin-bottom:4px;">Backbone 원본: <strong>100</strong> → 현재: <strong>115</strong></div>
+        <div style="color:#aaa; font-size:10px;">변경자: 김엔지니어 | 2025-02-10 14:30</div>
+      </div>
+      <div style="background:#fffde7; border:1px solid #ffc107; padding:8px 20px; border-radius:4px; font-size:14px;">115</div>
+    </div>
+  </div>
+
+  <table class="spec-table">
+    <tr><th style="width:120px">셀 상태</th><th>판단 기준</th><th>우선순위</th></tr>
+    <tr><td>🔴 오류</td><td>검증 결과에 해당 (layer_id, column_name)이 존재</td><td>최우선 (다른 상태 덮어씀)</td></tr>
+    <tr><td>🟢 Recipe</td><td>change_log에서 change_type='recipe'인 최근 변경이 존재</td><td>2순위</td></tr>
+    <tr><td>🟡 변경</td><td><code>conditions[key] !== backbone_conditions[key]</code></td><td>3순위</td></tr>
+    <tr><td>기본</td><td>위 조건에 해당하지 않는 셀</td><td>-</td></tr>
+  </table>
+
+  <div class="annotation">
+    <strong>구현 팁:</strong> AG Grid의 <code>cellStyle</code> 콜백에서 위 우선순위 로직을 적용. <code>tooltipValueGetter</code>에서 backbone_conditions와 비교하여 툴팁 텍스트 생성.
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════ -->
+<!-- Flow: Edit → Save                       -->
+<!-- ════════════════════════════════════════ -->
+<section id="flow-edit" class="screen-section">
+  <h2>편집 → 저장 데이터 흐름</h2>
+  <p class="subtitle">프론트엔드에서 셀 편집 후 저장까지의 전체 흐름</p>
+
+  <h3>페이지 초기 로딩</h3>
+  <div class="flow-diagram">
+    <div class="flow-step">페이지 마운트</div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-step"><span class="tag get">GET</span> /api/columns<br><span style="font-size:10px; color:#888;">컬럼 메타데이터 (1회)</span></div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-step"><span class="tag get">GET</span> /api/projects/{id}/conditions<br><span style="font-size:10px; color:#888;">전체 조건표</span></div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-step">AG Grid 렌더링<br><span style="font-size:10px; color:#888;">컬럼 정의 + 데이터 바인딩</span></div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-step">프론트 검증 실행<br><span style="font-size:10px; color:#888;">오류 목록 생성</span></div>
+  </div>
+
+  <h3>셀 편집</h3>
+  <div class="flow-diagram">
+    <div class="flow-step">셀 편집 완료<br><span style="font-size:10px; color:#888;">onCellValueChanged</span></div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-step">dirty 셀 목록에 추가<br><span style="font-size:10px; color:#888;">Map&lt;projectLayerId, {col: newVal}&gt;</span></div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-step">프론트 실시간 검증<br><span style="font-size:10px; color:#888;">range, required 체크</span></div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-step">셀 스타일 업데이트<br><span style="font-size:10px; color:#888;">오류/변경 하이라이트</span></div>
+  </div>
+
+  <h3>저장</h3>
+  <div class="flow-diagram">
+    <div class="flow-step">💾 저장 버튼 클릭<br><span style="font-size:10px; color:#888;">(또는 자동저장 30초)</span></div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-step">dirty 셀 → 레이어별 그룹핑<br><span style="font-size:10px; color:#888;">변경 없는 레이어 제외</span></div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-step"><span class="tag put">PUT</span> /api/.../conditions/save<br><span style="font-size:10px; color:#888;">변경된 레이어만 전송</span></div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-step">백엔드: JSONB 업데이트<br><span style="font-size:10px; color:#888;">+ change_log 기록</span></div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-step">응답: 저장 결과<br><span style="font-size:10px; color:#888;">+ 전체 검증 결과</span></div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-step">dirty 목록 초기화<br><span style="font-size:10px; color:#888;">검증 결과 반영</span></div>
+  </div>
+
+  <h3>카테고리 탭 전환</h3>
+  <div class="flow-diagram">
+    <div class="flow-step">탭 클릭 (SP→SC)</div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-step">API 호출 없음<br><span style="font-size:10px; color:#888;">이미 전체 데이터 보유</span></div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-step">AG Grid columnDefs 변경<br><span style="font-size:10px; color:#888;">SC 카테고리 컬럼만 표시</span></div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-step">즉시 렌더링</div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════ -->
+<!-- Flow: Screen ↔ API Mapping              -->
+<!-- ════════════════════════════════════════ -->
+<section id="flow-api" class="screen-section">
+  <h2>화면 ↔ API 매핑</h2>
+  <p class="subtitle">각 화면에서 호출하는 API 엔드포인트 매핑</p>
+
+  <table class="spec-table">
+    <tr><th>화면 / 동작</th><th>API</th><th>호출 시점</th></tr>
+    <tr>
+      <td><strong>프로젝트 목록</strong> 페이지 로딩</td>
+      <td><span class="tag get">GET</span> <code>/api/projects</code></td>
+      <td>페이지 마운트</td>
+    </tr>
+    <tr>
+      <td>상태 필터 변경</td>
+      <td><span class="tag get">GET</span> <code>/api/projects?status=draft</code></td>
+      <td>필터 버튼 클릭</td>
+    </tr>
+    <tr>
+      <td><strong>프로젝트 생성</strong> 모달 오픈</td>
+      <td><span class="tag get">GET</span> <code>/api/products?is_backbone=true</code></td>
+      <td>모달 오픈 시 backbone 목록 로딩</td>
+    </tr>
+    <tr>
+      <td>생성 버튼 클릭</td>
+      <td><span class="tag post">POST</span> <code>/api/projects</code></td>
+      <td>폼 제출</td>
+    </tr>
+    <tr>
+      <td><strong>편집기</strong> 페이지 로딩</td>
+      <td>
+        <span class="tag get">GET</span> <code>/api/columns</code><br>
+        <span class="tag get">GET</span> <code>/api/projects/{id}/conditions</code>
+      </td>
+      <td>페이지 마운트 (병렬 호출)</td>
+    </tr>
+    <tr>
+      <td>저장 버튼 / 자동저장</td>
+      <td><span class="tag put">PUT</span> <code>/api/projects/{id}/conditions/save</code></td>
+      <td>저장 시 (dirty 셀 존재 시만)</td>
+    </tr>
+    <tr>
+      <td>Review 요청 버튼</td>
+      <td>
+        <span class="tag post">POST</span> <code>/api/projects/{id}/validate</code><br>
+        <span class="tag patch">PATCH</span> <code>/api/projects/{id}/status</code>
+      </td>
+      <td>검증 → 오류 0건이면 상태 변경</td>
+    </tr>
+    <tr>
+      <td>변경 이력 조회</td>
+      <td><span class="tag get">GET</span> <code>/api/projects/{id}/changelog</code></td>
+      <td>이력 패널 오픈 시</td>
+    </tr>
+  </table>
+
+  <h3>프론트엔드 상태 관리 구조</h3>
+  <table class="spec-table">
+    <tr><th style="width:180px">상태</th><th>저장 위치</th><th>설명</th></tr>
+    <tr><td><code>columnMeta</code></td><td>전역 (Zustand/Redux)</td><td>컬럼 메타데이터. 앱 초기화 시 1회 로딩. 카테고리별 그룹핑, display_name, 검증 규칙 포함</td></tr>
+    <tr><td><code>conditionData</code></td><td>페이지 로컬 상태</td><td>현재 프로젝트의 전체 조건표 데이터 (layers 배열). API 응답 그대로 보관</td></tr>
+    <tr><td><code>dirtyCells</code></td><td>페이지 로컬 상태</td><td>편집 후 아직 저장하지 않은 변경사항. <code>Map&lt;projectLayerId, Record&lt;string, any&gt;&gt;</code></td></tr>
+    <tr><td><code>validationErrors</code></td><td>페이지 로컬 상태</td><td>현재 검증 오류 목록. 프론트 검증 + 백엔드 검증 결과 병합</td></tr>
+    <tr><td><code>activeCategory</code></td><td>페이지 로컬 상태</td><td>현재 선택된 카테고리 탭 코드 ('SP', 'SC', ...)</td></tr>
+    <tr><td><code>activeLayerId</code></td><td>페이지 로컬 상태</td><td>현재 선택된 레이어 ID (네비게이션 패널 연동)</td></tr>
+  </table>
+</section>
+
+</main>
+</body>
+</html>
