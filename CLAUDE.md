@@ -122,6 +122,33 @@ docker-compose exec backend alembic upgrade head
 cd frontend && npm run dev
 ```
 
+## 아키텍처 결정 사항
+
+### 시드 데이터
+- 사내 데이터 기반으로 **현실적인 더미 데이터를 생성**하여 시드로 사용
+- 샘플 Excel(67컬럼)을 참고하되, 실제 데이터는 사용자가 추후 조정
+- 제품/레이어 마스터 데이터는 Phase 1에서는 **시드 스크립트로만** 투입
+
+### 저장 전략: 혼합 (임시저장 + 명시적 저장)
+- **프론트엔드**: 셀 편집 시 dirty cell을 메모리(Zustand)에 누적, 셀별 실시간 검증 + 색상 표시
+- **임시저장**: 일정 간격(예: 30초)으로 자동 임시저장 → 브라우저 닫힘 등 데이터 유실 방지
+- **명시적 저장**: 저장 버튼 클릭 시 벌크 PUT으로 전체 변경사항 서버 반영 + change_log 기록
+- **단일 셀 PATCH API는 Phase 1에서 불필요** — 자동저장 도입 시 추후 검토
+
+### 상태 관리: Zustand
+- AG Grid 데이터, dirty cells, 검증 오류 등을 Zustand store로 관리
+- Redux 대비 보일러플레이트 적고, 카테고리 탭별 분할 로딩에 적합
+
+### Phase 1 인증: 드롭다운 사용자 선택
+- 로그인 없이, 헤더에 사용자 선택 드롭다운 배치
+- 선택된 사용자 ID를 change_log 등 기록용으로 사용
+- 본격적인 JWT 인증은 Phase 4에서 구현
+
+### 테스트 전략
+- **Backend**: pytest — 핵심 비즈니스 로직(backbone 복사, 검증, 벌크 저장)에 집중
+- **Frontend**: Vitest — 핵심 유틸 함수(diff 계산, 검증 로직)에 집중
+- 전체 커버리지보다 **핵심 로직의 정확성 보장** 우선
+
 ## 코딩 컨벤션
 
 - Backend: Python 타입 힌트 필수, Pydantic 스키마로 요청/응답 정의, 비동기(async/await) 사용
