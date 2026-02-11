@@ -74,10 +74,14 @@ erDiagram
 |------|------|------|
 | `id` | SERIAL PK | |
 | `layer_name` | VARCHAR(100) UNIQUE | 레이어명 (예: AA_PHOTO) |
+| `step_seq` | VARCHAR(10) UNIQUE | 설비/전산 식별자 (예: ac100000). 문자2+숫자6 조합 |
+| `layer_number` | VARCHAR(10) UNIQUE | 레이어 번호 (예: 15.7). 사람이 읽는 직관적 번호 |
 | `sort_order` | INTEGER | 표시 순서 |
 | `created_at` | TIMESTAMPTZ | |
 
 > 레이어는 제품 간 동일한 이름을 공유하므로 별도 마스터로 관리
+> `step_seq`는 조건표/전산출력에서 레이어를 식별하는 코드 (예: OVL_REF_LAYER에 저장)
+> 프론트에서는 `step_seq(layer_number)` 형태로 표시 (예: `ac700000 (M1 / 10.0)`)
 
 #### `product_layers` — 제품-레이어 관계 + 양산 조건 데이터
 
@@ -199,7 +203,7 @@ erDiagram
 | `column_name` | VARCHAR(100) UNIQUE | DB/JSONB 키 이름 (예: SP_PREBAKE_TEMP_C) |
 | `display_name` | VARCHAR(200) | 프론트 표시명 (예: Prebake Temp (℃)) |
 | `category_id` | FK → column_categories | 소속 카테고리 |
-| `data_type` | VARCHAR(20) | 'integer' / 'float' / 'string' / 'select' |
+| `data_type` | VARCHAR(20) | 'integer' / 'float' / 'string' / 'select' / 'layer_ref' |
 | `select_options` | JSONB NULL | data_type이 'select'일 때 선택지 목록 |
 | `unit` | VARCHAR(20) NULL | 단위 (℃, rpm, mJ 등) |
 | `sort_order` | INTEGER | 카테고리 내 표시 순서 |
@@ -208,6 +212,8 @@ erDiagram
 | `updated_at` | TIMESTAMPTZ | |
 
 > `select_options` 예시: `["KrF-A01", "KrF-B02", "ArF-C01", "EUV-E01"]`
+> `data_type = 'layer_ref'`: 저장값은 step_seq 문자열, 프론트에서 layers API로 select 렌더링
+> `select_options`에 숫자도 가능: `[248, 193, 13]` — 프론트에서 label 매핑 (예: "248nm (KrF)")
 
 #### `column_validations` — 컬럼별 검증 규칙
 
