@@ -232,10 +232,27 @@ _LAYER_STEP_SEQ = {l[0]: l[1] for l in LAYERS}  # layer_name → step_seq
 # 5. Products (Backbone) + Conditions generator
 # ---------------------------------------------------------------------------
 
+LINES = [
+    {"line_code": "LINE-A", "line_name": "A라인 (KrF/ArF)"},
+    {"line_code": "LINE-B", "line_name": "B라인 (ArF/EUV)"},
+]
+
 PRODUCTS = [
-    {"product_name": "PROD-2024X", "description": "주력 양산제품 (KrF/ArF 혼합)", "is_backbone": True},
-    {"product_name": "PROD-2024Y", "description": "차세대 파일럿 (ArF 중심)", "is_backbone": True},
-    {"product_name": "PROD-2024Z", "description": "저전력 변형 제품", "is_backbone": True},
+    {"product_name": "PROD-2024X", "description": "주력 양산제품 (KrF/ArF 혼합)", "is_backbone": True,
+     "line_code": "LINE-A", "part_id": "PROD-2024X"},
+    {"product_name": "PROD-2024Y", "description": "차세대 파일럿 (ArF 중심)", "is_backbone": True,
+     "line_code": "LINE-B", "part_id": "PROD-2024Y"},
+    {"product_name": "PROD-2024Z", "description": "저전력 변형 제품", "is_backbone": True,
+     "line_code": "LINE-A", "part_id": "PROD-2024Z"},
+]
+
+NON_BACKBONE_PRODUCTS = [
+    {"product_name": "PROD-2025A", "description": "신규 개발 제품 A (조건 미설정)",
+     "is_backbone": False, "line_code": "LINE-A", "part_id": "PROD-2025A",
+     "layer_names": LAYER_NAMES},
+    {"product_name": "PROD-2025B", "description": "신규 개발 제품 B (일부 레이어)",
+     "is_backbone": False, "line_code": "LINE-B", "part_id": "PROD-2025B",
+     "layer_names": LAYER_NAMES[:10]},
 ]
 
 # Scanner tools per product
@@ -444,7 +461,7 @@ def seed():
                 text(
                     "INSERT INTO column_definitions "
                     "(column_name, display_name, category_id, data_type, select_options, unit, sort_order, is_required) "
-                    "VALUES (:name, :display, :cat_id, :dtype, :sel::jsonb, :unit, :order, :req)"
+                    "VALUES (:name, :display, :cat_id, :dtype, CAST(:sel AS jsonb), :unit, :order, :req)"
                 ),
                 {
                     "name": col_name,
@@ -473,7 +490,7 @@ def seed():
             session.execute(
                 text(
                     "INSERT INTO column_validations (column_id, rule_type, rule_config, error_message) "
-                    "VALUES (:col_id, :rtype, :rconfig::jsonb, :msg)"
+                    "VALUES (:col_id, :rtype, CAST(:rconfig AS jsonb), :msg)"
                 ),
                 {
                     "col_id": col_ids[col_name],
@@ -514,14 +531,33 @@ def seed():
             layer_ids[layer_name] = result.scalar()
         print(f"  Layers: {len(layer_ids)}")
 
-        # --- Products + ProductLayers ---
+        # --- Lines ---
+        line_ids = {}
+        for line in LINES:
+            session.execute(
+                text("INSERT INTO lines (line_code, line_name) VALUES (:code, :name)"),
+                {"code": line["line_code"], "name": line["line_name"]},
+            )
+            result = session.execute(
+                text("SELECT id FROM lines WHERE line_code = :code"),
+                {"code": line["line_code"]},
+            )
+            line_ids[line["line_code"]] = result.scalar()
+        print(f"  Lines: {len(line_ids)}")
+
+        # --- Products (Backbone) + ProductLayers ---
         product_ids = {}
         pl_count = 0
         for prod in PRODUCTS:
             session.execute(
-                text("INSERT INTO products (product_name, description, is_backbone) "
-                     "VALUES (:name, :desc, :bb)"),
-                {"name": prod["product_name"], "desc": prod["description"], "bb": prod["is_backbone"]},
+                text("INSERT INTO products (product_name, description, is_backbone, line_id, part_id) "
+                     "VALUES (:name, :desc, :bb, :lid, :pid)"),
+                {
+                    "name": prod["product_name"], "desc": prod["description"],
+                    "bb": prod["is_backbone"],
+                    "lid": line_ids[prod["line_code"]],
+                    "pid": prod["part_id"],
+                },
             )
             result = session.execute(
                 text("SELECT id FROM products WHERE product_name = :name"),
@@ -536,7 +572,7 @@ def seed():
                 session.execute(
                     text(
                         "INSERT INTO product_layers (product_id, layer_id, conditions) "
-                        "VALUES (:pid, :lid, :cond::jsonb)"
+                        "VALUES (:pid, :lid, CAST(:cond AS jsonb))"
                     ),
                     {
                         "pid": pid,
@@ -545,8 +581,46 @@ def seed():
                     },
                 )
                 pl_count += 1
-        print(f"  Products: {len(product_ids)}")
+        print(f"  Products (backbone): {len(product_ids)}")
         print(f"  Product Layers: {pl_count} ({len(PRODUCTS)} products \u00d7 {len(LAYER_NAMES)} layers)")
+
+        # --- Non-backbone Products (empty conditions) ---
+        nb_count = 0
+        nb_pl_count = 0
+        for prod in NON_BACKBONE_PRODUCTS:
+            session.execute(
+                text("INSERT INTO products (product_name, description, is_backbone, line_id, part_id) "
+                     "VALUES (:name, :desc, :bb, :lid, :pid)"),
+                {
+                    "name": prod["product_name"], "desc": prod["description"],
+                    "bb": prod["is_backbone"],
+                    "lid": line_ids[prod["line_code"]],
+                    "pid": prod["part_id"],
+                },
+            )
+            result = session.execute(
+                text("SELECT id FROM products WHERE product_name = :name"),
+                {"name": prod["product_name"]},
+            )
+            pid = result.scalar()
+            product_ids[prod["product_name"]] = pid
+            nb_count += 1
+
+            for layer_name in prod["layer_names"]:
+                session.execute(
+                    text(
+                        "INSERT INTO product_layers (product_id, layer_id, conditions) "
+                        "VALUES (:pid, :lid, CAST(:cond AS jsonb))"
+                    ),
+                    {
+                        "pid": pid,
+                        "lid": layer_ids[layer_name],
+                        "cond": json.dumps({}),
+                    },
+                )
+                nb_pl_count += 1
+        print(f"  Products (non-backbone): {nb_count}")
+        print(f"  Non-backbone Product Layers: {nb_pl_count}")
 
         session.commit()
         print("\nSeed completed successfully!")
