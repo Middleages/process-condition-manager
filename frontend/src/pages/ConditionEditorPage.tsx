@@ -52,10 +52,23 @@ export default function ConditionEditorPage() {
   }, [hasDirty])
 
   // --- React Router navigation blocker ---
-  useBlocker(
+  const blocker = useBlocker(
     ({ currentLocation, nextLocation }) =>
       hasDirty && currentLocation.pathname !== nextLocation.pathname
   )
+
+  useEffect(() => {
+    if (blocker.state === 'blocked') {
+      const confirmed = window.confirm(
+        '저장하지 않은 변경사항이 있습니다. 페이지를 떠나시겠습니까?'
+      )
+      if (confirmed) {
+        blocker.proceed()
+      } else {
+        blocker.reset()
+      }
+    }
+  }, [blocker])
 
   // Reset editor state on mount/unmount
   useEffect(() => {

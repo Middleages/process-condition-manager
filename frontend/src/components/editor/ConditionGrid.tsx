@@ -54,6 +54,7 @@ export function ConditionGrid({
 }: Props) {
   const gridRef = useRef<GridApi | null>(null)
   const dirtyCells = useEditorStore((s) => s.dirtyCells)
+  const dirtyCellsRef = useRef(dirtyCells)
 
   // Build error lookup: `${layerId}:${columnName}` → error message
   const errorMap = useMemo(() => {
@@ -74,6 +75,9 @@ export function ConditionGrid({
     }
     return map
   }, [layers])
+
+  // Keep ref in sync with latest dirtyCells
+  dirtyCellsRef.current = dirtyCells
 
   const rowData = useMemo(() => buildRowData(layers), [layers])
 
@@ -130,7 +134,7 @@ export function ConditionGrid({
             const plId = params.data?.projectLayerId
             if (!plId) return false
             const dirtyKey = `${plId}:${col.column_name}`
-            if (dirtyCells.has(dirtyKey)) return true
+            if (dirtyCellsRef.current.has(dirtyKey)) return true
             // Also highlight if different from backbone
             const bbKey = `${plId}:${col.column_name}`
             const bbVal = backboneMap.get(bbKey)
@@ -158,7 +162,7 @@ export function ConditionGrid({
     })
 
     return [...fixed, ...dynamic]
-  }, [columns, backboneMap, errorMap, dirtyCells])
+  }, [columns, backboneMap, errorMap])
 
   const defaultColDef = useMemo<ColDef>(
     () => ({
@@ -168,6 +172,13 @@ export function ConditionGrid({
     }),
     []
   )
+
+  // Refresh cell styling when dirtyCells change (without rebuilding columnDefs)
+  useEffect(() => {
+    if (gridRef.current) {
+      gridRef.current.refreshCells({ force: true })
+    }
+  }, [dirtyCells])
 
   // Scroll to layer when activeLayerId changes
   useEffect(() => {

@@ -41,11 +41,11 @@ export function validateCellValue(
 
       case 'conditional_required': {
         const config = rule.rule_config as {
-          depends_on: string
-          condition: unknown
+          condition_column: string
+          condition_value: unknown
         }
-        const depValue = _rowConditions[config.depends_on]
-        if (depValue === config.condition) {
+        const depValue = _rowConditions[config.condition_column]
+        if (String(depValue) === String(config.condition_value)) {
           if (value === null || value === undefined || value === '') {
             errors.push(rule.error_message || `${colDef.display_name}은(는) 조건부 필수입니다.`)
           }
