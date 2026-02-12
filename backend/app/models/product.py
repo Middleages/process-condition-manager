@@ -14,8 +14,11 @@ class Product(Base):
     product_name: Mapped[str] = mapped_column(String(100), unique=True, index=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_backbone: Mapped[bool] = mapped_column(Boolean, default=False)
+    line_id: Mapped[int | None] = mapped_column(ForeignKey("lines.id"), nullable=True, index=True)
+    part_id: Mapped[str | None] = mapped_column(String(100), unique=True, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
+    line: Mapped["Line | None"] = relationship()
     layers: Mapped[list["ProductLayer"]] = relationship(back_populates="product", cascade="all, delete-orphan")
 
 
