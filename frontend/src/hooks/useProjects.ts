@@ -59,10 +59,8 @@ export function useBulkSave(projectId: number) {
   })
 }
 
-export function useValidateProject(projectId: number) {
-  return useQuery({
-    queryKey: projectKeys.validation(projectId),
-    queryFn: () => validateProject(projectId),
-    enabled: false, // Manual trigger only
+export function useValidateProjectMutation() {
+  return useMutation({
+    mutationFn: (projectId: number) => validateProject(projectId),
   })
 }

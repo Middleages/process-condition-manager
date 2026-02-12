@@ -1,4 +1,4 @@
-import { useMemo, useCallback, useRef } from 'react'
+import { useMemo, useCallback, useRef, useEffect } from 'react'
 import { AgGridReact } from 'ag-grid-react'
 import type {
   ColDef,
@@ -22,6 +22,7 @@ interface Props {
   layers: ProjectLayerData[]
   columns: ColumnDefinition[]
   validationErrors: ValidationError[]
+  scrollToLayerId: number | null
   onCellChanged: (
     projectLayerId: number,
     columnName: string,
@@ -47,6 +48,7 @@ export function ConditionGrid({
   layers,
   columns,
   validationErrors,
+  scrollToLayerId,
   onCellChanged,
 }: Props) {
   const gridRef = useRef<GridApi | null>(null)
@@ -165,6 +167,18 @@ export function ConditionGrid({
     }),
     []
   )
+
+  // Scroll to layer when activeLayerId changes
+  useEffect(() => {
+    if (!gridRef.current || !scrollToLayerId) return
+    const layer = layers.find((l) => l.layer_id === scrollToLayerId)
+    if (!layer) return
+    const rowNode = gridRef.current.getRowNode(String(layer.id))
+    if (rowNode?.rowIndex != null) {
+      gridRef.current.ensureIndexVisible(rowNode.rowIndex, 'middle')
+      gridRef.current.flashCells({ rowNodes: [rowNode] })
+    }
+  }, [scrollToLayerId, layers])
 
   const onGridReady = useCallback((params: GridReadyEvent) => {
     gridRef.current = params.api
