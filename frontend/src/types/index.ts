@@ -150,6 +150,25 @@ export interface ValidationResponse {
   errors: ValidationError[]
 }
 
+// ========== Change Log ==========
+export interface ChangeLogItem {
+  id: number
+  project_layer_id: number
+  layer_name: string
+  column_name: string
+  old_value: string | null
+  new_value: string | null
+  change_type: 'manual' | 'backbone' | 'recipe'
+  changed_by: number
+  changed_by_name: string
+  changed_at: string
+}
+
+export interface ChangeLogListResponse {
+  total: number
+  items: ChangeLogItem[]
+}
+
 // ========== Editor UI State ==========
 export interface DirtyCell {
   projectLayerId: number

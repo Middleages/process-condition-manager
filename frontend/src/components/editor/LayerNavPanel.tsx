@@ -1,7 +1,8 @@
 import { cn } from '@/lib/utils'
+import { getLayerChangeCount } from '@/lib/diff'
 import { useEditorStore } from '@/stores/useEditorStore'
 import type { ProjectLayerData, ValidationError } from '@/types'
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, GitCompare } from 'lucide-react'
 import { useMemo } from 'react'
 
 interface Props {
@@ -23,7 +24,7 @@ export function LayerNavPanel({ layers, validationErrors, onLayerClick }: Props)
     return map
   }, [validationErrors])
 
-  // Count dirty cells per layer
+  // Count dirty cells per layer (unsaved edits)
   const dirtyByLayer = useMemo(() => {
     const map = new Map<number, number>()
     for (const cell of dirtyCells.values()) {
@@ -34,6 +35,18 @@ export function LayerNavPanel({ layers, validationErrors, onLayerClick }: Props)
     }
     return map
   }, [dirtyCells, layers])
+
+  // Backbone diff count per layer (saved changes vs backbone)
+  const backboneDiffByLayer = useMemo(() => {
+    const map = new Map<number, number>()
+    for (const layer of layers) {
+      const count = getLayerChangeCount(layer)
+      if (count > 0) {
+        map.set(layer.layer_id, count)
+      }
+    }
+    return map
+  }, [layers])
 
   return (
     <div className="w-52 border-r bg-muted/20 flex flex-col shrink-0 overflow-hidden">
@@ -46,6 +59,7 @@ export function LayerNavPanel({ layers, validationErrors, onLayerClick }: Props)
         {layers.map((layer) => {
           const errCount = errorsByLayer.get(layer.layer_id) ?? 0
           const dirtyCount = dirtyByLayer.get(layer.layer_id) ?? 0
+          const bbDiffCount = backboneDiffByLayer.get(layer.layer_id) ?? 0
           const isActive = activeLayerId === layer.layer_id
 
           return (
@@ -69,7 +83,16 @@ export function LayerNavPanel({ layers, validationErrors, onLayerClick }: Props)
               </div>
               <div className="flex items-center gap-1 shrink-0">
                 {dirtyCount > 0 && (
-                  <span className="w-2 h-2 rounded-full bg-amber-400" title={`변경 ${dirtyCount}건`} />
+                  <span className="w-2 h-2 rounded-full bg-amber-400" title={`미저장 ${dirtyCount}건`} />
+                )}
+                {bbDiffCount > 0 && (
+                  <span
+                    className="flex items-center gap-0.5 text-blue-500 text-[10px]"
+                    title={`Backbone 대비 ${bbDiffCount}건 변경`}
+                  >
+                    <GitCompare className="h-3 w-3" />
+                    {bbDiffCount}
+                  </span>
                 )}
                 {errCount > 0 && (
                   <span className="flex items-center gap-0.5 text-destructive text-[10px]">

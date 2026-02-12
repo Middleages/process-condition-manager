@@ -2,6 +2,7 @@ import { useCallback, useEffect } from 'react'
 import { useParams, useBlocker } from 'react-router-dom'
 import { useProjectDetail, useBulkSave, useValidateProjectMutation } from '@/hooks/useProjects'
 import { useColumns } from '@/hooks/useColumns'
+import { useAutoSave } from '@/hooks/useAutoSave'
 import { useEditorStore } from '@/stores/useEditorStore'
 import { useUserStore } from '@/stores/useUserStore'
 import { useToastStore } from '@/stores/useToastStore'
@@ -10,7 +11,9 @@ import { CategoryTabs } from '@/components/editor/CategoryTabs'
 import { LayerNavPanel } from '@/components/editor/LayerNavPanel'
 import { ConditionGrid } from '@/components/editor/ConditionGrid'
 import { ValidationPanel } from '@/components/editor/ValidationPanel'
+import { ChangeHistoryPanel } from '@/components/editor/ChangeHistoryPanel'
 import { validateCellValue } from '@/lib/validation'
+import { ApiError } from '@/api/client'
 import type { LayerConditions, ValidationError } from '@/types'
 import { Loader2 } from 'lucide-react'
 
@@ -107,33 +110,37 @@ export default function ConditionEditorPage() {
     [project, activeCategoryData, setCellValue, setValidationErrors]
   )
 
+  // Build save payload from dirty cells
+  const buildSavePayload = useCallback((): LayerConditions[] => {
+    if (!project) return []
+    const layerMap = new Map<number, Record<string, unknown>>()
+    for (const cell of dirtyCells.values()) {
+      const layer = project.layers.find((l) => l.id === cell.projectLayerId)
+      if (!layer) continue
+      if (!layerMap.has(cell.projectLayerId)) {
+        layerMap.set(cell.projectLayerId, { ...layer.conditions })
+      }
+      layerMap.get(cell.projectLayerId)![cell.columnName] = cell.value
+    }
+    return Array.from(layerMap.entries()).map(([project_layer_id, conditions]) => ({
+      project_layer_id,
+      conditions,
+    }))
+  }, [project, dirtyCells])
+
   // Handle save + server validation
   const handleSave = useCallback(async () => {
-    if (!project || !currentUserId) return
+    if (!project) return
+    if (!currentUserId) {
+      addToast('헤더에서 사용자를 먼저 선택해주세요.', 'error')
+      return
+    }
+
+    const layers = buildSavePayload()
+    if (layers.length === 0) return
 
     setIsSaving(true)
     try {
-      // Group dirty cells by projectLayerId
-      const layerMap = new Map<number, Record<string, unknown>>()
-      for (const cell of dirtyCells.values()) {
-        const layer = project.layers.find((l) => l.id === cell.projectLayerId)
-        if (!layer) continue
-
-        if (!layerMap.has(cell.projectLayerId)) {
-          layerMap.set(cell.projectLayerId, { ...layer.conditions })
-        }
-        layerMap.get(cell.projectLayerId)![cell.columnName] = cell.value
-      }
-
-      const layers: LayerConditions[] = Array.from(layerMap.entries()).map(
-        ([projectLayerId, conditions]) => ({
-          project_layer_id: projectLayerId,
-          conditions,
-        })
-      )
-
-      if (layers.length === 0) return
-
       const result = await bulkSave.mutateAsync({
         layers,
         updated_by: currentUserId,
@@ -157,12 +164,20 @@ export default function ConditionEditorPage() {
         // Validation call failed, keep client-side errors
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : '저장에 실패했습니다.'
-      addToast(msg, 'error')
+      if (err instanceof ApiError && err.status === 409) {
+        addToast('다른 사용자가 수정한 내용이 있습니다. 페이지를 새로고침 해주세요.', 'error')
+      }
+      // Other errors are handled by the Axios interceptor
     } finally {
       setIsSaving(false)
     }
-  }, [project, currentUserId, dirtyCells, bulkSave, clearAllDirty, setIsSaving, addToast, validateMutation, pid, setValidationErrors])
+  }, [project, currentUserId, buildSavePayload, bulkSave, clearAllDirty, setIsSaving, addToast, validateMutation, pid, setValidationErrors])
+
+  // Auto-save every 30 seconds
+  const { lastSavedAt } = useAutoSave({
+    onSave: handleSave,
+    enabled: !!project && !!currentUserId && project.status === 'draft',
+  })
 
   // Handle layer nav click - scroll grid
   const handleLayerClick = useCallback(
@@ -209,6 +224,7 @@ export default function ConditionEditorPage() {
         project={project}
         errorCount={validationErrors.length}
         onSave={handleSave}
+        lastSavedAt={lastSavedAt}
       />
 
       <CategoryTabs categories={categories} />
@@ -235,6 +251,11 @@ export default function ConditionEditorPage() {
               onErrorClick={handleErrorClick}
             />
           )}
+
+          <ChangeHistoryPanel
+            projectId={pid}
+            layers={project.layers}
+          />
         </div>
       </div>
     </div>
