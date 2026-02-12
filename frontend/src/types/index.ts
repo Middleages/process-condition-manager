@@ -100,6 +100,7 @@ export interface Project {
   status: ProjectStatus
   created_by: number
   creator_name: string
+  layer_count: number
   created_at: string
   updated_at: string
 }

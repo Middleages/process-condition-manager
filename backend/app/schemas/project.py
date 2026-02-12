@@ -49,6 +49,7 @@ class ProjectResponse(BaseModel):
     status: str
     created_by: int
     creator_name: str
+    layer_count: int = 0
     created_at: datetime
     updated_at: datetime
 

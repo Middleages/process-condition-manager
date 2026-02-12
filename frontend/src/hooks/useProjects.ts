@@ -58,6 +58,7 @@ export function useBulkSave(projectId: number) {
     mutationFn: (req: BulkSaveRequest) => bulkSaveConditions(projectId, req),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: projectKeys.detail(projectId) })
+      queryClient.invalidateQueries({ queryKey: projectKeys.changeLogs(projectId) })
     },
   })
 }

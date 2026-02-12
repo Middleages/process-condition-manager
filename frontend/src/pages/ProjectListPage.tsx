@@ -72,6 +72,7 @@ export default function ProjectListPage() {
               <th className="text-left px-4 py-3 font-medium w-12">#</th>
               <th className="text-left px-4 py-3 font-medium">제품명</th>
               <th className="text-left px-4 py-3 font-medium">Backbone</th>
+              <th className="text-left px-4 py-3 font-medium w-20">레이어</th>
               <th className="text-left px-4 py-3 font-medium w-24">상태</th>
               <th className="text-left px-4 py-3 font-medium w-24">생성자</th>
               <th className="text-left px-4 py-3 font-medium w-40">수정일</th>
@@ -80,13 +81,13 @@ export default function ProjectListPage() {
           <tbody>
             {isLoading ? (
               <tr>
-                <td colSpan={6} className="text-center py-12">
+                <td colSpan={7} className="text-center py-12">
                   <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
                 </td>
               </tr>
             ) : filtered.length === 0 ? (
               <tr>
-                <td colSpan={6} className="text-center py-12 text-muted-foreground">
+                <td colSpan={7} className="text-center py-12 text-muted-foreground">
                   프로젝트가 없습니다.
                 </td>
               </tr>
@@ -100,6 +101,7 @@ export default function ProjectListPage() {
                   <td className="px-4 py-3 text-muted-foreground">{project.id}</td>
                   <td className="px-4 py-3 font-medium">{project.product_name}</td>
                   <td className="px-4 py-3 text-muted-foreground">{project.backbone_name}</td>
+                  <td className="px-4 py-3 text-center text-muted-foreground">{project.layer_count}</td>
                   <td className="px-4 py-3">
                     <StatusBadge status={project.status} />
                   </td>

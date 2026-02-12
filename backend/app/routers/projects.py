@@ -17,7 +17,7 @@ from app.services import project_service, condition_service, validation_service,
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
 
-def _build_project_response(project) -> ProjectResponse:
+def _build_project_response(project, *, layer_count: int = 0) -> ProjectResponse:
     return ProjectResponse(
         id=project.id,
         product_id=project.product_id,
@@ -27,6 +27,7 @@ def _build_project_response(project) -> ProjectResponse:
         status=project.status,
         created_by=project.created_by,
         creator_name=project.creator.display_name,
+        layer_count=layer_count,
         created_at=project.created_at,
         updated_at=project.updated_at,
     )
@@ -84,8 +85,8 @@ async def list_projects(
     product_id: int | None = None,
     db: AsyncSession = Depends(get_db),
 ):
-    projects = await project_service.get_projects_list(db, status, product_id)
-    return [_build_project_response(p) for p in projects]
+    results = await project_service.get_projects_list(db, status, product_id)
+    return [_build_project_response(p, layer_count=lc) for p, lc in results]
 
 
 @router.get("/{project_id}", response_model=ProjectDetailResponse)
