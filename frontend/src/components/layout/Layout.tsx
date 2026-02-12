@@ -3,9 +3,9 @@ import Header from './Header'
 
 export default function Layout() {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+    <div className="flex flex-col h-screen">
       <Header />
-      <main style={{ flex: 1, overflow: 'hidden' }}>
+      <main className="flex-1 overflow-hidden">
         <Outlet />
       </main>
     </div>
