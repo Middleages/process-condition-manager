@@ -5,6 +5,7 @@ import {
   createProject,
   bulkSaveConditions,
   validateProject,
+  fetchChangeLogs,
 } from '@/api/projects'
 import type {
   ProjectStatus,
@@ -20,6 +21,8 @@ export const projectKeys = {
   details: () => [...projectKeys.all, 'detail'] as const,
   detail: (id: number) => [...projectKeys.details(), id] as const,
   validation: (id: number) => [...projectKeys.all, 'validation', id] as const,
+  changeLogs: (id: number, filters?: Record<string, unknown>) =>
+    [...projectKeys.all, 'change-logs', id, filters] as const,
 }
 
 export function useProjects(status?: ProjectStatus) {
@@ -55,6 +58,7 @@ export function useBulkSave(projectId: number) {
     mutationFn: (req: BulkSaveRequest) => bulkSaveConditions(projectId, req),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: projectKeys.detail(projectId) })
+      queryClient.invalidateQueries({ queryKey: projectKeys.changeLogs(projectId) })
     },
   })
 }
@@ -62,5 +66,16 @@ export function useBulkSave(projectId: number) {
 export function useValidateProjectMutation() {
   return useMutation({
     mutationFn: (projectId: number) => validateProject(projectId),
+  })
+}
+
+export function useChangeLogs(
+  projectId: number,
+  params?: { layer_id?: number; column_name?: string; limit?: number }
+) {
+  return useQuery({
+    queryKey: projectKeys.changeLogs(projectId, params),
+    queryFn: () => fetchChangeLogs(projectId, params),
+    enabled: projectId > 0,
   })
 }

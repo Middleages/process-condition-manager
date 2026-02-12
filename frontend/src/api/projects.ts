@@ -7,6 +7,7 @@ import type {
   BulkSaveResponse,
   ValidationResponse,
   ProjectStatus,
+  ChangeLogListResponse,
 } from '@/types'
 
 export async function fetchProjects(params?: {
@@ -41,6 +42,22 @@ export async function bulkSaveConditions(
 export async function validateProject(projectId: number): Promise<ValidationResponse> {
   const { data } = await client.post<ValidationResponse>(
     `/projects/${projectId}/validate`
+  )
+  return data
+}
+
+export async function fetchChangeLogs(
+  projectId: number,
+  params?: {
+    layer_id?: number
+    column_name?: string
+    limit?: number
+    offset?: number
+  }
+): Promise<ChangeLogListResponse> {
+  const { data } = await client.get<ChangeLogListResponse>(
+    `/projects/${projectId}/change-logs`,
+    { params }
   )
   return data
 }

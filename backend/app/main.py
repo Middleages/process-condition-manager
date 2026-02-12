@@ -1,23 +1,45 @@
-from fastapi import FastAPI
+import logging
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from sqlalchemy import text
 
 from app.config import settings
+from app.database import async_session
 from app.routers import users, lines, columns, products, projects
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title=settings.APP_NAME)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:80"],
+    allow_origins=["http://localhost:5173", "http://localhost:80", "http://localhost"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    logger.exception("Unhandled exception on %s %s", request.method, request.url.path)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "서버 내부 오류가 발생했습니다."},
+    )
+
+
 @app.get("/api/health")
 async def health_check():
-    return {"status": "ok", "app": settings.APP_NAME}
+    try:
+        async with async_session() as session:
+            await session.execute(text("SELECT 1"))
+        db_status = "connected"
+    except Exception:
+        db_status = "disconnected"
+    return {"status": "ok", "app": settings.APP_NAME, "db": db_status}
 
 
 app.include_router(users.router)

@@ -100,6 +100,7 @@ export interface Project {
   status: ProjectStatus
   created_by: number
   creator_name: string
+  layer_count: number
   created_at: string
   updated_at: string
 }
@@ -148,6 +149,25 @@ export interface ValidationResponse {
   is_valid: boolean
   error_count: number
   errors: ValidationError[]
+}
+
+// ========== Change Log ==========
+export interface ChangeLogItem {
+  id: number
+  project_layer_id: number
+  layer_name: string
+  column_name: string
+  old_value: string | null
+  new_value: string | null
+  change_type: 'manual' | 'backbone' | 'recipe'
+  changed_by: number
+  changed_by_name: string
+  changed_at: string
+}
+
+export interface ChangeLogListResponse {
+  total: number
+  items: ChangeLogItem[]
 }
 
 // ========== Editor UI State ==========

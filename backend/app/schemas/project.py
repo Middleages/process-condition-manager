@@ -49,6 +49,7 @@ class ProjectResponse(BaseModel):
     status: str
     created_by: int
     creator_name: str
+    layer_count: int = 0
     created_at: datetime
     updated_at: datetime
 
@@ -79,6 +80,26 @@ class ChangeLogEntry(BaseModel):
     column_name: str
     old_value: str | None
     new_value: str | None
+
+
+class ChangeLogResponse(BaseModel):
+    id: int
+    project_layer_id: int
+    layer_name: str
+    column_name: str
+    old_value: str | None
+    new_value: str | None
+    change_type: str
+    changed_by: int
+    changed_by_name: str
+    changed_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ChangeLogListResponse(BaseModel):
+    total: int
+    items: list[ChangeLogResponse]
 
 
 class BulkSaveResponse(BaseModel):

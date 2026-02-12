@@ -1,21 +1,29 @@
+import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { StatusBadge } from '@/components/projects/StatusBadge'
+import { computeProjectDiff } from '@/lib/diff'
 import { useEditorStore } from '@/stores/useEditorStore'
 import type { ProjectDetail } from '@/types'
-import { ArrowLeft, Save, Loader2, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, Save, Loader2, AlertTriangle, GitCompare } from 'lucide-react'
 
 interface Props {
   project: ProjectDetail
   errorCount: number
   onSave: () => void
+  lastSavedAt?: string | null
 }
 
-export function EditorHeader({ project, errorCount, onSave }: Props) {
+export function EditorHeader({ project, errorCount, onSave, lastSavedAt }: Props) {
   const navigate = useNavigate()
   const hasDirty = useEditorStore((s) => s.hasDirtyCells())
   const isSaving = useEditorStore((s) => s.isSaving)
   const dirtyCount = useEditorStore((s) => s.dirtyCells.size)
+
+  const diffSummary = useMemo(
+    () => computeProjectDiff(project.layers),
+    [project.layers]
+  )
 
   return (
     <div className="h-12 border-b bg-background flex items-center px-4 gap-4 shrink-0">
@@ -37,6 +45,15 @@ export function EditorHeader({ project, errorCount, onSave }: Props) {
 
       <div className="flex-1" />
 
+      {diffSummary.totalChangedCells > 0 && (
+        <div className="flex items-center gap-1.5 text-blue-500 text-xs">
+          <GitCompare className="h-3.5 w-3.5" />
+          <span>
+            {diffSummary.totalChangedLayers}개 레이어 / {diffSummary.totalChangedCells}셀 변경
+          </span>
+        </div>
+      )}
+
       {errorCount > 0 && (
         <div className="flex items-center gap-1.5 text-destructive text-sm">
           <AlertTriangle className="h-4 w-4" />
@@ -46,7 +63,13 @@ export function EditorHeader({ project, errorCount, onSave }: Props) {
 
       {hasDirty && (
         <span className="text-xs text-muted-foreground">
-          변경 {dirtyCount}건
+          미저장 {dirtyCount}건
+        </span>
+      )}
+
+      {lastSavedAt && !hasDirty && (
+        <span className="text-xs text-muted-foreground">
+          자동 저장됨 {lastSavedAt}
         </span>
       )}
 

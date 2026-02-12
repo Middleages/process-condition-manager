@@ -1,6 +1,6 @@
 import copy
 
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from fastapi import HTTPException
@@ -120,10 +120,17 @@ async def get_projects_list(
     db: AsyncSession,
     status: str | None = None,
     product_id: int | None = None,
-) -> list[Project]:
-    """List projects with optional filters, eager-loading product and creator."""
+) -> list[tuple[Project, int]]:
+    """List projects with optional filters, returning (project, layer_count) tuples."""
+    layer_count_sq = (
+        select(func.count(ProjectLayer.id))
+        .where(ProjectLayer.project_id == Project.id)
+        .correlate(Project)
+        .scalar_subquery()
+        .label("layer_count")
+    )
     query = (
-        select(Project)
+        select(Project, layer_count_sq)
         .options(
             selectinload(Project.product),
             selectinload(Project.backbone),
@@ -137,4 +144,4 @@ async def get_projects_list(
         query = query.where(Project.product_id == product_id)
 
     result = await db.execute(query)
-    return list(result.scalars().unique().all())
+    return list(result.unique().all())

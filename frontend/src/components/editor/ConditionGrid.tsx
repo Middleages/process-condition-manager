@@ -7,6 +7,7 @@ import type {
   ITooltipParams,
   GridReadyEvent,
   GridApi,
+  ProcessDataFromClipboardParams,
 } from 'ag-grid-community'
 import 'ag-grid-community/styles/ag-grid.css'
 import 'ag-grid-community/styles/ag-theme-alpine.css'
@@ -199,6 +200,29 @@ export function ConditionGrid({
     []
   )
 
+  // Handle multi-cell paste from Excel/spreadsheet (tab-separated values)
+  const processDataFromClipboard = useCallback(
+    (params: ProcessDataFromClipboardParams): string[][] | null => {
+      const { data } = params
+      if (!data || data.length === 0) return null
+
+      // AG Grid Community passes clipboard data as string[][]
+      // Each inner array is a row, values are tab-separated cells
+      // We return the data as-is, AG Grid will apply it starting from the focused cell
+      return data
+    },
+    []
+  )
+
+  // Handle paste event to trigger onCellChanged for pasted cells
+  const onPasteEnd = useCallback(() => {
+    if (!gridRef.current) return
+    // After paste, AG Grid fires CellValueChanged for each cell,
+    // which is already handled by handleCellValueChanged
+    // We just need to refresh cells to update styling
+    gridRef.current.refreshCells({ force: true })
+  }, [])
+
   return (
     <div className="ag-theme-alpine flex-1 w-full">
       <AgGridReact
@@ -208,6 +232,9 @@ export function ConditionGrid({
         onGridReady={onGridReady}
         onCellValueChanged={handleCellValueChanged}
         getRowId={getRowId}
+        processDataFromClipboard={processDataFromClipboard}
+        onPasteEnd={onPasteEnd}
+        enableCellTextSelection
         tooltipShowDelay={300}
         stopEditingWhenCellsLoseFocus
         singleClickEdit
