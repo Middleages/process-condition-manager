@@ -1,10 +1,17 @@
+from __future__ import annotations
+
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, ForeignKey, Integer, String, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+
+if TYPE_CHECKING:
+    from app.models.product import Product
+    from app.models.user import User
 
 
 class Project(Base):
@@ -44,8 +51,3 @@ class ProjectLayer(Base):
     project: Mapped["Project"] = relationship(back_populates="layers")
     layer: Mapped["Layer"] = relationship()
     backbone_product: Mapped["Product | None"] = relationship(foreign_keys=[backbone_product_id])
-
-
-# 순환 import 방지
-from app.models.product import Product  # noqa: E402
-from app.models.user import User  # noqa: E402

@@ -187,7 +187,7 @@ describe('validateCellValue - conditional_required', () => {
     const colDef = makeColDef('Overlay Spec', [
       makeRule({
         rule_type: 'conditional_required',
-        rule_config: { depends_on: 'overlay_type', condition: 'manual' },
+        rule_config: { condition_column: 'overlay_type', condition_value: 'manual' },
       }),
     ])
     const rowConditions = { overlay_type: 'manual' }
@@ -200,7 +200,7 @@ describe('validateCellValue - conditional_required', () => {
     const colDef = makeColDef('Overlay Spec', [
       makeRule({
         rule_type: 'conditional_required',
-        rule_config: { depends_on: 'overlay_type', condition: 'manual' },
+        rule_config: { condition_column: 'overlay_type', condition_value: 'manual' },
       }),
     ])
     const rowConditions = { overlay_type: 'manual' }
@@ -212,7 +212,7 @@ describe('validateCellValue - conditional_required', () => {
     const colDef = makeColDef('Overlay Spec', [
       makeRule({
         rule_type: 'conditional_required',
-        rule_config: { depends_on: 'overlay_type', condition: 'manual' },
+        rule_config: { condition_column: 'overlay_type', condition_value: 'manual' },
       }),
     ])
     const rowConditions = { overlay_type: 'auto' }
@@ -224,7 +224,7 @@ describe('validateCellValue - conditional_required', () => {
     const colDef = makeColDef('Overlay Spec', [
       makeRule({
         rule_type: 'conditional_required',
-        rule_config: { depends_on: 'overlay_type', condition: 'manual' },
+        rule_config: { condition_column: 'overlay_type', condition_value: 'manual' },
       }),
     ])
     const rowConditions = {}
@@ -236,7 +236,7 @@ describe('validateCellValue - conditional_required', () => {
     const colDef = makeColDef('Overlay Spec', [
       makeRule({
         rule_type: 'conditional_required',
-        rule_config: { depends_on: 'overlay_type', condition: 'manual' },
+        rule_config: { condition_column: 'overlay_type', condition_value: 'manual' },
       }),
     ])
     const rowConditions = { overlay_type: 'manual' }
