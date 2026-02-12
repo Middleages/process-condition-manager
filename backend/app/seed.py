@@ -461,7 +461,7 @@ def seed():
                 text(
                     "INSERT INTO column_definitions "
                     "(column_name, display_name, category_id, data_type, select_options, unit, sort_order, is_required) "
-                    "VALUES (:name, :display, :cat_id, :dtype, :sel::jsonb, :unit, :order, :req)"
+                    "VALUES (:name, :display, :cat_id, :dtype, CAST(:sel AS jsonb), :unit, :order, :req)"
                 ),
                 {
                     "name": col_name,
@@ -490,7 +490,7 @@ def seed():
             session.execute(
                 text(
                     "INSERT INTO column_validations (column_id, rule_type, rule_config, error_message) "
-                    "VALUES (:col_id, :rtype, :rconfig::jsonb, :msg)"
+                    "VALUES (:col_id, :rtype, CAST(:rconfig AS jsonb), :msg)"
                 ),
                 {
                     "col_id": col_ids[col_name],
@@ -572,7 +572,7 @@ def seed():
                 session.execute(
                     text(
                         "INSERT INTO product_layers (product_id, layer_id, conditions) "
-                        "VALUES (:pid, :lid, :cond::jsonb)"
+                        "VALUES (:pid, :lid, CAST(:cond AS jsonb))"
                     ),
                     {
                         "pid": pid,
@@ -610,7 +610,7 @@ def seed():
                 session.execute(
                     text(
                         "INSERT INTO product_layers (product_id, layer_id, conditions) "
-                        "VALUES (:pid, :lid, :cond::jsonb)"
+                        "VALUES (:pid, :lid, CAST(:cond AS jsonb))"
                     ),
                     {
                         "pid": pid,
