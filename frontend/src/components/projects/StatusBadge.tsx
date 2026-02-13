@@ -6,6 +6,7 @@ const statusLabel: Record<ProjectStatus, string> = {
   review: 'Review',
   approved: 'Approved',
   rejected: 'Rejected',
+  archived: 'Archived',
 }
 
 export function StatusBadge({ status }: { status: ProjectStatus }) {

@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { fetchProducts } from '@/api/products'
+import { fetchProducts, fetchAllLayers } from '@/api/products'
 
 export const productKeys = {
   all: ['products'] as const,
@@ -17,4 +17,11 @@ export function useProducts(params?: { is_backbone?: boolean; search?: string })
 
 export function useBackboneProducts() {
   return useProducts({ is_backbone: true })
+}
+
+export function useAllLayers() {
+  return useQuery({
+    queryKey: ['layers', 'all'] as const,
+    queryFn: fetchAllLayers,
+  })
 }

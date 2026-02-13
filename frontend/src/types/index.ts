@@ -75,7 +75,7 @@ export interface ColumnCategory {
 }
 
 // ========== Project ==========
-export type ProjectStatus = 'draft' | 'review' | 'approved' | 'rejected'
+export type ProjectStatus = 'draft' | 'review' | 'approved' | 'rejected' | 'archived'
 
 export interface ProjectLayerData {
   id: number
@@ -98,6 +98,9 @@ export interface Project {
   main_backbone_id: number
   backbone_name: string
   status: ProjectStatus
+  revision: number
+  parent_project_id: number | null
+  is_latest: boolean
   created_by: number
   creator_name: string
   layer_count: number
@@ -125,6 +128,40 @@ export interface BulkSaveRequest {
   layers: LayerConditions[]
   updated_by: number
   expected_updated_at: string
+}
+
+// ========== Backbone Replacement ==========
+export interface BackboneReplaceRequest {
+  source_product_id: number
+  source_layer_name?: string | null
+  changed_by: number
+}
+
+export interface BackboneReplaceResponse {
+  project_layer_id: number
+  backbone_product_id: number
+  backbone_product_name: string
+  changed_columns: number
+  conditions: Record<string, unknown>
+  backbone_conditions: Record<string, unknown>
+}
+
+// ========== Layer Add/Delete ==========
+export interface LayerAddRequest {
+  layer_id: number
+  source_product_id?: number | null
+  source_layer_name?: string | null
+  changed_by: number
+}
+
+export interface LayerAddResponse {
+  project_layer_id: number
+  layer_id: number
+  layer_name: string
+  backbone_product_id: number | null
+  backbone_product_name: string | null
+  conditions: Record<string, unknown>
+  sort_order: number
 }
 
 // ========== API Responses ==========

@@ -2,18 +2,45 @@ import { cn } from '@/lib/utils'
 import { getLayerChangeCount } from '@/lib/diff'
 import { useEditorStore } from '@/stores/useEditorStore'
 import type { ProjectLayerData, ValidationError } from '@/types'
-import { AlertTriangle, GitCompare } from 'lucide-react'
-import { useMemo } from 'react'
+import { AlertTriangle, GitCompare, Plus, RefreshCw, Trash2 } from 'lucide-react'
+import { useCallback, useMemo, useRef, useState } from 'react'
+
+interface ContextMenuState {
+  visible: boolean
+  x: number
+  y: number
+  layer: ProjectLayerData | null
+}
 
 interface Props {
   layers: ProjectLayerData[]
   validationErrors: ValidationError[]
+  isDraft: boolean
   onLayerClick: (layerId: number) => void
+  onBackboneReplace?: (layer: ProjectLayerData) => void
+  onLayerAdd?: () => void
+  onLayerDelete?: (layer: ProjectLayerData) => void
 }
 
-export function LayerNavPanel({ layers, validationErrors, onLayerClick }: Props) {
+export function LayerNavPanel({
+  layers,
+  validationErrors,
+  isDraft,
+  onLayerClick,
+  onBackboneReplace,
+  onLayerAdd,
+  onLayerDelete,
+}: Props) {
   const activeLayerId = useEditorStore((s) => s.activeLayerId)
   const dirtyCells = useEditorStore((s) => s.dirtyCells)
+  const panelRef = useRef<HTMLDivElement>(null)
+
+  const [contextMenu, setContextMenu] = useState<ContextMenuState>({
+    visible: false,
+    x: 0,
+    y: 0,
+    layer: null,
+  })
 
   // Count errors per layer
   const errorsByLayer = useMemo(() => {
@@ -48,12 +75,47 @@ export function LayerNavPanel({ layers, validationErrors, onLayerClick }: Props)
     return map
   }, [layers])
 
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent, layer: ProjectLayerData) => {
+      if (!isDraft) return
+      e.preventDefault()
+      const rect = panelRef.current?.getBoundingClientRect()
+      setContextMenu({
+        visible: true,
+        x: e.clientX - (rect?.left ?? 0),
+        y: e.clientY - (rect?.top ?? 0),
+        layer,
+      })
+    },
+    [isDraft]
+  )
+
+  const closeContextMenu = useCallback(() => {
+    setContextMenu((prev) => ({ ...prev, visible: false }))
+  }, [])
+
   return (
-    <div className="w-52 border-r bg-muted/20 flex flex-col shrink-0 overflow-hidden">
-      <div className="px-3 py-2 border-b">
+    <div
+      ref={panelRef}
+      className="w-52 border-r bg-muted/20 flex flex-col shrink-0 overflow-hidden relative"
+      onClick={closeContextMenu}
+    >
+      <div className="px-3 py-2 border-b flex items-center justify-between">
         <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
           레이어 ({layers.length})
         </h3>
+        {isDraft && onLayerAdd && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onLayerAdd()
+            }}
+            className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+            title="레이어 추가"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </button>
+        )}
       </div>
       <div className="flex-1 overflow-y-auto">
         {layers.map((layer) => {
@@ -72,12 +134,13 @@ export function LayerNavPanel({ layers, validationErrors, onLayerClick }: Props)
                   : 'hover:bg-muted/50'
               )}
               onClick={() => onLayerClick(layer.layer_id)}
+              onContextMenu={(e) => handleContextMenu(e, layer)}
             >
               <div className="flex-1 min-w-0">
                 <div className="truncate">{layer.layer_name}</div>
                 {layer.backbone_product_name && (
                   <div className="text-[10px] text-muted-foreground truncate">
-                    ← {layer.backbone_product_name}
+                    &larr; {layer.backbone_product_name}
                   </div>
                 )}
               </div>
@@ -105,6 +168,36 @@ export function LayerNavPanel({ layers, validationErrors, onLayerClick }: Props)
           )
         })}
       </div>
+
+      {/* Context menu */}
+      {contextMenu.visible && contextMenu.layer && (
+        <div
+          className="absolute bg-popover border rounded-md shadow-md py-1 z-50 min-w-[160px]"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            className="w-full text-left px-3 py-1.5 text-sm hover:bg-accent flex items-center gap-2"
+            onClick={() => {
+              if (contextMenu.layer) onBackboneReplace?.(contextMenu.layer)
+              closeContextMenu()
+            }}
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            Backbone 교체
+          </button>
+          <button
+            className="w-full text-left px-3 py-1.5 text-sm hover:bg-accent flex items-center gap-2 text-destructive"
+            onClick={() => {
+              if (contextMenu.layer) onLayerDelete?.(contextMenu.layer)
+              closeContextMenu()
+            }}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            레이어 삭제
+          </button>
+        </div>
+      )}
     </div>
   )
 }

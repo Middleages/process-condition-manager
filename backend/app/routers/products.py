@@ -5,7 +5,8 @@ from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.models import Product, ProductLayer
-from app.schemas.product import ProductResponse, ProductLayerResponse
+from app.models.product import Layer
+from app.schemas.product import ProductResponse, ProductLayerResponse, LayerResponse
 
 router = APIRouter(prefix="/api/products", tags=["products"])
 
@@ -25,6 +26,13 @@ async def list_products(
     if search:
         query = query.where(Product.product_name.ilike(f"%{search}%"))
     result = await db.execute(query)
+    return result.scalars().all()
+
+
+@router.get("/layers/all", response_model=list[LayerResponse])
+async def list_all_layers(db: AsyncSession = Depends(get_db)):
+    """Return all available layers (master data)."""
+    result = await db.execute(select(Layer).order_by(Layer.sort_order))
     return result.scalars().all()
 
 

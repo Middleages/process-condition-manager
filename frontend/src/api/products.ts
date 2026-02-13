@@ -1,5 +1,5 @@
 import client from './client'
-import type { Product, ProductLayerInfo } from '@/types'
+import type { Product, ProductLayerInfo, LayerInfo } from '@/types'
 
 export async function fetchProducts(params?: {
   line_id?: number
@@ -12,5 +12,10 @@ export async function fetchProducts(params?: {
 
 export async function fetchProductLayers(productId: number): Promise<ProductLayerInfo[]> {
   const { data } = await client.get<ProductLayerInfo[]>(`/products/${productId}/layers`)
+  return data
+}
+
+export async function fetchAllLayers(): Promise<LayerInfo[]> {
+  const { data } = await client.get<LayerInfo[]>('/products/layers/all')
   return data
 }

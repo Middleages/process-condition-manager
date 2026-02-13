@@ -120,8 +120,13 @@ async def get_projects_list(
     db: AsyncSession,
     status: str | None = None,
     product_id: int | None = None,
+    include_all_versions: bool = False,
 ) -> list[tuple[Project, int]]:
-    """List projects with optional filters, returning (project, layer_count) tuples."""
+    """List projects with optional filters, returning (project, layer_count) tuples.
+
+    By default, only returns the latest version per product (is_latest=True).
+    Set include_all_versions=True to return all versions.
+    """
     layer_count_sq = (
         select(func.count(ProjectLayer.id))
         .where(ProjectLayer.project_id == Project.id)
@@ -138,6 +143,8 @@ async def get_projects_list(
         )
         .order_by(Project.updated_at.desc())
     )
+    if not include_all_versions:
+        query = query.where(Project.is_latest == True)
     if status:
         query = query.where(Project.status == status)
     if product_id is not None:
