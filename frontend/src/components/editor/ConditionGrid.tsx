@@ -54,7 +54,9 @@ export function ConditionGrid({
 }: Props) {
   const gridRef = useRef<GridApi | null>(null)
   const dirtyCells = useEditorStore((s) => s.dirtyCells)
+  const recipeCells = useEditorStore((s) => s.recipeCells)
   const dirtyCellsRef = useRef(dirtyCells)
+  const recipeCellsRef = useRef(recipeCells)
 
   // Build error lookup: `${layerId}:${columnName}` → error message
   const errorMap = useMemo(() => {
@@ -76,8 +78,9 @@ export function ConditionGrid({
     return map
   }, [layers])
 
-  // Keep ref in sync with latest dirtyCells
+  // Keep refs in sync
   dirtyCellsRef.current = dirtyCells
+  recipeCellsRef.current = recipeCells
 
   const rowData = useMemo(() => buildRowData(layers), [layers])
 
@@ -130,6 +133,11 @@ export function ConditionGrid({
             const key = `${params.data?.layerId}:${col.column_name}`
             return errorMap.has(key)
           },
+          'bg-cell-recipe': (params: CellClassParams) => {
+            const plId = params.data?.projectLayerId
+            if (!plId) return false
+            return recipeCellsRef.current.has(`${plId}:${col.column_name}`)
+          },
           'bg-cell-changed': (params: CellClassParams) => {
             const plId = params.data?.projectLayerId
             if (!plId) return false
@@ -173,12 +181,12 @@ export function ConditionGrid({
     []
   )
 
-  // Refresh cell styling when dirtyCells change (without rebuilding columnDefs)
+  // Refresh cell styling when dirtyCells or recipeCells change
   useEffect(() => {
     if (gridRef.current) {
       gridRef.current.refreshCells({ force: true })
     }
-  }, [dirtyCells])
+  }, [dirtyCells, recipeCells])
 
   // Scroll to layer when activeLayerId changes
   useEffect(() => {

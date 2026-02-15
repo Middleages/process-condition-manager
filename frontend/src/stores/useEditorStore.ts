@@ -13,6 +13,9 @@ interface EditorState {
   // Dirty cells (unsaved edits)
   dirtyCells: Map<string, DirtyCell>
 
+  // Recipe-applied cells (green highlight) — key: `${projectLayerId}:${columnName}`
+  recipeCells: Set<string>
+
   // Client-side validation errors
   validationErrors: ValidationError[]
 
@@ -29,6 +32,8 @@ interface EditorState {
   hasDirtyCells: () => boolean
   setValidationErrors: (errors: ValidationError[]) => void
   setIsSaving: (saving: boolean) => void
+  addRecipeCells: (keys: string[]) => void
+  clearRecipeCells: () => void
   reset: () => void
 }
 
@@ -36,6 +41,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   activeCategory: 'SP',
   activeLayerId: null,
   dirtyCells: new Map(),
+  recipeCells: new Set(),
   validationErrors: [],
   isSaving: false,
 
@@ -86,11 +92,22 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   setIsSaving: (saving) => set({ isSaving: saving }),
 
+  addRecipeCells: (keys) => {
+    set((state) => {
+      const newSet = new Set(state.recipeCells)
+      for (const k of keys) newSet.add(k)
+      return { recipeCells: newSet }
+    })
+  },
+
+  clearRecipeCells: () => set({ recipeCells: new Set() }),
+
   reset: () =>
     set({
       activeCategory: 'SP',
       activeLayerId: null,
       dirtyCells: new Map(),
+      recipeCells: new Set(),
       validationErrors: [],
       isSaving: false,
     }),

@@ -12,6 +12,9 @@ import type {
   BackboneReplaceResponse,
   LayerAddRequest,
   LayerAddResponse,
+  RecipeUploadResponse,
+  RecipeApplyRequest,
+  RecipeApplyResponse,
 } from '@/types'
 
 export async function fetchProjects(params?: {
@@ -100,4 +103,38 @@ export async function deleteProjectLayer(
   projectLayerId: number
 ): Promise<void> {
   await client.delete(`/projects/${projectId}/layers/${projectLayerId}`)
+}
+
+
+// --- Recipe XML ---
+
+export async function uploadRecipeXml(
+  projectId: number,
+  files: File[],
+  projectLayerId?: number
+): Promise<RecipeUploadResponse> {
+  const formData = new FormData()
+  for (const file of files) {
+    formData.append('files', file)
+  }
+  if (projectLayerId != null) {
+    formData.append('project_layer_id', String(projectLayerId))
+  }
+  const { data } = await client.post<RecipeUploadResponse>(
+    `/projects/${projectId}/recipe/upload`,
+    formData,
+    { headers: { 'Content-Type': 'multipart/form-data' } }
+  )
+  return data
+}
+
+export async function applyRecipeChanges(
+  projectId: number,
+  req: RecipeApplyRequest
+): Promise<RecipeApplyResponse> {
+  const { data } = await client.post<RecipeApplyResponse>(
+    `/projects/${projectId}/recipe/apply`,
+    req
+  )
+  return data
 }

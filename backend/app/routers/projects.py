@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -18,8 +18,13 @@ from app.schemas.backbone import (
     LayerAddRequest,
     LayerAddResponse,
 )
+from app.schemas.recipe import (
+    RecipeUploadResponse,
+    RecipeApplyRequest,
+    RecipeApplyResponse,
+)
 from app.services import project_service, condition_service, validation_service, change_log_service
-from app.services import backbone_service
+from app.services import backbone_service, recipe_service
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
@@ -210,3 +215,43 @@ async def delete_project_layer(
     db: AsyncSession = Depends(get_db),
 ):
     await backbone_service.delete_layer(db, project_id, project_layer_id)
+
+
+# --- Recipe XML upload + apply ---
+
+@router.post("/{project_id}/recipe/upload", response_model=RecipeUploadResponse)
+async def upload_recipe_xml(
+    project_id: int,
+    files: list[UploadFile] = File(...),
+    project_layer_id: int | None = Form(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Upload one or more Recipe XML files.
+
+    Returns diff results (no DB changes).
+    Optionally specify ``project_layer_id`` to target a specific layer.
+    """
+    results = []
+    for f in files:
+        content = await f.read()
+        diff = await recipe_service.parse_recipe_xml(
+            db,
+            project_id=project_id,
+            xml_content=content,
+            filename=f.filename,
+        )
+        # Override target layer if explicitly specified
+        if project_layer_id is not None and diff.project_layer_id is None:
+            diff.project_layer_id = project_layer_id
+        results.append(diff)
+    return RecipeUploadResponse(results=results)
+
+
+@router.post("/{project_id}/recipe/apply", response_model=RecipeApplyResponse)
+async def apply_recipe(
+    project_id: int,
+    request: RecipeApplyRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Apply selected recipe diff changes to project conditions."""
+    return await recipe_service.apply_recipe_changes(db, project_id, request)

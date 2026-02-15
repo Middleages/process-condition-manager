@@ -9,6 +9,8 @@ import {
   replaceLayerBackbone,
   addProjectLayer,
   deleteProjectLayer,
+  uploadRecipeXml,
+  applyRecipeChanges,
 } from '@/api/projects'
 import type {
   ProjectStatus,
@@ -16,6 +18,7 @@ import type {
   BulkSaveRequest,
   BackboneReplaceRequest,
   LayerAddRequest,
+  RecipeApplyRequest,
 } from '@/types'
 
 export const projectKeys = {
@@ -121,6 +124,25 @@ export function useDeleteLayer(projectId: number) {
     mutationFn: (projectLayerId: number) => deleteProjectLayer(projectId, projectLayerId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: projectKeys.detail(projectId) })
+    },
+  })
+}
+
+export function useUploadRecipe(projectId: number) {
+  return useMutation({
+    mutationFn: ({ files, projectLayerId }: { files: File[]; projectLayerId?: number }) =>
+      uploadRecipeXml(projectId, files, projectLayerId),
+  })
+}
+
+export function useApplyRecipe(projectId: number) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (req: RecipeApplyRequest) => applyRecipeChanges(projectId, req),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: projectKeys.detail(projectId) })
+      queryClient.invalidateQueries({ queryKey: projectKeys.changeLogs(projectId) })
     },
   })
 }

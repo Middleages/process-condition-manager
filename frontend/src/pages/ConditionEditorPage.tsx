@@ -15,6 +15,7 @@ import { ValidationPanel } from '@/components/editor/ValidationPanel'
 import { ChangeHistoryPanel } from '@/components/editor/ChangeHistoryPanel'
 import { BackboneReplaceModal } from '@/components/editor/BackboneReplaceModal'
 import { LayerAddModal } from '@/components/editor/LayerAddModal'
+import { RecipeUploadModal } from '@/components/editor/RecipeUploadModal'
 import { validateCellValue } from '@/lib/validation'
 import { ApiError } from '@/api/client'
 import type { LayerConditions, ValidationError, ProjectLayerData } from '@/types'
@@ -51,6 +52,7 @@ export default function ConditionEditorPage() {
   const [backboneReplaceLayer, setBackboneReplaceLayer] = useState<ProjectLayerData | null>(null)
   const [showBackboneModal, setShowBackboneModal] = useState(false)
   const [showLayerAddModal, setShowLayerAddModal] = useState(false)
+  const [showRecipeModal, setShowRecipeModal] = useState(false)
 
   // --- beforeunload: warn on browser close/refresh ---
   useEffect(() => {
@@ -273,6 +275,7 @@ export default function ConditionEditorPage() {
         errorCount={validationErrors.length}
         onSave={handleSave}
         lastSavedAt={lastSavedAt}
+        onRecipeUpload={() => setShowRecipeModal(true)}
       />
 
       <CategoryTabs categories={categories} />
@@ -326,6 +329,14 @@ export default function ConditionEditorPage() {
         projectId={pid}
         existingLayers={project.layers}
         allLayers={allLayers}
+      />
+
+      {/* Recipe Upload Modal */}
+      <RecipeUploadModal
+        open={showRecipeModal}
+        onOpenChange={setShowRecipeModal}
+        projectId={pid}
+        layers={project.layers}
       />
     </div>
   )

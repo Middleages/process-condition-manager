@@ -207,6 +207,53 @@ export interface ChangeLogListResponse {
   items: ChangeLogItem[]
 }
 
+// ========== Recipe XML ==========
+export interface RecipeDiffItem {
+  column_name: string
+  display_name: string
+  current_value: unknown | null
+  recipe_value: unknown
+  is_different: boolean
+  category_code: string | null
+}
+
+export interface RecipeParseWarning {
+  xpath: string
+  message: string
+}
+
+export interface RecipeDiffResult {
+  project_layer_id: number | null
+  layer_name: string | null
+  detected_layer_key: string | null
+  total_mapped: number
+  diff_count: number
+  unmapped_xpaths: string[]
+  warnings: RecipeParseWarning[]
+  items: RecipeDiffItem[]
+}
+
+export interface RecipeUploadResponse {
+  results: RecipeDiffResult[]
+}
+
+export interface RecipeApplyItem {
+  project_layer_id: number
+  column_name: string
+  new_value: unknown
+}
+
+export interface RecipeApplyRequest {
+  changes: RecipeApplyItem[]
+  applied_by: number
+}
+
+export interface RecipeApplyResponse {
+  applied_count: number
+  change_log_count: number
+  updated_at: string
+}
+
 // ========== Editor UI State ==========
 export interface DirtyCell {
   projectLayerId: number
