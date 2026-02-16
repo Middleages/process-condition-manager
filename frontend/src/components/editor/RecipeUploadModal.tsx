@@ -13,7 +13,7 @@ import { useUserStore } from '@/stores/useUserStore'
 import { useEditorStore } from '@/stores/useEditorStore'
 import { useToastStore } from '@/stores/useToastStore'
 import type { ProjectLayerData, RecipeDiffResult, RecipeApplyItem } from '@/types'
-import { AlertTriangle, FileUp, Loader2, Upload } from 'lucide-react'
+import { AlertTriangle, Check, FileUp, Loader2, Upload } from 'lucide-react'
 
 interface Props {
   open: boolean

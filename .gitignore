@@ -7,3 +7,13 @@ dist/
 *.log
 pgdata/
 .DS_Store
+
+# MoAI-ADK runtime files
+.moai/backups/
+.moai/logs/
+.moai/temp/
+.moai/cache/
+
+# Claude Code
+.claude/agent-memory/
+.claude/agent-memory-local/

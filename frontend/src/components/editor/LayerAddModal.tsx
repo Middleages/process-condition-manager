@@ -7,7 +7,7 @@ import { useUserStore } from '@/stores/useUserStore'
 import { useToastStore } from '@/stores/useToastStore'
 import { Loader2 } from 'lucide-react'
 import { fetchProductLayers } from '@/api/products'
-import type { ProjectLayerData, LayerInfo, ProductLayerInfo } from '@/types'
+import type { ProjectLayerData, LayerInfo } from '@/types'
 
 interface Props {
   open: boolean
@@ -32,7 +32,6 @@ export function LayerAddModal({
   const [layerId, setLayerId] = useState('')
   const [useSource, setUseSource] = useState(false)
   const [sourceProductId, setSourceProductId] = useState('')
-  const [sourceLayers, setSourceLayers] = useState<ProductLayerInfo[]>([])
   const [loadingLayers, setLoadingLayers] = useState(false)
 
   // Filter out already-existing layers
@@ -42,13 +41,12 @@ export function LayerAddModal({
   // Load source product layers
   useEffect(() => {
     if (!sourceProductId) {
-      setSourceLayers([])
       return
     }
     setLoadingLayers(true)
     fetchProductLayers(Number(sourceProductId))
-      .then(setSourceLayers)
-      .catch(() => setSourceLayers([]))
+      .then(() => {})
+      .catch(() => {})
       .finally(() => setLoadingLayers(false))
   }, [sourceProductId])
 
@@ -58,7 +56,6 @@ export function LayerAddModal({
       setLayerId('')
       setUseSource(false)
       setSourceProductId('')
-      setSourceLayers([])
     }
   }, [open])
 

@@ -1,5 +1,4 @@
 import { useCallback, useMemo, useState } from 'react'
-import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type { RecipeDiffItem } from '@/types'
 import { Check, Minus } from 'lucide-react'
