@@ -274,3 +274,51 @@ export interface GridRowData {
   backboneProductName: string | null
   [columnName: string]: unknown // dynamic condition columns
 }
+
+// ========== Admin: XML Mapping ==========
+export interface XmlMapping {
+  id: number
+  xpath: string
+  column_id: number
+  column_name: string
+  display_name: string
+  category_code: string
+  data_type: string
+  value_transform: string | null
+  is_active: boolean
+  created_at: string
+}
+
+export interface XmlMappingCreateRequest {
+  xpath: string
+  column_id: number
+  value_transform?: string | null
+}
+
+export interface XmlMappingUpdateRequest {
+  xpath?: string
+  column_id?: number
+  value_transform?: string | null
+  is_active?: boolean
+}
+
+// ========== Admin: Validation Rules ==========
+export interface ValidationRuleCreate {
+  rule_type: 'range' | 'required' | 'conditional_required' | 'cross_layer'
+  rule_config: Record<string, unknown>
+  error_message: string
+  is_active?: boolean
+}
+
+export interface ColumnValidationsResponse {
+  column_id: number
+  column_name: string
+  validations: ColumnValidation[]
+}
+
+export interface BulkUploadResponse {
+  total_rows: number
+  columns_updated: number
+  rules_created: number
+  warnings: string[]
+}

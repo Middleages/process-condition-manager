@@ -109,9 +109,10 @@ async def seed_test_data(db_session: AsyncSession):
         ColumnCategory, ColumnDefinition, ColumnValidation,
     )
 
-    # -- User --
+    # -- Users --
     user = User(username="tester1", display_name="Test User", role="editor")
-    db_session.add(user)
+    admin_user = User(username="admin1", display_name="Admin User", role="admin")
+    db_session.add_all([user, admin_user])
     await db_session.flush()
 
     # -- Line --
@@ -240,6 +241,7 @@ async def seed_test_data(db_session: AsyncSession):
 
     return {
         "user": user,
+        "admin_user": admin_user,
         "line": line,
         "layers": layers,
         "backbone": backbone,

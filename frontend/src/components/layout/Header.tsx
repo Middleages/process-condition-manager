@@ -1,18 +1,32 @@
 import { Link } from 'react-router-dom'
 import { useUsers } from '@/hooks/useUsers'
 import { useUserStore } from '@/stores/useUserStore'
-import { User } from 'lucide-react'
+import { User, Settings } from 'lucide-react'
 
 export default function Header() {
   const { data: users = [] } = useUsers()
   const currentUserId = useUserStore((s) => s.currentUserId)
   const setCurrentUserId = useUserStore((s) => s.setCurrentUserId)
 
+  // Find current user
+  const currentUser = users.find((u) => u.id === currentUserId)
+  const isAdmin = currentUser?.role === 'admin'
+
   return (
     <header className="h-12 bg-primary text-primary-foreground flex items-center px-5 gap-6 shrink-0">
       <Link to="/projects" className="font-bold text-base no-underline text-primary-foreground">
         PCM - Process Condition Manager
       </Link>
+
+      {isAdmin && (
+        <Link
+          to="/admin"
+          className="flex items-center gap-2 text-sm no-underline text-primary-foreground hover:text-primary-foreground/80"
+        >
+          <Settings className="h-4 w-4" />
+          관리자
+        </Link>
+      )}
 
       <div className="flex-1" />
 
