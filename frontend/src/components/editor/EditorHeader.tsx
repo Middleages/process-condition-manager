@@ -5,16 +5,17 @@ import { StatusBadge } from '@/components/projects/StatusBadge'
 import { computeProjectDiff } from '@/lib/diff'
 import { useEditorStore } from '@/stores/useEditorStore'
 import type { ProjectDetail } from '@/types'
-import { ArrowLeft, Save, Loader2, AlertTriangle, GitCompare } from 'lucide-react'
+import { ArrowLeft, Save, Loader2, AlertTriangle, GitCompare, FileUp } from 'lucide-react'
 
 interface Props {
   project: ProjectDetail
   errorCount: number
   onSave: () => void
   lastSavedAt?: string | null
+  onRecipeUpload?: () => void
 }
 
-export function EditorHeader({ project, errorCount, onSave, lastSavedAt }: Props) {
+export function EditorHeader({ project, errorCount, onSave, lastSavedAt, onRecipeUpload }: Props) {
   const navigate = useNavigate()
   const hasDirty = useEditorStore((s) => s.hasDirtyCells())
   const isSaving = useEditorStore((s) => s.isSaving)
@@ -71,6 +72,17 @@ export function EditorHeader({ project, errorCount, onSave, lastSavedAt }: Props
         <span className="text-xs text-muted-foreground">
           자동 저장됨 {lastSavedAt}
         </span>
+      )}
+
+      {project.status === 'draft' && onRecipeUpload && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onRecipeUpload}
+        >
+          <FileUp className="mr-1.5 h-4 w-4" />
+          Recipe 업로드
+        </Button>
       )}
 
       <Button

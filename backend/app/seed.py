@@ -622,6 +622,47 @@ def seed():
         print(f"  Products (non-backbone): {nb_count}")
         print(f"  Non-backbone Product Layers: {nb_pl_count}")
 
+        # --- Recipe XML Mappings ---
+        # Map common Recipe XML xpaths to column definitions
+        RECIPE_XML_MAPPINGS = [
+            # (xpath, column_name, value_transform)
+            ("//RECIPE_DATA/SPIN/DISPENSE_VOL", "SP_DISPENSE_VOL_ml", "to_float"),
+            ("//RECIPE_DATA/SPIN/SPIN1_SPEED", "SP_SPIN1_SPEED_rpm", "to_int"),
+            ("//RECIPE_DATA/SPIN/SPIN1_TIME", "SP_SPIN1_TIME_sec", "to_int"),
+            ("//RECIPE_DATA/SPIN/SPIN2_SPEED", "SP_SPIN2_SPEED_rpm", "to_int"),
+            ("//RECIPE_DATA/SPIN/SPIN2_TIME", "SP_SPIN2_TIME_sec", "to_int"),
+            ("//RECIPE_DATA/SPIN/EBR_SPEED", "SP_EBR_SPEED_rpm", "to_int"),
+            ("//RECIPE_DATA/BAKE/PREBAKE_TEMP", "SP_PREBAKE_TEMP_C", "to_int"),
+            ("//RECIPE_DATA/BAKE/PREBAKE_TIME", "SP_PREBAKE_TIME_sec", "to_int"),
+            ("//RECIPE_DATA/EXPOSE/ENERGY", "SC_EXPOSE_ENERGY_mJ", "to_float"),
+            ("//RECIPE_DATA/EXPOSE/FOCUS", "SC_EXPOSE_FOCUS_um", "to_float"),
+            ("//RECIPE_DATA/EXPOSE/NA", "SC_NA", "to_float"),
+            ("//RECIPE_DATA/EXPOSE/DOSE_TOLERANCE", "SC_DOSE_TOLERANCE_PCT", "to_float"),
+            ("//RECIPE_DATA/DEVELOP/PUDDLE_TIME", "DEV_PUDDLE_TIME_sec", "to_int"),
+            ("//RECIPE_DATA/DEVELOP/PUDDLE_COUNT", "DEV_PUDDLE_COUNT", "to_int"),
+            ("//RECIPE_DATA/DEVELOP/RINSE_TIME", "DEV_RINSE_TIME_sec", "to_int"),
+            ("//RECIPE_DATA/DEVELOP/POSTBAKE_TEMP", "DEV_POSTBAKE_TEMP_C", "to_int"),
+            ("//RECIPE_DATA/DEVELOP/CD_TARGET", "DEV_CD_TARGET_nm", "to_float"),
+        ]
+
+        rxm_count = 0
+        for xpath, col_name, transform in RECIPE_XML_MAPPINGS:
+            if col_name not in col_ids:
+                continue
+            session.execute(
+                text(
+                    "INSERT INTO recipe_xml_mappings (xpath, column_id, value_transform, is_active) "
+                    "VALUES (:xpath, :col_id, :transform, TRUE)"
+                ),
+                {
+                    "xpath": xpath,
+                    "col_id": col_ids[col_name],
+                    "transform": transform,
+                },
+            )
+            rxm_count += 1
+        print(f"  Recipe XML Mappings: {rxm_count}")
+
         session.commit()
         print("\nSeed completed successfully!")
 

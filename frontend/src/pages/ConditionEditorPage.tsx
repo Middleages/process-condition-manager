@@ -1,7 +1,8 @@
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useParams, useBlocker } from 'react-router-dom'
-import { useProjectDetail, useBulkSave, useValidateProjectMutation } from '@/hooks/useProjects'
+import { useProjectDetail, useBulkSave, useValidateProjectMutation, useDeleteLayer } from '@/hooks/useProjects'
 import { useColumns } from '@/hooks/useColumns'
+import { useAllLayers } from '@/hooks/useProducts'
 import { useAutoSave } from '@/hooks/useAutoSave'
 import { useEditorStore } from '@/stores/useEditorStore'
 import { useUserStore } from '@/stores/useUserStore'
@@ -12,9 +13,12 @@ import { LayerNavPanel } from '@/components/editor/LayerNavPanel'
 import { ConditionGrid } from '@/components/editor/ConditionGrid'
 import { ValidationPanel } from '@/components/editor/ValidationPanel'
 import { ChangeHistoryPanel } from '@/components/editor/ChangeHistoryPanel'
+import { BackboneReplaceModal } from '@/components/editor/BackboneReplaceModal'
+import { LayerAddModal } from '@/components/editor/LayerAddModal'
+import { RecipeUploadModal } from '@/components/editor/RecipeUploadModal'
 import { validateCellValue } from '@/lib/validation'
 import { ApiError } from '@/api/client'
-import type { LayerConditions, ValidationError } from '@/types'
+import type { LayerConditions, ValidationError, ProjectLayerData } from '@/types'
 import { Loader2 } from 'lucide-react'
 
 export default function ConditionEditorPage() {
@@ -25,6 +29,7 @@ export default function ConditionEditorPage() {
 
   const { data: project, isLoading: projectLoading } = useProjectDetail(pid)
   const { data: categories = [], isLoading: columnsLoading } = useColumns()
+  const { data: allLayers = [] } = useAllLayers()
 
   const activeCategory = useEditorStore((s) => s.activeCategory)
   const activeLayerId = useEditorStore((s) => s.activeLayerId)
@@ -38,8 +43,16 @@ export default function ConditionEditorPage() {
 
   const bulkSave = useBulkSave(pid)
   const validateMutation = useValidateProjectMutation()
+  const deleteLayer = useDeleteLayer(pid)
 
   const hasDirty = dirtyCells.size > 0
+  const isDraft = project?.status === 'draft'
+
+  // Modal states
+  const [backboneReplaceLayer, setBackboneReplaceLayer] = useState<ProjectLayerData | null>(null)
+  const [showBackboneModal, setShowBackboneModal] = useState(false)
+  const [showLayerAddModal, setShowLayerAddModal] = useState(false)
+  const [showRecipeModal, setShowRecipeModal] = useState(false)
 
   // --- beforeunload: warn on browser close/refresh ---
   useEffect(() => {
@@ -215,6 +228,30 @@ export default function ConditionEditorPage() {
     [categories, setActiveLayerId]
   )
 
+  // Backbone replace handler
+  const handleBackboneReplace = useCallback((layer: ProjectLayerData) => {
+    setBackboneReplaceLayer(layer)
+    setShowBackboneModal(true)
+  }, [])
+
+  // Layer delete handler
+  const handleLayerDelete = useCallback(
+    async (layer: ProjectLayerData) => {
+      const confirmed = window.confirm(
+        `"${layer.layer_name}" 레이어를 삭제하시겠습니까?\n이 레이어의 모든 조건 데이터가 삭제됩니다.`
+      )
+      if (!confirmed) return
+
+      try {
+        await deleteLayer.mutateAsync(layer.id)
+        addToast(`"${layer.layer_name}" 레이어가 삭제되었습니다.`, 'success')
+      } catch {
+        // Error handled by interceptor
+      }
+    },
+    [deleteLayer, addToast]
+  )
+
   if (projectLoading || columnsLoading) {
     return (
       <div className="h-full flex items-center justify-center">
@@ -238,6 +275,7 @@ export default function ConditionEditorPage() {
         errorCount={validationErrors.length}
         onSave={handleSave}
         lastSavedAt={lastSavedAt}
+        onRecipeUpload={() => setShowRecipeModal(true)}
       />
 
       <CategoryTabs categories={categories} />
@@ -246,7 +284,11 @@ export default function ConditionEditorPage() {
         <LayerNavPanel
           layers={project.layers}
           validationErrors={validationErrors}
+          isDraft={isDraft}
           onLayerClick={handleLayerClick}
+          onBackboneReplace={handleBackboneReplace}
+          onLayerAdd={() => setShowLayerAddModal(true)}
+          onLayerDelete={handleLayerDelete}
         />
 
         <div className="flex-1 flex flex-col overflow-hidden">
@@ -271,6 +313,31 @@ export default function ConditionEditorPage() {
           />
         </div>
       </div>
+
+      {/* Backbone Replace Modal */}
+      <BackboneReplaceModal
+        open={showBackboneModal}
+        onOpenChange={setShowBackboneModal}
+        projectId={pid}
+        layer={backboneReplaceLayer}
+      />
+
+      {/* Layer Add Modal */}
+      <LayerAddModal
+        open={showLayerAddModal}
+        onOpenChange={setShowLayerAddModal}
+        projectId={pid}
+        existingLayers={project.layers}
+        allLayers={allLayers}
+      />
+
+      {/* Recipe Upload Modal */}
+      <RecipeUploadModal
+        open={showRecipeModal}
+        onOpenChange={setShowRecipeModal}
+        projectId={pid}
+        layers={project.layers}
+      />
     </div>
   )
 }

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -20,7 +20,10 @@ class Project(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     product_id: Mapped[int] = mapped_column(ForeignKey("products.id"), index=True)
     main_backbone_id: Mapped[int] = mapped_column(ForeignKey("products.id"))
-    status: Mapped[str] = mapped_column(String(20), default="draft")  # draft / review / approved / rejected
+    status: Mapped[str] = mapped_column(String(20), default="draft")  # draft / review / approved / rejected / archived
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    parent_project_id: Mapped[int | None] = mapped_column(ForeignKey("projects.id"), nullable=True)
+    is_latest: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     created_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
     reviewed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -29,6 +32,9 @@ class Project(Base):
 
     product: Mapped["Product"] = relationship(foreign_keys=[product_id])
     backbone: Mapped["Product"] = relationship(foreign_keys=[main_backbone_id])
+    parent_project: Mapped["Project | None"] = relationship(
+        remote_side="Project.id", foreign_keys=[parent_project_id]
+    )
     creator: Mapped["User"] = relationship(foreign_keys=[created_by])
     reviewer: Mapped["User | None"] = relationship(foreign_keys=[reviewed_by])
     layers: Mapped[list["ProjectLayer"]] = relationship(back_populates="project", cascade="all, delete-orphan")

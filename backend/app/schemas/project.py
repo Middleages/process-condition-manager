@@ -47,6 +47,9 @@ class ProjectResponse(BaseModel):
     main_backbone_id: int
     backbone_name: str
     status: str
+    revision: int = 1
+    parent_project_id: int | None = None
+    is_latest: bool = True
     created_by: int
     creator_name: str
     layer_count: int = 0

@@ -6,11 +6,19 @@ import {
   bulkSaveConditions,
   validateProject,
   fetchChangeLogs,
+  replaceLayerBackbone,
+  addProjectLayer,
+  deleteProjectLayer,
+  uploadRecipeXml,
+  applyRecipeChanges,
 } from '@/api/projects'
 import type {
   ProjectStatus,
   ProjectCreateRequest,
   BulkSaveRequest,
+  BackboneReplaceRequest,
+  LayerAddRequest,
+  RecipeApplyRequest,
 } from '@/types'
 
 export const projectKeys = {
@@ -77,5 +85,64 @@ export function useChangeLogs(
     queryKey: projectKeys.changeLogs(projectId, params),
     queryFn: () => fetchChangeLogs(projectId, params),
     enabled: projectId > 0,
+  })
+}
+
+export function useReplaceBackbone(projectId: number) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({
+      projectLayerId,
+      req,
+    }: {
+      projectLayerId: number
+      req: BackboneReplaceRequest
+    }) => replaceLayerBackbone(projectId, projectLayerId, req),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: projectKeys.detail(projectId) })
+      queryClient.invalidateQueries({ queryKey: projectKeys.changeLogs(projectId) })
+    },
+  })
+}
+
+export function useAddLayer(projectId: number) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (req: LayerAddRequest) => addProjectLayer(projectId, req),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: projectKeys.detail(projectId) })
+    },
+  })
+}
+
+export function useDeleteLayer(projectId: number) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (projectLayerId: number) => deleteProjectLayer(projectId, projectLayerId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: projectKeys.detail(projectId) })
+    },
+  })
+}
+
+export function useUploadRecipe(projectId: number) {
+  return useMutation({
+    mutationFn: ({ files, projectLayerId }: { files: File[]; projectLayerId?: number }) =>
+      uploadRecipeXml(projectId, files, projectLayerId),
+  })
+}
+
+export function useApplyRecipe(projectId: number) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (req: RecipeApplyRequest) => applyRecipeChanges(projectId, req),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: projectKeys.detail(projectId) })
+      queryClient.invalidateQueries({ queryKey: projectKeys.changeLogs(projectId) })
+    },
   })
 }
