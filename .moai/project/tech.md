@@ -81,12 +81,13 @@ PCM은 현대적인 웹 기술 스택을 기반으로 구축된 풀스택 애플
 ### File Processing
 
 **openpyxl 3.1.5**
-- 목적: Excel 파일 읽기/쓰기
+- 목적: Excel 파일 읽기/쓰기 및 파일 파싱
 - 선택 근거:
   - xlsx 포맷 완벽 지원
   - 스타일 및 포맷 유지
   - 대용량 파일 처리
-- 사용 사례: 샘플 데이터 임포트, 전산 출력 (Type A/B/C) Excel 생성
+  - 벌크 업로드 및 파일 파싱
+- 사용 사례: 샘플 데이터 임포트, 검증 규칙 벌크 업로드, 전산 출력 (Type A/B/C) Excel 생성
 
 **lxml 5.3.0**
 - 목적: XML 파싱 및 XPath 쿼리
@@ -511,12 +512,16 @@ npm test
 ### 아키텍처 패턴
 
 **Backend: Clean Layered Architecture**
-- Router → Service → Model 계층 분리
+- Router → Service → Model 계층 분리 (admin.py 추가)
+- admin_service.py는 XML 매핑과 검증 규칙 관리
+- validation.py는 조건부 검증과 다중 연산자 지원
 - 각 계층의 명확한 책임
 - 테스트 용이성 향상
 
 **Frontend: Atomic Design**
-- Pages → Components (editor, layout, projects, ui) 계층 구조
+- Pages → Components (editor, layout, projects, admin, ui) 계층 구조
+- 관리자 컴포넌트 추가 (XmlMappingsPage, ValidationRulesPage)
+- Revision 관련 컴포넌트 강화 (RevisionCreateModal, VersionHistoryModal)
 - 재사용 가능한 컴포넌트 설계
 - 확장 가능한 디자인 시스템
 
@@ -651,5 +656,6 @@ npm run format
 ---
 
 생성일: 2026-02-16
-문서 버전: 1.0.0
+문서 버전: 1.1.0 (Sprint 2.3~2.5 반영)
 작성자: MoAI-ADK Documentation Generator
+마지막 업데이트: 2026-02-16 (Sprint 2.3 관리자 설정, 2.4 조건부 검증, 2.5 개정 기능)

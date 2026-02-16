@@ -340,3 +340,102 @@ When `SP_ADHESION_USE` changes value, re-validate `SP_ADHESION_TYPE` and `SP_ADH
 | REQ-2.5-008 | Version history panel | `frontend/src/components/projects/VersionHistoryModal.tsx` |
 | REQ-2.5-009 | Archived UI handling | Multiple frontend files |
 | REQ-2.5-010 | API integration | `frontend/src/api/client.ts`, `frontend/src/hooks/useProjects.ts` |
+
+---
+
+## Implementation Notes
+
+**Status**: Completed
+**Implementation Date**: 2026-02-16
+
+### Summary
+
+Sprint 2.4 and 2.5 requirements fully implemented. Extended operators (not_equals, contains) for conditional validation with cross-field re-validation trigger. Revision creation feature enabling new draft versions from approved projects, archived status protection, version history tracking.
+
+### Sprint 2.4: Conditional Validation Enhancement
+
+**Backend Implementation**:
+- Extended operator support in `backend/app/services/validation_service.py:_validate_conditional_required()`
+  - Supports: `equals` (default), `not_equals`, `contains` operators
+  - Backward compatible: missing operator defaults to `equals`
+
+**Frontend Implementation**:
+- Extended operator support in `frontend/src/lib/validation.ts:validateCellValue()`
+- Cross-field re-validation trigger in `frontend/src/pages/ConditionEditorPage.tsx`
+  - Builds dependency map from column definitions
+  - Re-validates dependent columns when condition source changes
+
+**Admin UI**:
+- Operator dropdown in `frontend/src/components/admin/ValidationEditModal.tsx`
+  - Dropdown options: `equals`, `not_equals`, `contains`
+
+**Test Coverage (Sprint 2.4)**:
+- Backend: 5 test cases for extended operators in `backend/tests/test_validation_service.py`
+- Frontend: 6 test cases for extended operators in `frontend/src/lib/__tests__/validation.test.ts`
+
+### Sprint 2.5: Revision Feature
+
+**Backend Implementation**:
+- Revision creation API in `backend/app/routers/projects.py:POST /api/projects/{id}/revise`
+  - Transactional project and layer copying
+  - Status transitions: Approved → Archived (old), Draft (new)
+  - Deep copy of `project_layers` with `conditions` and `backbone_conditions`
+
+- Version history API in `backend/app/routers/projects.py:GET /api/products/{productId}/revisions`
+  - Returns all project versions for product ordered by revision descending
+  - Includes change_count (number of changed cells from parent)
+
+- Archived status protection in multiple services:
+  - `backend/app/services/condition_service.py` - Blocks editing archived projects
+  - `backend/app/services/backbone_service.py` - Blocks backbone replacement
+  - `backend/app/services/recipe_service.py` - Blocks recipe application
+
+- Revision schemas in `backend/app/schemas/project.py`:
+  - `ReviseProjectRequest` - created_by (required), description (optional)
+  - `RevisionListResponse` - product metadata + revision list with status, creator, dates
+
+**Frontend Implementation**:
+- Revision creation button in `frontend/src/components/editor/EditorHeader.tsx` (visible when status=Approved)
+- Revision creation modal `frontend/src/components/editor/RevisionCreateModal.tsx`
+  - Shows current and new version info
+  - Confirmation dialog with description field
+  - Navigation to new draft project on success
+
+- Version history modal `frontend/src/components/projects/VersionHistoryModal.tsx`
+  - Lists all versions with revision, status, creator, created date
+  - Navigation links to each version
+
+- Project list enhancements in `frontend/src/pages/ProjectListPage.tsx`
+  - Version column displaying current revision (e.g., "v3")
+  - Version history indicator showing previous versions (e.g., "v1, v2")
+
+- Archived status handling:
+  - `frontend/src/components/projects/StatusBadge.tsx` - Archived badge styling
+  - `frontend/src/pages/ConditionEditorPage.tsx` - Read-only mode for archived projects
+  - Hide save, recipe upload, backbone replace buttons for archived status
+
+- API client functions in `frontend/src/api/client.ts`:
+  - `reviseProject(projectId, data)` - POST /api/projects/{id}/revise
+  - `getProductRevisions(productId)` - GET /api/products/{productId}/revisions
+
+- React Query hooks in `frontend/src/hooks/useProjects.ts`:
+  - `useReviseProject()` - Mutation hook for revision creation
+  - `useProductRevisions()` - Query hook for version history
+
+**Test Coverage (Sprint 2.5)**:
+- Backend: 9 test cases covering revision API, archived protection, version history
+- Frontend: Integration tests for revision modal, version history, archived UI states
+
+### Requirements Completion
+
+**Sprint 2.4**: All 5 requirements (REQ-2.4-001 to REQ-2.4-005) implemented
+- Extended operators fully functional with backward compatibility
+- Cross-field re-validation working for dependent columns
+- Admin UI supports operator selection
+
+**Sprint 2.5**: All 10 requirements (REQ-2.5-001 to REQ-2.5-010) implemented
+- Revision creation from approved projects with transactional consistency
+- Archived status protection preventing all modifications
+- Version history tracking with change counts
+- Complete frontend-backend integration for revision workflows
+- All 15 EARS requirements fully implemented and tested

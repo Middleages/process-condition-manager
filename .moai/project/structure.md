@@ -20,24 +20,26 @@ process-condition-manager/
 │   │   │   ├── export.py       # ExportSystem, ExportColumnMapping (전산 출력)
 │   │   │   └── line.py         # Line 모델 (생산 라인)
 │   │   │
-│   │   ├── routers/            # API 엔드포인트 (5개 파일)
+│   │   ├── routers/            # API 엔드포인트 (6개 파일)
 │   │   │   ├── __init__.py     # 라우터 통합 export
 │   │   │   ├── users.py        # 사용자 CRUD API
 │   │   │   ├── lines.py        # 생산 라인 조회 API
 │   │   │   ├── columns.py      # 컬럼 정의 및 검증 규칙 조회 API
 │   │   │   ├── products.py     # 제품 및 레이어 조회 API
-│   │   │   └── projects.py     # 프로젝트 CRUD, 검증, Revision, Recipe, Backbone 교체
+│   │   │   ├── projects.py     # 프로젝트 CRUD, 검증, Revision, Recipe, Backbone 교체
+│   │   │   └── admin.py        # 관리자 API (XML 매핑, 검증 규칙 CRUD)
 │   │   │
-│   │   ├── services/           # 비즈니스 로직 (6개 파일)
+│   │   ├── services/           # 비즈니스 로직 (7개 파일)
 │   │   │   ├── __init__.py     # 서비스 통합 export
 │   │   │   ├── project.py      # 프로젝트 CRUD 서비스
 │   │   │   ├── backbone.py     # Backbone 복사 및 레이어별 교체 로직
 │   │   │   ├── recipe.py       # Recipe XML 파싱 및 Diff 생성
-│   │   │   ├── validation.py   # 검증 규칙 실행 및 오류 수집
+│   │   │   ├── validation.py   # 검증 규칙 실행 및 조건부 검증
 │   │   │   ├── condition.py    # 조건 데이터 CRUD 및 벌크 저장
-│   │   │   └── change_log.py   # 변경 이력 생성 및 조회
+│   │   │   ├── change_log.py   # 변경 이력 생성 및 조회
+│   │   │   └── admin_service.py  # 관리 기능 (XML 매핑, 검증 규칙 관리)
 │   │   │
-│   │   ├── schemas/            # Pydantic 스키마 (7개 파일)
+│   │   ├── schemas/            # Pydantic 스키마 (8개 파일)
 │   │   │   ├── __init__.py     # 스키마 통합 export
 │   │   │   ├── user.py         # UserCreate, UserResponse, UserUpdate
 │   │   │   ├── product.py      # ProductResponse, LayerResponse
@@ -45,19 +47,22 @@ process-condition-manager/
 │   │   │   ├── column.py       # ColumnDefinitionResponse, ValidationRuleResponse
 │   │   │   ├── validation.py   # ValidationError, ValidationResult
 │   │   │   ├── recipe.py       # RecipeUploadRequest, RecipeDiffResponse
-│   │   │   └── change_log.py   # ChangeLogResponse
+│   │   │   ├── change_log.py   # ChangeLogResponse
+│   │   │   └── admin.py        # XmlMappingRequest, ValidationRuleRequest
 │   │   │
 │   │   └── utils/              # 유틸리티 함수
 │   │       └── helpers.py      # 공통 헬퍼 함수
 │   │
-│   ├── tests/                  # pytest 테스트 (6개 파일)
+│   ├── tests/                  # pytest 테스트 (9개 파일)
 │   │   ├── __init__.py
 │   │   ├── test_project.py     # 프로젝트 서비스 테스트
 │   │   ├── test_backbone.py    # Backbone 복사/교체 테스트
 │   │   ├── test_recipe.py      # Recipe XML 처리 테스트
-│   │   ├── test_validation.py  # 검증 로직 테스트
+│   │   ├── test_validation.py  # 검증 로직 테스트 (21개 케이스)
 │   │   ├── test_condition.py   # 조건 데이터 저장 테스트
-│   │   └── test_change_log.py  # 변경 이력 테스트
+│   │   ├── test_change_log.py  # 변경 이력 테스트
+│   │   ├── test_admin_service.py  # 관리 기능 테스트 (605+ 케이스)
+│   │   └── test_revision.py    # Revision 기능 테스트 (9개 케이스)
 │   │
 │   ├── alembic/                # 데이터베이스 마이그레이션
 │   │   ├── versions/           # 마이그레이션 버전 파일 (3개)
@@ -81,7 +86,7 @@ process-condition-manager/
 │   │   │   └── ConditionEditorPage.tsx  # 조건표 편집 페이지
 │   │   │
 │   │   ├── components/         # 재사용 가능한 컴포넌트
-│   │   │   ├── editor/         # 조건표 편집기 관련 컴포넌트 (10개 파일)
+│   │   │   ├── editor/         # 조건표 편집기 관련 컴포넌트 (12개 파일)
 │   │   │   │   ├── ConditionGrid.tsx       # AG Grid 메인 컴포넌트
 │   │   │   │   ├── CategoryTabs.tsx        # SP/SC/OVL/DEV 탭
 │   │   │   │   ├── ValidationPanel.tsx     # 검증 오류 패널
@@ -89,13 +94,22 @@ process-condition-manager/
 │   │   │   │   ├── BackboneReplaceModal.tsx  # Backbone 교체 모달
 │   │   │   │   ├── RecipeUploadModal.tsx   # Recipe XML 업로드 모달
 │   │   │   │   ├── RecipeDiffViewer.tsx    # Recipe Diff 뷰어
-│   │   │   │   ├── ReviseModal.tsx         # Revision 생성 모달
+│   │   │   │   ├── ReviseModal.tsx         # 기존 Revision 생성 모달
+│   │   │   │   ├── RevisionCreateModal.tsx # 개정 생성 다이얼로그
 │   │   │   │   ├── EditorToolbar.tsx       # 편집기 툴바
-│   │   │   │   └── CellRenderer.tsx        # 커스텀 셀 렌더러
+│   │   │   │   ├── CellRenderer.tsx        # 커스텀 셀 렌더러
+│   │   │   │   └── VersionHistoryModal.tsx # 버전 이력 표시
 │   │   │   │
 │   │   │   ├── layout/         # 레이아웃 컴포넌트
 │   │   │   │   ├── Header.tsx              # 헤더 (사용자 선택, 네비게이션)
 │   │   │   │   └── Layout.tsx              # 전체 레이아웃 래퍼
+│   │   │   │
+│   │   │   ├── admin/          # 관리자 페이지 컴포넌트 (5개 파일)
+│   │   │   │   ├── AdminLayout.tsx         # 관리자 레이아웃
+│   │   │   │   ├── XmlMappingsPage.tsx     # XML 매핑 관리 페이지
+│   │   │   │   ├── ValidationRulesPage.tsx # 검증 규칙 관리 페이지
+│   │   │   │   ├── MappingFormModal.tsx    # XML 매핑 폼 모달
+│   │   │   │   └── ValidationEditModal.tsx # 검증 규칙 편집 모달
 │   │   │   │
 │   │   │   ├── projects/       # 프로젝트 관련 컴포넌트
 │   │   │   │   ├── ProjectCreateModal.tsx  # 프로젝트 생성 모달
@@ -110,19 +124,22 @@ process-condition-manager/
 │   │   │       ├── Toast.tsx
 │   │   │       └── Loading.tsx
 │   │   │
-│   │   ├── hooks/              # 커스텀 훅 (5개 파일)
+│   │   ├── hooks/              # 커스텀 훅 (7개 파일)
 │   │   │   ├── useProjects.ts          # 프로젝트 목록 조회
 │   │   │   ├── useProjectDetail.ts     # 프로젝트 상세 조회
 │   │   │   ├── useValidation.ts        # 검증 실행
 │   │   │   ├── useAutoSave.ts          # 자동 저장
-│   │   │   └── useDebounce.ts          # 디바운스 유틸
+│   │   │   ├── useDebounce.ts          # 디바운스 유틸
+│   │   │   ├── useAdminMappings.ts     # XML 매핑 관리 훅
+│   │   │   └── useAdminValidations.ts  # 검증 규칙 관리 훅
 │   │   │
-│   │   ├── api/                # API 클라이언트 모듈 (5개 파일)
+│   │   ├── api/                # API 클라이언트 모듈 (6개 파일)
 │   │   │   ├── client.ts               # Axios 인스턴스 (/api 기본경로)
 │   │   │   ├── projects.ts             # 프로젝트 API 호출
 │   │   │   ├── products.ts             # 제품/레이어 API 호출
 │   │   │   ├── columns.ts              # 컬럼 정의 API 호출
-│   │   │   └── users.ts                # 사용자 API 호출
+│   │   │   ├── users.ts                # 사용자 API 호출
+│   │   │   └── admin.ts                # 관리 API 호출
 │   │   │
 │   │   ├── stores/             # Zustand 상태 관리 (3개 파일)
 │   │   │   ├── editorStore.ts          # 편집기 상태 (dirty cells, 검증 오류)
@@ -295,11 +312,13 @@ process-condition-manager/
 - /home/appuser/process-condition-manager/backend/app/services/backbone.py
 - /home/appuser/process-condition-manager/backend/app/services/recipe.py
 - /home/appuser/process-condition-manager/backend/app/services/validation.py
+- /home/appuser/process-condition-manager/backend/app/services/admin_service.py
 
 **API 엔드포인트**:
 - /home/appuser/process-condition-manager/backend/app/routers/projects.py
 - /home/appuser/process-condition-manager/backend/app/routers/products.py
 - /home/appuser/process-condition-manager/backend/app/routers/columns.py
+- /home/appuser/process-condition-manager/backend/app/routers/admin.py
 
 **데이터베이스**:
 - /home/appuser/process-condition-manager/backend/app/models/project.py
@@ -323,10 +342,13 @@ process-condition-manager/
 - /home/appuser/process-condition-manager/frontend/src/stores/editorStore.ts
 - /home/appuser/process-condition-manager/frontend/src/hooks/useProjectDetail.ts
 - /home/appuser/process-condition-manager/frontend/src/hooks/useAutoSave.ts
+- /home/appuser/process-condition-manager/frontend/src/hooks/useAdminMappings.ts
+- /home/appuser/process-condition-manager/frontend/src/hooks/useAdminValidations.ts
 
 **API 통신**:
 - /home/appuser/process-condition-manager/frontend/src/api/client.ts
 - /home/appuser/process-condition-manager/frontend/src/api/projects.ts
+- /home/appuser/process-condition-manager/frontend/src/api/admin.ts
 
 ---
 
@@ -450,5 +472,6 @@ docker-compose build
 ---
 
 생성일: 2026-02-16
-문서 버전: 1.0.0
+문서 버전: 1.1.0 (Sprint 2.3~2.5 반영)
 작성자: MoAI-ADK Documentation Generator
+마지막 업데이트: 2026-02-16 (Sprint 2.3 관리자 설정, 2.4 조건부 검증, 2.5 개정 기능)
