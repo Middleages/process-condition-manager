@@ -3,7 +3,7 @@
 **SPEC ID**: SPEC-003
 **Title**: Approval Workflow and Review Comments
 **Phase**: Phase 3 (Workflow & Output) - First SPEC
-**Status**: Planned
+**Status**: In Progress
 **Priority**: High
 **Created**: 2026-02-16
 
@@ -739,3 +739,62 @@ Note: Rejected is a transient state that immediately transitions to Draft.
 | REQ-029 | N/A | CommentPanel | Manual/E2E |
 | REQ-030 | PATCH /status (logging) | N/A | test_all_transitions_logged |
 | REQ-031 | GET /status-history | StatusTimeline | test_status_history |
+
+---
+
+## 11. Implementation Notes
+
+### Milestone 1: Backend Core - ✅ COMPLETED
+
+**구현 완료일**: 2026-02-16
+
+**구현 내역**:
+
+**새로 생성된 파일 (6개)**:
+- backend/app/schemas/comment.py - Comment Pydantic 스키마 (CommentCreate, CommentUpdate, CommentResponse)
+- backend/app/services/comment_service.py - Comment CRUD 서비스 (create, list, update, delete, get_unresolved_count)
+- backend/app/routers/comments.py - Comment API 엔드포인트 (POST/GET/PATCH/DELETE at /api/projects/{project_id}/comments)
+- backend/tests/test_comment_service.py - 13개 comment CRUD 테스트
+- backend/tests/test_approval_workflow.py - 10개 approval workflow 테스트
+- backend/alembic/versions/004_add_review_comment_columns.py - DB 마이그레이션
+
+**수정된 파일 (6개)**:
+- backend/app/models/change_log.py - ReviewComment 모델에 comment_type, resolved_by, project_id 컬럼 추가
+- backend/app/schemas/project.py - StatusTransitionRequest, StatusTransitionResponse, ChangeSummaryResponse, StatusHistoryItem, StatusHistoryResponse 스키마 추가
+- backend/app/services/project_service.py - update_project_status() 함수에 완전한 상태 전환 검증 로직 추가, get_change_summary() 추가
+- backend/app/routers/projects.py - PATCH /status, GET /status-history, GET /change-summary 엔드포인트 추가
+- backend/app/main.py - comments router 등록
+- backend/tests/conftest.py - reviewer 사용자 fixture 추가
+
+**테스트 결과**:
+- 총 테스트: 140/140 통과
+- SPEC-003 전용 테스트: 23개 (test_approval_workflow.py 10개 + test_comment_service.py 13개)
+- 커버리지: 모든 새 엔드포인트 및 서비스 로직 커버
+
+**API 검증 완료**:
+- ✅ PATCH /api/projects/{id}/status - 상태 전환 검증 강화 (validation, role, comment 체크)
+- ✅ GET /api/projects/{id}/status-history - 상태 전환 히스토리 조회
+- ✅ GET /api/projects/{id}/change-summary - 변경 요약 통계
+- ✅ POST /api/projects/{project_id}/comments - 댓글 생성 (project/layer/cell 타겟팅)
+- ✅ GET /api/projects/{project_id}/comments - 댓글 목록 조회 (필터링 지원)
+- ✅ PATCH /api/projects/{project_id}/comments/{comment_id} - 댓글 수정/해결
+- ✅ DELETE /api/projects/{project_id}/comments/{comment_id} - 댓글 삭제
+
+**구현 일탈사항**:
+- API 스키마의 `content` 필드가 DB 모델의 `comment` 필드에 매핑됩니다. 이는 DB 모델의 기존 컬럼명을 유지하면서 API 레벨에서 더 명확한 네이밍을 제공하기 위함입니다.
+
+**남은 마일스톤**:
+
+**Milestone 2: Frontend Components (NOT STARTED)**:
+- CommentPanel.tsx - 댓글 목록 패널 및 네비게이션
+- CommentThread.tsx - 개별 댓글 스레드 컴포넌트
+- ReviewRequestModal.tsx - 검토 요청 모달
+- ApprovalButtons.tsx - 승인/반려 버튼
+- StatusBanner.tsx - 상태 표시 배너
+- StatusTimeline.tsx - 상태 전환 히스토리 타임라인
+
+**Milestone 3: AG Grid Integration (NOT STARTED)**:
+- Cell right-click context menu - 셀 우클릭 시 댓글 추가
+- CommentMarkerRenderer.tsx - 댓글 마커 표시 (빨간 삼각형)
+- Cell tooltip - 댓글 미리보기 툴팁
+- Read-only mode - Review/Approved 상태에서 편집 비활성화

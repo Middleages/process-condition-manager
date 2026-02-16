@@ -200,9 +200,15 @@ process-condition-manager/
 - 관리자 설정 페이지
 - Revision 기능
 
-### Phase 3 - 진행 예정
-- 승인 프로세스 (승인/반려 워크플로우)
-- 코멘트 시스템
+### Phase 3 - 진행 중 🔧
+- **승인 프로세스 (승인/반려 워크플로우)** - Milestone 1 완료 ✅ (백엔드 API 구현)
+  - 상태 전환 API 검증 강화 (Draft→Review→Approved/Rejected)
+  - 댓글 CRUD API 구현
+  - 상태 전환 히스토리 및 변경 요약 API
+- **코멘트 시스템** - Milestone 1 완료 ✅ (백엔드 API 구현)
+  - Project/Layer/Cell 레벨 댓글 지원
+  - 댓글 타입 구분 (rejection/general)
+  - 댓글 해결 상태 관리
 - 변경 이력 상세 조회
 - 전산 출력 (Type A/B/C Excel 다운로드)
 
