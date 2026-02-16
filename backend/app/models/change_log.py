@@ -35,10 +35,13 @@ class ReviewComment(Base):
     __tablename__ = "review_comments"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    project_layer_id: Mapped[int] = mapped_column(ForeignKey("project_layers.id", ondelete="CASCADE"), index=True)
+    project_layer_id: Mapped[int | None] = mapped_column(ForeignKey("project_layers.id", ondelete="CASCADE"), index=True, nullable=True)
     column_name: Mapped[str | None] = mapped_column(String(100), nullable=True)  # NULL이면 레이어 전체
     comment: Mapped[str] = mapped_column(Text)
+    comment_type: Mapped[str] = mapped_column(String(20), default="general", server_default="general")
     is_resolved: Mapped[bool] = mapped_column(Boolean, default=False)
     created_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolved_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    project_id: Mapped[int | None] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True)

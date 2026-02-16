@@ -134,3 +134,42 @@ class RevisionListResponse(BaseModel):
     product_id: int
     product_name: str
     revisions: list[RevisionItem]
+
+
+# --- Status transition schemas ---
+
+class StatusTransitionRequest(BaseModel):
+    new_status: str
+    changed_by: int
+    comment: str | None = None
+
+
+class StatusTransitionResponse(BaseModel):
+    id: int
+    status: str
+    previous_status: str
+    changed_by: int
+    changed_at: datetime
+
+
+class ChangeSummaryResponse(BaseModel):
+    validation_error_count: int
+    changed_layers_count: int
+    total_layers_count: int
+    changed_cells_count: int
+    backbone_replacements_count: int
+    recipe_applications_count: int
+
+
+class StatusHistoryItem(BaseModel):
+    id: int
+    from_status: str | None
+    to_status: str
+    changed_by: int
+    changer_name: str
+    comment: str | None
+    changed_at: datetime
+
+
+class StatusHistoryResponse(BaseModel):
+    history: list[StatusHistoryItem]

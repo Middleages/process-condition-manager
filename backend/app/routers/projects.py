@@ -14,6 +14,11 @@ from app.schemas.project import (
     ReviseProjectRequest,
     RevisionItem,
     RevisionListResponse,
+    StatusTransitionRequest,
+    StatusTransitionResponse,
+    StatusHistoryResponse,
+    StatusHistoryItem,
+    ChangeSummaryResponse,
 )
 from app.schemas.backbone import (
     BackboneReplaceRequest,
@@ -310,3 +315,64 @@ async def get_product_revisions(
         product_name=product.product_name,
         revisions=revisions,
     )
+
+
+@router.patch("/{project_id}/status", response_model=StatusTransitionResponse)
+async def update_status(
+    project_id: int,
+    data: StatusTransitionRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Update project status with state machine validation."""
+    result = await project_service.update_project_status(
+        db=db,
+        project_id=project_id,
+        new_status=data.new_status,
+        changed_by=data.changed_by,
+        comment=data.comment,
+    )
+    return result
+
+
+@router.get("/{project_id}/status-history", response_model=StatusHistoryResponse)
+async def get_status_history(
+    project_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get status change history for a project."""
+    from app.models import ProjectStatusLog, User
+    from sqlalchemy import select
+
+    # Query status logs with user join
+    result = await db.execute(
+        select(ProjectStatusLog, User)
+        .join(User, ProjectStatusLog.changed_by == User.id)
+        .where(ProjectStatusLog.project_id == project_id)
+        .order_by(ProjectStatusLog.changed_at.desc())
+    )
+    rows = result.fetchall()
+
+    history = [
+        StatusHistoryItem(
+            id=log.id,
+            from_status=log.from_status,
+            to_status=log.to_status,
+            changed_by=log.changed_by,
+            changer_name=user.display_name,
+            comment=log.comment,
+            changed_at=log.changed_at,
+        )
+        for log, user in rows
+    ]
+
+    return StatusHistoryResponse(history=history)
+
+
+@router.get("/{project_id}/change-summary", response_model=ChangeSummaryResponse)
+async def get_change_summary(
+    project_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get change summary statistics for a project."""
+    result = await project_service.get_change_summary(db, project_id)
+    return result

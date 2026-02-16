@@ -112,7 +112,8 @@ async def seed_test_data(db_session: AsyncSession):
     # -- Users --
     user = User(username="tester1", display_name="Test User", role="editor")
     admin_user = User(username="admin1", display_name="Admin User", role="admin")
-    db_session.add_all([user, admin_user])
+    reviewer_user = User(username="reviewer1", display_name="Reviewer User", role="reviewer")
+    db_session.add_all([user, admin_user, reviewer_user])
     await db_session.flush()
 
     # -- Line --
@@ -242,6 +243,7 @@ async def seed_test_data(db_session: AsyncSession):
     return {
         "user": user,
         "admin_user": admin_user,
+        "reviewer_user": reviewer_user,
         "line": line,
         "layers": layers,
         "backbone": backbone,
