@@ -257,6 +257,225 @@ class TestValidateProject:
         assert len(layer_names) == 3
 
     # ------------------------------------------------------------------
+    # Conditional required: Extended operators (not_equals, contains)
+    # ------------------------------------------------------------------
+
+    async def test_conditional_required_not_equals_triggers_when_values_differ(
+        self, db_session, seed_test_data
+    ):
+        """not_equals operator: condition triggers when values differ."""
+        from app.models import ColumnValidation
+        from sqlalchemy import select, update
+
+        project, data = await self._create_test_project(db_session, seed_test_data)
+
+        # Find the conditional_required rule for SP_ADHESION_TYPE
+        result = await db_session.execute(
+            select(ColumnValidation)
+            .where(ColumnValidation.rule_type == "conditional_required")
+        )
+        rule = result.scalars().first()
+        assert rule is not None
+
+        # Update rule to use not_equals operator
+        rule.rule_config = {
+            "condition_column": "SP_ADHESION_USE",
+            "condition_value": "N",
+            "operator": "not_equals"
+        }
+        await db_session.flush()
+
+        # Set SP_ADHESION_USE='Y' (not equals 'N'), so condition should trigger
+        first_layer = sorted(project.layers, key=lambda pl: pl.sort_order)[0]
+        new_conditions = dict(first_layer.conditions)
+        new_conditions["SP_ADHESION_USE"] = "Y"
+        new_conditions.pop("SP_ADHESION_TYPE", None)
+        first_layer.conditions = new_conditions
+        await db_session.flush()
+
+        result = await validate_project(db_session, project.id)
+
+        cond_errors = [
+            e for e in result.errors
+            if e.rule_type == "conditional_required"
+            and e.column_name == "SP_ADHESION_TYPE"
+            and e.layer_name == first_layer.layer.layer_name
+        ]
+        assert len(cond_errors) == 1
+
+    async def test_conditional_required_not_equals_does_not_trigger_when_values_equal(
+        self, db_session, seed_test_data
+    ):
+        """not_equals operator: condition does NOT trigger when values equal."""
+        from app.models import ColumnValidation
+        from sqlalchemy import select
+
+        project, data = await self._create_test_project(db_session, seed_test_data)
+
+        # Find the conditional_required rule
+        result = await db_session.execute(
+            select(ColumnValidation)
+            .where(ColumnValidation.rule_type == "conditional_required")
+        )
+        rule = result.scalars().first()
+        assert rule is not None
+
+        # Update rule to use not_equals operator
+        rule.rule_config = {
+            "condition_column": "SP_ADHESION_USE",
+            "condition_value": "N",
+            "operator": "not_equals"
+        }
+        await db_session.flush()
+
+        # Set SP_ADHESION_USE='N' (equals 'N'), so condition should NOT trigger
+        first_layer = sorted(project.layers, key=lambda pl: pl.sort_order)[0]
+        new_conditions = dict(first_layer.conditions)
+        new_conditions["SP_ADHESION_USE"] = "N"
+        new_conditions.pop("SP_ADHESION_TYPE", None)
+        first_layer.conditions = new_conditions
+        await db_session.flush()
+
+        result = await validate_project(db_session, project.id)
+
+        cond_errors = [
+            e for e in result.errors
+            if e.rule_type == "conditional_required"
+            and e.column_name == "SP_ADHESION_TYPE"
+            and e.layer_name == first_layer.layer.layer_name
+        ]
+        assert len(cond_errors) == 0
+
+    async def test_conditional_required_contains_triggers_when_substring_matches(
+        self, db_session, seed_test_data
+    ):
+        """contains operator: condition triggers when substring matches."""
+        from app.models import ColumnValidation
+        from sqlalchemy import select
+
+        project, data = await self._create_test_project(db_session, seed_test_data)
+
+        # Find the conditional_required rule
+        result = await db_session.execute(
+            select(ColumnValidation)
+            .where(ColumnValidation.rule_type == "conditional_required")
+        )
+        rule = result.scalars().first()
+        assert rule is not None
+
+        # Update rule to use contains operator
+        rule.rule_config = {
+            "condition_column": "SP_ADHESION_USE",
+            "condition_value": "yes",
+            "operator": "contains"
+        }
+        await db_session.flush()
+
+        # Set SP_ADHESION_USE='YES_ACTIVE' (contains 'yes'), so condition should trigger
+        first_layer = sorted(project.layers, key=lambda pl: pl.sort_order)[0]
+        new_conditions = dict(first_layer.conditions)
+        new_conditions["SP_ADHESION_USE"] = "YES_ACTIVE"
+        new_conditions.pop("SP_ADHESION_TYPE", None)
+        first_layer.conditions = new_conditions
+        await db_session.flush()
+
+        result = await validate_project(db_session, project.id)
+
+        cond_errors = [
+            e for e in result.errors
+            if e.rule_type == "conditional_required"
+            and e.column_name == "SP_ADHESION_TYPE"
+            and e.layer_name == first_layer.layer.layer_name
+        ]
+        assert len(cond_errors) == 1
+
+    async def test_conditional_required_contains_does_not_trigger_when_no_match(
+        self, db_session, seed_test_data
+    ):
+        """contains operator: condition does NOT trigger when substring not found."""
+        from app.models import ColumnValidation
+        from sqlalchemy import select
+
+        project, data = await self._create_test_project(db_session, seed_test_data)
+
+        # Find the conditional_required rule
+        result = await db_session.execute(
+            select(ColumnValidation)
+            .where(ColumnValidation.rule_type == "conditional_required")
+        )
+        rule = result.scalars().first()
+        assert rule is not None
+
+        # Update rule to use contains operator
+        rule.rule_config = {
+            "condition_column": "SP_ADHESION_USE",
+            "condition_value": "yes",
+            "operator": "contains"
+        }
+        await db_session.flush()
+
+        # Set SP_ADHESION_USE='N' (does NOT contain 'yes'), so condition should NOT trigger
+        first_layer = sorted(project.layers, key=lambda pl: pl.sort_order)[0]
+        new_conditions = dict(first_layer.conditions)
+        new_conditions["SP_ADHESION_USE"] = "N"
+        new_conditions.pop("SP_ADHESION_TYPE", None)
+        first_layer.conditions = new_conditions
+        await db_session.flush()
+
+        result = await validate_project(db_session, project.id)
+
+        cond_errors = [
+            e for e in result.errors
+            if e.rule_type == "conditional_required"
+            and e.column_name == "SP_ADHESION_TYPE"
+            and e.layer_name == first_layer.layer.layer_name
+        ]
+        assert len(cond_errors) == 0
+
+    async def test_conditional_required_defaults_to_equals_when_operator_missing(
+        self, db_session, seed_test_data
+    ):
+        """Missing operator defaults to 'equals' for backward compatibility."""
+        from app.models import ColumnValidation
+        from sqlalchemy import select
+
+        project, data = await self._create_test_project(db_session, seed_test_data)
+
+        # Find the conditional_required rule
+        result = await db_session.execute(
+            select(ColumnValidation)
+            .where(ColumnValidation.rule_type == "conditional_required")
+        )
+        rule = result.scalars().first()
+        assert rule is not None
+
+        # Update rule WITHOUT operator field (should default to equals)
+        rule.rule_config = {
+            "condition_column": "SP_ADHESION_USE",
+            "condition_value": "Y"
+            # No operator field
+        }
+        await db_session.flush()
+
+        # Set SP_ADHESION_USE='Y' (equals 'Y'), so condition should trigger
+        first_layer = sorted(project.layers, key=lambda pl: pl.sort_order)[0]
+        new_conditions = dict(first_layer.conditions)
+        new_conditions["SP_ADHESION_USE"] = "Y"
+        new_conditions.pop("SP_ADHESION_TYPE", None)
+        first_layer.conditions = new_conditions
+        await db_session.flush()
+
+        result = await validate_project(db_session, project.id)
+
+        cond_errors = [
+            e for e in result.errors
+            if e.rule_type == "conditional_required"
+            and e.column_name == "SP_ADHESION_TYPE"
+            and e.layer_name == first_layer.layer.layer_name
+        ]
+        assert len(cond_errors) == 1
+
+    # ------------------------------------------------------------------
     # Edge cases
     # ------------------------------------------------------------------
 

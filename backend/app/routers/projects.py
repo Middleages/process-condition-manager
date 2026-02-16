@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query, UploadFile, File, Form
+from fastapi import APIRouter, Depends, Query, UploadFile, File, Form, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -11,6 +11,9 @@ from app.schemas.project import (
     BulkSaveResponse,
     ValidationResponse,
     ChangeLogListResponse,
+    ReviseProjectRequest,
+    RevisionItem,
+    RevisionListResponse,
 )
 from app.schemas.backbone import (
     BackboneReplaceRequest,
@@ -101,9 +104,10 @@ async def create_project(
 async def list_projects(
     status: str | None = None,
     product_id: int | None = None,
+    is_latest: bool | None = Query(None, description="Filter by is_latest flag"),
     db: AsyncSession = Depends(get_db),
 ):
-    results = await project_service.get_projects_list(db, status, product_id)
+    results = await project_service.get_projects_list(db, status, product_id, is_latest=is_latest)
     return [_build_project_response(p, layer_count=lc) for p, lc in results]
 
 
@@ -255,3 +259,54 @@ async def apply_recipe(
 ):
     """Apply selected recipe diff changes to project conditions."""
     return await recipe_service.apply_recipe_changes(db, project_id, request)
+
+
+# --- Revision feature ---
+
+@router.post("/{project_id}/revise", response_model=ProjectDetailResponse, status_code=201)
+async def revise_project(
+    project_id: int,
+    request: ReviseProjectRequest | None = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a new revision from an approved project.
+
+    - Original project becomes status='archived', is_latest=False
+    - New project: status='draft', revision=original.revision+1, is_latest=True
+    - Layers are deep-copied with backbone_conditions set to approved conditions
+    """
+    description = request.description if request else None
+    project = await project_service.revise_project(db, project_id, description)
+    return _build_project_detail_response(project)
+
+
+@router.get("/by-product/{product_id}/revisions", response_model=RevisionListResponse)
+async def get_product_revisions(
+    product_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get revision history for a product."""
+    from app.models import Product
+    product = await db.get(Product, product_id)
+    if not product:
+        raise HTTPException(404, "Product not found")
+
+    projects = await project_service.get_product_revisions(db, product_id)
+    revisions = [
+        RevisionItem(
+            id=p.id,
+            revision=p.revision,
+            status=p.status,
+            description=None,  # Add description field to Project model if needed
+            created_by=p.creator.display_name if p.creator else None,
+            created_at=p.created_at,
+            is_latest=p.is_latest,
+        )
+        for p in projects
+    ]
+
+    return RevisionListResponse(
+        product_id=product_id,
+        product_name=product.product_name,
+        revisions=revisions,
+    )

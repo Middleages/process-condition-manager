@@ -15,11 +15,14 @@ import type {
   RecipeUploadResponse,
   RecipeApplyRequest,
   RecipeApplyResponse,
+  ReviseProjectRequest,
+  RevisionListResponse,
 } from '@/types'
 
 export async function fetchProjects(params?: {
   status?: ProjectStatus
   product_id?: number
+  is_latest?: boolean
 }): Promise<Project[]> {
   const { data } = await client.get<Project[]>('/projects', { params })
   return data
@@ -135,6 +138,27 @@ export async function applyRecipeChanges(
   const { data } = await client.post<RecipeApplyResponse>(
     `/projects/${projectId}/recipe/apply`,
     req
+  )
+  return data
+}
+
+
+// --- Revision ---
+
+export async function reviseProject(
+  projectId: number,
+  request?: ReviseProjectRequest
+): Promise<ProjectDetail> {
+  const { data } = await client.post<ProjectDetail>(
+    `/projects/${projectId}/revise`,
+    request ?? {}
+  )
+  return data
+}
+
+export async function getProductRevisions(productId: number): Promise<RevisionListResponse> {
+  const { data } = await client.get<RevisionListResponse>(
+    `/projects/by-product/${productId}/revisions`
   )
   return data
 }

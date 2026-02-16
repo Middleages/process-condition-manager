@@ -110,3 +110,27 @@ class BulkSaveResponse(BaseModel):
     updated_layers: int
     change_log_count: int
     updated_at: datetime
+
+
+# --- Revision schemas ---
+
+class ReviseProjectRequest(BaseModel):
+    description: str | None = None  # optional revision description
+
+
+class RevisionItem(BaseModel):
+    id: int
+    revision: int
+    status: str
+    description: str | None
+    created_by: str | None
+    created_at: datetime
+    is_latest: bool
+
+    model_config = {"from_attributes": True}
+
+
+class RevisionListResponse(BaseModel):
+    product_id: int
+    product_name: str
+    revisions: list[RevisionItem]

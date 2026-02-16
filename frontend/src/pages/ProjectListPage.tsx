@@ -3,10 +3,11 @@ import { useNavigate } from 'react-router-dom'
 import { useProjects } from '@/hooks/useProjects'
 import { StatusBadge } from '@/components/projects/StatusBadge'
 import { ProjectCreateModal } from '@/components/projects/ProjectCreateModal'
+import { VersionHistoryModal } from '@/components/projects/VersionHistoryModal'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import type { ProjectStatus } from '@/types'
-import { Plus, Search, Loader2 } from 'lucide-react'
+import { Plus, Search, Loader2, History } from 'lucide-react'
 
 const STATUS_FILTERS: { label: string; value: ProjectStatus | 'all' }[] = [
   { label: '전체', value: 'all' },
@@ -21,6 +22,9 @@ export default function ProjectListPage() {
   const [statusFilter, setStatusFilter] = useState<ProjectStatus | 'all'>('all')
   const [searchText, setSearchText] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
+  const [isLatestOnly, setIsLatestOnly] = useState(true)
+  const [historyProductId, setHistoryProductId] = useState<number | null>(null)
+  const [historyProjectId, setHistoryProjectId] = useState<number>(0)
 
   const queryStatus = statusFilter === 'all' ? undefined : statusFilter
   const { data: projects = [], isLoading } = useProjects(queryStatus)
@@ -30,6 +34,8 @@ export default function ProjectListPage() {
         p.product_name.toLowerCase().includes(searchText.toLowerCase())
       )
     : projects
+
+  const displayProjects = isLatestOnly ? filtered.filter((p) => p.is_latest) : filtered
 
   return (
     <div className="h-full flex flex-col p-6">
@@ -48,6 +54,18 @@ export default function ProjectListPage() {
           ))}
         </div>
         <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="latest-only"
+              checked={isLatestOnly}
+              onChange={(e) => setIsLatestOnly(e.target.checked)}
+              className="h-4 w-4"
+            />
+            <label htmlFor="latest-only" className="text-sm">
+              최신 버전만 표시
+            </label>
+          </div>
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -73,6 +91,7 @@ export default function ProjectListPage() {
               <th className="text-left px-4 py-3 font-medium">제품명</th>
               <th className="text-left px-4 py-3 font-medium">Backbone</th>
               <th className="text-left px-4 py-3 font-medium w-20">레이어</th>
+              <th className="text-left px-4 py-3 font-medium w-24">버전</th>
               <th className="text-left px-4 py-3 font-medium w-24">상태</th>
               <th className="text-left px-4 py-3 font-medium w-24">생성자</th>
               <th className="text-left px-4 py-3 font-medium w-40">수정일</th>
@@ -81,27 +100,49 @@ export default function ProjectListPage() {
           <tbody>
             {isLoading ? (
               <tr>
-                <td colSpan={7} className="text-center py-12">
+                <td colSpan={8} className="text-center py-12">
                   <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
                 </td>
               </tr>
-            ) : filtered.length === 0 ? (
+            ) : displayProjects.length === 0 ? (
               <tr>
-                <td colSpan={7} className="text-center py-12 text-muted-foreground">
+                <td colSpan={8} className="text-center py-12 text-muted-foreground">
                   프로젝트가 없습니다.
                 </td>
               </tr>
             ) : (
-              filtered.map((project) => (
+              displayProjects.map((project) => (
                 <tr
                   key={project.id}
-                  className="border-b hover:bg-muted/30 cursor-pointer transition-colors"
-                  onClick={() => navigate(`/projects/${project.id}/edit`)}
+                  className="border-b hover:bg-muted/30 transition-colors"
                 >
                   <td className="px-4 py-3 text-muted-foreground">{project.id}</td>
-                  <td className="px-4 py-3 font-medium">{project.product_name}</td>
+                  <td
+                    className="px-4 py-3 font-medium cursor-pointer hover:text-blue-600"
+                    onClick={() => navigate(`/projects/${project.id}/edit`)}
+                  >
+                    {project.product_name}
+                  </td>
                   <td className="px-4 py-3 text-muted-foreground">{project.backbone_name}</td>
                   <td className="px-4 py-3 text-center text-muted-foreground">{project.layer_count}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">v{project.revision}</span>
+                      {project.revision > 1 && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setHistoryProductId(project.product_id)
+                            setHistoryProjectId(project.id)
+                          }}
+                          className="text-blue-600 hover:text-blue-800"
+                          title="버전 히스토리 보기"
+                        >
+                          <History className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                  </td>
                   <td className="px-4 py-3">
                     <StatusBadge status={project.status} />
                   </td>
@@ -123,6 +164,18 @@ export default function ProjectListPage() {
       </div>
 
       <ProjectCreateModal open={createOpen} onOpenChange={setCreateOpen} />
+
+      <VersionHistoryModal
+        open={historyProductId !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setHistoryProductId(null)
+            setHistoryProjectId(0)
+          }
+        }}
+        productId={historyProductId}
+        currentProjectId={historyProjectId}
+      />
     </div>
   )
 }

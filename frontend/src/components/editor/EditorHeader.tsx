@@ -5,7 +5,7 @@ import { StatusBadge } from '@/components/projects/StatusBadge'
 import { computeProjectDiff } from '@/lib/diff'
 import { useEditorStore } from '@/stores/useEditorStore'
 import type { ProjectDetail } from '@/types'
-import { ArrowLeft, Save, Loader2, AlertTriangle, GitCompare, FileUp } from 'lucide-react'
+import { ArrowLeft, Save, Loader2, AlertTriangle, GitCompare, FileUp, GitBranch } from 'lucide-react'
 
 interface Props {
   project: ProjectDetail
@@ -13,9 +13,10 @@ interface Props {
   onSave: () => void
   lastSavedAt?: string | null
   onRecipeUpload?: () => void
+  onCreateRevision?: () => void
 }
 
-export function EditorHeader({ project, errorCount, onSave, lastSavedAt, onRecipeUpload }: Props) {
+export function EditorHeader({ project, errorCount, onSave, lastSavedAt, onRecipeUpload, onCreateRevision }: Props) {
   const navigate = useNavigate()
   const hasDirty = useEditorStore((s) => s.hasDirtyCells())
   const isSaving = useEditorStore((s) => s.isSaving)
@@ -85,18 +86,31 @@ export function EditorHeader({ project, errorCount, onSave, lastSavedAt, onRecip
         </Button>
       )}
 
-      <Button
-        size="sm"
-        onClick={onSave}
-        disabled={!hasDirty || isSaving}
-      >
-        {isSaving ? (
-          <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-        ) : (
-          <Save className="mr-1.5 h-4 w-4" />
-        )}
-        저장
-      </Button>
+      {project.status === 'approved' && onCreateRevision && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onCreateRevision}
+        >
+          <GitBranch className="mr-1.5 h-4 w-4" />
+          개정판 만들기
+        </Button>
+      )}
+
+      {project.status !== 'approved' && project.status !== 'archived' && (
+        <Button
+          size="sm"
+          onClick={onSave}
+          disabled={!hasDirty || isSaving}
+        >
+          {isSaving ? (
+            <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+          ) : (
+            <Save className="mr-1.5 h-4 w-4" />
+          )}
+          저장
+        </Button>
+      )}
     </div>
   )
 }
