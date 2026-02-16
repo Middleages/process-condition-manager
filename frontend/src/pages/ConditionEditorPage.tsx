@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, useMemo } from 'react'
 import { useParams, useBlocker } from 'react-router-dom'
 import { useProjectDetail, useBulkSave, useValidateProjectMutation, useDeleteLayer } from '@/hooks/useProjects'
 import { useColumns } from '@/hooks/useColumns'
@@ -16,7 +16,8 @@ import { ChangeHistoryPanel } from '@/components/editor/ChangeHistoryPanel'
 import { BackboneReplaceModal } from '@/components/editor/BackboneReplaceModal'
 import { LayerAddModal } from '@/components/editor/LayerAddModal'
 import { RecipeUploadModal } from '@/components/editor/RecipeUploadModal'
-import { validateCellValue } from '@/lib/validation'
+import { RevisionCreateModal } from '@/components/editor/RevisionCreateModal'
+import { validateCellValue, buildConditionDependencyMap } from '@/lib/validation'
 import { ApiError } from '@/api/client'
 import type { LayerConditions, ValidationError, ProjectLayerData } from '@/types'
 import { Loader2 } from 'lucide-react'
@@ -47,12 +48,14 @@ export default function ConditionEditorPage() {
 
   const hasDirty = dirtyCells.size > 0
   const isDraft = project?.status === 'draft'
+  const isArchived = project?.status === 'archived'
 
   // Modal states
   const [backboneReplaceLayer, setBackboneReplaceLayer] = useState<ProjectLayerData | null>(null)
   const [showBackboneModal, setShowBackboneModal] = useState(false)
   const [showLayerAddModal, setShowLayerAddModal] = useState(false)
   const [showRecipeModal, setShowRecipeModal] = useState(false)
+  const [showRevisionModal, setShowRevisionModal] = useState(false)
 
   // --- beforeunload: warn on browser close/refresh ---
   useEffect(() => {
@@ -101,9 +104,21 @@ export default function ConditionEditorPage() {
   const activeCategoryData = categories.find((c) => c.category_code === activeCategory)
   const activeColumns = activeCategoryData?.columns ?? []
 
+  // Build dependency map for cross-field validation (memoized)
+  const conditionDependencyMap = useMemo(
+    () => buildConditionDependencyMap(categories),
+    [categories]
+  )
+
   // Run client-side validation on cell change
   const handleCellChanged = useCallback(
     (projectLayerId: number, columnName: string, newValue: unknown, _oldValue: unknown) => {
+      // Prevent editing archived projects
+      if (isArchived) {
+        addToast('보관된 프로젝트는 수정할 수 없습니다.', 'error')
+        return
+      }
+
       // Find the backbone value for this cell
       const layer = project?.layers.find((l) => l.id === projectLayerId)
       const backboneValue = layer?.backbone_conditions[columnName]
@@ -129,11 +144,39 @@ export default function ConditionEditorPage() {
             message: msg,
           }))
 
-          setValidationErrors([...otherErrors, ...newErrors])
+          let allNewErrors = [...otherErrors, ...newErrors]
+
+          // Check if this column is a condition column for other fields
+          const dependentColumns = conditionDependencyMap.get(columnName)
+          if (dependentColumns && dependentColumns.length > 0) {
+            // Re-validate dependent columns
+            for (const depColumn of dependentColumns) {
+              const depValue = layer.conditions[depColumn.column_name]
+              const depErrors = validateCellValue(depValue, depColumn, layer.conditions)
+
+              // Remove old errors for this dependent column
+              allNewErrors = allNewErrors.filter(
+                (e) => !(e.layer_id === layer.layer_id && e.column_name === depColumn.column_name)
+              )
+
+              // Add new errors for this dependent column
+              const depNewErrors: ValidationError[] = depErrors.map((msg) => ({
+                layer_id: layer.layer_id,
+                layer_name: layer.layer_name,
+                column_name: depColumn.column_name,
+                display_name: depColumn.display_name,
+                rule_type: 'client',
+                message: msg,
+              }))
+              allNewErrors = [...allNewErrors, ...depNewErrors]
+            }
+          }
+
+          setValidationErrors(allNewErrors)
         }
       }
     },
-    [project, activeCategoryData, setCellValue, setValidationErrors]
+    [project, activeCategoryData, conditionDependencyMap, setCellValue, setValidationErrors, isArchived, addToast]
   )
 
   // Build save payload from dirty cells
@@ -199,10 +242,10 @@ export default function ConditionEditorPage() {
     }
   }, [project, currentUserId, buildSavePayload, bulkSave, clearAllDirty, setIsSaving, addToast, validateMutation, pid, setValidationErrors])
 
-  // Auto-save every 30 seconds
+  // Auto-save every 30 seconds (only for draft, not archived)
   const { lastSavedAt } = useAutoSave({
     onSave: handleSave,
-    enabled: !!project && !!currentUserId && project.status === 'draft',
+    enabled: !!project && !!currentUserId && project.status === 'draft' && !isArchived,
   })
 
   // Handle layer nav click - scroll grid
@@ -276,6 +319,7 @@ export default function ConditionEditorPage() {
         onSave={handleSave}
         lastSavedAt={lastSavedAt}
         onRecipeUpload={() => setShowRecipeModal(true)}
+        onCreateRevision={() => setShowRevisionModal(true)}
       />
 
       <CategoryTabs categories={categories} />
@@ -337,6 +381,13 @@ export default function ConditionEditorPage() {
         onOpenChange={setShowRecipeModal}
         projectId={pid}
         layers={project.layers}
+      />
+
+      {/* Revision Create Modal */}
+      <RevisionCreateModal
+        open={showRevisionModal}
+        onOpenChange={setShowRevisionModal}
+        project={project}
       />
     </div>
   )

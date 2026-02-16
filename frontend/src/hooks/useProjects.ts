@@ -11,6 +11,8 @@ import {
   deleteProjectLayer,
   uploadRecipeXml,
   applyRecipeChanges,
+  reviseProject,
+  getProductRevisions,
 } from '@/api/projects'
 import type {
   ProjectStatus,
@@ -19,6 +21,7 @@ import type {
   BackboneReplaceRequest,
   LayerAddRequest,
   RecipeApplyRequest,
+  ReviseProjectRequest,
 } from '@/types'
 
 export const projectKeys = {
@@ -144,5 +147,25 @@ export function useApplyRecipe(projectId: number) {
       queryClient.invalidateQueries({ queryKey: projectKeys.detail(projectId) })
       queryClient.invalidateQueries({ queryKey: projectKeys.changeLogs(projectId) })
     },
+  })
+}
+
+export function useReviseProject() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ projectId, request }: { projectId: number; request?: ReviseProjectRequest }) =>
+      reviseProject(projectId, request),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: projectKeys.lists() })
+    },
+  })
+}
+
+export function useProductRevisions(productId: number | null) {
+  return useQuery({
+    queryKey: ['product-revisions', productId],
+    queryFn: () => getProductRevisions(productId!),
+    enabled: !!productId,
   })
 }

@@ -322,3 +322,24 @@ export interface BulkUploadResponse {
   rules_created: number
   warnings: string[]
 }
+
+// ========== Revision ==========
+export interface ReviseProjectRequest {
+  description?: string
+}
+
+export interface RevisionItem {
+  id: number
+  revision: number
+  status: string
+  description: string | null
+  created_by: string | null
+  created_at: string
+  is_latest: boolean
+}
+
+export interface RevisionListResponse {
+  product_id: number
+  product_name: string
+  revisions: RevisionItem[]
+}

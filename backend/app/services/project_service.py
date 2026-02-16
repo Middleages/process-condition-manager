@@ -121,11 +121,13 @@ async def get_projects_list(
     status: str | None = None,
     product_id: int | None = None,
     include_all_versions: bool = False,
+    is_latest: bool | None = None,
 ) -> list[tuple[Project, int]]:
     """List projects with optional filters, returning (project, layer_count) tuples.
 
     By default, only returns the latest version per product (is_latest=True).
     Set include_all_versions=True to return all versions.
+    Explicit is_latest filter overrides include_all_versions.
     """
     layer_count_sq = (
         select(func.count(ProjectLayer.id))
@@ -143,7 +145,9 @@ async def get_projects_list(
         )
         .order_by(Project.updated_at.desc())
     )
-    if not include_all_versions:
+    if is_latest is not None:
+        query = query.where(Project.is_latest == is_latest)
+    elif not include_all_versions:
         query = query.where(Project.is_latest == True)
     if status:
         query = query.where(Project.status == status)
@@ -152,3 +156,99 @@ async def get_projects_list(
 
     result = await db.execute(query)
     return list(result.unique().all())
+
+
+async def revise_project(
+    db: AsyncSession,
+    project_id: int,
+    description: str | None = None,
+) -> Project:
+    """Create a new revision (Draft) from an Approved project.
+
+    1. Validates project exists and status == "approved"
+    2. Checks no active (draft/review) project exists for the same product_id
+    3. In single transaction:
+       a. Archive original: status="archived", is_latest=False
+       b. Create new project: same product_id, status="draft", revision=original.revision+1,
+          parent_project_id=original.id, is_latest=True
+       c. Deep-copy project_layers: conditions from original,
+          backbone_conditions = original's conditions (important: use approved conditions as new baseline)
+    4. Commit and return new project via get_project_detail
+    """
+
+    # 1. Load project with layers
+    result = await db.execute(
+        select(Project)
+        .options(
+            selectinload(Project.layers).selectinload(ProjectLayer.layer),
+            selectinload(Project.product),
+        )
+        .where(Project.id == project_id)
+    )
+    original = result.scalars().first()
+    if not original:
+        raise HTTPException(404, "Project not found")
+    if original.status != "approved":
+        raise HTTPException(400, f"Can only revise approved projects. Current status: {original.status}")
+
+    # 2. Check no active project exists for same product
+    result = await db.execute(
+        select(Project)
+        .where(
+            Project.product_id == original.product_id,
+            Project.status.in_(["draft", "review"]),
+        )
+    )
+    existing = result.scalars().first()
+    if existing:
+        raise HTTPException(409, f"Active project (status={existing.status}) already exists for this product")
+
+    # 3. Archive original
+    original.status = "archived"
+    original.is_latest = False
+
+    # 4. Create new project
+    new_project = Project(
+        product_id=original.product_id,
+        main_backbone_id=original.main_backbone_id,
+        status="draft",
+        revision=original.revision + 1,
+        parent_project_id=original.id,
+        is_latest=True,
+        created_by=original.created_by,  # Inherit creator or could be parameterized
+    )
+    db.add(new_project)
+    await db.flush()
+
+    # 5. Deep-copy project_layers: backbone_conditions = original's conditions
+    for original_layer in original.layers:
+        new_layer = ProjectLayer(
+            project_id=new_project.id,
+            layer_id=original_layer.layer_id,
+            backbone_product_id=original_layer.backbone_product_id,
+            conditions=copy.deepcopy(original_layer.conditions),
+            backbone_conditions=copy.deepcopy(original_layer.conditions),  # Important: use approved conditions
+            sort_order=original_layer.sort_order,
+        )
+        db.add(new_layer)
+
+    await db.commit()
+
+    # 6. Return new project with all relationships loaded
+    return await get_project_detail(db, new_project.id)
+
+
+async def get_product_revisions(
+    db: AsyncSession,
+    product_id: int,
+) -> list[Project]:
+    """Get all revision history for a product, ordered by revision DESC."""
+    result = await db.execute(
+        select(Project)
+        .options(
+            selectinload(Project.creator),
+        )
+        .where(Project.product_id == product_id)
+        .order_by(Project.revision.desc())
+    )
+    return list(result.scalars().all())

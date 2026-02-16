@@ -1,4 +1,54 @@
-import type { ColumnDefinition } from '@/types'
+import type { ColumnDefinition, ColumnCategory } from '@/types'
+
+/**
+ * Evaluate a condition based on operator (equals, not_equals, contains).
+ */
+export function evaluateCondition(actual: unknown, expected: unknown, operator: string): boolean {
+  const actualStr = actual !== null && actual !== undefined ? String(actual) : ''
+  const expectedStr = String(expected)
+
+  if (operator === 'not_equals') {
+    return actualStr !== expectedStr
+  } else if (operator === 'contains') {
+    return actualStr.toLowerCase().includes(expectedStr.toLowerCase())
+  } else {
+    // equals (default)
+    return actualStr === expectedStr
+  }
+}
+
+/**
+ * Build a reverse dependency map: condition_column → [dependent ColumnDefinitions]
+ *
+ * This map helps identify which columns need re-validation when a condition column changes.
+ */
+export function buildConditionDependencyMap(
+  categories: ColumnCategory[]
+): Map<string, ColumnDefinition[]> {
+  const dependencyMap = new Map<string, ColumnDefinition[]>()
+
+  for (const category of categories) {
+    for (const column of category.columns) {
+      for (const rule of column.validations) {
+        if (rule.rule_type === 'conditional_required' && rule.is_active) {
+          const config = rule.rule_config as {
+            condition_column: string
+            condition_value: unknown
+            operator?: string
+          }
+          const conditionColumn = config.condition_column
+
+          if (!dependencyMap.has(conditionColumn)) {
+            dependencyMap.set(conditionColumn, [])
+          }
+          dependencyMap.get(conditionColumn)!.push(column)
+        }
+      }
+    }
+  }
+
+  return dependencyMap
+}
 
 /**
  * Client-side cell validation.
@@ -43,9 +93,10 @@ export function validateCellValue(
         const config = rule.rule_config as {
           condition_column: string
           condition_value: unknown
+          operator?: string
         }
         const depValue = _rowConditions[config.condition_column]
-        if (String(depValue) === String(config.condition_value)) {
+        if (evaluateCondition(depValue, config.condition_value, config.operator ?? 'equals')) {
           if (value === null || value === undefined || value === '') {
             errors.push(rule.error_message || `${colDef.display_name}은(는) 조건부 필수입니다.`)
           }

@@ -63,6 +63,17 @@ def _validate_range(
         ))
 
 
+def _evaluate_condition(actual_value: Any, condition_value: str, operator: str) -> bool:
+    """Evaluate a condition based on operator (equals, not_equals, contains)."""
+    actual_str = str(actual_value) if actual_value is not None else ""
+    if operator == "not_equals":
+        return actual_str != str(condition_value)
+    elif operator == "contains":
+        return str(condition_value).lower() in actual_str.lower()
+    else:  # equals (default)
+        return actual_str == str(condition_value)
+
+
 def _validate_conditional_required(
     value: Any,
     rule: ColumnValidation,
@@ -72,15 +83,16 @@ def _validate_conditional_required(
     layer: Layer,
     errors: list[ValidationErrorItem],
 ) -> None:
-    """Check conditional required: if condition_column == condition_value, target must be non-empty."""
+    """Check conditional required: if condition_column matches condition_value via operator, target must be non-empty."""
     config = rule.rule_config
     cond_col = config["condition_column"]
     cond_val = config["condition_value"]
+    operator = config.get("operator", "equals")
 
     actual_cond_val = conditions.get(cond_col)
 
     # Check if condition is met
-    if str(actual_cond_val) == str(cond_val):
+    if _evaluate_condition(actual_cond_val, cond_val, operator):
         if value is None or (isinstance(value, str) and value.strip() == ""):
             col_def = col_by_name.get(col_name)
             if col_def:

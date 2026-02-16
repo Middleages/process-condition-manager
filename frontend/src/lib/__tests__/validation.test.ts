@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { validateCellValue } from '@/lib/validation'
-import type { ColumnDefinition, ColumnValidation } from '@/types'
+import { validateCellValue, buildConditionDependencyMap } from '@/lib/validation'
+import type { ColumnDefinition, ColumnValidation, ColumnCategory } from '@/types'
 
 // ---------------------------------------------------------------------------
 // Helper to build a ColumnDefinition with the given validations
@@ -243,6 +243,72 @@ describe('validateCellValue - conditional_required', () => {
     const errors = validateCellValue('', colDef, rowConditions)
     expect(errors).toHaveLength(1)
   })
+
+  it('supports not_equals operator', () => {
+    const colDef = makeColDef('Special Field', [
+      makeRule({
+        rule_type: 'conditional_required',
+        rule_config: {
+          condition_column: 'status',
+          condition_value: 'disabled',
+          operator: 'not_equals'
+        },
+      }),
+    ])
+
+    // Condition triggers when status != 'disabled'
+    const rowConditions1 = { status: 'enabled' }
+    expect(validateCellValue(null, colDef, rowConditions1)).toHaveLength(1)
+
+    // Condition does NOT trigger when status == 'disabled'
+    const rowConditions2 = { status: 'disabled' }
+    expect(validateCellValue(null, colDef, rowConditions2)).toHaveLength(0)
+  })
+
+  it('supports contains operator (case insensitive)', () => {
+    const colDef = makeColDef('Detail Field', [
+      makeRule({
+        rule_type: 'conditional_required',
+        rule_config: {
+          condition_column: 'mode',
+          condition_value: 'auto',
+          operator: 'contains'
+        },
+      }),
+    ])
+
+    // Condition triggers when mode contains 'auto' (case insensitive)
+    const rowConditions1 = { mode: 'AUTO_MODE' }
+    expect(validateCellValue(null, colDef, rowConditions1)).toHaveLength(1)
+
+    const rowConditions2 = { mode: 'semi-automatic' }
+    expect(validateCellValue(null, colDef, rowConditions2)).toHaveLength(1)
+
+    // Condition does NOT trigger when mode does not contain 'auto'
+    const rowConditions3 = { mode: 'manual' }
+    expect(validateCellValue(null, colDef, rowConditions3)).toHaveLength(0)
+  })
+
+  it('defaults to equals operator when operator is missing', () => {
+    const colDef = makeColDef('Legacy Field', [
+      makeRule({
+        rule_type: 'conditional_required',
+        rule_config: {
+          condition_column: 'flag',
+          condition_value: 'Y'
+          // No operator field - should default to 'equals'
+        },
+      }),
+    ])
+
+    // Condition triggers when flag == 'Y' (equals behavior)
+    const rowConditions1 = { flag: 'Y' }
+    expect(validateCellValue(null, colDef, rowConditions1)).toHaveLength(1)
+
+    // Condition does NOT trigger when flag != 'Y'
+    const rowConditions2 = { flag: 'N' }
+    expect(validateCellValue(null, colDef, rowConditions2)).toHaveLength(0)
+  })
 })
 
 // ===========================================================================
@@ -284,5 +350,180 @@ describe('validateCellValue - no validations', () => {
     const colDef = makeColDef('FreeField', [])
     expect(validateCellValue(null, colDef, {})).toHaveLength(0)
     expect(validateCellValue('anything', colDef, {})).toHaveLength(0)
+  })
+})
+
+// ===========================================================================
+// buildConditionDependencyMap
+// ===========================================================================
+describe('buildConditionDependencyMap', () => {
+  it('builds a reverse dependency map for conditional_required rules', () => {
+    const categories: ColumnCategory[] = [
+      {
+        id: 1,
+        category_code: 'SP',
+        category_name: 'Spin Process',
+        sort_order: 1,
+        columns: [
+          {
+            id: 1,
+            column_name: 'adhesion_use',
+            display_name: 'Adhesion Use',
+            category_id: 1,
+            data_type: 'string',
+            select_options: null,
+            unit: null,
+            sort_order: 1,
+            is_required: false,
+            validations: [],
+          },
+          {
+            id: 2,
+            column_name: 'adhesion_type',
+            display_name: 'Adhesion Type',
+            category_id: 1,
+            data_type: 'string',
+            select_options: null,
+            unit: null,
+            sort_order: 2,
+            is_required: false,
+            validations: [
+              makeRule({
+                rule_type: 'conditional_required',
+                rule_config: {
+                  condition_column: 'adhesion_use',
+                  condition_value: 'Y',
+                  operator: 'equals'
+                },
+              }),
+            ],
+          },
+          {
+            id: 3,
+            column_name: 'another_field',
+            display_name: 'Another Field',
+            category_id: 1,
+            data_type: 'string',
+            select_options: null,
+            unit: null,
+            sort_order: 3,
+            is_required: false,
+            validations: [
+              makeRule({
+                rule_type: 'conditional_required',
+                rule_config: {
+                  condition_column: 'adhesion_use',
+                  condition_value: 'Y',
+                  operator: 'equals'
+                },
+              }),
+            ],
+          },
+        ],
+      },
+    ]
+
+    const dependencyMap = buildConditionDependencyMap(categories)
+
+    // adhesion_use is referenced by 2 columns
+    expect(dependencyMap.has('adhesion_use')).toBe(true)
+    expect(dependencyMap.get('adhesion_use')?.length).toBe(2)
+
+    const dependents = dependencyMap.get('adhesion_use') || []
+    const dependentNames = dependents.map((c) => c.column_name)
+    expect(dependentNames).toContain('adhesion_type')
+    expect(dependentNames).toContain('another_field')
+  })
+
+  it('ignores inactive conditional_required rules', () => {
+    const categories: ColumnCategory[] = [
+      {
+        id: 1,
+        category_code: 'SP',
+        category_name: 'Spin Process',
+        sort_order: 1,
+        columns: [
+          {
+            id: 1,
+            column_name: 'condition_col',
+            display_name: 'Condition Col',
+            category_id: 1,
+            data_type: 'string',
+            select_options: null,
+            unit: null,
+            sort_order: 1,
+            is_required: false,
+            validations: [],
+          },
+          {
+            id: 2,
+            column_name: 'dependent_col',
+            display_name: 'Dependent Col',
+            category_id: 1,
+            data_type: 'string',
+            select_options: null,
+            unit: null,
+            sort_order: 2,
+            is_required: false,
+            validations: [
+              makeRule({
+                rule_type: 'conditional_required',
+                rule_config: {
+                  condition_column: 'condition_col',
+                  condition_value: 'X',
+                },
+                is_active: false,
+              }),
+            ],
+          },
+        ],
+      },
+    ]
+
+    const dependencyMap = buildConditionDependencyMap(categories)
+
+    // Inactive rule should not be in the map
+    expect(dependencyMap.has('condition_col')).toBe(false)
+  })
+
+  it('returns empty map when there are no conditional_required rules', () => {
+    const categories: ColumnCategory[] = [
+      {
+        id: 1,
+        category_code: 'SP',
+        category_name: 'Spin Process',
+        sort_order: 1,
+        columns: [
+          {
+            id: 1,
+            column_name: 'field1',
+            display_name: 'Field 1',
+            category_id: 1,
+            data_type: 'string',
+            select_options: null,
+            unit: null,
+            sort_order: 1,
+            is_required: false,
+            validations: [makeRule({ rule_type: 'required' })],
+          },
+          {
+            id: 2,
+            column_name: 'field2',
+            display_name: 'Field 2',
+            category_id: 1,
+            data_type: 'float',
+            select_options: null,
+            unit: null,
+            sort_order: 2,
+            is_required: false,
+            validations: [makeRule({ rule_type: 'range', rule_config: { min: 0, max: 100 } })],
+          },
+        ],
+      },
+    ]
+
+    const dependencyMap = buildConditionDependencyMap(categories)
+
+    expect(dependencyMap.size).toBe(0)
   })
 })
