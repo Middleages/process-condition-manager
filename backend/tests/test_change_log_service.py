@@ -35,6 +35,8 @@ class TestGetChangeLogs:
 
         Returns (project, data, layers_sorted).
         """
+        from app.services.project_service import get_project_detail
+
         data = seed_test_data
         project = await create_project(
             db_session, data["target"].id, data["backbone"].id, data["user"].id,
@@ -60,8 +62,10 @@ class TestGetChangeLogs:
         result1 = await bulk_save_conditions(db_session, project.id, request1)
         assert result1.success is True
 
-        # Reload project to get fresh updated_at
-        await db_session.refresh(project)
+        # Reload project with eager loading to get fresh updated_at and maintain relationships
+        project = await get_project_detail(db_session, project.id)
+        layers_sorted = sorted(project.layers, key=lambda pl: pl.sort_order)
+        layer_a, layer_b, layer_c = layers_sorted
 
         # --- Second bulk save: change LAYER_A again + LAYER_C ---
         request2 = BulkSaveRequest(
@@ -80,6 +84,17 @@ class TestGetChangeLogs:
         )
         result2 = await bulk_save_conditions(db_session, project.id, request2)
         assert result2.success is True
+
+        # Reload layers with eager loading to ensure relationships are accessible
+        from sqlalchemy.orm import selectinload
+        from app.models import ProjectLayer
+        layers_result = await db_session.execute(
+            select(ProjectLayer)
+            .options(selectinload(ProjectLayer.layer))
+            .where(ProjectLayer.project_id == project.id)
+            .order_by(ProjectLayer.sort_order)
+        )
+        layers_sorted = layers_result.scalars().all()
 
         return project, data, layers_sorted
 
