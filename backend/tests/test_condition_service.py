@@ -18,7 +18,7 @@ import pytest
 from fastapi import HTTPException
 from sqlalchemy import select
 
-from app.models import ChangeLog, Project
+from app.models import ChangeLog, Project, ProjectLayer
 from app.services.project_service import create_project
 from app.services.condition_service import bulk_save_conditions
 from app.schemas.project import BulkSaveRequest, LayerConditions
@@ -36,6 +36,15 @@ class TestBulkSaveConditions:
         )
         return project, data
 
+    async def _get_project_layers(self, db_session, project_id: int) -> list[ProjectLayer]:
+        """Helper: query project_layers explicitly to avoid lazy loading issues."""
+        result = await db_session.execute(
+            select(ProjectLayer)
+            .where(ProjectLayer.project_id == project_id)
+            .order_by(ProjectLayer.sort_order)
+        )
+        return result.scalars().all()
+
     # ------------------------------------------------------------------
     # Successful saves
     # ------------------------------------------------------------------
@@ -43,14 +52,23 @@ class TestBulkSaveConditions:
     async def test_bulk_save_creates_change_logs(self, db_session, seed_test_data):
         """Changing one value should create exactly one change_log entry."""
         project, data = await self._create_test_project(db_session, seed_test_data)
-        first_layer = sorted(project.layers, key=lambda pl: pl.sort_order)[0]
+
+        # Query project_layers explicitly instead of using project.layers relationship
+        layers_result = await db_session.execute(
+            select(ProjectLayer).where(ProjectLayer.project_id == project.id).order_by(ProjectLayer.sort_order)
+        )
+        layers = layers_result.scalars().all()
+        first_layer = layers[0]
+
+        # Extract ID before any commits to avoid detachment issues
+        first_layer_id = first_layer.id
 
         new_conditions = dict(first_layer.conditions)
         new_conditions["SP_SPIN1_SPEED_rpm"] = 3000  # was 2000
 
         request = BulkSaveRequest(
             layers=[LayerConditions(
-                project_layer_id=first_layer.id,
+                project_layer_id=first_layer_id,
                 conditions=new_conditions,
             )],
             updated_by=data["user"].id,
@@ -65,7 +83,7 @@ class TestBulkSaveConditions:
 
         # Verify persisted change_log
         logs_result = await db_session.execute(
-            select(ChangeLog).where(ChangeLog.project_layer_id == first_layer.id)
+            select(ChangeLog).where(ChangeLog.project_layer_id == first_layer_id)
         )
         change_logs = logs_result.scalars().all()
         speed_log = [cl for cl in change_logs if cl.column_name == "SP_SPIN1_SPEED_rpm"]
@@ -79,7 +97,8 @@ class TestBulkSaveConditions:
         """After saving, project.updated_at should be refreshed."""
         project, data = await self._create_test_project(db_session, seed_test_data)
         original_updated_at = project.updated_at
-        first_layer = sorted(project.layers, key=lambda pl: pl.sort_order)[0]
+        layers = await self._get_project_layers(db_session, project.id)
+        first_layer = layers[0]
 
         request = BulkSaveRequest(
             layers=[LayerConditions(
@@ -97,7 +116,8 @@ class TestBulkSaveConditions:
     async def test_bulk_save_no_changes_produces_zero_logs(self, db_session, seed_test_data):
         """Saving identical conditions should produce zero change_logs."""
         project, data = await self._create_test_project(db_session, seed_test_data)
-        first_layer = sorted(project.layers, key=lambda pl: pl.sort_order)[0]
+        layers = await self._get_project_layers(db_session, project.id)
+        first_layer = layers[0]
 
         request = BulkSaveRequest(
             layers=[LayerConditions(
@@ -116,14 +136,18 @@ class TestBulkSaveConditions:
     async def test_bulk_save_logs_deleted_keys(self, db_session, seed_test_data):
         """Removing a key from conditions should log old_value -> None."""
         project, data = await self._create_test_project(db_session, seed_test_data)
-        first_layer = sorted(project.layers, key=lambda pl: pl.sort_order)[0]
+        layers = await self._get_project_layers(db_session, project.id)
+        first_layer = layers[0]
+
+        # Extract ID before any commits to avoid detachment issues
+        first_layer_id = first_layer.id
 
         new_conditions = dict(first_layer.conditions)
         del new_conditions["SP_ADHESION_TYPE"]
 
         request = BulkSaveRequest(
             layers=[LayerConditions(
-                project_layer_id=first_layer.id,
+                project_layer_id=first_layer_id,
                 conditions=new_conditions,
             )],
             updated_by=data["user"].id,
@@ -133,9 +157,10 @@ class TestBulkSaveConditions:
         result = await bulk_save_conditions(db_session, project.id, request)
         assert result.success is True
 
+        # Verify persisted change_log
         logs_result = await db_session.execute(
             select(ChangeLog).where(
-                ChangeLog.project_layer_id == first_layer.id,
+                ChangeLog.project_layer_id == first_layer_id,
                 ChangeLog.column_name == "SP_ADHESION_TYPE",
             )
         )
@@ -148,16 +173,19 @@ class TestBulkSaveConditions:
         """Adding a brand-new key should log None -> new_value."""
         project, data = await self._create_test_project(db_session, seed_test_data)
         # LAYER_B has no SP_ADHESION_TYPE
-        layers_sorted = sorted(project.layers, key=lambda pl: pl.sort_order)
+        layers_sorted = await self._get_project_layers(db_session, project.id)
         layer_b = layers_sorted[1]
         assert "SP_ADHESION_TYPE" not in layer_b.conditions
+
+        # Extract ID before any commits to avoid detachment issues
+        layer_b_id = layer_b.id
 
         new_conditions = dict(layer_b.conditions)
         new_conditions["SP_ADHESION_TYPE"] = "NEW_VAL"
 
         request = BulkSaveRequest(
             layers=[LayerConditions(
-                project_layer_id=layer_b.id,
+                project_layer_id=layer_b_id,
                 conditions=new_conditions,
             )],
             updated_by=data["user"].id,
@@ -167,9 +195,10 @@ class TestBulkSaveConditions:
         result = await bulk_save_conditions(db_session, project.id, request)
         assert result.success is True
 
+        # Verify persisted change_log
         logs_result = await db_session.execute(
             select(ChangeLog).where(
-                ChangeLog.project_layer_id == layer_b.id,
+                ChangeLog.project_layer_id == layer_b_id,
                 ChangeLog.column_name == "SP_ADHESION_TYPE",
             )
         )
@@ -181,7 +210,7 @@ class TestBulkSaveConditions:
     async def test_bulk_save_multiple_layers(self, db_session, seed_test_data):
         """Saving changes across 2 layers should produce correct total change_log_count."""
         project, data = await self._create_test_project(db_session, seed_test_data)
-        layers_sorted = sorted(project.layers, key=lambda pl: pl.sort_order)
+        layers_sorted = await self._get_project_layers(db_session, project.id)
 
         layer_a = layers_sorted[0]
         layer_b = layers_sorted[1]
@@ -214,7 +243,8 @@ class TestBulkSaveConditions:
     async def test_bulk_save_detects_conflict(self, db_session, seed_test_data):
         """Stale expected_updated_at should raise HTTP 409."""
         project, data = await self._create_test_project(db_session, seed_test_data)
-        first_layer = sorted(project.layers, key=lambda pl: pl.sort_order)[0]
+        layers = await self._get_project_layers(db_session, project.id)
+        first_layer = layers[0]
 
         stale_time = project.updated_at - timedelta(hours=1)
 
@@ -238,10 +268,16 @@ class TestBulkSaveConditions:
     async def test_bulk_save_rejects_non_draft_project(self, db_session, seed_test_data):
         """Saving to a 'review' project should raise HTTP 400."""
         project, data = await self._create_test_project(db_session, seed_test_data)
+
+        # Extract values before status change to avoid detachment issues
+        project_id = project.id
+        project_updated_at = project.updated_at
+
         project.status = "review"
         await db_session.flush()
 
-        first_layer = sorted(project.layers, key=lambda pl: pl.sort_order)[0]
+        layers = await self._get_project_layers(db_session, project_id)
+        first_layer = layers[0]
 
         request = BulkSaveRequest(
             layers=[LayerConditions(
@@ -249,7 +285,7 @@ class TestBulkSaveConditions:
                 conditions=first_layer.conditions,
             )],
             updated_by=data["user"].id,
-            expected_updated_at=project.updated_at,
+            expected_updated_at=project_updated_at,
         )
 
         with pytest.raises(HTTPException) as exc_info:
@@ -259,10 +295,16 @@ class TestBulkSaveConditions:
     async def test_bulk_save_rejects_approved_project(self, db_session, seed_test_data):
         """Saving to an 'approved' project should also raise HTTP 400."""
         project, data = await self._create_test_project(db_session, seed_test_data)
+
+        # Extract values before status change to avoid detachment issues
+        project_id = project.id
+        project_updated_at = project.updated_at
+
         project.status = "approved"
         await db_session.flush()
 
-        first_layer = sorted(project.layers, key=lambda pl: pl.sort_order)[0]
+        layers = await self._get_project_layers(db_session, project_id)
+        first_layer = layers[0]
 
         request = BulkSaveRequest(
             layers=[LayerConditions(
@@ -270,7 +312,7 @@ class TestBulkSaveConditions:
                 conditions=first_layer.conditions,
             )],
             updated_by=data["user"].id,
-            expected_updated_at=project.updated_at,
+            expected_updated_at=project_updated_at,
         )
 
         with pytest.raises(HTTPException) as exc_info:
