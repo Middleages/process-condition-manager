@@ -4,8 +4,9 @@ import { Button } from '@/components/ui/button'
 import { StatusBadge } from '@/components/projects/StatusBadge'
 import { computeProjectDiff } from '@/lib/diff'
 import { useEditorStore } from '@/stores/useEditorStore'
-import type { ProjectDetail } from '@/types'
-import { ArrowLeft, Save, Loader2, AlertTriangle, GitCompare, FileUp, GitBranch } from 'lucide-react'
+import { ApprovalButtons } from './ApprovalButtons'
+import type { ProjectDetail, User } from '@/types'
+import { ArrowLeft, Save, Loader2, AlertTriangle, GitCompare, FileUp, GitBranch, MessageSquare, Send } from 'lucide-react'
 
 interface Props {
   project: ProjectDetail
@@ -14,9 +15,26 @@ interface Props {
   lastSavedAt?: string | null
   onRecipeUpload?: () => void
   onCreateRevision?: () => void
+  onReviewRequest?: () => void
+  currentUser: User | null
+  projectId: number
+  onShowComments?: () => void
+  commentCount?: number
 }
 
-export function EditorHeader({ project, errorCount, onSave, lastSavedAt, onRecipeUpload, onCreateRevision }: Props) {
+export function EditorHeader({
+  project,
+  errorCount,
+  onSave,
+  lastSavedAt,
+  onRecipeUpload,
+  onCreateRevision,
+  onReviewRequest,
+  currentUser,
+  projectId,
+  onShowComments,
+  commentCount = 0,
+}: Props) {
   const navigate = useNavigate()
   const hasDirty = useEditorStore((s) => s.hasDirtyCells())
   const isSaving = useEditorStore((s) => s.isSaving)
@@ -75,6 +93,24 @@ export function EditorHeader({ project, errorCount, onSave, lastSavedAt, onRecip
         </span>
       )}
 
+      {/* Comments button */}
+      {onShowComments && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onShowComments}
+        >
+          <MessageSquare className="mr-1.5 h-4 w-4" />
+          댓글
+          {commentCount > 0 && (
+            <span className="ml-1.5 bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5 leading-none">
+              {commentCount}
+            </span>
+          )}
+        </Button>
+      )}
+
+      {/* Recipe Upload (draft only) */}
       {project.status === 'draft' && onRecipeUpload && (
         <Button
           variant="outline"
@@ -86,6 +122,7 @@ export function EditorHeader({ project, errorCount, onSave, lastSavedAt, onRecip
         </Button>
       )}
 
+      {/* Revision Create (approved only) */}
       {project.status === 'approved' && onCreateRevision && (
         <Button
           variant="outline"
@@ -97,7 +134,27 @@ export function EditorHeader({ project, errorCount, onSave, lastSavedAt, onRecip
         </Button>
       )}
 
-      {project.status !== 'approved' && project.status !== 'archived' && (
+      {/* Approval buttons (review status, reviewer/admin only) */}
+      <ApprovalButtons
+        projectId={projectId}
+        projectStatus={project.status}
+        currentUser={currentUser}
+      />
+
+      {/* Review Request button (draft only) */}
+      {project.status === 'draft' && onReviewRequest && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onReviewRequest}
+        >
+          <Send className="mr-1.5 h-4 w-4" />
+          검토 요청
+        </Button>
+      )}
+
+      {/* Save button (draft/rejected only) */}
+      {project.status !== 'review' && project.status !== 'approved' && project.status !== 'archived' && (
         <Button
           size="sm"
           onClick={onSave}

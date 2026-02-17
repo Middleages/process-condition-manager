@@ -4,19 +4,24 @@ import { useProjectDetail, useBulkSave, useValidateProjectMutation, useDeleteLay
 import { useColumns } from '@/hooks/useColumns'
 import { useAllLayers } from '@/hooks/useProducts'
 import { useAutoSave } from '@/hooks/useAutoSave'
+import { useUsers } from '@/hooks/useUsers'
+import { useComments } from '@/hooks/useComments'
 import { useEditorStore } from '@/stores/useEditorStore'
 import { useUserStore } from '@/stores/useUserStore'
 import { useToastStore } from '@/stores/useToastStore'
 import { EditorHeader } from '@/components/editor/EditorHeader'
+import { StatusBanner } from '@/components/editor/StatusBanner'
 import { CategoryTabs } from '@/components/editor/CategoryTabs'
 import { LayerNavPanel } from '@/components/editor/LayerNavPanel'
 import { ConditionGrid } from '@/components/editor/ConditionGrid'
 import { ValidationPanel } from '@/components/editor/ValidationPanel'
 import { ChangeHistoryPanel } from '@/components/editor/ChangeHistoryPanel'
+import { CommentPanel } from '@/components/editor/CommentPanel'
 import { BackboneReplaceModal } from '@/components/editor/BackboneReplaceModal'
 import { LayerAddModal } from '@/components/editor/LayerAddModal'
 import { RecipeUploadModal } from '@/components/editor/RecipeUploadModal'
 import { RevisionCreateModal } from '@/components/editor/RevisionCreateModal'
+import { ReviewRequestModal } from '@/components/editor/ReviewRequestModal'
 import { validateCellValue, buildConditionDependencyMap } from '@/lib/validation'
 import { ApiError } from '@/api/client'
 import type { LayerConditions, ValidationError, ProjectLayerData } from '@/types'
@@ -31,6 +36,8 @@ export default function ConditionEditorPage() {
   const { data: project, isLoading: projectLoading } = useProjectDetail(pid)
   const { data: categories = [], isLoading: columnsLoading } = useColumns()
   const { data: allLayers = [] } = useAllLayers()
+  const { data: users = [] } = useUsers()
+  const { data: commentData } = useComments(pid)
 
   const activeCategory = useEditorStore((s) => s.activeCategory)
   const activeLayerId = useEditorStore((s) => s.activeLayerId)
@@ -49,6 +56,10 @@ export default function ConditionEditorPage() {
   const hasDirty = dirtyCells.size > 0
   const isDraft = project?.status === 'draft'
   const isArchived = project?.status === 'archived'
+  const isReadOnly = project?.status === 'review' || project?.status === 'approved' || project?.status === 'archived'
+
+  // Get current user object
+  const currentUser = users.find((u) => u.id === currentUserId) ?? null
 
   // Modal states
   const [backboneReplaceLayer, setBackboneReplaceLayer] = useState<ProjectLayerData | null>(null)
@@ -56,6 +67,8 @@ export default function ConditionEditorPage() {
   const [showLayerAddModal, setShowLayerAddModal] = useState(false)
   const [showRecipeModal, setShowRecipeModal] = useState(false)
   const [showRevisionModal, setShowRevisionModal] = useState(false)
+  const [showReviewModal, setShowReviewModal] = useState(false)
+  const [showCommentPanel, setShowCommentPanel] = useState(true)
 
   // --- beforeunload: warn on browser close/refresh ---
   useEffect(() => {
@@ -242,10 +255,10 @@ export default function ConditionEditorPage() {
     }
   }, [project, currentUserId, buildSavePayload, bulkSave, clearAllDirty, setIsSaving, addToast, validateMutation, pid, setValidationErrors])
 
-  // Auto-save every 30 seconds (only for draft, not archived)
+  // Auto-save every 30 seconds (only for draft/rejected, not read-only states)
   const { lastSavedAt } = useAutoSave({
     onSave: handleSave,
-    enabled: !!project && !!currentUserId && project.status === 'draft' && !isArchived,
+    enabled: !!project && !!currentUserId && !isReadOnly,
   })
 
   // Handle layer nav click - scroll grid
@@ -318,9 +331,16 @@ export default function ConditionEditorPage() {
         errorCount={validationErrors.length}
         onSave={handleSave}
         lastSavedAt={lastSavedAt}
-        onRecipeUpload={() => setShowRecipeModal(true)}
+        onRecipeUpload={!isReadOnly ? () => setShowRecipeModal(true) : undefined}
         onCreateRevision={() => setShowRevisionModal(true)}
+        onReviewRequest={() => setShowReviewModal(true)}
+        currentUser={currentUser}
+        projectId={pid}
+        onShowComments={() => setShowCommentPanel((prev) => !prev)}
+        commentCount={commentData?.unresolved_count ?? 0}
       />
+
+      <StatusBanner status={project.status} revision={project.revision} />
 
       <CategoryTabs categories={categories} />
 
@@ -341,6 +361,7 @@ export default function ConditionEditorPage() {
             columns={activeColumns}
             validationErrors={validationErrors}
             scrollToLayerId={activeLayerId}
+            readOnly={isReadOnly}
             onCellChanged={handleCellChanged}
           />
 
@@ -354,6 +375,13 @@ export default function ConditionEditorPage() {
           <ChangeHistoryPanel
             projectId={pid}
             layers={project.layers}
+          />
+
+          <CommentPanel
+            projectId={pid}
+            categories={categories}
+            isOpen={showCommentPanel}
+            onToggle={setShowCommentPanel}
           />
         </div>
       </div>
@@ -388,6 +416,14 @@ export default function ConditionEditorPage() {
         open={showRevisionModal}
         onOpenChange={setShowRevisionModal}
         project={project}
+      />
+
+      {/* Review Request Modal */}
+      <ReviewRequestModal
+        open={showReviewModal}
+        onOpenChange={setShowReviewModal}
+        projectId={pid}
+        validationErrorCount={validationErrors.length}
       />
     </div>
   )

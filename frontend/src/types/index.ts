@@ -343,3 +343,83 @@ export interface RevisionListResponse {
   product_name: string
   revisions: RevisionItem[]
 }
+
+// ========== Comments ==========
+export interface CommentCreate {
+  user_id: number
+  project_layer_id?: number | null
+  column_name?: string | null
+  content: string
+  comment_type?: 'rejection' | 'general'
+}
+
+export interface CommentUpdate {
+  content?: string
+  is_resolved?: boolean
+  resolved_by?: number
+}
+
+export interface Comment {
+  id: number
+  project_id: number
+  project_layer_id: number | null
+  layer_name: string | null
+  column_name: string | null
+  column_display_name: string | null
+  content: string
+  comment_type: 'rejection' | 'general'
+  is_resolved: boolean
+  created_by: number
+  creator_name: string
+  creator_role: 'editor' | 'reviewer' | 'admin'
+  created_at: string
+  resolved_at: string | null
+  resolved_by: number | null
+  resolver_name: string | null
+}
+
+export interface CommentListResponse {
+  comments: Comment[]
+  total: number
+  unresolved_count: number
+}
+
+// ========== Status Transition ==========
+export interface StatusTransitionRequest {
+  new_status: 'review' | 'approved' | 'rejected'
+  changed_by: number
+  comment?: string
+}
+
+export interface StatusTransitionResponse {
+  id: number
+  status: ProjectStatus
+  previous_status: ProjectStatus
+  changed_by: number
+  changed_at: string
+}
+
+// ========== Change Summary ==========
+export interface ChangeSummaryResponse {
+  validation_error_count: number
+  changed_layers_count: number
+  total_layers_count: number
+  changed_cells_count: number
+  backbone_replacements_count: number
+  recipe_applications_count: number
+}
+
+// ========== Status History ==========
+export interface StatusHistoryItem {
+  id: number
+  from_status: string | null
+  to_status: string
+  changed_by: number
+  changer_name: string
+  comment: string | null
+  changed_at: string
+}
+
+export interface StatusHistoryResponse {
+  history: StatusHistoryItem[]
+}
