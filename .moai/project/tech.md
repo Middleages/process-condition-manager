@@ -512,16 +512,18 @@ npm test
 ### 아키텍처 패턴
 
 **Backend: Clean Layered Architecture**
-- Router → Service → Model 계층 분리 (admin.py 추가)
-- admin_service.py는 XML 매핑과 검증 규칙 관리
-- validation.py는 조건부 검증과 다중 연산자 지원
+- Router → Service → Model 계층 분리
+- 9개 서비스: project, backbone, recipe, validation, condition, change_log, comment, admin
+- comment_service.py: 댓글 CRUD, 해결 상태 토글, 미해결 건수 조회
+- validation_service.py: 조건부 검증과 다중 연산자 지원
 - 각 계층의 명확한 책임
-- 테스트 용이성 향상
+- 테스트 용이성 향상 (140건 테스트 케이스)
 
 **Frontend: Atomic Design**
 - Pages → Components (editor, layout, projects, admin, ui) 계층 구조
-- 관리자 컴포넌트 추가 (XmlMappingsPage, ValidationRulesPage)
-- Revision 관련 컴포넌트 강화 (RevisionCreateModal, VersionHistoryModal)
+- editor 컴포넌트 18개: AG Grid, 승인 워크플로우, 댓글 시스템 포함
+- 승인 관련 컴포넌트: StatusBanner, ReviewRequestModal, ApprovalButtons, StatusTimeline
+- 댓글 관련 컴포넌트: CommentPanel, CommentThread, CommentDialog
 - 재사용 가능한 컴포넌트 설계
 - 확장 가능한 디자인 시스템
 
@@ -560,13 +562,19 @@ npm test
 
 ## 향후 기술 로드맵
 
-### Phase 3 기술 추가
+### Phase 3 기술 추가 (일부 완료)
 
-**WebSocket 도입**
+**승인 워크플로우 (SPEC-003 완료)**
+- 상태 전환 검증 로직 (Draft → Review → Approved/Rejected)
+- 댓글 CRUD API (Project/Layer/Cell 레벨)
+- AG Grid cellClassRules + CSS ::after를 활용한 셀 댓글 마커
+- onCellContextMenu 이벤트 기반 커스텀 컨텍스트 메뉴 (Community Edition 대응)
+
+**WebSocket 도입 (예정)**
 - 실시간 협업 기능 (다중 사용자 편집 충돌 해결)
 - Socket.IO 또는 FastAPI WebSocket 활용
 
-**파일 스토리지**
+**파일 스토리지 (예정)**
 - Recipe XML, 전산 출력 Excel 파일 저장
 - AWS S3 또는 MinIO 도입
 
@@ -656,6 +664,6 @@ npm run format
 ---
 
 생성일: 2026-02-16
-문서 버전: 1.1.0 (Sprint 2.3~2.5 반영)
+문서 버전: 1.2.0 (SPEC-003 승인 프로세스 및 코멘트 시스템 반영)
 작성자: MoAI-ADK Documentation Generator
-마지막 업데이트: 2026-02-16 (Sprint 2.3 관리자 설정, 2.4 조건부 검증, 2.5 개정 기능)
+마지막 업데이트: 2026-02-17 (SPEC-003 M1-M3: 승인 워크플로우, 댓글 시스템, AG Grid 통합)
