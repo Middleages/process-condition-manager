@@ -61,6 +61,43 @@
   background-color: var(--color-cell-recipe) !important;
 }
 
+/* Comment marker - red triangle in top-right corner */
+.ag-theme-alpine .bg-cell-comment {
+  position: relative;
+}
+
+.ag-theme-alpine .bg-cell-comment::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 0 8px 8px 0;
+  border-color: transparent #ef4444 transparent transparent;
+  pointer-events: none;
+}
+
+/* Post-rejection comment highlight */
+.ag-theme-alpine .bg-cell-rejection-comment {
+  background-color: #fef2f2 !important;
+  position: relative;
+}
+
+.ag-theme-alpine .bg-cell-rejection-comment::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 0 8px 8px 0;
+  border-color: transparent #ef4444 transparent transparent;
+  pointer-events: none;
+}
+
 /* AG Grid compact styling */
 .ag-theme-alpine {
   --ag-font-size: 13px;

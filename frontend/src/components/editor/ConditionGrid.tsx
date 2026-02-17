@@ -8,6 +8,7 @@ import type {
   GridReadyEvent,
   GridApi,
   ProcessDataFromClipboardParams,
+  CellContextMenuEvent,
 } from 'ag-grid-community'
 import 'ag-grid-community/styles/ag-grid.css'
 import 'ag-grid-community/styles/ag-theme-alpine.css'
@@ -25,11 +26,21 @@ interface Props {
   validationErrors: ValidationError[]
   scrollToLayerId: number | null
   readOnly?: boolean
+  commentMap?: Map<string, number>
+  rejectionCommentMap?: Map<string, boolean>
+  projectStatus?: string
+  currentUserRole?: string
   onCellChanged: (
     projectLayerId: number,
     columnName: string,
     newValue: unknown,
     oldValue: unknown
+  ) => void
+  onCellRightClick?: (
+    projectLayerId: number,
+    layerName: string,
+    columnName: string,
+    columnDisplayName: string
   ) => void
 }
 
@@ -52,13 +63,20 @@ export function ConditionGrid({
   validationErrors,
   scrollToLayerId,
   readOnly = false,
+  commentMap = new Map(),
+  rejectionCommentMap = new Map(),
+  projectStatus,
+  currentUserRole,
   onCellChanged,
+  onCellRightClick,
 }: Props) {
   const gridRef = useRef<GridApi | null>(null)
   const dirtyCells = useEditorStore((s) => s.dirtyCells)
   const recipeCells = useEditorStore((s) => s.recipeCells)
   const dirtyCellsRef = useRef(dirtyCells)
   const recipeCellsRef = useRef(recipeCells)
+  const commentMapRef = useRef(commentMap)
+  const rejectionCommentMapRef = useRef(rejectionCommentMap)
 
   // Build error lookup: `${layerId}:${columnName}` → error message
   const errorMap = useMemo(() => {
@@ -83,6 +101,8 @@ export function ConditionGrid({
   // Keep refs in sync
   dirtyCellsRef.current = dirtyCells
   recipeCellsRef.current = recipeCells
+  commentMapRef.current = commentMap
+  rejectionCommentMapRef.current = rejectionCommentMap
 
   const rowData = useMemo(() => buildRowData(layers), [layers])
 
@@ -128,6 +148,13 @@ export function ConditionGrid({
             parts.push(`⚠ ${err}`)
           }
 
+          // Show comment info
+          const commentKey = `${plId}:${col.column_name}`
+          const commentCount = commentMapRef.current.get(commentKey)
+          if (commentCount && commentCount > 0) {
+            parts.push(`Comments: ${commentCount}`)
+          }
+
           return parts.length > 0 ? parts.join('\n') : undefined
         },
         cellClassRules: {
@@ -149,6 +176,21 @@ export function ConditionGrid({
             const bbKey = `${plId}:${col.column_name}`
             const bbVal = backboneMap.get(bbKey)
             return bbVal !== undefined && bbVal !== params.value
+          },
+          'bg-cell-rejection-comment': (params: CellClassParams) => {
+            const plId = params.data?.projectLayerId
+            if (!plId) return false
+            const commentKey = `${plId}:${col.column_name}`
+            return rejectionCommentMapRef.current.get(commentKey) === true
+          },
+          'bg-cell-comment': (params: CellClassParams) => {
+            const plId = params.data?.projectLayerId
+            if (!plId) return false
+            const commentKey = `${plId}:${col.column_name}`
+            const hasComment = commentMapRef.current.has(commentKey) && (commentMapRef.current.get(commentKey) ?? 0) > 0
+            const hasRejectionComment = rejectionCommentMapRef.current.get(commentKey) === true
+            // Only apply comment marker if there's no rejection comment (to avoid duplicate markers)
+            return hasComment && !hasRejectionComment
           },
         },
       }
@@ -174,6 +216,24 @@ export function ConditionGrid({
     return [...fixed, ...dynamic]
   }, [columns, backboneMap, errorMap, readOnly])
 
+  const handleCellContextMenu = useCallback(
+    (event: CellContextMenuEvent) => {
+      const { data, colDef } = event
+      if (!data?.projectLayerId || !colDef?.field || colDef.field === 'layerName') return
+      if (projectStatus !== 'review' || (currentUserRole !== 'reviewer' && currentUserRole !== 'admin')) return
+
+      // Only prevent default when showing our custom dialog
+      event.event?.preventDefault()
+
+      // Find the column display name
+      const col = columns.find(c => c.column_name === colDef.field)
+      const displayName = col ? (col.unit ? `${col.display_name} (${col.unit})` : col.display_name) : colDef.field
+
+      onCellRightClick?.(data.projectLayerId, data.layerName, colDef.field, displayName)
+    },
+    [projectStatus, currentUserRole, columns, onCellRightClick]
+  )
+
   const defaultColDef = useMemo<ColDef>(
     () => ({
       sortable: false,
@@ -189,6 +249,13 @@ export function ConditionGrid({
       gridRef.current.refreshCells({ force: true })
     }
   }, [dirtyCells, recipeCells])
+
+  // Refresh cells when commentMap or rejectionCommentMap changes
+  useEffect(() => {
+    if (gridRef.current) {
+      gridRef.current.refreshCells({ force: true })
+    }
+  }, [commentMap, rejectionCommentMap])
 
   // Scroll to layer when activeLayerId changes
   useEffect(() => {
@@ -252,6 +319,7 @@ export function ConditionGrid({
         defaultColDef={defaultColDef}
         onGridReady={onGridReady}
         onCellValueChanged={handleCellValueChanged}
+        onCellContextMenu={handleCellContextMenu}
         getRowId={getRowId}
         processDataFromClipboard={processDataFromClipboard}
         onPasteEnd={onPasteEnd}
@@ -259,6 +327,7 @@ export function ConditionGrid({
         tooltipShowDelay={300}
         stopEditingWhenCellsLoseFocus
         singleClickEdit
+        suppressContextMenu={projectStatus === 'review'}
         headerHeight={36}
         rowHeight={32}
       />

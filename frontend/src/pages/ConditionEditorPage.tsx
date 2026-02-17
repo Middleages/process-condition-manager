@@ -22,6 +22,7 @@ import { LayerAddModal } from '@/components/editor/LayerAddModal'
 import { RecipeUploadModal } from '@/components/editor/RecipeUploadModal'
 import { RevisionCreateModal } from '@/components/editor/RevisionCreateModal'
 import { ReviewRequestModal } from '@/components/editor/ReviewRequestModal'
+import { CommentDialog } from '@/components/editor/CommentDialog'
 import { validateCellValue, buildConditionDependencyMap } from '@/lib/validation'
 import { ApiError } from '@/api/client'
 import type { LayerConditions, ValidationError, ProjectLayerData } from '@/types'
@@ -69,6 +70,15 @@ export default function ConditionEditorPage() {
   const [showRevisionModal, setShowRevisionModal] = useState(false)
   const [showReviewModal, setShowReviewModal] = useState(false)
   const [showCommentPanel, setShowCommentPanel] = useState(true)
+
+  // Comment dialog state
+  const [commentDialogOpen, setCommentDialogOpen] = useState(false)
+  const [commentTarget, setCommentTarget] = useState<{
+    projectLayerId: number
+    layerName: string
+    columnName: string
+    columnDisplayName: string
+  } | null>(null)
 
   // --- beforeunload: warn on browser close/refresh ---
   useEffect(() => {
@@ -122,6 +132,31 @@ export default function ConditionEditorPage() {
     () => buildConditionDependencyMap(categories),
     [categories]
   )
+
+  // Build commentMap and rejectionCommentMap from comment data
+  const commentMap = useMemo(() => {
+    const map = new Map<string, number>()
+    if (!commentData?.comments) return map
+    for (const c of commentData.comments) {
+      if (c.project_layer_id && c.column_name && !c.is_resolved) {
+        const key = `${c.project_layer_id}:${c.column_name}`
+        map.set(key, (map.get(key) ?? 0) + 1)
+      }
+    }
+    return map
+  }, [commentData])
+
+  const rejectionCommentMap = useMemo(() => {
+    const map = new Map<string, boolean>()
+    if (!commentData?.comments) return map
+    for (const c of commentData.comments) {
+      if (c.project_layer_id && c.column_name && !c.is_resolved && c.comment_type === 'rejection') {
+        const key = `${c.project_layer_id}:${c.column_name}`
+        map.set(key, true)
+      }
+    }
+    return map
+  }, [commentData])
 
   // Run client-side validation on cell change
   const handleCellChanged = useCallback(
@@ -308,6 +343,15 @@ export default function ConditionEditorPage() {
     [deleteLayer, addToast]
   )
 
+  // Handle cell right-click
+  const handleCellRightClick = useCallback(
+    (projectLayerId: number, layerName: string, columnName: string, columnDisplayName: string) => {
+      setCommentTarget({ projectLayerId, layerName, columnName, columnDisplayName })
+      setCommentDialogOpen(true)
+    },
+    []
+  )
+
   if (projectLoading || columnsLoading) {
     return (
       <div className="h-full flex items-center justify-center">
@@ -362,7 +406,12 @@ export default function ConditionEditorPage() {
             validationErrors={validationErrors}
             scrollToLayerId={activeLayerId}
             readOnly={isReadOnly}
+            commentMap={commentMap}
+            rejectionCommentMap={rejectionCommentMap}
+            projectStatus={project.status}
+            currentUserRole={currentUser?.role}
             onCellChanged={handleCellChanged}
+            onCellRightClick={handleCellRightClick}
           />
 
           {validationErrors.length > 0 && (
@@ -380,6 +429,7 @@ export default function ConditionEditorPage() {
           <CommentPanel
             projectId={pid}
             categories={categories}
+            layers={project.layers}
             isOpen={showCommentPanel}
             onToggle={setShowCommentPanel}
           />
@@ -424,6 +474,19 @@ export default function ConditionEditorPage() {
         onOpenChange={setShowReviewModal}
         projectId={pid}
         validationErrorCount={validationErrors.length}
+      />
+
+      {/* Comment Dialog */}
+      <CommentDialog
+        open={commentDialogOpen}
+        onOpenChange={setCommentDialogOpen}
+        projectId={pid}
+        projectLayerId={commentTarget?.projectLayerId ?? null}
+        layerName={commentTarget?.layerName ?? ''}
+        columnName={commentTarget?.columnName ?? null}
+        columnDisplayName={commentTarget?.columnDisplayName ?? null}
+        currentUserId={currentUserId ?? 0}
+        currentUserRole={currentUser?.role ?? 'editor'}
       />
     </div>
   )

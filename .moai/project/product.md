@@ -6,7 +6,7 @@
 
 **목적**: 반도체 Photo 공정의 공정조건표를 웹 기반으로 관리하는 통합 시스템
 
-**버전**: Phase 2 완료 (Phase 3 진행 예정)
+**버전**: Phase 3 진행 중 (SPEC-003 승인 프로세스 완료)
 
 ---
 
@@ -165,14 +165,12 @@ PCM은 반도체 제조 공정 중 Photo 공정의 복잡한 공정조건표를 
 - Revision 기능
 
 ### Phase 3 - 진행 중 🔧
-- **승인 프로세스 (승인/반려 워크플로우)** - Milestone 1 완료 ✅
-  - 백엔드: 상태 전환 검증 로직, 댓글 CRUD API, 상태 히스토리 API 구현 완료
-  - 남은 작업: 프론트엔드 UI 컴포넌트 (M2), AG Grid 통합 (M3)
-- **코멘트 시스템** - Milestone 1 완료 ✅
-  - 백엔드: Project/Layer/Cell 레벨 댓글, 해결 상태 관리, 타입 구분 완료
-  - 남은 작업: 프론트엔드 댓글 패널, AG Grid 마커 표시 (M2, M3)
-- 변경 이력 상세 조회
-- 전산 출력 (Type A/B/C Excel 다운로드)
+- **SPEC-003: 승인 프로세스 및 코멘트 시스템** - 완료 ✅
+  - Milestone 1 (백엔드): 상태 전환 검증 로직, 댓글 CRUD API, 상태 히스토리 API, 승인/반려 워크플로우 ✅
+  - Milestone 2 (프론트엔드 UI): StatusBanner, ReviewRequestModal, ApprovalButtons, CommentPanel, CommentThread, StatusTimeline ✅
+  - Milestone 3 (AG Grid 통합): 셀 댓글 마커(CSS ::after), 컨텍스트 메뉴 댓글 작성, 반려 사유 강조, 툴팁 댓글 정보 ✅
+- 변경 이력 상세 조회 - 미착수
+- 전산 출력 (Type A/B/C Excel 다운로드) - 미착수
 
 ### Phase 4 - 계획 중 📋
 - JWT 기반 인증 및 권한 관리

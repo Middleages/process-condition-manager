@@ -2,18 +2,19 @@ import { useState, useMemo } from 'react'
 import { useComments } from '@/hooks/useComments'
 import { CommentThread } from './CommentThread'
 import { useEditorStore } from '@/stores/useEditorStore'
-import type { Comment, ColumnCategory } from '@/types'
+import type { Comment, ColumnCategory, ProjectLayerData } from '@/types'
 import { MessageSquare, Filter, Loader2, ChevronDown, ChevronUp } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 interface Props {
   projectId: number
   categories: ColumnCategory[]
+  layers: ProjectLayerData[]
   onToggle?: (open: boolean) => void
   isOpen?: boolean
 }
 
-export function CommentPanel({ projectId, categories, onToggle, isOpen = true }: Props) {
+export function CommentPanel({ projectId, categories, layers, onToggle, isOpen = true }: Props) {
   const { data, isLoading } = useComments(projectId)
   const [filterUnresolved, setFilterUnresolved] = useState(false)
 
@@ -49,14 +50,10 @@ export function CommentPanel({ projectId, categories, onToggle, isOpen = true }:
       }
     }
 
-    // Find the layer_id from project_layer_id
-    // We use the layer_name to identify - the parent component handles the actual scrolling
-    // via EditorStore's activeLayerId
-    if (comment.layer_name) {
-      // The ConditionEditorPage watches activeLayerId changes and scrolls
-      // We need to find the actual layer_id, but we only have project_layer_id
-      // The parent should handle this mapping
-      setActiveLayerId(comment.project_layer_id)
+    // Map project_layer_id -> layer_id for correct grid scroll
+    const layer = layers.find(l => l.id === comment.project_layer_id)
+    if (layer) {
+      setActiveLayerId(layer.layer_id)
     }
   }
 
