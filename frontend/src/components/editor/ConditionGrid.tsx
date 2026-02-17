@@ -218,10 +218,12 @@ export function ConditionGrid({
 
   const handleCellContextMenu = useCallback(
     (event: CellContextMenuEvent) => {
-      event.event?.preventDefault()
       const { data, colDef } = event
       if (!data?.projectLayerId || !colDef?.field || colDef.field === 'layerName') return
       if (projectStatus !== 'review' || (currentUserRole !== 'reviewer' && currentUserRole !== 'admin')) return
+
+      // Only prevent default when showing our custom dialog
+      event.event?.preventDefault()
 
       // Find the column display name
       const col = columns.find(c => c.column_name === colDef.field)
@@ -325,7 +327,7 @@ export function ConditionGrid({
         tooltipShowDelay={300}
         stopEditingWhenCellsLoseFocus
         singleClickEdit
-        suppressContextMenu
+        suppressContextMenu={projectStatus === 'review'}
         headerHeight={36}
         rowHeight={32}
       />
