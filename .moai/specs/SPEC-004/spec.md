@@ -3,7 +3,7 @@
 **SPEC ID**: SPEC-004
 **Title**: Change History Panel and Version History
 **Phase**: 3 (Workflow & Output)
-**Status**: In Progress (M1+M2 Complete)
+**Status**: Complete (M1+M2+M3)
 **Priority**: High
 **Created**: 2026-02-16
 
@@ -813,6 +813,15 @@ Frontend file changes are consolidated in Section 6.1 File Change Map above, cle
 **Files created:** 3 new components (ChangeHistoryEntry, ChangeHistoryFilters, CellHistoryModal)
 **Files modified:** 8 existing files (ChangeHistoryPanel, ConditionGrid, EditorHeader, ConditionEditorPage, types, API, hooks, store)
 
-### M3 - Version History + Read-Only (Planned)
+### M3 - Version History Panel + Read-Only Mode (Completed 2026-02-17)
 
-Not yet implemented. Scope: Version history panel UI, read-only condition viewer for archived versions, version comparison (optional).
+**Implemented:**
+- VersionHistoryPanel: Header dropdown popover with version list, status badges (Draft=blue, Review=yellow, Approved=green, Archived=gray, Rejected=red), current version highlighting, "보기" navigation links
+- EditorHeader: "버전 히스토리" toggle button with GitBranch icon
+- StatusBanner: "최신 버전으로 이동" button for archived projects (navigates to is_latest=true version)
+- Read-only mode verification: AG Grid editable=false, Save/Recipe Upload hidden, auto-save disabled for archived/approved/review states
+- Zustand store: isVersionHistoryOpen, toggleVersionHistory states
+- ConditionEditorPage: useVersionHistory integration, handleBackToCurrent navigation, version history props wiring
+
+**Files created:** 1 new component (VersionHistoryPanel)
+**Files modified:** 4 existing files (EditorHeader, StatusBanner, ConditionEditorPage, useEditorStore)

@@ -26,6 +26,9 @@ interface EditorState {
   isHistoryPanelOpen: boolean
   cellHistoryTarget: { projectLayerId: number; columnName: string; layerName: string } | null
 
+  // Version history panel state
+  isVersionHistoryOpen: boolean
+
   // Actions
   setActiveCategory: (code: string) => void
   setActiveLayerId: (layerId: number | null) => void
@@ -42,6 +45,7 @@ interface EditorState {
   toggleHistoryPanel: () => void
   openCellHistory: (projectLayerId: number, columnName: string, layerName: string) => void
   closeCellHistory: () => void
+  toggleVersionHistory: () => void
 }
 
 export const useEditorStore = create<EditorState>((set, get) => ({
@@ -53,6 +57,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   isSaving: false,
   isHistoryPanelOpen: false,
   cellHistoryTarget: null,
+  isVersionHistoryOpen: false,
 
   setActiveCategory: (code) => set({ activeCategory: code }),
 
@@ -121,6 +126,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       isSaving: false,
       isHistoryPanelOpen: false,
       cellHistoryTarget: null,
+      isVersionHistoryOpen: false,
     }),
 
   toggleHistoryPanel: () => set((state) => ({ isHistoryPanelOpen: !state.isHistoryPanelOpen })),
@@ -129,4 +135,6 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set({ cellHistoryTarget: { projectLayerId, columnName, layerName } }),
 
   closeCellHistory: () => set({ cellHistoryTarget: null }),
+
+  toggleVersionHistory: () => set((state) => ({ isVersionHistoryOpen: !state.isVersionHistoryOpen })),
 }))
