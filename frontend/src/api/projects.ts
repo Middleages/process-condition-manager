@@ -21,6 +21,10 @@ import type {
   StatusTransitionResponse,
   ChangeSummaryResponse,
   StatusHistoryResponse,
+  TimelineParams,
+  TimelineResponse,
+  CellHistoryResponse,
+  VersionHistoryResponse,
 } from '@/types'
 
 export async function fetchProjects(params?: {
@@ -195,6 +199,41 @@ export async function fetchStatusHistory(
 ): Promise<StatusHistoryResponse> {
   const { data } = await client.get<StatusHistoryResponse>(
     `/projects/${projectId}/status-history`
+  )
+  return data
+}
+
+
+// --- SPEC-004: Timeline & Cell History ---
+
+export async function fetchTimeline(
+  projectId: number,
+  params: TimelineParams = {}
+): Promise<TimelineResponse> {
+  const { data } = await client.get<TimelineResponse>(
+    `/projects/${projectId}/changelog/timeline`,
+    { params }
+  )
+  return data
+}
+
+export async function fetchCellHistory(
+  projectId: number,
+  projectLayerId: number,
+  columnName: string
+): Promise<CellHistoryResponse> {
+  const { data } = await client.get<CellHistoryResponse>(
+    `/projects/${projectId}/changelog/cell`,
+    { params: { project_layer_id: projectLayerId, column_name: columnName } }
+  )
+  return data
+}
+
+export async function fetchVersionHistory(
+  projectId: number
+): Promise<VersionHistoryResponse> {
+  const { data } = await client.get<VersionHistoryResponse>(
+    `/projects/${projectId}/versions`
   )
   return data
 }

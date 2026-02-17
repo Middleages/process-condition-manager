@@ -172,9 +172,19 @@ async def get_timeline(
     project_id: int,
     page: int = Query(1, ge=1),
     limit: int = Query(50, ge=1, le=200),
+    layer_id: int | None = Query(None, description="Filter by layer ID"),
+    change_type: str | None = Query(None, description="Filter by change type: manual, backbone, recipe"),
+    changed_by: int | None = Query(None, description="Filter by user ID"),
     db: AsyncSession = Depends(get_db),
 ):
-    return await change_log_service.get_timeline(db, project_id, page=page, limit=limit)
+    return await change_log_service.get_timeline(
+        db, project_id,
+        page=page,
+        limit=limit,
+        layer_id=layer_id,
+        change_type=change_type,
+        changed_by=changed_by,
+    )
 
 
 @router.get("/{project_id}/changelog/cell", response_model=CellHistoryResponse)

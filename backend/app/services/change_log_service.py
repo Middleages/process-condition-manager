@@ -112,18 +112,31 @@ async def get_timeline(
     *,
     page: int = 1,
     limit: int = 50,
+    layer_id: int | None = None,
+    change_type: str | None = None,
+    changed_by: int | None = None,
 ) -> TimelineResponse:
-    """Get a merged timeline of cell changes and status changes for a project."""
+    """Get a merged timeline of cell changes and status changes for a project.
+
+    Optional filters:
+    - layer_id: filter by layer (matched via project_layers.layer_id)
+    - change_type: filter by change type (manual/backbone/recipe); when active,
+      status_change entries are excluded
+    - changed_by: filter by user ID
+    """
 
     # Verify project exists
     project = await db.get(Project, project_id)
     if not project:
         raise HTTPException(404, "Project not found")
 
-    # Get project_layer_ids with layer names
+    # Get project_layer_ids with layer names, optionally filtered by layer_id
     pl_query = select(ProjectLayer.id, Layer.layer_name).join(
         Layer, ProjectLayer.layer_id == Layer.id
     ).where(ProjectLayer.project_id == project_id)
+
+    if layer_id is not None:
+        pl_query = pl_query.where(ProjectLayer.layer_id == layer_id)
 
     pl_result = await db.execute(pl_query)
     pl_rows = pl_result.all()
@@ -139,6 +152,11 @@ async def get_timeline(
             .join(User, ChangeLog.changed_by == User.id)
             .where(ChangeLog.project_layer_id.in_(pl_ids))
         )
+        if change_type is not None:
+            cl_query = cl_query.where(ChangeLog.change_type == change_type)
+        if changed_by is not None:
+            cl_query = cl_query.where(ChangeLog.changed_by == changed_by)
+
         cl_result = await db.execute(cl_query)
         for log, display_name, user_id in cl_result.all():
             entry = TimelineEntry(
@@ -158,26 +176,34 @@ async def get_timeline(
             all_entries.append(entry)
 
     # Query project_status_logs with user join
-    sl_query = (
-        select(ProjectStatusLog, User.display_name, User.id)
-        .join(User, ProjectStatusLog.changed_by == User.id)
-        .where(ProjectStatusLog.project_id == project_id)
-    )
-    sl_result = await db.execute(sl_query)
-    for log, display_name, user_id in sl_result.all():
-        entry = TimelineEntry(
-            id=f"status-{log.id}",
-            entry_type="status_change",
-            timestamp=log.changed_at,
-            user_id=user_id,
-            user_name=display_name,
-            details=TimelineEntryDetails(
-                from_status=log.from_status,
-                to_status=log.to_status,
-                comment=log.comment,
-            ),
+    # When change_type filter is active (manual/backbone/recipe), exclude status_change entries
+    cell_change_types = {"manual", "backbone", "recipe"}
+    include_status_changes = change_type is None or change_type not in cell_change_types
+
+    if include_status_changes:
+        sl_query = (
+            select(ProjectStatusLog, User.display_name, User.id)
+            .join(User, ProjectStatusLog.changed_by == User.id)
+            .where(ProjectStatusLog.project_id == project_id)
         )
-        all_entries.append(entry)
+        if changed_by is not None:
+            sl_query = sl_query.where(ProjectStatusLog.changed_by == changed_by)
+
+        sl_result = await db.execute(sl_query)
+        for log, display_name, user_id in sl_result.all():
+            entry = TimelineEntry(
+                id=f"status-{log.id}",
+                entry_type="status_change",
+                timestamp=log.changed_at,
+                user_id=user_id,
+                user_name=display_name,
+                details=TimelineEntryDetails(
+                    from_status=log.from_status,
+                    to_status=log.to_status,
+                    comment=log.comment,
+                ),
+            )
+            all_entries.append(entry)
 
     # Sort all entries by timestamp DESC
     all_entries.sort(key=lambda e: e.timestamp, reverse=True)

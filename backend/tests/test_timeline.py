@@ -205,3 +205,120 @@ class TestTimeline:
         assert len(status_entries) > 0
         for entry in status_entries:
             assert entry.details.to_status is not None
+
+    # ------------------------------------------------------------------
+    # M2: Filter parameter tests
+    # ------------------------------------------------------------------
+
+    async def test_timeline_filter_by_change_type(self, db_session, seed_test_data):
+        """Filter by change_type=manual returns only manual cell change entries."""
+        project_id, data, layer_a_id = await self._create_project_with_cell_changes(db_session, seed_test_data)
+
+        # bulk_save writes manual changes
+        result = await change_log_service.get_timeline(
+            db_session, project_id, change_type="manual"
+        )
+        all_entries = [e for g in result.groups for e in g.entries]
+        assert len(all_entries) > 0
+        for entry in all_entries:
+            assert entry.entry_type == "cell_change"
+            assert entry.details.change_type == "manual"
+
+    async def test_timeline_filter_by_changed_by(self, db_session, seed_test_data):
+        """Filter by changed_by shows only entries made by that user."""
+        data = seed_test_data
+        project_id, _, layer_a_id = await self._create_project_with_cell_changes(db_session, seed_test_data)
+        # Add a status change by the same user
+        await self._add_status_change(db_session, project_id, data["user"].id)
+
+        user_id = data["user"].id
+        result = await change_log_service.get_timeline(
+            db_session, project_id, changed_by=user_id
+        )
+        all_entries = [e for g in result.groups for e in g.entries]
+        assert len(all_entries) > 0
+        for entry in all_entries:
+            assert entry.user_id == user_id
+
+    async def test_timeline_filter_by_changed_by_nonexistent_user(self, db_session, seed_test_data):
+        """Filter by a user ID that has no entries returns empty result."""
+        project_id, _, _ = await self._create_project_with_cell_changes(db_session, seed_test_data)
+
+        result = await change_log_service.get_timeline(
+            db_session, project_id, changed_by=999999
+        )
+        assert result.total == 0
+        assert result.groups == []
+
+    async def test_timeline_filter_by_layer_id(self, db_session, seed_test_data):
+        """Filter by layer_id returns only changes for that layer."""
+        data = seed_test_data
+        project_id, _, layer_a_id = await self._create_project_with_cell_changes(db_session, seed_test_data)
+
+        # layer_a is the first layer; get its actual Layer.id from the project layer
+        from app.models import ProjectLayer
+        from sqlalchemy import select as sa_select
+        pl_row = (await db_session.execute(
+            sa_select(ProjectLayer).where(ProjectLayer.id == layer_a_id)
+        )).scalar_one()
+        layer_id_value = pl_row.layer_id
+
+        result = await change_log_service.get_timeline(
+            db_session, project_id, layer_id=layer_id_value
+        )
+        all_entries = [e for g in result.groups for e in g.entries]
+        assert len(all_entries) > 0
+        # All entries should belong to layer_a
+        layer_name = data["layers"][0].layer_name
+        for entry in all_entries:
+            if entry.entry_type == "cell_change":
+                assert entry.details.layer_name == layer_name
+
+    async def test_timeline_filter_by_layer_id_no_match(self, db_session, seed_test_data):
+        """Filter by a layer_id that has no project layers returns empty result."""
+        project_id, _, _ = await self._create_project_with_cell_changes(db_session, seed_test_data)
+
+        result = await change_log_service.get_timeline(
+            db_session, project_id, layer_id=999999
+        )
+        assert result.total == 0
+        assert result.groups == []
+
+    async def test_timeline_filter_combined(self, db_session, seed_test_data):
+        """Combined change_type and changed_by filters work together."""
+        data = seed_test_data
+        project_id, _, _ = await self._create_project_with_cell_changes(db_session, seed_test_data)
+
+        user_id = data["user"].id
+        result = await change_log_service.get_timeline(
+            db_session, project_id, change_type="manual", changed_by=user_id
+        )
+        all_entries = [e for g in result.groups for e in g.entries]
+        assert len(all_entries) > 0
+        for entry in all_entries:
+            assert entry.entry_type == "cell_change"
+            assert entry.details.change_type == "manual"
+            assert entry.user_id == user_id
+
+    async def test_timeline_change_type_filter_excludes_status_entries(self, db_session, seed_test_data):
+        """When change_type is manual/backbone/recipe, status_change entries are excluded."""
+        data = seed_test_data
+        project_id, _, _ = await self._create_project_with_cell_changes(db_session, seed_test_data)
+        await self._add_status_change(db_session, project_id, data["user"].id)
+
+        # Confirm status_change exists without filter
+        result_no_filter = await change_log_service.get_timeline(db_session, project_id)
+        all_types_no_filter = {
+            e.entry_type for g in result_no_filter.groups for e in g.entries
+        }
+        assert "status_change" in all_types_no_filter
+
+        # With change_type=manual, status_change entries must be absent
+        result_filtered = await change_log_service.get_timeline(
+            db_session, project_id, change_type="manual"
+        )
+        all_types_filtered = {
+            e.entry_type for g in result_filtered.groups for e in g.entries
+        }
+        assert "status_change" not in all_types_filtered
+        assert "cell_change" in all_types_filtered

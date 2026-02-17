@@ -22,6 +22,10 @@ interface EditorState {
   // Saving state
   isSaving: boolean
 
+  // History panel state
+  isHistoryPanelOpen: boolean
+  cellHistoryTarget: { projectLayerId: number; columnName: string; layerName: string } | null
+
   // Actions
   setActiveCategory: (code: string) => void
   setActiveLayerId: (layerId: number | null) => void
@@ -35,6 +39,9 @@ interface EditorState {
   addRecipeCells: (keys: string[]) => void
   clearRecipeCells: () => void
   reset: () => void
+  toggleHistoryPanel: () => void
+  openCellHistory: (projectLayerId: number, columnName: string, layerName: string) => void
+  closeCellHistory: () => void
 }
 
 export const useEditorStore = create<EditorState>((set, get) => ({
@@ -44,6 +51,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   recipeCells: new Set(),
   validationErrors: [],
   isSaving: false,
+  isHistoryPanelOpen: false,
+  cellHistoryTarget: null,
 
   setActiveCategory: (code) => set({ activeCategory: code }),
 
@@ -110,5 +119,14 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       recipeCells: new Set(),
       validationErrors: [],
       isSaving: false,
+      isHistoryPanelOpen: false,
+      cellHistoryTarget: null,
     }),
+
+  toggleHistoryPanel: () => set((state) => ({ isHistoryPanelOpen: !state.isHistoryPanelOpen })),
+
+  openCellHistory: (projectLayerId, columnName, layerName) =>
+    set({ cellHistoryTarget: { projectLayerId, columnName, layerName } }),
+
+  closeCellHistory: () => set({ cellHistoryTarget: null }),
 }))
