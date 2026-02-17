@@ -1,3 +1,4 @@
+from datetime import datetime
 from fastapi import APIRouter, Depends, Query, UploadFile, File, Form, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,6 +20,9 @@ from app.schemas.project import (
     StatusHistoryResponse,
     StatusHistoryItem,
     ChangeSummaryResponse,
+    TimelineResponse,
+    CellHistoryResponse,
+    VersionHistoryResponse,
 )
 from app.schemas.backbone import (
     BackboneReplaceRequest,
@@ -149,12 +153,48 @@ async def get_change_logs(
     column_name: str | None = Query(None, description="Filter by column_name"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
+    change_type: str | None = Query(None, description="Filter by change_type (manual/backbone/recipe)"),
+    changed_by: int | None = Query(None, description="Filter by user ID"),
+    date_from: datetime | None = Query(None, description="Filter changes from this datetime"),
+    date_to: datetime | None = Query(None, description="Filter changes to this datetime"),
+    page: int = Query(1, ge=1, description="Page number for pagination"),
     db: AsyncSession = Depends(get_db),
 ):
     return await change_log_service.get_change_logs(
         db, project_id, layer_id=layer_id, column_name=column_name,
-        limit=limit, offset=offset,
+        limit=limit, offset=offset, change_type=change_type,
+        changed_by=changed_by, date_from=date_from, date_to=date_to, page=page,
     )
+
+
+@router.get("/{project_id}/changelog/timeline", response_model=TimelineResponse)
+async def get_timeline(
+    project_id: int,
+    page: int = Query(1, ge=1),
+    limit: int = Query(50, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+):
+    return await change_log_service.get_timeline(db, project_id, page=page, limit=limit)
+
+
+@router.get("/{project_id}/changelog/cell", response_model=CellHistoryResponse)
+async def get_cell_history(
+    project_id: int,
+    project_layer_id: int = Query(..., description="Project layer ID"),
+    column_name: str = Query(..., description="Column name"),
+    db: AsyncSession = Depends(get_db),
+):
+    return await change_log_service.get_cell_history(
+        db, project_id, project_layer_id=project_layer_id, column_name=column_name,
+    )
+
+
+@router.get("/{project_id}/versions", response_model=VersionHistoryResponse)
+async def get_version_history(
+    project_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    return await project_service.get_version_history(db, project_id)
 
 
 # --- Backbone replacement ---
