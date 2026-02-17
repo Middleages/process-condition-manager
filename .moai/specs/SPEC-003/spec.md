@@ -827,7 +827,33 @@ Note: Rejected is a transient state that immediately transitions to Draft.
 - ✅ REQ-029: 미해결 반려 댓글 강조 표시
 - ✅ REQ-031: 상태 전환 히스토리 타임라인
 
-**Milestone 3: AG Grid Integration (NOT STARTED)**:
-- Cell right-click context menu - 셀 우클릭 시 댓글 추가
-- CommentMarkerRenderer.tsx - 댓글 마커 표시 (빨간 삼각형)
-- Cell tooltip - 댓글 미리보기 툴팁
+### Milestone 3: AG Grid Comment Integration - ✅ COMPLETED
+
+**구현 완료일**: 2026-02-17
+
+**구현 내역**:
+
+**새로 생성된 파일 (1개)**:
+- frontend/src/components/editor/CommentDialog.tsx - 셀 우클릭 댓글 작성 모달 (유형 선택, 2000자 제한, 위치 자동 채움)
+
+**수정된 파일 (3개)**:
+- frontend/src/index.css - 댓글 마커 CSS 스타일 추가 (bg-cell-comment, bg-cell-rejection-comment 클래스 + ::after 빨간 삼각형)
+- frontend/src/components/editor/ConditionGrid.tsx - commentMap/rejectionCommentMap props 추가, cellClassRules 확장, tooltipValueGetter 댓글 정보 추가, onCellContextMenu 우클릭 핸들러, suppressContextMenu
+- frontend/src/pages/ConditionEditorPage.tsx - commentMap/rejectionCommentMap useMemo 빌드, CommentDialog 상태 관리, handleCellRightClick 핸들러, ConditionGrid에 새 props 전달
+
+**기술적 결정사항**:
+- AG Grid Community Edition은 getContextMenuItems를 지원하지 않아 onCellContextMenu + 커스텀 React 다이얼로그 방식 사용
+- 18,000셀 성능을 위해 커스텀 cellRenderer 대신 CSS ::after 의사요소로 빨간 삼각형 마커 구현
+- 별도 commentStore 없이 ConditionEditorPage의 로컬 상태로 관리
+
+**테스트 결과**:
+- TypeScript 컴파일: 에러 0건
+- Vite 빌드: 성공
+- 프론트엔드 테스트: 71/71 통과 (회귀 없음)
+- 백엔드 테스트: 140/140 통과 (회귀 없음)
+
+**구현된 REQ**:
+- ✅ REQ-019: Review 상태 + 리뷰어/관리자 역할에서 셀 우클릭 시 "댓글 추가" (커스텀 다이얼로그)
+- ✅ REQ-020: 미해결 댓글이 있는 셀에 빨간 삼각형 마커 표시 (CSS ::after)
+- ✅ REQ-022: 댓글 있는 셀 호버 시 툴팁에 댓글 개수 표시
+- ✅ REQ-027: 반려 후 Draft 복귀 시 반려 댓글 셀에 분홍색 배경 + 빨간 삼각형 강조
