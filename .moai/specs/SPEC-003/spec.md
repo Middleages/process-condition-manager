@@ -785,16 +785,49 @@ Note: Rejected is a transient state that immediately transitions to Draft.
 
 **남은 마일스톤**:
 
-**Milestone 2: Frontend Components (NOT STARTED)**:
-- CommentPanel.tsx - 댓글 목록 패널 및 네비게이션
-- CommentThread.tsx - 개별 댓글 스레드 컴포넌트
-- ReviewRequestModal.tsx - 검토 요청 모달
-- ApprovalButtons.tsx - 승인/반려 버튼
-- StatusBanner.tsx - 상태 표시 배너
-- StatusTimeline.tsx - 상태 전환 히스토리 타임라인
+### Milestone 2: Frontend Components - ✅ COMPLETED
+
+**구현 완료일**: 2026-02-17
+
+**구현 내역**:
+
+**새로 생성된 파일 (8개)**:
+- frontend/src/api/comments.ts - Comment CRUD API 클라이언트
+- frontend/src/hooks/useComments.ts - React Query 훅 (comments, statusTransition, changeSummary, statusHistory)
+- frontend/src/components/editor/StatusBanner.tsx - 상태 표시 배너 (5가지 상태별 색상/아이콘/메시지)
+- frontend/src/components/editor/StatusTimeline.tsx - 상태 전환 히스토리 타임라인
+- frontend/src/components/editor/ReviewRequestModal.tsx - 검토 요청 모달 (검증결과 + 변경요약 + 메모)
+- frontend/src/components/editor/CommentThread.tsx - 개별 댓글 카드 (해결/수정/삭제)
+- frontend/src/components/editor/CommentPanel.tsx - 댓글 목록 패널 (필터, 네비게이션)
+- frontend/src/components/editor/ApprovalButtons.tsx - 승인/반려 버튼 (리뷰어 전용)
+
+**수정된 파일 (5개)**:
+- frontend/src/types/index.ts - Comment, StatusTransition, ChangeSummary, StatusHistory 타입 추가
+- frontend/src/api/projects.ts - updateProjectStatus, fetchChangeSummary, fetchStatusHistory 함수 추가
+- frontend/src/components/editor/ConditionGrid.tsx - readOnly prop 추가 (review/approved/archived 상태에서 편집 비활성화)
+- frontend/src/components/editor/EditorHeader.tsx - 검토 요청 버튼, 승인/반려 버튼, 상태별 조건부 버튼 표시
+- frontend/src/pages/ConditionEditorPage.tsx - StatusBanner, CommentPanel, ReviewRequestModal 통합
+
+**테스트 결과**:
+- TypeScript 컴파일: 에러 0건
+- Vite 빌드: 성공
+- 기존 테스트: 71/71 통과 (회귀 없음)
+- Docker 통합 테스트: 전체 API 흐름 검증 완료
+
+**구현된 REQ**:
+- ✅ REQ-007: Review/Approved 상태에서 셀 편집 비활성화
+- ✅ REQ-008: 상태별 색상 배너 표시
+- ✅ REQ-009: Review/Approved 상태에서 Save/Recipe/Backbone 버튼 숨김
+- ✅ REQ-010~012: 검토 요청 모달 (검증, 변경요약, 상태전환)
+- ✅ REQ-014: 댓글 목록 표시 (위치, 작성자, 해결 상태)
+- ✅ REQ-015: 댓글 수정 및 해결
+- ✅ REQ-021: 댓글 클릭 시 셀 네비게이션
+- ✅ REQ-023~026: 승인/반려 UI (리뷰어 전용, 댓글 존재 확인)
+- ✅ REQ-028: 반려 댓글 해결 마킹
+- ✅ REQ-029: 미해결 반려 댓글 강조 표시
+- ✅ REQ-031: 상태 전환 히스토리 타임라인
 
 **Milestone 3: AG Grid Integration (NOT STARTED)**:
 - Cell right-click context menu - 셀 우클릭 시 댓글 추가
 - CommentMarkerRenderer.tsx - 댓글 마커 표시 (빨간 삼각형)
 - Cell tooltip - 댓글 미리보기 툴팁
-- Read-only mode - Review/Approved 상태에서 편집 비활성화
