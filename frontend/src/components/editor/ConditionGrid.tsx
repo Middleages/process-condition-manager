@@ -24,6 +24,7 @@ interface Props {
   columns: ColumnDefinition[]
   validationErrors: ValidationError[]
   scrollToLayerId: number | null
+  readOnly?: boolean
   onCellChanged: (
     projectLayerId: number,
     columnName: string,
@@ -50,6 +51,7 @@ export function ConditionGrid({
   columns,
   validationErrors,
   scrollToLayerId,
+  readOnly = false,
   onCellChanged,
 }: Props) {
   const gridRef = useRef<GridApi | null>(null)
@@ -103,7 +105,7 @@ export function ConditionGrid({
           ? `${col.display_name} (${col.unit})`
           : col.display_name,
         field: col.column_name,
-        editable: true,
+        editable: !readOnly,
         width: 120,
         tooltipValueGetter: (params: ITooltipParams) => {
           const plId = params.data?.projectLayerId
@@ -170,7 +172,7 @@ export function ConditionGrid({
     })
 
     return [...fixed, ...dynamic]
-  }, [columns, backboneMap, errorMap])
+  }, [columns, backboneMap, errorMap, readOnly])
 
   const defaultColDef = useMemo<ColDef>(
     () => ({

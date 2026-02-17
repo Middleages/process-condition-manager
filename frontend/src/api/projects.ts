@@ -17,6 +17,10 @@ import type {
   RecipeApplyResponse,
   ReviseProjectRequest,
   RevisionListResponse,
+  StatusTransitionRequest,
+  StatusTransitionResponse,
+  ChangeSummaryResponse,
+  StatusHistoryResponse,
 } from '@/types'
 
 export async function fetchProjects(params?: {
@@ -159,6 +163,38 @@ export async function reviseProject(
 export async function getProductRevisions(productId: number): Promise<RevisionListResponse> {
   const { data } = await client.get<RevisionListResponse>(
     `/projects/by-product/${productId}/revisions`
+  )
+  return data
+}
+
+
+// --- Status Transition ---
+
+export async function updateProjectStatus(
+  projectId: number,
+  req: StatusTransitionRequest
+): Promise<StatusTransitionResponse> {
+  const { data } = await client.patch<StatusTransitionResponse>(
+    `/projects/${projectId}/status`,
+    req
+  )
+  return data
+}
+
+export async function fetchChangeSummary(
+  projectId: number
+): Promise<ChangeSummaryResponse> {
+  const { data } = await client.get<ChangeSummaryResponse>(
+    `/projects/${projectId}/change-summary`
+  )
+  return data
+}
+
+export async function fetchStatusHistory(
+  projectId: number
+): Promise<StatusHistoryResponse> {
+  const { data } = await client.get<StatusHistoryResponse>(
+    `/projects/${projectId}/status-history`
   )
   return data
 }
