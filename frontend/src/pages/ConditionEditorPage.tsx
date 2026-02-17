@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, useMemo, useRef } from 'react'
-import { useParams, useBlocker } from 'react-router-dom'
-import { useProjectDetail, useBulkSave, useValidateProjectMutation, useDeleteLayer } from '@/hooks/useProjects'
+import { useParams, useBlocker, useNavigate } from 'react-router-dom'
+import { useProjectDetail, useBulkSave, useValidateProjectMutation, useDeleteLayer, useVersionHistory } from '@/hooks/useProjects'
 import { useColumns } from '@/hooks/useColumns'
 import { useAllLayers } from '@/hooks/useProducts'
 import { useAutoSave } from '@/hooks/useAutoSave'
@@ -33,6 +33,7 @@ import { Loader2 } from 'lucide-react'
 export default function ConditionEditorPage() {
   const { projectId } = useParams()
   const pid = Number(projectId)
+  const navigate = useNavigate()
   const currentUserId = useUserStore((s) => s.currentUserId)
   const addToast = useToastStore((s) => s.addToast)
 
@@ -43,6 +44,7 @@ export default function ConditionEditorPage() {
   const { data: allLayers = [] } = useAllLayers()
   const { data: users = [] } = useUsers()
   const { data: commentData } = useComments(pid)
+  const { data: versionData } = useVersionHistory(pid)
 
   const activeCategory = useEditorStore((s) => s.activeCategory)
   const activeLayerId = useEditorStore((s) => s.activeLayerId)
@@ -56,6 +58,8 @@ export default function ConditionEditorPage() {
   const isHistoryPanelOpen = useEditorStore((s) => s.isHistoryPanelOpen)
   const toggleHistoryPanel = useEditorStore((s) => s.toggleHistoryPanel)
   const cellHistoryTarget = useEditorStore((s) => s.cellHistoryTarget)
+  const isVersionHistoryOpen = useEditorStore((s) => s.isVersionHistoryOpen)
+  const toggleVersionHistory = useEditorStore((s) => s.toggleVersionHistory)
   const openCellHistory = useEditorStore((s) => s.openCellHistory)
   const closeCellHistory = useEditorStore((s) => s.closeCellHistory)
 
@@ -307,6 +311,15 @@ export default function ConditionEditorPage() {
     }
   }, [project, currentUserId, buildSavePayload, bulkSave, clearAllDirty, setIsSaving, addToast, validateMutation, pid, setValidationErrors])
 
+  // Navigate to latest version of this product
+  const handleBackToCurrent = useCallback(() => {
+    if (!versionData) return
+    const latestVersion = versionData.versions.find((v) => v.is_latest)
+    if (latestVersion) {
+      navigate(`/projects/${latestVersion.project_id}/edit`)
+    }
+  }, [versionData, navigate])
+
   // Auto-save every 30 seconds (only for draft/rejected, not read-only states)
   const { lastSavedAt } = useAutoSave({
     onSave: handleSave,
@@ -427,9 +440,15 @@ export default function ConditionEditorPage() {
         commentCount={commentData?.unresolved_count ?? 0}
         onToggleHistory={toggleHistoryPanel}
         isHistoryOpen={isHistoryPanelOpen}
+        onToggleVersionHistory={toggleVersionHistory}
+        isVersionHistoryOpen={isVersionHistoryOpen}
       />
 
-      <StatusBanner status={project.status} revision={project.revision} />
+      <StatusBanner
+        status={project.status}
+        revision={project.revision}
+        onBackToCurrent={isArchived ? handleBackToCurrent : undefined}
+      />
 
       <CategoryTabs categories={categories} />
 

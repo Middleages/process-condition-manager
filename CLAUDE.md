@@ -96,12 +96,14 @@ Draft → Review → Approved → (Revision 생성 시) Archived
 
 ## 현재 진행 상태
 
-- Docker Compose 구성 완료 (Sprint 1.1)
-- FastAPI 프로젝트 구조 세팅 완료 (Sprint 1.2)
-- React + Vite 프로젝트 구조 세팅 완료 (Sprint 1.3)
-- SQLAlchemy 모델 전체 정의 완료 (Sprint 1.4)
-- Alembic 초기화 완료 (Sprint 1.5 진행 중)
-- 다음 작업: 시드 데이터(1.6) → 백엔드 핵심 API(Sprint 2) → 프론트엔드 UI(Sprint 3)
+- Phase 1 (MVP) 완료: 프로젝트 생성, backbone 복사, AG Grid 편집 UI, 검증, 벌크 저장
+- Phase 2 완료: 레이어별 backbone 교체, Recipe XML 반영, 관리자 설정, Revision 기능
+- SPEC-003 완료: 승인 워크플로우 (Review Request, Approve/Reject, 상태 전환)
+- SPEC-004 완료: 변경 이력 패널 + 버전 히스토리
+  - M1: 백엔드 API (changelog 필터, timeline, cell history, version history)
+  - M2: 변경 이력 슬라이드아웃 패널 + 셀 히스토리 모달
+  - M3: 버전 히스토리 드롭다운 + Read-Only 모드 (archived 버전 보기)
+- 다음 작업: SPEC-005 또는 Phase 3 나머지 기능 (전산 출력 등)
 
 ## 개발 명령어
 

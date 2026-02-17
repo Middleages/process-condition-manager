@@ -48,9 +48,10 @@ const statusConfig: Record<ProjectStatus, {
 interface Props {
   status: ProjectStatus
   revision?: number
+  onBackToCurrent?: () => void
 }
 
-export function StatusBanner({ status, revision }: Props) {
+export function StatusBanner({ status, revision, onBackToCurrent }: Props) {
   const config = statusConfig[status]
   const Icon = config.icon
 
@@ -62,6 +63,18 @@ export function StatusBanner({ status, revision }: Props) {
           ? `보관됨 (v${revision}). 이전 버전입니다.`
           : config.message}
       </span>
+      {status === 'archived' && onBackToCurrent && (
+        <>
+          <div className="flex-1" />
+          <button
+            type="button"
+            onClick={onBackToCurrent}
+            className="px-3 py-1 text-xs font-medium bg-white/80 hover:bg-white border border-gray-300 rounded"
+          >
+            최신 버전으로 이동
+          </button>
+        </>
+      )}
     </div>
   )
 }

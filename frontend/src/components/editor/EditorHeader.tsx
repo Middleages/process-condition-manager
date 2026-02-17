@@ -5,6 +5,7 @@ import { StatusBadge } from '@/components/projects/StatusBadge'
 import { computeProjectDiff } from '@/lib/diff'
 import { useEditorStore } from '@/stores/useEditorStore'
 import { ApprovalButtons } from './ApprovalButtons'
+import { VersionHistoryPanel } from './VersionHistoryPanel'
 import type { ProjectDetail, User } from '@/types'
 import { ArrowLeft, Save, Loader2, AlertTriangle, GitCompare, FileUp, GitBranch, MessageSquare, Send, History } from 'lucide-react'
 
@@ -22,6 +23,8 @@ interface Props {
   commentCount?: number
   onToggleHistory?: () => void
   isHistoryOpen?: boolean
+  onToggleVersionHistory?: () => void
+  isVersionHistoryOpen?: boolean
 }
 
 export function EditorHeader({
@@ -38,6 +41,8 @@ export function EditorHeader({
   commentCount = 0,
   onToggleHistory,
   isHistoryOpen = false,
+  onToggleVersionHistory,
+  isVersionHistoryOpen = false,
 }: Props) {
   const navigate = useNavigate()
   const hasDirty = useEditorStore((s) => s.hasDirtyCells())
@@ -97,6 +102,24 @@ export function EditorHeader({
         </span>
       )}
 
+      {/* Version History dropdown */}
+      <div className="relative">
+        <Button
+          variant={isVersionHistoryOpen ? 'default' : 'outline'}
+          size="sm"
+          onClick={onToggleVersionHistory}
+        >
+          <GitBranch className="mr-1.5 h-4 w-4" />
+          버전 히스토리
+        </Button>
+        <VersionHistoryPanel
+          projectId={projectId}
+          isOpen={isVersionHistoryOpen}
+          onClose={onToggleVersionHistory ?? (() => {})}
+          currentProjectId={projectId}
+        />
+      </div>
+
       {/* Change History toggle button */}
       {onToggleHistory && (
         <Button
@@ -105,7 +128,7 @@ export function EditorHeader({
           onClick={onToggleHistory}
         >
           <History className="mr-1.5 h-4 w-4" />
-          Change History
+          변경 이력
         </Button>
       )}
 
