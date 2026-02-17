@@ -102,7 +102,83 @@ class ChangeLogResponse(BaseModel):
 
 class ChangeLogListResponse(BaseModel):
     total: int
+    page: int = 1
     items: list[ChangeLogResponse]
+
+
+# --- Timeline schemas ---
+
+class TimelineEntryDetails(BaseModel):
+    # For cell_change
+    layer_name: str | None = None
+    column_name: str | None = None
+    old_value: str | None = None
+    new_value: str | None = None
+    change_type: str | None = None
+    # For status_change
+    from_status: str | None = None
+    to_status: str | None = None
+    comment: str | None = None
+
+
+class TimelineEntry(BaseModel):
+    id: str  # "change-500" or "status-5"
+    entry_type: str  # "cell_change" or "status_change"
+    timestamp: datetime
+    user_id: int
+    user_name: str
+    details: TimelineEntryDetails
+
+
+class TimelineGroup(BaseModel):
+    date: str  # "YYYY-MM-DD"
+    entries: list[TimelineEntry]
+
+
+class TimelineResponse(BaseModel):
+    total: int
+    page: int
+    limit: int
+    groups: list[TimelineGroup]
+
+
+# --- Cell History schemas ---
+
+class CellHistoryItem(BaseModel):
+    id: int
+    old_value: str | None
+    new_value: str | None
+    change_type: str
+    changed_by: int
+    changed_by_name: str
+    changed_at: datetime
+
+
+class CellHistoryResponse(BaseModel):
+    project_layer_id: int
+    layer_name: str
+    column_name: str
+    total: int
+    items: list[CellHistoryItem]
+
+
+# --- Version History schemas ---
+
+class VersionItem(BaseModel):
+    project_id: int
+    revision: int
+    status: str
+    is_latest: bool
+    is_current: bool
+    created_by_name: str | None
+    created_at: datetime
+
+
+class VersionHistoryResponse(BaseModel):
+    product_id: int
+    product_name: str
+    current_project_id: int
+    versions: list[VersionItem]
 
 
 class BulkSaveResponse(BaseModel):
