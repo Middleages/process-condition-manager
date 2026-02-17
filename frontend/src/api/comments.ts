@@ -11,7 +11,7 @@ export async function createComment(
   req: CommentCreate
 ): Promise<Comment> {
   const { data } = await client.post<Comment>(
-    `/projects/${projectId}/comments`,
+    `/projects/${projectId}/comments/`,
     req
   )
   return data
@@ -26,7 +26,7 @@ export async function fetchComments(
   }
 ): Promise<CommentListResponse> {
   const { data } = await client.get<CommentListResponse>(
-    `/projects/${projectId}/comments`,
+    `/projects/${projectId}/comments/`,
     { params }
   )
   return data
