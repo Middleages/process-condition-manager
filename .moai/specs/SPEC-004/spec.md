@@ -3,7 +3,7 @@
 **SPEC ID**: SPEC-004
 **Title**: Change History Panel and Version History
 **Phase**: 3 (Workflow & Output)
-**Status**: Planned
+**Status**: In Progress (M1+M2 Complete)
 **Priority**: High
 **Created**: 2026-02-16
 
@@ -775,3 +775,44 @@ Frontend file changes are consolidated in Section 6.1 File Change Map above, cle
 | REQ-020 | N/A | ReadOnlyBanner + AG Grid editable:false | Manual/E2E |
 | REQ-021 | No mutation endpoints | N/A | test_no_mutation_apis |
 | REQ-022 | 404 on invalid project | N/A | test_project_not_found |
+
+---
+
+## Implementation Notes
+
+### M1 - Backend API Enhancement (Completed 2026-02-16)
+
+**Implemented:**
+- Enhanced `GET /api/projects/{id}/change-logs` with `change_type`, `changed_by`, `date_from`, `date_to` query filters and `page`/`limit` pagination
+- New unified timeline endpoint `GET /api/projects/{id}/change-logs/timeline` merging change_logs and project_status_logs
+- New cell history endpoint `GET /api/projects/{id}/change-logs/cell/{project_layer_id}/{column_name}`
+- New version history endpoint `GET /api/projects/{id}/versions`
+- Timeline filtering: server-side `layer_id`, `change_type`, `changed_by` parameters added after M2 integration review
+
+**Tests:** 47 new backend tests across 4 test files (test_timeline.py, test_changelog_enhanced.py, test_cell_history.py, test_version_history.py)
+
+### M2 - Change History Panel + Cell History Modal (Completed 2026-02-17)
+
+**Implemented:**
+- ChangeHistoryPanel: Right-side 350px slide-out with date-grouped unified timeline
+- ChangeHistoryEntry: Color-coded entry renderer (manual=blue, backbone=purple, recipe=green, status=orange)
+- ChangeHistoryFilters: Korean-localized filter dropdowns (Layer, Type, User)
+- CellHistoryModal: Cell-level change history table modal
+- ConditionGrid: Custom HTML context menu with viewport boundary clamping
+- EditorHeader: Change History toggle button
+- AG Grid auto-resize on panel toggle (sizeColumnsToFit with 300ms delay)
+- Zustand store: isHistoryPanelOpen, cellHistoryTarget states
+
+**UX fixes applied:**
+1. AG Grid column resize on panel open/close
+2. Context menu viewport boundary clamping
+3. Filter dropdown Korean localization
+4. Status filter Load More count separation
+5. Layer column browser context menu restoration
+
+**Files created:** 3 new components (ChangeHistoryEntry, ChangeHistoryFilters, CellHistoryModal)
+**Files modified:** 8 existing files (ChangeHistoryPanel, ConditionGrid, EditorHeader, ConditionEditorPage, types, API, hooks, store)
+
+### M3 - Version History + Read-Only (Planned)
+
+Not yet implemented. Scope: Version history panel UI, read-only condition viewer for archived versions, version comparison (optional).

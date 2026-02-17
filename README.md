@@ -43,10 +43,11 @@ PCM은 반도체 제조 공정 중 Photo 공정의 복잡한 공정조건표를 
 - **변경 이력 기록**: Recipe XML 반영 변경사항 자동 추적
 
 ### 변경 이력 추적
-- **셀 단위 추적**: 모든 셀 변경사항 개별 추적
+- **통합 타임라인**: 셀 변경과 상태 전환을 시간순으로 통합하여 슬라이드아웃 패널에서 조회
+- **필터링**: 레이어, 변경 유형(수동/Backbone/Recipe/상태 변경), 사용자별 필터 지원
+- **셀 단위 이력 조회**: 우클릭 컨텍스트 메뉴에서 특정 셀의 변경 이력 모달 표시
 - **변경 소스 구분**: manual(직접 편집), backbone(Backbone 복사/교체), recipe(Recipe XML 반영)
-- **사용자 정보**: 변경 사용자 및 변경 시간 기록
-- **변경 전후 값**: 이전 값과 새 값 모두 저장
+- **셀 네비게이션**: 타임라인 항목 클릭 시 해당 셀로 자동 이동 및 하이라이트
 
 ### Revision 관리
 - **버전 관리**: 승인된 조건표의 버전 번호 자동 관리
@@ -176,6 +177,7 @@ process-condition-manager/
 │   │   ├── App.tsx            # 라우터 설정
 │   │   ├── api/               # API 클라이언트
 │   │   ├── components/        # React 컴포넌트
+│   │   │   └── editor/        # 조건표 편집기 컴포넌트
 │   │   ├── pages/             # 페이지 컴포넌트
 │   │   └── stores/            # Zustand 상태 관리
 │   ├── package.json
@@ -201,15 +203,15 @@ process-condition-manager/
 - Revision 기능
 
 ### Phase 3 - 진행 중 🔧
-- **승인 프로세스 (승인/반려 워크플로우)** - Milestone 1 완료 ✅ (백엔드 API 구현)
-  - 상태 전환 API 검증 강화 (Draft→Review→Approved/Rejected)
-  - 댓글 CRUD API 구현
-  - 상태 전환 히스토리 및 변경 요약 API
-- **코멘트 시스템** - Milestone 1 완료 ✅ (백엔드 API 구현)
-  - Project/Layer/Cell 레벨 댓글 지원
-  - 댓글 타입 구분 (rejection/general)
-  - 댓글 해결 상태 관리
-- 변경 이력 상세 조회
+- **승인 프로세스** - ✅ 완료 (SPEC-003)
+  - 상태 전환 API (Draft→Review→Approved/Rejected)
+  - 댓글 CRUD API (Project/Layer/Cell 레벨)
+  - AG Grid 셀 댓글 통합 (우클릭 코멘트, 셀 하이라이트)
+  - 승인/반려 워크플로우 UI
+- **변경 이력 및 버전 관리** - 진행 중 🔧 (SPEC-004)
+  - 통합 타임라인 API 및 슬라이드아웃 패널 - ✅ 완료 (M1+M2)
+  - 셀 히스토리 모달 및 컨텍스트 메뉴 - ✅ 완료 (M2)
+  - 버전 히스토리 패널 및 읽기 전용 뷰어 - 예정 (M3)
 - 전산 출력 (Type A/B/C Excel 다운로드)
 
 ### Phase 4 - 계획 중
