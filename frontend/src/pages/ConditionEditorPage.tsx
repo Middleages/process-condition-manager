@@ -429,6 +429,7 @@ export default function ConditionEditorPage() {
           <CommentPanel
             projectId={pid}
             categories={categories}
+            layers={project.layers}
             isOpen={showCommentPanel}
             onToggle={setShowCommentPanel}
           />
