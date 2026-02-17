@@ -23,6 +23,7 @@ import { RecipeUploadModal } from '@/components/editor/RecipeUploadModal'
 import { RevisionCreateModal } from '@/components/editor/RevisionCreateModal'
 import { ReviewRequestModal } from '@/components/editor/ReviewRequestModal'
 import { CommentDialog } from '@/components/editor/CommentDialog'
+import { CellHistoryModal } from '@/components/editor/CellHistoryModal'
 import { validateCellValue, buildConditionDependencyMap } from '@/lib/validation'
 import { ApiError } from '@/api/client'
 import type { LayerConditions, ValidationError, ProjectLayerData } from '@/types'
@@ -49,6 +50,11 @@ export default function ConditionEditorPage() {
   const clearAllDirty = useEditorStore((s) => s.clearAllDirty)
   const setIsSaving = useEditorStore((s) => s.setIsSaving)
   const setActiveLayerId = useEditorStore((s) => s.setActiveLayerId)
+  const isHistoryPanelOpen = useEditorStore((s) => s.isHistoryPanelOpen)
+  const toggleHistoryPanel = useEditorStore((s) => s.toggleHistoryPanel)
+  const cellHistoryTarget = useEditorStore((s) => s.cellHistoryTarget)
+  const openCellHistory = useEditorStore((s) => s.openCellHistory)
+  const closeCellHistory = useEditorStore((s) => s.closeCellHistory)
 
   const bulkSave = useBulkSave(pid)
   const validateMutation = useValidateProjectMutation()
@@ -352,6 +358,32 @@ export default function ConditionEditorPage() {
     []
   )
 
+  // Handle "View History" from context menu
+  const handleViewHistory = useCallback(
+    (projectLayerId: number, layerName: string, columnName: string) => {
+      openCellHistory(projectLayerId, columnName, layerName)
+    },
+    [openCellHistory]
+  )
+
+  // Handle cell navigation from change history panel
+  const handleNavigateToCell = useCallback(
+    (layerName: string, columnName: string) => {
+      const layer = project?.layers.find((l) => l.layer_name === layerName)
+      if (layer) {
+        for (const cat of categories) {
+          const col = cat.columns.find((c) => c.column_name === columnName)
+          if (col) {
+            useEditorStore.getState().setActiveCategory(cat.category_code)
+            break
+          }
+        }
+        setActiveLayerId(layer.layer_id)
+      }
+    },
+    [project, categories, setActiveLayerId]
+  )
+
   if (projectLoading || columnsLoading) {
     return (
       <div className="h-full flex items-center justify-center">
@@ -382,6 +414,8 @@ export default function ConditionEditorPage() {
         projectId={pid}
         onShowComments={() => setShowCommentPanel((prev) => !prev)}
         commentCount={commentData?.unresolved_count ?? 0}
+        onToggleHistory={toggleHistoryPanel}
+        isHistoryOpen={isHistoryPanelOpen}
       />
 
       <StatusBanner status={project.status} revision={project.revision} />
@@ -412,6 +446,7 @@ export default function ConditionEditorPage() {
             currentUserRole={currentUser?.role}
             onCellChanged={handleCellChanged}
             onCellRightClick={handleCellRightClick}
+            onViewHistory={handleViewHistory}
           />
 
           {validationErrors.length > 0 && (
@@ -421,11 +456,6 @@ export default function ConditionEditorPage() {
             />
           )}
 
-          <ChangeHistoryPanel
-            projectId={pid}
-            layers={project.layers}
-          />
-
           <CommentPanel
             projectId={pid}
             categories={categories}
@@ -434,6 +464,14 @@ export default function ConditionEditorPage() {
             onToggle={setShowCommentPanel}
           />
         </div>
+
+        <ChangeHistoryPanel
+          projectId={pid}
+          layers={project.layers}
+          isOpen={isHistoryPanelOpen}
+          onClose={toggleHistoryPanel}
+          onNavigateToCell={handleNavigateToCell}
+        />
       </div>
 
       {/* Backbone Replace Modal */}
@@ -488,6 +526,17 @@ export default function ConditionEditorPage() {
         currentUserId={currentUserId ?? 0}
         currentUserRole={currentUser?.role ?? 'editor'}
       />
+
+      {/* Cell History Modal */}
+      {cellHistoryTarget && (
+        <CellHistoryModal
+          projectId={pid}
+          projectLayerId={cellHistoryTarget.projectLayerId}
+          columnName={cellHistoryTarget.columnName}
+          layerName={cellHistoryTarget.layerName}
+          onClose={closeCellHistory}
+        />
+      )}
     </div>
   )
 }

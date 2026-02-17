@@ -13,6 +13,9 @@ import {
   applyRecipeChanges,
   reviseProject,
   getProductRevisions,
+  fetchTimeline,
+  fetchCellHistory,
+  fetchVersionHistory,
 } from '@/api/projects'
 import type {
   ProjectStatus,
@@ -22,6 +25,7 @@ import type {
   LayerAddRequest,
   RecipeApplyRequest,
   ReviseProjectRequest,
+  TimelineParams,
 } from '@/types'
 
 export const projectKeys = {
@@ -34,6 +38,12 @@ export const projectKeys = {
   validation: (id: number) => [...projectKeys.all, 'validation', id] as const,
   changeLogs: (id: number, filters?: Record<string, unknown>) =>
     [...projectKeys.all, 'change-logs', id, filters] as const,
+  timeline: (projectId: number, params: TimelineParams) =>
+    [...projectKeys.detail(projectId), 'timeline', params] as const,
+  cellHistory: (projectId: number, projectLayerId: number, columnName: string) =>
+    [...projectKeys.detail(projectId), 'cellHistory', projectLayerId, columnName] as const,
+  versionHistory: (projectId: number) =>
+    [...projectKeys.detail(projectId), 'versionHistory'] as const,
 }
 
 export function useProjects(status?: ProjectStatus) {
@@ -167,5 +177,33 @@ export function useProductRevisions(productId: number | null) {
     queryKey: ['product-revisions', productId],
     queryFn: () => getProductRevisions(productId!),
     enabled: !!productId,
+  })
+}
+
+export function useTimeline(projectId: number, params: TimelineParams = {}) {
+  return useQuery({
+    queryKey: projectKeys.timeline(projectId, params),
+    queryFn: () => fetchTimeline(projectId, params),
+    enabled: !!projectId,
+  })
+}
+
+export function useCellHistory(
+  projectId: number,
+  projectLayerId: number | null,
+  columnName: string | null
+) {
+  return useQuery({
+    queryKey: projectKeys.cellHistory(projectId, projectLayerId!, columnName!),
+    queryFn: () => fetchCellHistory(projectId, projectLayerId!, columnName!),
+    enabled: !!projectId && !!projectLayerId && !!columnName,
+  })
+}
+
+export function useVersionHistory(projectId: number) {
+  return useQuery({
+    queryKey: projectKeys.versionHistory(projectId),
+    queryFn: () => fetchVersionHistory(projectId),
+    enabled: !!projectId,
   })
 }

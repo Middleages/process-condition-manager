@@ -6,7 +6,7 @@ import { computeProjectDiff } from '@/lib/diff'
 import { useEditorStore } from '@/stores/useEditorStore'
 import { ApprovalButtons } from './ApprovalButtons'
 import type { ProjectDetail, User } from '@/types'
-import { ArrowLeft, Save, Loader2, AlertTriangle, GitCompare, FileUp, GitBranch, MessageSquare, Send } from 'lucide-react'
+import { ArrowLeft, Save, Loader2, AlertTriangle, GitCompare, FileUp, GitBranch, MessageSquare, Send, History } from 'lucide-react'
 
 interface Props {
   project: ProjectDetail
@@ -20,6 +20,8 @@ interface Props {
   projectId: number
   onShowComments?: () => void
   commentCount?: number
+  onToggleHistory?: () => void
+  isHistoryOpen?: boolean
 }
 
 export function EditorHeader({
@@ -34,6 +36,8 @@ export function EditorHeader({
   projectId,
   onShowComments,
   commentCount = 0,
+  onToggleHistory,
+  isHistoryOpen = false,
 }: Props) {
   const navigate = useNavigate()
   const hasDirty = useEditorStore((s) => s.hasDirtyCells())
@@ -91,6 +95,18 @@ export function EditorHeader({
         <span className="text-xs text-muted-foreground">
           자동 저장됨 {lastSavedAt}
         </span>
+      )}
+
+      {/* Change History toggle button */}
+      {onToggleHistory && (
+        <Button
+          variant={isHistoryOpen ? 'default' : 'outline'}
+          size="sm"
+          onClick={onToggleHistory}
+        >
+          <History className="mr-1.5 h-4 w-4" />
+          Change History
+        </Button>
       )}
 
       {/* Comments button */}

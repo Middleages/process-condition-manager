@@ -1,4 +1,4 @@
-import { useMemo, useCallback, useRef, useEffect } from 'react'
+import { useMemo, useCallback, useRef, useEffect, useState } from 'react'
 import { AgGridReact } from 'ag-grid-react'
 import type {
   ColDef,
@@ -42,6 +42,7 @@ interface Props {
     columnName: string,
     columnDisplayName: string
   ) => void
+  onViewHistory?: (projectLayerId: number, layerName: string, columnName: string) => void
 }
 
 function buildRowData(layers: ProjectLayerData[]): GridRowData[] {
@@ -69,8 +70,17 @@ export function ConditionGrid({
   currentUserRole,
   onCellChanged,
   onCellRightClick,
+  onViewHistory,
 }: Props) {
   const gridRef = useRef<GridApi | null>(null)
+  const [contextMenu, setContextMenu] = useState<{
+    x: number
+    y: number
+    projectLayerId: number
+    layerName: string
+    columnName: string
+    columnDisplayName: string
+  } | null>(null)
   const dirtyCells = useEditorStore((s) => s.dirtyCells)
   const recipeCells = useEditorStore((s) => s.recipeCells)
   const dirtyCellsRef = useRef(dirtyCells)
@@ -220,18 +230,23 @@ export function ConditionGrid({
     (event: CellContextMenuEvent) => {
       const { data, colDef } = event
       if (!data?.projectLayerId || !colDef?.field || colDef.field === 'layerName') return
-      if (projectStatus !== 'review' || (currentUserRole !== 'reviewer' && currentUserRole !== 'admin')) return
 
-      // Only prevent default when showing our custom dialog
       event.event?.preventDefault()
 
-      // Find the column display name
       const col = columns.find(c => c.column_name === colDef.field)
       const displayName = col ? (col.unit ? `${col.display_name} (${col.unit})` : col.display_name) : colDef.field
 
-      onCellRightClick?.(data.projectLayerId, data.layerName, colDef.field, displayName)
+      const mouseEvent = event.event as MouseEvent
+      setContextMenu({
+        x: mouseEvent.clientX,
+        y: mouseEvent.clientY,
+        projectLayerId: data.projectLayerId,
+        layerName: data.layerName,
+        columnName: colDef.field,
+        columnDisplayName: displayName,
+      })
     },
-    [projectStatus, currentUserRole, columns, onCellRightClick]
+    [columns]
   )
 
   const defaultColDef = useMemo<ColDef>(
@@ -268,6 +283,14 @@ export function ConditionGrid({
       gridRef.current.flashCells({ rowNodes: [rowNode] })
     }
   }, [scrollToLayerId, layers])
+
+  // Close context menu on outside click
+  useEffect(() => {
+    if (!contextMenu) return
+    const handleClick = () => setContextMenu(null)
+    window.addEventListener('click', handleClick)
+    return () => window.removeEventListener('click', handleClick)
+  }, [contextMenu])
 
   const onGridReady = useCallback((params: GridReadyEvent) => {
     gridRef.current = params.api
@@ -312,7 +335,7 @@ export function ConditionGrid({
   }, [])
 
   return (
-    <div className="ag-theme-alpine flex-1 w-full">
+    <div className="ag-theme-alpine flex-1 w-full relative">
       <AgGridReact
         rowData={rowData}
         columnDefs={columnDefs}
@@ -327,10 +350,41 @@ export function ConditionGrid({
         tooltipShowDelay={300}
         stopEditingWhenCellsLoseFocus
         singleClickEdit
-        suppressContextMenu={projectStatus === 'review'}
+        suppressContextMenu={true}
         headerHeight={36}
         rowHeight={32}
       />
+
+      {/* Custom Context Menu */}
+      {contextMenu && (
+        <div
+          className="fixed z-50 bg-white border border-gray-200 rounded-md shadow-lg py-1 min-w-[160px]"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+        >
+          <button
+            className="w-full text-left px-3 py-1.5 text-sm hover:bg-gray-100 flex items-center gap-2"
+            onClick={() => {
+              onViewHistory?.(contextMenu.projectLayerId, contextMenu.layerName, contextMenu.columnName)
+              setContextMenu(null)
+            }}
+          >
+            <span className="text-gray-500">&#128203;</span>
+            View History
+          </button>
+          {projectStatus === 'review' && (currentUserRole === 'reviewer' || currentUserRole === 'admin') && (
+            <button
+              className="w-full text-left px-3 py-1.5 text-sm hover:bg-gray-100 flex items-center gap-2"
+              onClick={() => {
+                onCellRightClick?.(contextMenu.projectLayerId, contextMenu.layerName, contextMenu.columnName, contextMenu.columnDisplayName)
+                setContextMenu(null)
+              }}
+            >
+              <span className="text-gray-500">&#128172;</span>
+              Add Comment
+            </button>
+          )}
+        </div>
+      )}
     </div>
   )
 }
