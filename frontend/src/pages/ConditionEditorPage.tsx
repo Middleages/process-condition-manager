@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useMemo } from 'react'
+import { useCallback, useEffect, useState, useMemo, useRef } from 'react'
 import { useParams, useBlocker } from 'react-router-dom'
 import { useProjectDetail, useBulkSave, useValidateProjectMutation, useDeleteLayer } from '@/hooks/useProjects'
 import { useColumns } from '@/hooks/useColumns'
@@ -27,6 +27,7 @@ import { CellHistoryModal } from '@/components/editor/CellHistoryModal'
 import { validateCellValue, buildConditionDependencyMap } from '@/lib/validation'
 import { ApiError } from '@/api/client'
 import type { LayerConditions, ValidationError, ProjectLayerData } from '@/types'
+import type { GridApi } from 'ag-grid-community'
 import { Loader2 } from 'lucide-react'
 
 export default function ConditionEditorPage() {
@@ -34,6 +35,8 @@ export default function ConditionEditorPage() {
   const pid = Number(projectId)
   const currentUserId = useUserStore((s) => s.currentUserId)
   const addToast = useToastStore((s) => s.addToast)
+
+  const gridApiRef = useRef<GridApi | null>(null)
 
   const { data: project, isLoading: projectLoading } = useProjectDetail(pid)
   const { data: categories = [], isLoading: columnsLoading } = useColumns()
@@ -114,6 +117,14 @@ export default function ConditionEditorPage() {
       }
     }
   }, [blocker])
+
+  // Resize grid when history panel opens/closes
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      gridApiRef.current?.sizeColumnsToFit()
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [isHistoryPanelOpen])
 
   // Reset editor state on mount/unmount
   useEffect(() => {
@@ -444,6 +455,7 @@ export default function ConditionEditorPage() {
             rejectionCommentMap={rejectionCommentMap}
             projectStatus={project.status}
             currentUserRole={currentUser?.role}
+            onGridReady={(api) => { gridApiRef.current = api }}
             onCellChanged={handleCellChanged}
             onCellRightClick={handleCellRightClick}
             onViewHistory={handleViewHistory}

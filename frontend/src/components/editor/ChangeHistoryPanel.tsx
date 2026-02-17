@@ -93,6 +93,10 @@ export function ChangeHistoryPanel({
     0
   )
   const hasMore = loadedCount < totalItems
+  const displayedCount = displayGroups.reduce(
+    (sum, g) => sum + g.entries.length,
+    0
+  )
 
   // Extract distinct users from accumulated data for filter dropdown
   const distinctUsers = useMemo(() => {
@@ -167,11 +171,11 @@ export function ChangeHistoryPanel({
         {isLoading && page === 1 ? (
           <div className="flex items-center justify-center py-8 text-muted-foreground">
             <Loader2 className="h-5 w-5 animate-spin mr-2" />
-            <span className="text-xs">Loading...</span>
+            <span className="text-xs">로딩 중...</span>
           </div>
         ) : displayGroups.length === 0 ? (
           <div className="text-xs text-muted-foreground text-center py-8">
-            No change history found.
+            변경 이력이 없습니다.
           </div>
         ) : (
           <>
@@ -209,11 +213,12 @@ export function ChangeHistoryPanel({
                   {isFetching ? (
                     <>
                       <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                      Loading...
+                      로딩 중...
                     </>
-                  ) : (
-                    `Load More (${loadedCount} / ${totalItems})`
-                  )}
+                  ) : filters.changeType === 'status_change'
+                    ? `더 보기 (${displayedCount}건 표시 중)`
+                    : `더 보기 (${loadedCount} / ${totalItems})`
+                  }
                 </Button>
               </div>
             )}

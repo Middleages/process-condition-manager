@@ -30,6 +30,7 @@ interface Props {
   rejectionCommentMap?: Map<string, boolean>
   projectStatus?: string
   currentUserRole?: string
+  onGridReady?: (api: GridApi) => void
   onCellChanged: (
     projectLayerId: number,
     columnName: string,
@@ -68,6 +69,7 @@ export function ConditionGrid({
   rejectionCommentMap = new Map(),
   projectStatus,
   currentUserRole,
+  onGridReady: onGridReadyProp,
   onCellChanged,
   onCellRightClick,
   onViewHistory,
@@ -237,9 +239,13 @@ export function ConditionGrid({
       const displayName = col ? (col.unit ? `${col.display_name} (${col.unit})` : col.display_name) : colDef.field
 
       const mouseEvent = event.event as MouseEvent
+      const menuWidth = 180
+      const menuHeight = 80
+      const x = Math.min(mouseEvent.clientX, window.innerWidth - menuWidth)
+      const y = Math.min(mouseEvent.clientY, window.innerHeight - menuHeight)
       setContextMenu({
-        x: mouseEvent.clientX,
-        y: mouseEvent.clientY,
+        x,
+        y,
         projectLayerId: data.projectLayerId,
         layerName: data.layerName,
         columnName: colDef.field,
@@ -294,7 +300,8 @@ export function ConditionGrid({
 
   const onGridReady = useCallback((params: GridReadyEvent) => {
     gridRef.current = params.api
-  }, [])
+    onGridReadyProp?.(params.api)
+  }, [onGridReadyProp])
 
   const handleCellValueChanged = useCallback(
     (event: CellValueChangedEvent) => {
@@ -350,7 +357,6 @@ export function ConditionGrid({
         tooltipShowDelay={300}
         stopEditingWhenCellsLoseFocus
         singleClickEdit
-        suppressContextMenu={true}
         headerHeight={36}
         rowHeight={32}
       />

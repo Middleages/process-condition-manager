@@ -12,10 +12,10 @@ interface ChangeHistoryFiltersProps {
 }
 
 const CHANGE_TYPE_OPTIONS = [
-  { value: 'manual', label: 'Manual' },
+  { value: 'manual', label: '수동' },
   { value: 'backbone', label: 'Backbone' },
   { value: 'recipe', label: 'Recipe' },
-  { value: 'status_change', label: 'Status' },
+  { value: 'status_change', label: '상태 변경' },
 ]
 
 export function ChangeHistoryFilters({
@@ -40,7 +40,7 @@ export function ChangeHistoryFilters({
           })
         }
       >
-        <option value="">All Layers</option>
+        <option value="">전체 레이어</option>
         {layers.map((layer) => (
           <option key={layer.id} value={layer.id}>
             {layer.name}
@@ -59,7 +59,7 @@ export function ChangeHistoryFilters({
           })
         }
       >
-        <option value="">All Types</option>
+        <option value="">전체 유형</option>
         {CHANGE_TYPE_OPTIONS.map((opt) => (
           <option key={opt.value} value={opt.value}>
             {opt.label}
@@ -78,7 +78,7 @@ export function ChangeHistoryFilters({
           })
         }
       >
-        <option value="">All Users</option>
+        <option value="">전체 사용자</option>
         {users.map((user) => (
           <option key={user.id} value={user.id}>
             {user.name}
