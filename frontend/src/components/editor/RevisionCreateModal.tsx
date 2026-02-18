@@ -11,7 +11,6 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 
 interface RevisionCreateModalProps {
   open: boolean
@@ -69,14 +68,20 @@ export function RevisionCreateModal({ open, onOpenChange, project }: RevisionCre
 
           <div>
             <label className="block text-sm font-medium mb-1">
-              설명 (선택사항)
+              개정 사유 (권장)
             </label>
-            <Input
+            <textarea
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 resize-none"
+              rows={4}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="개정 사유를 입력하세요"
+              placeholder="변경할 내용과 사유를 기술해 주세요"
               maxLength={500}
             />
+            {/* 글자 수 카운터 */}
+            <div className="text-right text-xs text-muted-foreground mt-1">
+              {description.length}/500
+            </div>
           </div>
 
           <DialogFooter>

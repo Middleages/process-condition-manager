@@ -14,11 +14,11 @@ from app.models import (
     Project, ProjectLayer, ChangeLog,
     RecipeXmlMapping, ColumnDefinition,
 )
-from app.models.product import Layer
 from app.schemas.recipe import (
     RecipeDiffItem, RecipeDiffResult, RecipeParseWarning,
     RecipeApplyRequest, RecipeApplyResponse,
 )
+from app.utils.comparison import values_differ
 
 
 # ---------------------------------------------------------------------------
@@ -40,14 +40,6 @@ def apply_transform(raw_value: str, transform: str | None) -> Any:
     if transform == "yn_to_bool":
         return "Y" if raw_value.lower() in ("true", "1", "yes", "y") else "N"
     return raw_value
-
-
-def _values_differ(current: Any, recipe: Any) -> bool:
-    if current is None and recipe is None:
-        return False
-    if current is None or recipe is None:
-        return True
-    return str(current) != str(recipe)
 
 
 # ---------------------------------------------------------------------------
@@ -147,7 +139,7 @@ async def parse_recipe_xml(
     mapping_result = await db.execute(
         select(RecipeXmlMapping, ColumnDefinition)
         .join(ColumnDefinition, RecipeXmlMapping.column_id == ColumnDefinition.id)
-        .where(RecipeXmlMapping.is_active == True)
+        .where(RecipeXmlMapping.is_active)
     )
     mappings = mapping_result.all()
 
@@ -225,7 +217,7 @@ async def parse_recipe_xml(
             display_name=col_def.display_name,
             current_value=current_value,
             recipe_value=recipe_value,
-            is_different=_values_differ(current_value, recipe_value),
+            is_different=values_differ(current_value, recipe_value),
             category_code=category_code,
         ))
 
@@ -279,7 +271,7 @@ async def apply_recipe_changes(
         old_conditions = pl.conditions or {}
         old_value = old_conditions.get(change.column_name)
 
-        if _values_differ(old_value, change.new_value):
+        if values_differ(old_value, change.new_value):
             # Create change_log
             db.add(ChangeLog(
                 project_layer_id=change.project_layer_id,

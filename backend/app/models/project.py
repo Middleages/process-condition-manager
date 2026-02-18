@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -29,6 +29,8 @@ class Project(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # 개정 생성 시 작성자가 입력한 개정 사유 (선택 입력)
+    revision_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     product: Mapped["Product"] = relationship(foreign_keys=[product_id])
     backbone: Mapped["Product"] = relationship(foreign_keys=[main_backbone_id])

@@ -496,6 +496,7 @@ export interface VersionItem {
   is_current: boolean
   created_by_name: string | null
   created_at: string
+  revision_reason?: string | null
 }
 
 export interface VersionHistoryResponse {
@@ -503,4 +504,32 @@ export interface VersionHistoryResponse {
   product_name: string
   current_project_id: number
   versions: VersionItem[]
+}
+
+// === SPEC-006 M3: Version Diff Types ===
+export interface CellDiff {
+  column_name: string
+  old_value: string | null
+  new_value: string | null
+}
+
+export interface LayerDiff {
+  layer_id: number
+  layer_name: string
+  change_type: 'modified' | 'added' | 'removed'
+  changes: CellDiff[]
+}
+
+export interface DiffSummary {
+  total_layers_changed: number
+  total_cells_changed: number
+}
+
+export interface VersionDiffResponse {
+  base_project_id: number
+  compare_project_id: number
+  base_revision: number
+  compare_revision: number
+  summary: DiffSummary
+  layers: LayerDiff[]
 }

@@ -7,7 +7,7 @@ from fastapi import HTTPException
 
 from app.models import (
     Project, ProjectLayer, ColumnDefinition,
-    ColumnValidation, ColumnCategory, Layer,
+    ColumnValidation, Layer,
 )
 from app.schemas.project import ValidationResponse, ValidationErrorItem
 

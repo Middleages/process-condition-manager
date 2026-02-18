@@ -222,6 +222,9 @@ async def revise_project(
         is_latest=True,
         created_by=original.created_by,  # Inherit creator or could be parameterized
     )
+    # 개정 사유 저장 (입력된 경우에만)
+    if description:
+        new_project.revision_reason = description
     db.add(new_project)
     await db.flush()
 
@@ -524,6 +527,7 @@ async def get_version_history(
             is_current=(p.id == project_id),
             created_by_name=p.creator.display_name if p.creator else None,
             created_at=p.created_at,
+            revision_reason=p.revision_reason,
         )
         for p in projects
     ]

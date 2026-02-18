@@ -172,6 +172,7 @@ class VersionItem(BaseModel):
     is_current: bool
     created_by_name: str | None
     created_at: datetime
+    revision_reason: str | None = None
 
 
 class VersionHistoryResponse(BaseModel):
@@ -249,3 +250,32 @@ class StatusHistoryItem(BaseModel):
 
 class StatusHistoryResponse(BaseModel):
     history: list[StatusHistoryItem]
+
+
+# --- Version Diff schemas ---
+
+class CellDiff(BaseModel):
+    column_name: str
+    old_value: str | None
+    new_value: str | None
+
+
+class LayerDiff(BaseModel):
+    layer_id: int
+    layer_name: str
+    change_type: str  # "modified" | "added" | "removed"
+    changes: list[CellDiff]
+
+
+class DiffSummary(BaseModel):
+    total_layers_changed: int
+    total_cells_changed: int
+
+
+class VersionDiffResponse(BaseModel):
+    base_project_id: int
+    compare_project_id: int
+    base_revision: int
+    compare_revision: int
+    summary: DiffSummary
+    layers: list[LayerDiff]

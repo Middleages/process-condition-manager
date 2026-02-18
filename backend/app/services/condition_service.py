@@ -1,5 +1,4 @@
 from datetime import datetime, timezone
-from typing import Any
 
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,15 +7,7 @@ from fastapi import HTTPException
 
 from app.models import Project, ProjectLayer, ChangeLog
 from app.schemas.project import BulkSaveRequest, BulkSaveResponse
-
-
-def _values_differ(old_val: Any, new_val: Any) -> bool:
-    """Compare values accounting for type differences in JSONB."""
-    if old_val is None and new_val is None:
-        return False
-    if old_val is None or new_val is None:
-        return True
-    return str(old_val) != str(new_val)
+from app.utils.comparison import values_differ
 
 
 async def bulk_save_conditions(
@@ -70,7 +61,7 @@ async def bulk_save_conditions(
             old_val = old_conditions.get(key)
             new_val = new_conditions.get(key)
 
-            if _values_differ(old_val, new_val):
+            if values_differ(old_val, new_val):
                 change_log = ChangeLog(
                     project_layer_id=pl_id,
                     column_name=key,

@@ -23,6 +23,7 @@ from app.schemas.project import (
     TimelineResponse,
     CellHistoryResponse,
     VersionHistoryResponse,
+    VersionDiffResponse,
 )
 from app.schemas.backbone import (
     BackboneReplaceRequest,
@@ -36,7 +37,7 @@ from app.schemas.recipe import (
     RecipeApplyResponse,
 )
 from app.services import project_service, condition_service, validation_service, change_log_service
-from app.services import backbone_service, recipe_service
+from app.services import backbone_service, recipe_service, diff_service
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
@@ -205,6 +206,16 @@ async def get_version_history(
     db: AsyncSession = Depends(get_db),
 ):
     return await project_service.get_version_history(db, project_id)
+
+
+@router.get("/{project_id}/versions/{compare_project_id}/diff", response_model=VersionDiffResponse)
+async def get_version_diff(
+    project_id: int,
+    compare_project_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """두 프로젝트 버전 간의 조건 데이터 차이를 반환한다."""
+    return await diff_service.get_version_diff(db, project_id, compare_project_id)
 
 
 # --- Backbone replacement ---

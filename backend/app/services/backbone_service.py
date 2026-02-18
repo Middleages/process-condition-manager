@@ -9,14 +9,7 @@ from fastapi import HTTPException
 from app.models import (
     Product, ProductLayer, Project, ProjectLayer, Layer, ChangeLog,
 )
-
-
-def _values_differ(old_val, new_val) -> bool:
-    if old_val is None and new_val is None:
-        return False
-    if old_val is None or new_val is None:
-        return True
-    return str(old_val) != str(new_val)
+from app.utils.comparison import values_differ
 
 
 async def replace_layer_backbone(
@@ -85,7 +78,7 @@ async def replace_layer_backbone(
     for key in all_keys:
         old_val = old_conditions.get(key)
         new_val = new_conditions.get(key)
-        if _values_differ(old_val, new_val):
+        if values_differ(old_val, new_val):
             db.add(ChangeLog(
                 project_layer_id=project_layer_id,
                 column_name=key,

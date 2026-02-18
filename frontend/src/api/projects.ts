@@ -25,6 +25,7 @@ import type {
   TimelineResponse,
   CellHistoryResponse,
   VersionHistoryResponse,
+  VersionDiffResponse,
 } from '@/types'
 
 export async function fetchProjects(params?: {
@@ -234,6 +235,18 @@ export async function fetchVersionHistory(
 ): Promise<VersionHistoryResponse> {
   const { data } = await client.get<VersionHistoryResponse>(
     `/projects/${projectId}/versions`
+  )
+  return data
+}
+
+// --- SPEC-006 M3: Version Diff ---
+
+export const getVersionDiff = async (
+  projectId: number,
+  compareProjectId: number
+): Promise<VersionDiffResponse> => {
+  const { data } = await client.get<VersionDiffResponse>(
+    `/projects/${projectId}/versions/${compareProjectId}/diff`
   )
   return data
 }

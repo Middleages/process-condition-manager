@@ -16,6 +16,7 @@ import {
   fetchTimeline,
   fetchCellHistory,
   fetchVersionHistory,
+  getVersionDiff,
 } from '@/api/projects'
 import type {
   ProjectStatus,
@@ -205,5 +206,17 @@ export function useVersionHistory(projectId: number) {
     queryKey: projectKeys.versionHistory(projectId),
     queryFn: () => fetchVersionHistory(projectId),
     enabled: !!projectId,
+  })
+}
+
+export function useVersionDiff(
+  projectId: number,
+  compareProjectId: number,
+  enabled: boolean = false
+) {
+  return useQuery({
+    queryKey: ['versionDiff', projectId, compareProjectId],
+    queryFn: () => getVersionDiff(projectId, compareProjectId),
+    enabled: enabled && !!projectId && !!compareProjectId,
   })
 }
