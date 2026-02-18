@@ -56,6 +56,8 @@ export default function ConditionEditorPage() {
   const clearAllDirty = useEditorStore((s) => s.clearAllDirty)
   const setIsSaving = useEditorStore((s) => s.setIsSaving)
   const setActiveLayerId = useEditorStore((s) => s.setActiveLayerId)
+  const activeColumnName = useEditorStore((s) => s.activeColumnName)
+  const setActiveColumnName = useEditorStore((s) => s.setActiveColumnName)
   const isHistoryPanelOpen = useEditorStore((s) => s.isHistoryPanelOpen)
   const toggleHistoryPanel = useEditorStore((s) => s.toggleHistoryPanel)
   const cellHistoryTarget = useEditorStore((s) => s.cellHistoryTarget)
@@ -331,23 +333,28 @@ export default function ConditionEditorPage() {
   const handleLayerClick = useCallback(
     (layerId: number) => {
       setActiveLayerId(layerId)
+      setActiveColumnName(null)
     },
-    [setActiveLayerId]
+    [setActiveLayerId, setActiveColumnName]
   )
 
   // Handle validation error click - navigate to cell
   const handleErrorClick = useCallback(
     (error: ValidationError) => {
+      // Clear first to allow re-navigation to the same cell
+      setActiveColumnName(null)
       for (const cat of categories) {
         const col = cat.columns.find((c) => c.column_name === error.column_name)
         if (col) {
           useEditorStore.getState().setActiveCategory(cat.category_code)
           setActiveLayerId(error.layer_id)
+          // Use setTimeout to set column after layer navigation triggers
+          setTimeout(() => setActiveColumnName(error.column_name), 0)
           break
         }
       }
     },
-    [categories, setActiveLayerId]
+    [categories, setActiveLayerId, setActiveColumnName]
   )
 
   // Backbone replace handler
@@ -396,6 +403,8 @@ export default function ConditionEditorPage() {
     (layerName: string, columnName: string) => {
       const layer = project?.layers.find((l) => l.layer_name === layerName)
       if (layer) {
+        // Clear first to allow re-navigation to the same cell
+        setActiveColumnName(null)
         for (const cat of categories) {
           const col = cat.columns.find((c) => c.column_name === columnName)
           if (col) {
@@ -404,9 +413,11 @@ export default function ConditionEditorPage() {
           }
         }
         setActiveLayerId(layer.layer_id)
+        // Use setTimeout to set column after layer navigation triggers
+        setTimeout(() => setActiveColumnName(columnName), 0)
       }
     },
-    [project, categories, setActiveLayerId]
+    [project, categories, setActiveLayerId, setActiveColumnName]
   )
 
   if (projectLoading || columnsLoading) {
@@ -475,6 +486,7 @@ export default function ConditionEditorPage() {
             columns={activeColumns}
             validationErrors={validationErrors}
             scrollToLayerId={activeLayerId}
+            scrollToColumnName={activeColumnName}
             readOnly={isReadOnly}
             commentMap={commentMap}
             rejectionCommentMap={rejectionCommentMap}

@@ -72,6 +72,26 @@ export function EditorHeader({
         </span>
       </div>
 
+      {/* Cell color legend */}
+      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+        <span className="flex items-center gap-1">
+          <span className="w-3 h-3 rounded-sm inline-block" style={{ backgroundColor: '#fef9c3' }} />
+          편집됨
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="w-3 h-3 rounded-sm inline-block" style={{ backgroundColor: '#fecaca' }} />
+          검증오류
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="w-3 h-3 rounded-sm inline-block" style={{ backgroundColor: '#bbf7d0' }} />
+          Recipe
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="w-3 h-3 rounded-sm inline-block" style={{ backgroundColor: '#fef2f2', border: '1px solid #fca5a5' }} />
+          코멘트
+        </span>
+      </div>
+
       <div className="flex-1" />
 
       {diffSummary.totalChangedCells > 0 && (

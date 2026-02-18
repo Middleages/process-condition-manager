@@ -20,6 +20,7 @@ export function CommentPanel({ projectId, categories, layers, onToggle, isOpen =
 
   const setActiveCategory = useEditorStore((s) => s.setActiveCategory)
   const setActiveLayerId = useEditorStore((s) => s.setActiveLayerId)
+  const setActiveColumnName = useEditorStore((s) => s.setActiveColumnName)
 
   const comments = data?.comments ?? []
   const unresolvedCount = data?.unresolved_count ?? 0
@@ -41,6 +42,9 @@ export function CommentPanel({ projectId, categories, layers, onToggle, isOpen =
   const handleNavigate = (comment: Comment) => {
     if (!comment.column_name || !comment.project_layer_id) return
 
+    // Clear first to allow re-navigation to the same cell
+    setActiveColumnName(null)
+
     // Find which category this column belongs to
     for (const cat of categories) {
       const col = cat.columns.find((c) => c.column_name === comment.column_name)
@@ -54,6 +58,7 @@ export function CommentPanel({ projectId, categories, layers, onToggle, isOpen =
     const layer = layers.find(l => l.id === comment.project_layer_id)
     if (layer) {
       setActiveLayerId(layer.layer_id)
+      setTimeout(() => setActiveColumnName(comment.column_name!), 0)
     }
   }
 

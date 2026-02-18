@@ -9,6 +9,7 @@ interface EditorState {
   // Active selections
   activeCategory: string // "SP" | "SC" | "OVL" | "DEV"
   activeLayerId: number | null
+  activeColumnName: string | null
 
   // Dirty cells (unsaved edits)
   dirtyCells: Map<string, DirtyCell>
@@ -32,6 +33,7 @@ interface EditorState {
   // Actions
   setActiveCategory: (code: string) => void
   setActiveLayerId: (layerId: number | null) => void
+  setActiveColumnName: (columnName: string | null) => void
   setCellValue: (projectLayerId: number, columnName: string, value: unknown, originalValue: unknown) => void
   removeDirtyCell: (projectLayerId: number, columnName: string) => void
   clearAllDirty: () => void
@@ -51,6 +53,7 @@ interface EditorState {
 export const useEditorStore = create<EditorState>((set, get) => ({
   activeCategory: 'SP',
   activeLayerId: null,
+  activeColumnName: null,
   dirtyCells: new Map(),
   recipeCells: new Set(),
   validationErrors: [],
@@ -62,6 +65,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   setActiveCategory: (code) => set({ activeCategory: code }),
 
   setActiveLayerId: (layerId) => set({ activeLayerId: layerId }),
+
+  setActiveColumnName: (columnName) => set({ activeColumnName: columnName }),
 
   setCellValue: (projectLayerId, columnName, value, originalValue) => {
     set((state) => {
@@ -120,6 +125,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set({
       activeCategory: 'SP',
       activeLayerId: null,
+      activeColumnName: null,
       dirtyCells: new Map(),
       recipeCells: new Set(),
       validationErrors: [],

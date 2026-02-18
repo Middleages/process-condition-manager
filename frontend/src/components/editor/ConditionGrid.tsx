@@ -9,6 +9,7 @@ import type {
   GridApi,
   ProcessDataFromClipboardParams,
   CellContextMenuEvent,
+  RowClassParams,
 } from 'ag-grid-community'
 import 'ag-grid-community/styles/ag-grid.css'
 import 'ag-grid-community/styles/ag-theme-alpine.css'
@@ -25,6 +26,7 @@ interface Props {
   columns: ColumnDefinition[]
   validationErrors: ValidationError[]
   scrollToLayerId: number | null
+  scrollToColumnName?: string | null
   readOnly?: boolean
   commentMap?: Map<string, number>
   rejectionCommentMap?: Map<string, boolean>
@@ -64,6 +66,7 @@ export function ConditionGrid({
   columns,
   validationErrors,
   scrollToLayerId,
+  scrollToColumnName,
   readOnly = false,
   commentMap = new Map(),
   rejectionCommentMap = new Map(),
@@ -89,6 +92,7 @@ export function ConditionGrid({
   const recipeCellsRef = useRef(recipeCells)
   const commentMapRef = useRef(commentMap)
   const rejectionCommentMapRef = useRef(rejectionCommentMap)
+  const scrollToColumnNameRef = useRef(scrollToColumnName)
 
   // Build error lookup: `${layerId}:${columnName}` → error message
   const errorMap = useMemo(() => {
@@ -115,6 +119,7 @@ export function ConditionGrid({
   recipeCellsRef.current = recipeCells
   commentMapRef.current = commentMap
   rejectionCommentMapRef.current = rejectionCommentMap
+  scrollToColumnNameRef.current = scrollToColumnName
 
   const rowData = useMemo(() => buildRowData(layers), [layers])
 
@@ -204,6 +209,9 @@ export function ConditionGrid({
             // Only apply comment marker if there's no rejection comment (to avoid duplicate markers)
             return hasComment && !hasRejectionComment
           },
+          'ag-cell-active-column': () => {
+            return scrollToColumnNameRef.current === col.column_name
+          },
         },
       }
 
@@ -278,7 +286,7 @@ export function ConditionGrid({
     }
   }, [commentMap, rejectionCommentMap])
 
-  // Scroll to layer when activeLayerId changes
+  // Scroll to layer (and optionally column) when active selection changes
   useEffect(() => {
     if (!gridRef.current || !scrollToLayerId) return
     const layer = layers.find((l) => l.layer_id === scrollToLayerId)
@@ -286,9 +294,16 @@ export function ConditionGrid({
     const rowNode = gridRef.current.getRowNode(String(layer.id))
     if (rowNode?.rowIndex != null) {
       gridRef.current.ensureIndexVisible(rowNode.rowIndex, 'middle')
-      gridRef.current.flashCells({ rowNodes: [rowNode] })
+
+      if (scrollToColumnName) {
+        gridRef.current.ensureColumnVisible(scrollToColumnName)
+        gridRef.current.setFocusedCell(rowNode.rowIndex, scrollToColumnName)
+      }
     }
-  }, [scrollToLayerId, layers])
+    // Redraw rows and refresh cells so active row/column classes are re-evaluated
+    gridRef.current.redrawRows()
+    gridRef.current.refreshCells({ force: true })
+  }, [scrollToLayerId, scrollToColumnName, layers])
 
   // Close context menu on outside click
   useEffect(() => {
@@ -316,6 +331,17 @@ export function ConditionGrid({
   const getRowId = useCallback(
     (params: { data: GridRowData }) => String(params.data.projectLayerId),
     []
+  )
+
+  // Apply persistent highlight class to the active layer row
+  const getRowClass = useCallback(
+    (params: RowClassParams) => {
+      if (scrollToLayerId != null && params.data?.layerId === scrollToLayerId) {
+        return 'ag-row-active-layer'
+      }
+      return undefined
+    },
+    [scrollToLayerId]
   )
 
   // Handle multi-cell paste from Excel/spreadsheet (tab-separated values)
@@ -351,6 +377,7 @@ export function ConditionGrid({
         onCellValueChanged={handleCellValueChanged}
         onCellContextMenu={handleCellContextMenu}
         getRowId={getRowId}
+        getRowClass={getRowClass}
         processDataFromClipboard={processDataFromClipboard}
         onPasteEnd={onPasteEnd}
         enableCellTextSelection
@@ -359,6 +386,8 @@ export function ConditionGrid({
         singleClickEdit
         headerHeight={36}
         rowHeight={32}
+        suppressContextMenu={true}
+        preventDefaultOnContextMenu={true}
       />
 
       {/* Custom Context Menu */}
