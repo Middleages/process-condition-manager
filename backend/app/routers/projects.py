@@ -341,8 +341,8 @@ async def revise_project(
     - New project: status='draft', revision=original.revision+1, is_latest=True
     - Layers are deep-copied with backbone_conditions set to approved conditions
     """
-    description = request.description if request else None
-    project = await project_service.revise_project(db, project_id, description)
+    revision_reason = request.revision_reason if request else None
+    project = await project_service.revise_project(db, project_id, revision_reason)
     return _build_project_detail_response(project)
 
 
@@ -363,7 +363,7 @@ async def get_product_revisions(
             id=p.id,
             revision=p.revision,
             status=p.status,
-            description=None,  # Add description field to Project model if needed
+            revision_reason=p.revision_reason,
             created_by=p.creator.display_name if p.creator else None,
             created_at=p.created_at,
             is_latest=p.is_latest,

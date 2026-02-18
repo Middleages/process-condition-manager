@@ -325,14 +325,14 @@ export interface BulkUploadResponse {
 
 // ========== Revision ==========
 export interface ReviseProjectRequest {
-  description?: string
+  revision_reason?: string
 }
 
 export interface RevisionItem {
   id: number
   revision: number
   status: string
-  description: string | null
+  revision_reason: string | null
   created_by: string | null
   created_at: string
   is_latest: boolean

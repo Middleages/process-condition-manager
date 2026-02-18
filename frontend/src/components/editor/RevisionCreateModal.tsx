@@ -23,11 +23,11 @@ export function RevisionCreateModal({ open, onOpenChange, project }: RevisionCre
   const addToast = useToastStore((s) => s.addToast)
   const reviseMutation = useReviseProject()
 
-  const [description, setDescription] = useState('')
+  const [revisionReason, setRevisionReason] = useState('')
 
   useEffect(() => {
     if (!open) {
-      setDescription('')
+      setRevisionReason('')
     }
   }, [open])
 
@@ -39,7 +39,7 @@ export function RevisionCreateModal({ open, onOpenChange, project }: RevisionCre
     try {
       const newProject = await reviseMutation.mutateAsync({
         projectId: project.id,
-        request: description ? { description } : undefined,
+        request: revisionReason ? { revision_reason: revisionReason } : undefined,
       })
 
       addToast(`개정판 v${newProject.revision}이(가) 생성되었습니다.`, 'success')
@@ -73,14 +73,14 @@ export function RevisionCreateModal({ open, onOpenChange, project }: RevisionCre
             <textarea
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 resize-none"
               rows={4}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
+              value={revisionReason}
+              onChange={(e) => setRevisionReason(e.target.value)}
               placeholder="변경할 내용과 사유를 기술해 주세요"
               maxLength={500}
             />
             {/* 글자 수 카운터 */}
             <div className="text-right text-xs text-muted-foreground mt-1">
-              {description.length}/500
+              {revisionReason.length}/500
             </div>
           </div>
 

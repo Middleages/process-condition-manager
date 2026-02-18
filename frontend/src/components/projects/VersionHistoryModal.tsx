@@ -80,7 +80,7 @@ export function VersionHistoryModal({
                           <StatusBadge status={rev.status as ProjectStatus} />
                         </td>
                         <td className="px-4 py-3 text-muted-foreground">
-                          {rev.description || '-'}
+                          {rev.revision_reason || '-'}
                         </td>
                         <td className="px-4 py-3">{rev.created_by || '-'}</td>
                         <td className="px-4 py-3 text-muted-foreground">

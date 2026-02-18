@@ -166,7 +166,7 @@ async def get_projects_list(
 async def revise_project(
     db: AsyncSession,
     project_id: int,
-    description: str | None = None,
+    revision_reason: str | None = None,
 ) -> Project:
     """Create a new revision (Draft) from an Approved project.
 
@@ -223,8 +223,8 @@ async def revise_project(
         created_by=original.created_by,  # Inherit creator or could be parameterized
     )
     # 개정 사유 저장 (입력된 경우에만)
-    if description:
-        new_project.revision_reason = description
+    if revision_reason:
+        new_project.revision_reason = revision_reason
     db.add(new_project)
     await db.flush()
 

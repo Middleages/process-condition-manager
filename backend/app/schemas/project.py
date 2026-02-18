@@ -192,14 +192,14 @@ class BulkSaveResponse(BaseModel):
 # --- Revision schemas ---
 
 class ReviseProjectRequest(BaseModel):
-    description: str | None = None  # optional revision description
+    revision_reason: str | None = None
 
 
 class RevisionItem(BaseModel):
     id: int
     revision: int
     status: str
-    description: str | None
+    revision_reason: str | None
     created_by: str | None
     created_at: datetime
     is_latest: bool
