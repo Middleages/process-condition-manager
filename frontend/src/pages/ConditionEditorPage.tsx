@@ -29,6 +29,7 @@ import { ApiError } from '@/api/client'
 import type { LayerConditions, ValidationError, ProjectLayerData } from '@/types'
 import type { GridApi } from 'ag-grid-community'
 import { Loader2 } from 'lucide-react'
+import { ExportPanel } from '@/components/export/ExportPanel'
 
 export default function ConditionEditorPage() {
   const { projectId } = useParams()
@@ -449,6 +450,11 @@ export default function ConditionEditorPage() {
         revision={project.revision}
         onBackToCurrent={isArchived ? handleBackToCurrent : undefined}
       />
+
+      {/* 승인된 프로젝트에만 전산 출력 패널 표시 (REQ-060, REQ-061) */}
+      {project.status === 'approved' && (
+        <ExportPanel projectId={pid} />
+      )}
 
       <CategoryTabs categories={categories} />
 

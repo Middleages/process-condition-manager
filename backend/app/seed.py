@@ -622,6 +622,335 @@ def seed():
         print(f"  Products (non-backbone): {nb_count}")
         print(f"  Non-backbone Product Layers: {nb_pl_count}")
 
+        # --- Export Systems ---
+        EXPORT_SYSTEMS = [
+            {
+                "system_name": "MES-TRACK",
+                "format_type": "TYPE_A",
+                "description": "Track equipment control system (SP + DEV categories)",
+                "additional_config": {"categories": ["SP", "DEV"]},
+                "is_active": True,
+            },
+            {
+                "system_name": "EQP-SCANNER",
+                "format_type": "TYPE_B",
+                "description": "Scanner equipment parameter management (SC category)",
+                "additional_config": {
+                    "categories": ["SC"],
+                    "equip_source": "equipment_assignments",
+                    "equip_vary_columns": ["SC_EXPOSE_ENERGY_mJ", "SC_EXPOSE_FOCUS_um"],
+                },
+                "is_active": True,
+            },
+            {
+                "system_name": "SPC-OVL",
+                "format_type": "TYPE_C",
+                "description": "SPC overlay measurement system (OVL category)",
+                "additional_config": {
+                    "categories": ["OVL"],
+                    "unit_mappings": {
+                        "OVL_SPEC_X_nm": "nm",
+                        "OVL_SPEC_Y_nm": "nm",
+                        "OVL_CORRECT_X_nm": "nm",
+                        "OVL_CORRECT_Y_nm": "nm",
+                        "OVL_REF_LAYER": "",
+                        "OVL_MEAS_TOOL": "",
+                    },
+                },
+                "is_active": True,
+            },
+        ]
+
+        export_system_ids = {}
+        for es in EXPORT_SYSTEMS:
+            session.execute(
+                text(
+                    "INSERT INTO export_systems (system_name, format_type, description, additional_config, is_active) "
+                    "VALUES (:name, :fmt, :desc, CAST(:cfg AS jsonb), :active)"
+                ),
+                {
+                    "name": es["system_name"],
+                    "fmt": es["format_type"],
+                    "desc": es["description"],
+                    "cfg": json.dumps(es["additional_config"]),
+                    "active": es["is_active"],
+                },
+            )
+            result = session.execute(
+                text("SELECT id FROM export_systems WHERE system_name = :name"),
+                {"name": es["system_name"]},
+            )
+            export_system_ids[es["system_name"]] = result.scalar()
+        print(f"  Export Systems: {len(export_system_ids)}")
+
+        # --- Export Column Mappings ---
+        # TYPE_A (MES-TRACK): SP + DEV columns
+        SP_COLUMN_TARGET_NAMES = {
+            "SP_PR_TYPE": "RESIST_CODE",
+            "SP_PR_VENDOR": "RESIST_VENDOR",
+            "SP_PR_VISCOSITY_cP": "RESIST_VISCOSITY",
+            "SP_DISPENSE_VOL_ml": "DISPENSE_VOL",
+            "SP_SPIN1_SPEED_rpm": "SPIN1_SPEED",
+            "SP_SPIN1_TIME_sec": "SPIN1_TIME",
+            "SP_SPIN2_SPEED_rpm": "SPIN2_SPEED",
+            "SP_SPIN2_TIME_sec": "SPIN2_TIME",
+            "SP_EBR_SPEED_rpm": "EBR_SPEED",
+            "SP_PREBAKE_TEMP_C": "PREBAKE_TEMP",
+            "SP_PREBAKE_TIME_sec": "PREBAKE_TIME",
+            "SP_PR_THICKNESS_nm": "PR_THICKNESS",
+            "SP_ADHESION_USE": "ADHESION_USE",
+            "SP_ADHESION_TYPE": "ADHESION_TYPE",
+            "SP_ADHESION_TEMP_C": "ADHESION_TEMP",
+            "SP_COOL_TEMP_C": "COOL_TEMP",
+            "SP_COOL_TIME_sec": "COOL_TIME",
+            "SP_COAT_METHOD": "COAT_METHOD",
+            "SP_HUMIDITY_PCT": "HUMIDITY",
+            "SP_BACKSIDE_RINSE": "BACKSIDE_RINSE",
+        }
+        DEV_COLUMN_TARGET_NAMES = {
+            "DEV_TYPE": "DEVELOPER_TYPE",
+            "DEV_PUDDLE_TIME_sec": "PUDDLE_TIME",
+            "DEV_PUDDLE_COUNT": "PUDDLE_COUNT",
+            "DEV_RINSE_TYPE": "RINSE_TYPE",
+            "DEV_RINSE_TIME_sec": "RINSE_TIME",
+            "DEV_POSTBAKE_TEMP_C": "POSTBAKE_TEMP",
+            "DEV_POSTBAKE_TIME_sec": "POSTBAKE_TIME",
+            "DEV_CD_TARGET_nm": "CD_TARGET",
+            "DEV_CD_SPEC_LOW_nm": "CD_SPEC_LOW",
+            "DEV_CD_SPEC_HIGH_nm": "CD_SPEC_HIGH",
+            "DEV_CD_MEAS_TOOL": "CD_MEAS_TOOL",
+            "DEV_CD_MEAS_POINTS": "CD_MEAS_POINTS",
+            "DEV_INSPECT_TOOL": "INSPECT_TOOL",
+            "DEV_DEFECT_SPEC": "DEFECT_SPEC",
+        }
+        # TYPE_B (EQP-SCANNER): SC columns
+        SC_COLUMN_TARGET_NAMES = {
+            "SC_TOOL_ID": "SCANNER_TOOL",
+            "SC_RETICLE_ID": "RETICLE_ID",
+            "SC_EXPOSE_ENERGY_mJ": "EXPOSE_ENERGY",
+            "SC_EXPOSE_FOCUS_um": "EXPOSE_FOCUS",
+            "SC_ILLUM_MODE": "ILLUM_MODE",
+            "SC_ILLUM_SIGMA_IN": "SIGMA_INNER",
+            "SC_ILLUM_SIGMA_OUT": "SIGMA_OUTER",
+            "SC_NA": "NA",
+            "SC_DOSE_TOLERANCE_PCT": "DOSE_TOLERANCE",
+            "SC_ALIGN_MARK_TYPE": "ALIGN_MARK_TYPE",
+            "SC_ALIGN_TREE": "ALIGN_TREE",
+            "SC_EXPOSE_MODE": "EXPOSE_MODE",
+            "SC_SCAN_DIRECTION": "SCAN_DIRECTION",
+            "SC_SLIT_WIDTH_mm": "SLIT_WIDTH",
+            "SC_RETICLE_CORR_X_nm": "RETICLE_CORR_X",
+            "SC_RETICLE_CORR_Y_nm": "RETICLE_CORR_Y",
+            "SC_WAVELENGTH_nm": "WAVELENGTH",
+            "SC_MASK_TYPE": "MASK_TYPE",
+            "SC_IMMERSION": "IMMERSION",
+        }
+        # TYPE_C (SPC-OVL): OVL columns
+        OVL_COLUMN_TARGET_NAMES = {
+            "OVL_SPEC_X_nm": "OVL_SPEC_X",
+            "OVL_SPEC_Y_nm": "OVL_SPEC_Y",
+            "OVL_REF_LAYER": "REF_LAYER",
+            "OVL_CORRECT_X_nm": "CORRECT_X",
+            "OVL_CORRECT_Y_nm": "CORRECT_Y",
+            "OVL_APC_USE": "APC_USE",
+            "OVL_APC_TYPE": "APC_TYPE",
+            "OVL_MEAS_TOOL": "MEAS_TOOL",
+            "OVL_MEAS_POINT_COUNT": "MEAS_POINTS",
+            "OVL_SAMPLING_MODE": "SAMPLING_MODE",
+            "OVL_REG_MODEL": "REG_MODEL",
+            "OVL_FEEDBACK_USE": "FEEDBACK_USE",
+            "OVL_FEEDFORWARD_USE": "FEEDFORWARD_USE",
+            "OVL_TARGET_TYPE": "TARGET_TYPE",
+        }
+
+        # Required columns per system
+        TYPE_A_REQUIRED = {
+            "SP_PR_TYPE", "SP_DISPENSE_VOL_ml", "SP_SPIN1_SPEED_rpm",
+            "SP_SPIN1_TIME_sec", "SP_PREBAKE_TEMP_C", "SP_PREBAKE_TIME_sec",
+            "SP_ADHESION_USE", "DEV_TYPE", "DEV_PUDDLE_TIME_sec",
+        }
+        TYPE_B_REQUIRED = {
+            "SC_TOOL_ID", "SC_RETICLE_ID", "SC_EXPOSE_ENERGY_mJ",
+            "SC_EXPOSE_FOCUS_um", "SC_ILLUM_MODE", "SC_NA", "SC_WAVELENGTH_nm",
+        }
+        TYPE_C_REQUIRED = {
+            "OVL_SPEC_X_nm", "OVL_SPEC_Y_nm", "OVL_REF_LAYER",
+        }
+
+        ecm_count = 0
+        # MES-TRACK: SP + DEV
+        mes_system_id = export_system_ids["MES-TRACK"]
+        sort_idx = 1
+        for col_name, target_name in SP_COLUMN_TARGET_NAMES.items():
+            if col_name not in col_ids:
+                continue
+            session.execute(
+                text(
+                    "INSERT INTO export_column_mappings "
+                    "(export_system_id, column_id, target_column_name, sort_order, is_required) "
+                    "VALUES (:esid, :cid, :tname, :sort, :req)"
+                ),
+                {
+                    "esid": mes_system_id,
+                    "cid": col_ids[col_name],
+                    "tname": target_name,
+                    "sort": sort_idx,
+                    "req": col_name in TYPE_A_REQUIRED,
+                },
+            )
+            sort_idx += 1
+            ecm_count += 1
+        for col_name, target_name in DEV_COLUMN_TARGET_NAMES.items():
+            if col_name not in col_ids:
+                continue
+            session.execute(
+                text(
+                    "INSERT INTO export_column_mappings "
+                    "(export_system_id, column_id, target_column_name, sort_order, is_required) "
+                    "VALUES (:esid, :cid, :tname, :sort, :req)"
+                ),
+                {
+                    "esid": mes_system_id,
+                    "cid": col_ids[col_name],
+                    "tname": target_name,
+                    "sort": sort_idx,
+                    "req": col_name in TYPE_A_REQUIRED,
+                },
+            )
+            sort_idx += 1
+            ecm_count += 1
+
+        # EQP-SCANNER: SC
+        sc_system_id = export_system_ids["EQP-SCANNER"]
+        sort_idx = 1
+        for col_name, target_name in SC_COLUMN_TARGET_NAMES.items():
+            if col_name not in col_ids:
+                continue
+            session.execute(
+                text(
+                    "INSERT INTO export_column_mappings "
+                    "(export_system_id, column_id, target_column_name, sort_order, is_required) "
+                    "VALUES (:esid, :cid, :tname, :sort, :req)"
+                ),
+                {
+                    "esid": sc_system_id,
+                    "cid": col_ids[col_name],
+                    "tname": target_name,
+                    "sort": sort_idx,
+                    "req": col_name in TYPE_B_REQUIRED,
+                },
+            )
+            sort_idx += 1
+            ecm_count += 1
+
+        # SPC-OVL: OVL
+        ovl_system_id = export_system_ids["SPC-OVL"]
+        sort_idx = 1
+        for col_name, target_name in OVL_COLUMN_TARGET_NAMES.items():
+            if col_name not in col_ids:
+                continue
+            session.execute(
+                text(
+                    "INSERT INTO export_column_mappings "
+                    "(export_system_id, column_id, target_column_name, sort_order, is_required) "
+                    "VALUES (:esid, :cid, :tname, :sort, :req)"
+                ),
+                {
+                    "esid": ovl_system_id,
+                    "cid": col_ids[col_name],
+                    "tname": target_name,
+                    "sort": sort_idx,
+                    "req": col_name in TYPE_C_REQUIRED,
+                },
+            )
+            sort_idx += 1
+            ecm_count += 1
+        print(f"  Export Column Mappings: {ecm_count}")
+
+        # --- Test Project (approved) for Export Testing ---
+        # Create a test project based on PROD-2024X in approved status
+        session.execute(
+            text(
+                "INSERT INTO projects (product_id, main_backbone_id, status, revision, is_latest, created_by) "
+                "VALUES (:pid, :bbid, 'approved', 1, TRUE, :uid)"
+            ),
+            {
+                "pid": product_ids["PROD-2024X"],
+                "bbid": product_ids["PROD-2024X"],
+                "uid": user_ids["engineer1"],
+            },
+        )
+        result = session.execute(
+            text("SELECT id FROM projects WHERE product_id = :pid AND status = 'approved'"),
+            {"pid": product_ids["PROD-2024X"]},
+        )
+        test_project_id = result.scalar()
+
+        # Create project_layers with same conditions as PROD-2024X product_layers
+        # Reset random seed to generate deterministic conditions independent of prior calls
+        random.seed(99)
+        project_layer_ids = {}
+        for layer_name, _, _, sort_order_val in LAYERS:
+            conditions = generate_conditions(layer_name, "PROD-2024X")
+            session.execute(
+                text(
+                    "INSERT INTO project_layers "
+                    "(project_id, layer_id, backbone_product_id, conditions, backbone_conditions, sort_order) "
+                    "VALUES (:proj_id, :lid, :bbpid, CAST(:cond AS jsonb), CAST(:bcond AS jsonb), :sort)"
+                ),
+                {
+                    "proj_id": test_project_id,
+                    "lid": layer_ids[layer_name],
+                    "bbpid": product_ids["PROD-2024X"],
+                    "cond": json.dumps(conditions),
+                    "bcond": json.dumps(conditions),
+                    "sort": sort_order_val,
+                },
+            )
+            result = session.execute(
+                text(
+                    "SELECT id FROM project_layers "
+                    "WHERE project_id = :pid AND layer_id = :lid"
+                ),
+                {"pid": test_project_id, "lid": layer_ids[layer_name]},
+            )
+            project_layer_ids[layer_name] = result.scalar()
+        print(f"  Test Project (approved): id={test_project_id}, layers={len(project_layer_ids)}")
+
+        # --- Equipment Assignments for SC-category layers (Type B export testing) ---
+        # Use a subset of scanner tools to create realistic assignments
+        scanner_assignments = [
+            "NSR-S322F-01", "NSR-S322F-02", "NSR-S631E-01", "XT-1400E-01", "NXT-2000-01",
+        ]
+        ea_count = 0
+        random.seed(77)  # deterministic assignments
+        for layer_name, pl_id in project_layer_ids.items():
+            num_equip = random.choice([3, 4, 5])
+            for i, equip_id in enumerate(scanner_assignments[:num_equip]):
+                # Create equipment-specific energy/focus overrides for Type B vary columns
+                overrides = {}
+                if layer_name in LAYER_PROFILES:
+                    base_energy = LAYER_PROFILES[layer_name][4]
+                    overrides = {
+                        "SC_EXPOSE_ENERGY_mJ": str(round(base_energy + (i - 1) * 0.5, 1)),
+                        "SC_EXPOSE_FOCUS_um": str(round(random.uniform(-0.03, 0.03), 3)),
+                    }
+                session.execute(
+                    text(
+                        "INSERT INTO equipment_assignments "
+                        "(project_layer_id, equipment_id, equipment_params, sort_order) "
+                        "VALUES (:plid, :eid, CAST(:params AS jsonb), :sort)"
+                    ),
+                    {
+                        "plid": pl_id,
+                        "eid": equip_id,
+                        "params": json.dumps(overrides),
+                        "sort": i + 1,
+                    },
+                )
+                ea_count += 1
+        print(f"  Equipment Assignments: {ea_count}")
+
         # --- Recipe XML Mappings ---
         # Map common Recipe XML xpaths to column definitions
         RECIPE_XML_MAPPINGS = [
