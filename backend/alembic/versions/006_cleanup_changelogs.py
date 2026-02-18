@@ -5,7 +5,7 @@
   - old_value와 new_value가 모두 존재하고 수치적으로 동일한 경우 (예: "490" vs "490.0")
   - old_value가 NULL이고 new_value가 빈 문자열('')인 경우 (또는 반대)
 
-Revision ID: 006_cleanup_false_positive_changelogs
+Revision ID: 006_cleanup_changelogs
 Revises: 005_equipment_assignments
 Create Date: 2026-02-18
 """
@@ -13,7 +13,7 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy import text
 
-revision = "006_cleanup_false_positive_changelogs"
+revision = "006_cleanup_changelogs"
 down_revision = "005_equipment_assignments"
 branch_labels = None
 depends_on = None

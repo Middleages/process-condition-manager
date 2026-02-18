@@ -1,14 +1,14 @@
 """projects 테이블에 revision_reason 컬럼 추가
 
 Revision ID: 007_add_revision_reason
-Revises: 006_cleanup_false_positive_changelogs
+Revises: 006_cleanup_changelogs
 Create Date: 2026-02-18
 """
 from alembic import op
 import sqlalchemy as sa
 
 revision = "007_add_revision_reason"
-down_revision = "006_cleanup_false_positive_changelogs"
+down_revision = "006_cleanup_changelogs"
 branch_labels = None
 depends_on = None
 
