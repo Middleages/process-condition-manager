@@ -22,10 +22,10 @@ process-condition-manager/
 │   │   ├── config.py         # 설정 (DATABASE_URL, SECRET_KEY)
 │   │   ├── database.py       # AsyncSession, engine, Base
 │   │   ├── models/           # SQLAlchemy ORM 모델 (전체 정의 완료)
-│   │   ├── routers/          # API 엔드포인트 (미구현)
-│   │   ├── services/         # 비즈니스 로직 (미구현)
-│   │   ├── schemas/          # Pydantic 스키마 (미구현)
-│   │   └── utils/            # 유틸리티 (미구현)
+│   │   ├── routers/          # API 엔드포인트
+│   │   ├── services/         # 비즈니스 로직
+│   │   ├── schemas/          # Pydantic 스키마
+│   │   └── utils/            # 유틸리티
 │   ├── alembic/              # DB 마이그레이션
 │   ├── requirements.txt
 │   └── Dockerfile
@@ -103,7 +103,12 @@ Draft → Review → Approved → (Revision 생성 시) Archived
   - M1: 백엔드 API (changelog 필터, timeline, cell history, version history)
   - M2: 변경 이력 슬라이드아웃 패널 + 셀 히스토리 모달
   - M3: 버전 히스토리 드롭다운 + Read-Only 모드 (archived 버전 보기)
-- 다음 작업: SPEC-005 또는 Phase 3 나머지 기능 (전산 출력 등)
+- SPEC-005 완료: 전산 출력 시스템 (Type A/B/C)
+  - ExportService: Type A(수평), Type B(설비분할), Type C(키-값 전치) 3종 포맷
+  - Export API: 시스템 목록 조회, 미리보기, 단건/벌크 다운로드 (Excel/ZIP)
+  - Export UI: Approved 상태 시 ExportPanel (시스템 선택, 미리보기, 다운로드)
+  - EquipmentAssignment 모델 + 마이그레이션 + 시드 데이터
+- 다음 작업: Phase 4 기능 (인증/권한, Cross-layer 검증, 전산 출력 확장, 대시보드)
 
 ## 개발 명령어
 
