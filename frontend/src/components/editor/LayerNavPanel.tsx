@@ -79,11 +79,16 @@ export function LayerNavPanel({
     (e: React.MouseEvent, layer: ProjectLayerData) => {
       if (!isDraft) return
       e.preventDefault()
-      const rect = panelRef.current?.getBoundingClientRect()
+      // Use fixed positioning with raw clientX/clientY so the menu
+      // is not clipped by overflow-hidden on the panel.
+      const menuWidth = 180
+      const menuHeight = 90
+      const x = Math.min(e.clientX, window.innerWidth - menuWidth)
+      const y = Math.min(e.clientY, window.innerHeight - menuHeight)
       setContextMenu({
         visible: true,
-        x: e.clientX - (rect?.left ?? 0),
-        y: e.clientY - (rect?.top ?? 0),
+        x,
+        y,
         layer,
       })
     },
@@ -169,10 +174,10 @@ export function LayerNavPanel({
         })}
       </div>
 
-      {/* Context menu */}
+      {/* Context menu - uses fixed positioning to avoid overflow-hidden clipping */}
       {contextMenu.visible && contextMenu.layer && (
         <div
-          className="absolute bg-popover border rounded-md shadow-md py-1 z-50 min-w-[160px]"
+          className="fixed bg-popover border rounded-md shadow-md py-1 z-50 min-w-[160px]"
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onClick={(e) => e.stopPropagation()}
         >
