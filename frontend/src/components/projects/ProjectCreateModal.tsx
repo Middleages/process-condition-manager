@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { Combobox } from '@/components/ui/combobox'
 import { useProducts, useBackboneProducts } from '@/hooks/useProducts'
 import { useCreateProject } from '@/hooks/useProjects'
 import { useUserStore } from '@/stores/useUserStore'
@@ -21,6 +22,16 @@ export function ProjectCreateModal({ open, onOpenChange }: Props) {
 
   const [productId, setProductId] = useState('')
   const [backboneProductId, setBackboneProductId] = useState('')
+
+  const productOptions = allProducts.map((p) => ({
+    value: String(p.id),
+    label: p.product_name,
+  }))
+
+  const backboneOptions = backboneProducts.map((p) => ({
+    value: String(p.id),
+    label: p.product_name,
+  }))
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -51,36 +62,26 @@ export function ProjectCreateModal({ open, onOpenChange }: Props) {
           <div className="space-y-4">
             <div>
               <label className="text-sm font-medium mb-1.5 block">대상 제품</label>
-              <select
-                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              <Combobox
+                options={productOptions}
                 value={productId}
-                onChange={(e) => setProductId(e.target.value)}
+                onChange={setProductId}
+                placeholder="제품을 선택하세요"
+                searchPlaceholder="제품 검색..."
                 required
-              >
-                <option value="">제품을 선택하세요</option>
-                {allProducts.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.product_name}
-                  </option>
-                ))}
-              </select>
+              />
             </div>
 
             <div>
               <label className="text-sm font-medium mb-1.5 block">Backbone 제품</label>
-              <select
-                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              <Combobox
+                options={backboneOptions}
                 value={backboneProductId}
-                onChange={(e) => setBackboneProductId(e.target.value)}
+                onChange={setBackboneProductId}
+                placeholder="Backbone을 선택하세요"
+                searchPlaceholder="Backbone 검색..."
                 required
-              >
-                <option value="">Backbone을 선택하세요</option>
-                {backboneProducts.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.product_name}
-                  </option>
-                ))}
-              </select>
+              />
             </div>
 
             {!currentUserId && (

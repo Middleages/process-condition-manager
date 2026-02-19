@@ -202,17 +202,21 @@ process-condition-manager/
 - 관리자 설정 페이지
 - Revision 기능
 
-### Phase 3 - 진행 중 🔧
+### Phase 3 - ✅ 완료
 - **승인 프로세스** - ✅ 완료 (SPEC-003)
   - 상태 전환 API (Draft→Review→Approved/Rejected)
   - 댓글 CRUD API (Project/Layer/Cell 레벨)
   - AG Grid 셀 댓글 통합 (우클릭 코멘트, 셀 하이라이트)
   - 승인/반려 워크플로우 UI
-- **변경 이력 및 버전 관리** - 진행 중 🔧 (SPEC-004)
-  - 통합 타임라인 API 및 슬라이드아웃 패널 - ✅ 완료 (M1+M2)
-  - 셀 히스토리 모달 및 컨텍스트 메뉴 - ✅ 완료 (M2)
-  - 버전 히스토리 패널 및 읽기 전용 뷰어 - 예정 (M3)
-- 전산 출력 (Type A/B/C Excel 다운로드)
+- **변경 이력 및 버전 관리** - ✅ 완료 (SPEC-004)
+  - M1: 백엔드 API (changelog 필터, timeline, cell history, version history)
+  - M2: 변경 이력 슬라이드아웃 패널 + 셀 히스토리 모달 - ✅ 완료
+  - M3: 버전 히스토리 드롭다운 + Read-Only 모드 (archived 버전 보기) - ✅ 완료
+- **전산 출력 시스템** - ✅ 완료 (SPEC-005)
+  - ExportService: Type A(수평), Type B(설비분할), Type C(키-값 전치) 3종 포맷
+  - Export API: 시스템 목록 조회, 미리보기, 단건/벌크 다운로드 (Excel/ZIP)
+  - Export UI: Approved 상태 시 ExportPanel (시스템 선택, 미리보기, 다운로드)
+- **버전 히스토리 개선 + 변경 로그 정확도 향상** - ✅ 완료 (SPEC-006)
 
 ### Phase 4 - 계획 중
 - JWT 기반 인증 및 권한 관리
