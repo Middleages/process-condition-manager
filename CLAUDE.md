@@ -20,12 +20,35 @@ process-condition-manager/
 │   ├── app/
 │   │   ├── main.py           # FastAPI 앱 진입점
 │   │   ├── config.py         # 설정 (DATABASE_URL, SECRET_KEY)
+│   │   ├── constants.py      # 도메인 상수 (상태 전환, 규칙 타입, 카테고리 코드)
 │   │   ├── database.py       # AsyncSession, engine, Base
-│   │   ├── models/           # SQLAlchemy ORM 모델 (전체 정의 완료)
+│   │   ├── models/           # SQLAlchemy ORM 모델
 │   │   ├── dependencies/     # FastAPI 인증 의존성 (auth.py)
-│   │   ├── routers/          # API 엔드포인트
-│   │   ├── services/         # 비즈니스 로직
+│   │   ├── repositories/     # 데이터 접근 계층 (N+1 최적화)
+│   │   │   ├── comment_repository.py    # ReviewComment 조회 (JOIN 최적화)
+│   │   │   └── change_log_repository.py # ChangeLog/StatusLog 조회 + 통계
+│   │   ├── routers/          # API 엔드포인트 (도메인별 분리)
+│   │   │   ├── projects.py              # 프로젝트 CRUD (3 endpoints)
+│   │   │   ├── project_conditions.py    # 조건 저장/검증/이력 (7 endpoints)
+│   │   │   ├── project_layers.py        # Backbone/Recipe/레이어 (5 endpoints)
+│   │   │   ├── project_lifecycle.py     # 상태 전환/개정/요약 (5 endpoints)
+│   │   │   ├── comments.py, admin.py, export.py, auth.py
+│   │   │   └── users.py, lines.py, columns.py, products.py
+│   │   ├── services/         # 비즈니스 로직 (도메인별 분리)
+│   │   │   ├── project_service.py           # 프로젝트 CRUD + 개정
+│   │   │   ├── project_status_service.py    # 상태 전환 워크플로우
+│   │   │   ├── project_analytics_service.py # 변경 요약 + 버전 히스토리
+│   │   │   ├── comment_service.py, change_log_service.py
+│   │   │   ├── condition_service.py, validation_service.py
+│   │   │   ├── backbone_service.py, recipe_service.py
+│   │   │   ├── export_service.py, export_builders.py  # 전산 출력 (서비스 + 빌더 분리)
+│   │   │   ├── admin_service.py, diff_service.py
+│   │   │   └── auth_service.py
 │   │   ├── schemas/          # Pydantic 스키마
+│   │   ├── seed/             # 시드 데이터 패키지 (모듈별 분리)
+│   │   │   ├── columns.py, layers.py, products.py
+│   │   │   ├── exports.py, users.py, runner.py
+│   │   │   └── __init__.py, __main__.py
 │   │   └── utils/            # 유틸리티
 │   ├── alembic/              # DB 마이그레이션
 │   ├── requirements.txt
@@ -34,9 +57,25 @@ process-condition-manager/
 │   ├── src/
 │   │   ├── main.tsx          # React 진입점
 │   │   ├── App.tsx           # 라우터 (/, /projects, /projects/:id/edit)
-│   │   ├── api/client.ts     # Axios 클라이언트 (/api 기본경로)
-│   │   ├── components/layout/ # Header, Layout
-│   │   └── pages/            # ProjectListPage, ConditionEditorPage (플레이스홀더)
+│   │   ├── api/              # Axios API 클라이언트
+│   │   ├── components/       # UI 컴포넌트
+│   │   │   ├── editor/       # 조건표 편집기 컴포넌트 (ConditionGrid, buildColumnDefs, GridContextMenu)
+│   │   │   ├── export/       # 전산 출력 컴포넌트
+│   │   │   ├── auth/         # 인증 관련 컴포넌트
+│   │   │   └── layout/       # Header, Layout
+│   │   ├── hooks/            # 커스텀 훅 (도메인별 분리)
+│   │   │   ├── useEditorCellEdit.ts    # 셀 편집/저장/오토세이브
+│   │   │   ├── useEditorNavigation.ts  # 레이어/에러/셀 네비게이션
+│   │   │   ├── useEditorModals.ts      # 모달 상태 관리
+│   │   │   └── useProjects.ts, useColumns.ts, useAutoSave.ts ...
+│   │   ├── pages/            # 페이지 컴포넌트
+│   │   ├── stores/           # Zustand 스토어
+│   │   ├── types/            # TypeScript 타입 (도메인별 분리)
+│   │   │   ├── user.ts, master.ts, column.ts
+│   │   │   ├── project.ts, changelog.ts, editor.ts
+│   │   │   ├── admin.ts, export.ts
+│   │   │   └── index.ts     # Re-export 허브
+│   │   └── lib/              # 유틸리티 (validation, diff)
 │   ├── package.json
 │   └── Dockerfile
 ├── nginx/                    # 리버스 프록시
@@ -113,6 +152,16 @@ Draft → Review → Approved → (Revision 생성 시) Archived
   - M1: Backend Auth 모듈 (JWT access/refresh token, bcrypt 해싱, OAuth2 의존성)
   - M2: Frontend Auth UI (Zustand auth store, LoginPage, ProtectedRoute, Axios 인터셉터)
   - M3: RBAC 강화 (전체 엔드포인트 인증 적용, 역할 기반 접근 제어)
+- 구조 개선 완료:
+  - 라우터 분리: projects.py → project_lifecycle.py + project_conditions.py
+  - 서비스 분리: project_service.py → project_service + project_status_service + project_analytics_service
+  - Repository 패턴: CommentRepository, ChangeLogRepository (N+1 쿼리 최적화)
+  - 상수 중앙화: constants.py (상태 전환, 규칙 타입, 카테고리 코드)
+  - 프론트엔드 훅 추출: useEditorCellEdit, useEditorNavigation, useEditorModals
+  - 타입 분할: types/index.ts → 7개 도메인 파일 + re-export hub
+  - 시드 패키지화: seed.py → seed/ 패키지 (master, product, column, project, export 모듈)
+  - Excel 빌더 분리: export_service.py → export_service(오케스트레이션) + export_builders(순수 함수)
+  - 그리드 컴포넌트 분할: ConditionGrid(425→314줄) + buildColumnDefs + GridContextMenu
 - 다음 작업: Phase 4 나머지 기능 (Cross-layer 검증, 전산 출력 확장, 대시보드)
 
 ## 개발 명령어
