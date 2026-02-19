@@ -217,7 +217,6 @@ class RevisionListResponse(BaseModel):
 
 class StatusTransitionRequest(BaseModel):
     new_status: str
-    changed_by: int
     comment: str | None = None
 
 
