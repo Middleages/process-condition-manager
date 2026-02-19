@@ -3,8 +3,6 @@ import { AgGridReact } from 'ag-grid-react'
 import type {
   ColDef,
   CellValueChangedEvent,
-  CellClassParams,
-  ITooltipParams,
   GridReadyEvent,
   GridApi,
   ProcessDataFromClipboardParams,
@@ -20,6 +18,8 @@ import type {
   ValidationError,
   GridRowData,
 } from '@/types'
+import { GridContextMenu } from './GridContextMenu'
+import { buildColumnDefs } from './buildColumnDefs'
 
 interface Props {
   layers: ProjectLayerData[]
@@ -123,118 +123,21 @@ export function ConditionGrid({
 
   const rowData = useMemo(() => buildRowData(layers), [layers])
 
-  const columnDefs = useMemo<ColDef[]>(() => {
-    const fixed: ColDef[] = [
-      {
-        headerName: 'Layer',
-        field: 'layerName',
-        pinned: 'left',
-        width: 140,
-        editable: false,
-        lockPosition: true,
-        cellClass: 'font-medium',
-      },
-    ]
-
-    const dynamic: ColDef[] = columns.map((col) => {
-      const def: ColDef = {
-        headerName: col.unit
-          ? `${col.display_name} (${col.unit})`
-          : col.display_name,
-        field: col.column_name,
-        editable: !readOnly,
-        width: 120,
-        tooltipValueGetter: (params: ITooltipParams) => {
-          const plId = params.data?.projectLayerId
-          if (!plId) return undefined
-          const bbKey = `${plId}:${col.column_name}`
-          const bbVal = backboneMap.get(bbKey)
-          const curVal = params.value
-
-          const parts: string[] = []
-
-          // Show backbone original
-          if (bbVal !== undefined && bbVal !== curVal) {
-            parts.push(`Backbone: ${bbVal ?? '(없음)'}`)
-          }
-
-          // Show error
-          const errKey = `${params.data?.layerId}:${col.column_name}`
-          const err = errorMap.get(errKey)
-          if (err) {
-            parts.push(`⚠ ${err}`)
-          }
-
-          // Show comment info
-          const commentKey = `${plId}:${col.column_name}`
-          const commentCount = commentMapRef.current.get(commentKey)
-          if (commentCount && commentCount > 0) {
-            parts.push(`Comments: ${commentCount}`)
-          }
-
-          return parts.length > 0 ? parts.join('\n') : undefined
-        },
-        cellClassRules: {
-          'bg-cell-error': (params: CellClassParams) => {
-            const key = `${params.data?.layerId}:${col.column_name}`
-            return errorMap.has(key)
-          },
-          'bg-cell-recipe': (params: CellClassParams) => {
-            const plId = params.data?.projectLayerId
-            if (!plId) return false
-            return recipeCellsRef.current.has(`${plId}:${col.column_name}`)
-          },
-          'bg-cell-changed': (params: CellClassParams) => {
-            const plId = params.data?.projectLayerId
-            if (!plId) return false
-            const dirtyKey = `${plId}:${col.column_name}`
-            if (dirtyCellsRef.current.has(dirtyKey)) return true
-            // Also highlight if different from backbone
-            const bbKey = `${plId}:${col.column_name}`
-            const bbVal = backboneMap.get(bbKey)
-            return bbVal !== undefined && bbVal !== params.value
-          },
-          'bg-cell-rejection-comment': (params: CellClassParams) => {
-            const plId = params.data?.projectLayerId
-            if (!plId) return false
-            const commentKey = `${plId}:${col.column_name}`
-            return rejectionCommentMapRef.current.get(commentKey) === true
-          },
-          'bg-cell-comment': (params: CellClassParams) => {
-            const plId = params.data?.projectLayerId
-            if (!plId) return false
-            const commentKey = `${plId}:${col.column_name}`
-            const hasComment = commentMapRef.current.has(commentKey) && (commentMapRef.current.get(commentKey) ?? 0) > 0
-            const hasRejectionComment = rejectionCommentMapRef.current.get(commentKey) === true
-            // Only apply comment marker if there's no rejection comment (to avoid duplicate markers)
-            return hasComment && !hasRejectionComment
-          },
-          'ag-cell-active-column': () => {
-            return scrollToColumnNameRef.current === col.column_name
-          },
-        },
-      }
-
-      // Type-specific cell editor
-      if (col.data_type === 'select' && col.select_options) {
-        def.cellEditor = 'agSelectCellEditor'
-        def.cellEditorParams = {
-          values: col.select_options,
-        }
-      } else if (col.data_type === 'integer' || col.data_type === 'float') {
-        def.cellEditor = 'agTextCellEditor'
-        def.valueParser = (params) => {
-          if (params.newValue === '' || params.newValue === null) return null
-          const num = Number(params.newValue)
-          return isNaN(num) ? params.oldValue : num
-        }
-      }
-
-      return def
-    })
-
-    return [...fixed, ...dynamic]
-  }, [columns, backboneMap, errorMap, readOnly])
+  const columnDefs = useMemo<ColDef[]>(
+    () =>
+      buildColumnDefs({
+        columns,
+        readOnly,
+        errorMap,
+        backboneMap,
+        dirtyCellsRef,
+        recipeCellsRef,
+        commentMapRef,
+        rejectionCommentMapRef,
+        scrollToColumnNameRef,
+      }),
+    [columns, backboneMap, errorMap, readOnly]
+  )
 
   const handleCellContextMenu = useCallback(
     (event: CellContextMenuEvent) => {
@@ -392,33 +295,19 @@ export function ConditionGrid({
 
       {/* Custom Context Menu */}
       {contextMenu && (
-        <div
-          className="fixed z-50 bg-white border border-gray-200 rounded-md shadow-lg py-1 min-w-[160px]"
-          style={{ left: contextMenu.x, top: contextMenu.y }}
-        >
-          <button
-            className="w-full text-left px-3 py-1.5 text-sm hover:bg-gray-100 flex items-center gap-2"
-            onClick={() => {
-              onViewHistory?.(contextMenu.projectLayerId, contextMenu.layerName, contextMenu.columnName)
-              setContextMenu(null)
-            }}
-          >
-            <span className="text-gray-500">&#128203;</span>
-            View History
-          </button>
-          {projectStatus === 'review' && (currentUserRole === 'reviewer' || currentUserRole === 'admin') && (
-            <button
-              className="w-full text-left px-3 py-1.5 text-sm hover:bg-gray-100 flex items-center gap-2"
-              onClick={() => {
-                onCellRightClick?.(contextMenu.projectLayerId, contextMenu.layerName, contextMenu.columnName, contextMenu.columnDisplayName)
-                setContextMenu(null)
-              }}
-            >
-              <span className="text-gray-500">&#128172;</span>
-              Add Comment
-            </button>
-          )}
-        </div>
+        <GridContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          projectLayerId={contextMenu.projectLayerId}
+          layerName={contextMenu.layerName}
+          columnName={contextMenu.columnName}
+          columnDisplayName={contextMenu.columnDisplayName}
+          projectStatus={projectStatus}
+          currentUserRole={currentUserRole}
+          onViewHistory={onViewHistory}
+          onAddComment={onCellRightClick}
+          onClose={() => setContextMenu(null)}
+        />
       )}
     </div>
   )
