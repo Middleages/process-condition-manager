@@ -1,10 +1,11 @@
 """Admin router for XML mappings and validation rules management."""
 
-from fastapi import APIRouter, Depends, Query, UploadFile, File, Header, HTTPException
+from fastapi import APIRouter, Depends, Query, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models import User
+from app.dependencies.auth import require_admin
 from app.schemas.admin import (
     RecipeMappingResponse,
     RecipeMappingCreate,
@@ -16,21 +17,6 @@ from app.schemas.column import ColumnCategoryResponse
 from app.services import admin_service
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
-
-
-# ---------------------------------------------------------------------------
-# Admin role dependency
-# ---------------------------------------------------------------------------
-
-async def require_admin(
-    x_user_id: int = Header(..., alias="X-User-Id"),
-    db: AsyncSession = Depends(get_db),
-) -> User:
-    """Verify that the user has admin role."""
-    user = await db.get(User, x_user_id)
-    if not user or user.role != "admin":
-        raise HTTPException(403, "Admin access required")
-    return user
 
 
 # ---------------------------------------------------------------------------

@@ -1,10 +1,12 @@
 """
 API endpoints for review comments.
 """
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.models.user import User
+from app.dependencies.auth import get_current_user
 from app.schemas.comment import (
     CommentCreate, CommentUpdate, CommentResponse, CommentListResponse
 )
@@ -45,12 +47,12 @@ async def update_comment(
     project_id: int,
     comment_id: int,
     data: CommentUpdate,
-    x_user_id: int = Header(..., alias="X-User-Id"),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Update a comment."""
     result = await comment_service.update_comment(
-        db, project_id, comment_id, data, x_user_id
+        db, project_id, comment_id, data, current_user.id
     )
     return result
 
@@ -59,9 +61,9 @@ async def update_comment(
 async def delete_comment(
     project_id: int,
     comment_id: int,
-    x_user_id: int = Header(..., alias="X-User-Id"),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a comment."""
-    await comment_service.delete_comment(db, project_id, comment_id, x_user_id)
+    await comment_service.delete_comment(db, project_id, comment_id, current_user.id)
     return None

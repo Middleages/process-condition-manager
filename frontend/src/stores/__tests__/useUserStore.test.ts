@@ -1,98 +1,79 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 
 // ---------------------------------------------------------------------------
-// We need to mock localStorage before importing the store, because the store
-// calls loadUserId() at module-evaluation time.
+// useUserStore is now a bridge over useAuthStore.
+// Mock the auth store to control its state.
 // ---------------------------------------------------------------------------
 
-// Create a simple in-memory localStorage mock
-const localStorageMock = (() => {
-  let store: Record<string, string> = {}
-  return {
-    getItem: vi.fn((key: string) => store[key] ?? null),
-    setItem: vi.fn((key: string, value: string) => {
-      store[key] = value
-    }),
-    removeItem: vi.fn((key: string) => {
-      delete store[key]
-    }),
-    clear: vi.fn(() => {
-      store = {}
-    }),
-    get length() {
-      return Object.keys(store).length
-    },
-    key: vi.fn((_index: number) => null),
-    _store: store,
-    _reset: () => {
-      store = {}
-      localStorageMock.getItem.mockClear()
-      localStorageMock.setItem.mockClear()
-      localStorageMock.removeItem.mockClear()
-    },
-  }
-})()
+const mockPost = vi.fn()
+const mockGet = vi.fn()
 
-// Install the mock globally
-Object.defineProperty(globalThis, 'localStorage', {
-  value: localStorageMock,
-  writable: true,
-})
+vi.mock('@/api/client', () => ({
+  default: {
+    post: mockPost,
+    get: mockGet,
+  },
+}))
 
-// ===========================================================================
-// Tests
-// ===========================================================================
-describe('useUserStore', () => {
+describe('useUserStore (auth bridge)', () => {
   beforeEach(async () => {
-    localStorageMock._reset()
-    // We need to reset the module registry so the store re-evaluates loadUserId()
+    vi.clearAllMocks()
     vi.resetModules()
   })
 
-  it('initializes with null when localStorage is empty', async () => {
+  it('currentUserId is null when not authenticated', async () => {
     const { useUserStore } = await import('@/stores/useUserStore')
     expect(useUserStore.getState().currentUserId).toBeNull()
   })
 
-  it('initializes from localStorage when a valid user id is stored', async () => {
-    localStorageMock.setItem('pcm-current-user-id', '42')
+  it('currentUserId reflects the logged-in user id', async () => {
+    const mockUser = { id: 5, username: 'editor', display_name: 'Editor', role: 'editor' }
+    mockPost.mockResolvedValueOnce({
+      data: { access_token: 'token', token_type: 'bearer', user: mockUser },
+    })
+
+    const { useAuthStore } = await import('@/stores/useAuthStore')
     const { useUserStore } = await import('@/stores/useUserStore')
-    expect(useUserStore.getState().currentUserId).toBe(42)
+
+    await useAuthStore.getState().login('editor', 'pass')
+
+    expect(useUserStore.getState().currentUserId).toBe(5)
   })
 
-  it('initializes with null when localStorage contains non-numeric value', async () => {
-    localStorageMock.setItem('pcm-current-user-id', 'not-a-number')
+  it('currentUserId becomes null after logout', async () => {
+    const mockUser = { id: 5, username: 'editor', display_name: 'Editor', role: 'editor' }
+    mockPost
+      .mockResolvedValueOnce({
+        data: { access_token: 'token', token_type: 'bearer', user: mockUser },
+      })
+      .mockResolvedValueOnce({ data: { message: 'Logged out' } })
+
+    const { useAuthStore } = await import('@/stores/useAuthStore')
     const { useUserStore } = await import('@/stores/useUserStore')
+
+    await useAuthStore.getState().login('editor', 'pass')
+    expect(useUserStore.getState().currentUserId).toBe(5)
+
+    await useAuthStore.getState().logout()
     expect(useUserStore.getState().currentUserId).toBeNull()
   })
 
-  it('setCurrentUserId saves to state and localStorage', async () => {
+  it('setCurrentUserId is a no-op (backward compat, does not crash)', async () => {
     const { useUserStore } = await import('@/stores/useUserStore')
-
-    useUserStore.getState().setCurrentUserId(7)
-
-    expect(useUserStore.getState().currentUserId).toBe(7)
-    expect(localStorageMock.setItem).toHaveBeenCalledWith('pcm-current-user-id', '7')
+    // Should not throw
+    expect(() => useUserStore.getState().setCurrentUserId(42)).not.toThrow()
+    expect(() => useUserStore.getState().setCurrentUserId(null)).not.toThrow()
   })
 
-  it('setCurrentUserId with null removes from localStorage', async () => {
-    localStorageMock.setItem('pcm-current-user-id', '42')
+  it('does NOT use localStorage for user persistence', async () => {
+    // setCurrentUserId is a no-op — it does not persist to localStorage.
+    // We verify by checking that setCurrentUserId does not change currentUserId
+    // (since it's derived from useAuthStore, which starts with no user).
     const { useUserStore } = await import('@/stores/useUserStore')
 
-    useUserStore.getState().setCurrentUserId(null)
+    useUserStore.getState().setCurrentUserId(99)
 
+    // currentUserId should still be null since no user is authenticated
     expect(useUserStore.getState().currentUserId).toBeNull()
-    expect(localStorageMock.removeItem).toHaveBeenCalledWith('pcm-current-user-id')
-  })
-
-  it('setCurrentUserId overwrites previous value', async () => {
-    const { useUserStore } = await import('@/stores/useUserStore')
-
-    useUserStore.getState().setCurrentUserId(1)
-    expect(useUserStore.getState().currentUserId).toBe(1)
-
-    useUserStore.getState().setCurrentUserId(2)
-    expect(useUserStore.getState().currentUserId).toBe(2)
-    expect(localStorageMock.setItem).toHaveBeenLastCalledWith('pcm-current-user-id', '2')
   })
 })
