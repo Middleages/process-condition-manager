@@ -45,7 +45,7 @@ class TestVersionHistory:
         await update_project_status(db_session, project_v1.id, "approved", data["admin_user"].id)
 
         # Create a new revision
-        project_v2 = await revise_project(db_session, project_v1.id, description=None)
+        project_v2 = await revise_project(db_session, project_v1.id, revision_reason=None)
 
         result = await get_version_history(db_session, project_v2.id)
 
@@ -64,7 +64,7 @@ class TestVersionHistory:
         )
         await update_project_status(db_session, project_v1.id, "review", data["user"].id)
         await update_project_status(db_session, project_v1.id, "approved", data["admin_user"].id)
-        project_v2 = await revise_project(db_session, project_v1.id, description=None)
+        project_v2 = await revise_project(db_session, project_v1.id, revision_reason=None)
 
         # View history from v1's perspective
         result_from_v1 = await get_version_history(db_session, project_v1.id)
@@ -107,7 +107,7 @@ class TestVersionHistory:
         )
         await update_project_status(db_session, project_v1.id, "review", data["user"].id)
         await update_project_status(db_session, project_v1.id, "approved", data["admin_user"].id)
-        project_v2 = await revise_project(db_session, project_v1.id, description=None)
+        project_v2 = await revise_project(db_session, project_v1.id, revision_reason=None)
 
         result = await get_version_history(db_session, project_v2.id)
 
@@ -124,7 +124,7 @@ class TestVersionHistory:
         )
         await update_project_status(db_session, project_v1.id, "review", data["user"].id)
         await update_project_status(db_session, project_v1.id, "approved", data["admin_user"].id)
-        project_v2 = await revise_project(db_session, project_v1.id, description=None)
+        project_v2 = await revise_project(db_session, project_v1.id, revision_reason=None)
 
         result = await get_version_history(db_session, project_v2.id)
 

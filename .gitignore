@@ -17,3 +17,10 @@ pgdata/
 # Claude Code
 .claude/agent-memory/
 .claude/agent-memory-local/
+
+# Python version manager
+.python-version
+
+# Nested MoAI/Claude artifacts (should only exist at project root)
+backend/.claude/
+backend/.moai/

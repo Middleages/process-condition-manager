@@ -44,7 +44,7 @@ class TestReviseProject:
         await db_session.commit()
 
         # Revise it
-        new_project = await revise_project(db_session, project.id, description="Test revision")
+        new_project = await revise_project(db_session, project.id, revision_reason="Test revision")
 
         assert new_project.status == "draft"
         assert new_project.revision == 2
