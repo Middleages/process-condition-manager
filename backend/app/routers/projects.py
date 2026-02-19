@@ -3,6 +3,8 @@ from fastapi import APIRouter, Depends, Query, UploadFile, File, Form, HTTPExcep
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.models.user import User
+from app.dependencies.auth import get_current_user, require_active_user, require_project_owner
 from app.schemas.project import (
     ProjectCreateRequest,
     ProjectResponse,
@@ -102,10 +104,11 @@ def _build_project_detail_response(project) -> ProjectDetailResponse:
 @router.post("", response_model=ProjectDetailResponse, status_code=201)
 async def create_project(
     request: ProjectCreateRequest,
+    current_user: User = Depends(require_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     project = await project_service.create_project(
-        db, request.product_id, request.backbone_product_id, request.created_by,
+        db, request.product_id, request.backbone_product_id, current_user.id,
     )
     return _build_project_detail_response(project)
 
@@ -115,6 +118,7 @@ async def list_projects(
     status: str | None = None,
     product_id: int | None = None,
     is_latest: bool | None = Query(None, description="Filter by is_latest flag"),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     results = await project_service.get_projects_list(db, status, product_id, is_latest=is_latest)
@@ -124,6 +128,7 @@ async def list_projects(
 @router.get("/{project_id}", response_model=ProjectDetailResponse)
 async def get_project(
     project_id: int,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     project = await project_service.get_project_detail(db, project_id)
@@ -134,6 +139,7 @@ async def get_project(
 async def save_conditions(
     project_id: int,
     request: BulkSaveRequest,
+    current_user: User = Depends(require_project_owner),
     db: AsyncSession = Depends(get_db),
 ):
     return await condition_service.bulk_save_conditions(db, project_id, request)
@@ -142,6 +148,7 @@ async def save_conditions(
 @router.post("/{project_id}/validate", response_model=ValidationResponse)
 async def validate_project(
     project_id: int,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     return await validation_service.validate_project(db, project_id)
@@ -159,6 +166,7 @@ async def get_change_logs(
     date_from: datetime | None = Query(None, description="Filter changes from this datetime"),
     date_to: datetime | None = Query(None, description="Filter changes to this datetime"),
     page: int = Query(1, ge=1, description="Page number for pagination"),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     return await change_log_service.get_change_logs(
@@ -176,6 +184,7 @@ async def get_timeline(
     layer_id: int | None = Query(None, description="Filter by layer ID"),
     change_type: str | None = Query(None, description="Filter by change type: manual, backbone, recipe"),
     changed_by: int | None = Query(None, description="Filter by user ID"),
+    _current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     return await change_log_service.get_timeline(
@@ -193,6 +202,7 @@ async def get_cell_history(
     project_id: int,
     project_layer_id: int = Query(..., description="Project layer ID"),
     column_name: str = Query(..., description="Column name"),
+    _current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     return await change_log_service.get_cell_history(
@@ -203,6 +213,7 @@ async def get_cell_history(
 @router.get("/{project_id}/versions", response_model=VersionHistoryResponse)
 async def get_version_history(
     project_id: int,
+    _current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     return await project_service.get_version_history(db, project_id)
@@ -212,6 +223,7 @@ async def get_version_history(
 async def get_version_diff(
     project_id: int,
     compare_project_id: int,
+    _current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """두 프로젝트 버전 간의 조건 데이터 차이를 반환한다."""
@@ -225,6 +237,7 @@ async def replace_layer_backbone(
     project_id: int,
     project_layer_id: int,
     request: BackboneReplaceRequest,
+    current_user: User = Depends(require_project_owner),
     db: AsyncSession = Depends(get_db),
 ):
     from app.models import Product
@@ -234,7 +247,7 @@ async def replace_layer_backbone(
         project_layer_id=project_layer_id,
         source_product_id=request.source_product_id,
         source_layer_name=request.source_layer_name,
-        changed_by=request.changed_by,
+        changed_by=current_user.id,
     )
     bb_product = await db.get(Product, pl.backbone_product_id) if pl.backbone_product_id else None
     return BackboneReplaceResponse(
@@ -253,13 +266,14 @@ async def replace_layer_backbone(
 async def add_project_layer(
     project_id: int,
     request: LayerAddRequest,
+    current_user: User = Depends(require_project_owner),
     db: AsyncSession = Depends(get_db),
 ):
     pl = await backbone_service.add_layer(
         db,
         project_id=project_id,
         layer_id=request.layer_id,
-        changed_by=request.changed_by,
+        changed_by=current_user.id,
         source_product_id=request.source_product_id,
         source_layer_name=request.source_layer_name,
     )
@@ -282,6 +296,7 @@ async def add_project_layer(
 async def delete_project_layer(
     project_id: int,
     project_layer_id: int,
+    _current_user: User = Depends(require_project_owner),
     db: AsyncSession = Depends(get_db),
 ):
     await backbone_service.delete_layer(db, project_id, project_layer_id)
@@ -294,6 +309,7 @@ async def upload_recipe_xml(
     project_id: int,
     files: list[UploadFile] = File(...),
     project_layer_id: int | None = Form(None),
+    _current_user: User = Depends(require_project_owner),
     db: AsyncSession = Depends(get_db),
 ):
     """Upload one or more Recipe XML files.
@@ -321,6 +337,7 @@ async def upload_recipe_xml(
 async def apply_recipe(
     project_id: int,
     request: RecipeApplyRequest,
+    _current_user: User = Depends(require_project_owner),
     db: AsyncSession = Depends(get_db),
 ):
     """Apply selected recipe diff changes to project conditions."""
@@ -333,6 +350,7 @@ async def apply_recipe(
 async def revise_project(
     project_id: int,
     request: ReviseProjectRequest | None = None,
+    _current_user: User = Depends(require_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new revision from an approved project.
@@ -349,6 +367,7 @@ async def revise_project(
 @router.get("/by-product/{product_id}/revisions", response_model=RevisionListResponse)
 async def get_product_revisions(
     product_id: int,
+    _current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get revision history for a product."""
@@ -382,14 +401,25 @@ async def get_product_revisions(
 async def update_status(
     project_id: int,
     data: StatusTransitionRequest,
+    current_user: User = Depends(require_active_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Update project status with state machine validation."""
+    """Update project status with state machine validation.
+
+    Role requirements:
+    - 'review' status: project owner or admin
+    - 'approved' / 'rejected' status: reviewer or admin only
+    """
+    if data.new_status in ("approved", "rejected") and current_user.role not in ("reviewer", "admin"):
+        raise HTTPException(
+            status_code=403,
+            detail="Reviewer or admin access required for approve/reject",
+        )
     result = await project_service.update_project_status(
         db=db,
         project_id=project_id,
         new_status=data.new_status,
-        changed_by=data.changed_by,
+        changed_by=current_user.id,
         comment=data.comment,
     )
     return result
@@ -398,6 +428,7 @@ async def update_status(
 @router.get("/{project_id}/status-history", response_model=StatusHistoryResponse)
 async def get_status_history(
     project_id: int,
+    _current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get status change history for a project."""
@@ -432,6 +463,7 @@ async def get_status_history(
 @router.get("/{project_id}/change-summary", response_model=ChangeSummaryResponse)
 async def get_change_summary(
     project_id: int,
+    _current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get change summary statistics for a project."""

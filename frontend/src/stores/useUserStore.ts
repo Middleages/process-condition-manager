@@ -1,37 +1,35 @@
+/**
+ * useUserStore - backward compatibility bridge
+ *
+ * This store previously managed user selection via a header dropdown.
+ * With the introduction of JWT authentication (SPEC-AUTH-001), user identity
+ * is now managed by useAuthStore.
+ *
+ * This bridge provides the same interface for any remaining components that
+ * still call useUserStore, deriving currentUserId from useAuthStore.
+ *
+ * MIGRATION NOTE: New code should use useAuthStore directly.
+ */
 import { create } from 'zustand'
-
-const STORAGE_KEY = 'pcm-current-user-id'
-
-function loadUserId(): number | null {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY)
-    if (stored) {
-      const id = Number(stored)
-      return isNaN(id) ? null : id
-    }
-  } catch {
-    // localStorage not available
-  }
-  return null
-}
+import { useAuthStore } from '@/stores/useAuthStore'
 
 interface UserState {
   currentUserId: number | null
   setCurrentUserId: (id: number | null) => void
 }
 
-export const useUserStore = create<UserState>((set) => ({
-  currentUserId: loadUserId(),
-  setCurrentUserId: (id) => {
-    try {
-      if (id !== null) {
-        localStorage.setItem(STORAGE_KEY, String(id))
-      } else {
-        localStorage.removeItem(STORAGE_KEY)
-      }
-    } catch {
-      // localStorage not available
-    }
-    set({ currentUserId: id })
+export const useUserStore = create<UserState>(() => ({
+  // Derived from useAuthStore — no longer from localStorage
+  get currentUserId() {
+    return useAuthStore.getState().user?.id ?? null
+  },
+  // No-op: user identity is managed by useAuthStore (JWT login)
+  setCurrentUserId: (_id: number | null) => {
+    // Intentionally empty — use useAuthStore.login() instead
   },
 }))
+
+// Keep currentUserId in sync whenever authStore user changes
+useAuthStore.subscribe((authState) => {
+  useUserStore.setState({ currentUserId: authState.user?.id ?? null })
+})

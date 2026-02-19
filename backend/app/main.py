@@ -7,7 +7,7 @@ from sqlalchemy import text
 
 from app.config import settings
 from app.database import async_session
-from app.routers import users, lines, columns, products, projects, admin, comments, export
+from app.routers import users, lines, columns, products, projects, admin, comments, export, auth as auth_router
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +42,7 @@ async def health_check():
     return {"status": "ok", "app": settings.APP_NAME, "db": db_status}
 
 
+app.include_router(auth_router.router, prefix="/api/auth", tags=["auth"])
 app.include_router(users.router)
 app.include_router(lines.router)
 app.include_router(columns.router)

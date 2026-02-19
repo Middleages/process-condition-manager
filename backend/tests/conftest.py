@@ -5,9 +5,11 @@ Uses SQLite (async via aiosqlite) for test isolation and speed.
 PostgreSQL-specific types (JSONB) are remapped to JSON for SQLite compatibility.
 """
 
+from __future__ import annotations
+
 import pytest
 import pytest_asyncio
-from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 from sqlalchemy import JSON, event
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
@@ -16,6 +18,9 @@ from httpx import AsyncClient, ASGITransport
 
 from app.database import Base, get_db
 from app.main import app
+
+if TYPE_CHECKING:
+    from app.models.user import User
 
 
 # ---------------------------------------------------------------------------
@@ -109,10 +114,23 @@ async def seed_test_data(db_session: AsyncSession):
         ColumnCategory, ColumnDefinition, ColumnValidation,
     )
 
+    from app.services.auth_service import get_password_hash
+
+    _default_hash = get_password_hash("changeme123!")
+
     # -- Users --
-    user = User(username="tester1", display_name="Test User", role="editor")
-    admin_user = User(username="admin1", display_name="Admin User", role="admin")
-    reviewer_user = User(username="reviewer1", display_name="Reviewer User", role="reviewer")
+    user = User(
+        username="tester1", display_name="Test User", role="editor",
+        password_hash=_default_hash, email="editor@test.local",
+    )
+    admin_user = User(
+        username="admin1", display_name="Admin User", role="admin",
+        password_hash=_default_hash, email="admin@test.local",
+    )
+    reviewer_user = User(
+        username="reviewer1", display_name="Reviewer User", role="reviewer",
+        password_hash=_default_hash, email="reviewer@test.local",
+    )
     db_session.add_all([user, admin_user, reviewer_user])
     await db_session.flush()
 
@@ -251,3 +269,19 @@ async def seed_test_data(db_session: AsyncSession):
         "partial": partial,
         "bb_conditions": bb_conditions,
     }
+
+
+# ---------------------------------------------------------------------------
+# Auth helper fixture
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def auth_headers():
+    """Return a factory function that generates Bearer auth headers for a given User."""
+    def _make_headers(user: User) -> dict:
+        from app.services.auth_service import create_access_token
+        token = create_access_token(
+            {"sub": str(user.id), "username": user.username, "role": user.role}
+        )
+        return {"Authorization": f"Bearer {token}"}
+    return _make_headers

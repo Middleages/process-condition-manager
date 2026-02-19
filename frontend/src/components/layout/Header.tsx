@@ -1,16 +1,18 @@
-import { Link } from 'react-router-dom'
-import { useUsers } from '@/hooks/useUsers'
-import { useUserStore } from '@/stores/useUserStore'
-import { User, Settings } from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
+import { useAuthStore } from '@/stores/useAuthStore'
+import { LogOut, Settings, User } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 
 export default function Header() {
-  const { data: users = [] } = useUsers()
-  const currentUserId = useUserStore((s) => s.currentUserId)
-  const setCurrentUserId = useUserStore((s) => s.setCurrentUserId)
+  const { user, logout } = useAuthStore()
+  const navigate = useNavigate()
 
-  // Find current user
-  const currentUser = users.find((u) => u.id === currentUserId)
-  const isAdmin = currentUser?.role === 'admin'
+  const isAdmin = user?.role === 'admin'
+
+  const handleLogout = async () => {
+    await logout()
+    navigate('/login', { replace: true })
+  }
 
   return (
     <header className="h-12 bg-primary text-primary-foreground flex items-center px-5 gap-6 shrink-0">
@@ -30,21 +32,27 @@ export default function Header() {
 
       <div className="flex-1" />
 
-      <div className="flex items-center gap-2">
-        <User className="h-4 w-4" />
-        <select
-          className="bg-primary text-primary-foreground border border-primary-foreground/30 rounded px-2 py-1 text-sm focus:outline-none"
-          value={currentUserId ?? ''}
-          onChange={(e) => setCurrentUserId(e.target.value ? Number(e.target.value) : null)}
-        >
-          <option value="">사용자 선택</option>
-          {users.map((u) => (
-            <option key={u.id} value={u.id}>
-              {u.display_name} ({u.role})
-            </option>
-          ))}
-        </select>
-      </div>
+      {user && (
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 text-sm">
+            <User className="h-4 w-4" />
+            <span>{user.display_name}</span>
+            <span className="px-1.5 py-0.5 rounded text-xs bg-primary-foreground/20 font-medium">
+              {user.role}
+            </span>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleLogout}
+            className="text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground h-7 px-2"
+            aria-label="로그아웃"
+          >
+            <LogOut className="h-4 w-4" />
+            <span className="ml-1 text-xs">로그아웃</span>
+          </Button>
+        </div>
+      )}
     </header>
   )
 }

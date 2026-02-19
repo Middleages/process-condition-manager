@@ -14,6 +14,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.services.auth_service import get_password_hash
 
 engine = create_engine(settings.DATABASE_URL_SYNC)
 
@@ -584,11 +585,11 @@ VALIDATION_RULES: list[tuple] = [
 # ---------------------------------------------------------------------------
 
 USERS = [
-    {"username": "admin1", "display_name": "관리자", "role": "admin"},
-    {"username": "engineer1", "display_name": "김엔지니어", "role": "editor"},
-    {"username": "engineer2", "display_name": "이엔지니어", "role": "editor"},
-    {"username": "engineer3", "display_name": "박엔지니어", "role": "editor"},
-    {"username": "reviewer1", "display_name": "최검토자", "role": "reviewer"},
+    {"username": "admin1", "display_name": "관리자", "role": "admin", "email": "admin@pcm.local"},
+    {"username": "engineer1", "display_name": "김엔지니어", "role": "editor", "email": "editor@pcm.local"},
+    {"username": "engineer2", "display_name": "이엔지니어", "role": "editor", "email": "editor2@pcm.local"},
+    {"username": "engineer3", "display_name": "박엔지니어", "role": "editor", "email": "editor3@pcm.local"},
+    {"username": "reviewer1", "display_name": "최검토자", "role": "reviewer", "email": "reviewer@pcm.local"},
 ]
 
 
@@ -1469,10 +1470,20 @@ def seed():
 
         # --- Users ---
         user_ids = {}
+        _default_password_hash = get_password_hash("changeme123!")
         for u in USERS:
             session.execute(
-                text("INSERT INTO users (username, display_name, role) VALUES (:un, :dn, :r)"),
-                {"un": u["username"], "dn": u["display_name"], "r": u["role"]},
+                text(
+                    "INSERT INTO users (username, display_name, role, password_hash, email) "
+                    "VALUES (:un, :dn, :r, :ph, :email)"
+                ),
+                {
+                    "un": u["username"],
+                    "dn": u["display_name"],
+                    "r": u["role"],
+                    "ph": _default_password_hash,
+                    "email": u.get("email"),
+                },
             )
             result = session.execute(
                 text("SELECT id FROM users WHERE username = :un"),
