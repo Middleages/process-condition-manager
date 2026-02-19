@@ -7,8 +7,8 @@
 
 ## 기술 스택
 
-- **Frontend**: React 18 + TypeScript + Vite, AG Grid Community, React Router, Axios
-- **Backend**: FastAPI (Python), SQLAlchemy 2.x (async), Alembic, Pydantic
+- **Frontend**: React 18 + TypeScript + Vite, AG Grid Community, React Router, Axios, Zustand
+- **Backend**: FastAPI (Python), SQLAlchemy 2.x (async), Alembic, Pydantic, python-jose (JWT), passlib (bcrypt)
 - **DB**: PostgreSQL 16 (JSONB로 조건 데이터 저장)
 - **Infra**: Docker Compose (backend:8000, frontend:5173, nginx:80, db:5432)
 
@@ -22,6 +22,7 @@ process-condition-manager/
 │   │   ├── config.py         # 설정 (DATABASE_URL, SECRET_KEY)
 │   │   ├── database.py       # AsyncSession, engine, Base
 │   │   ├── models/           # SQLAlchemy ORM 모델 (전체 정의 완료)
+│   │   ├── dependencies/     # FastAPI 인증 의존성 (auth.py)
 │   │   ├── routers/          # API 엔드포인트
 │   │   ├── services/         # 비즈니스 로직
 │   │   ├── schemas/          # Pydantic 스키마
@@ -108,7 +109,11 @@ Draft → Review → Approved → (Revision 생성 시) Archived
   - Export API: 시스템 목록 조회, 미리보기, 단건/벌크 다운로드 (Excel/ZIP)
   - Export UI: Approved 상태 시 ExportPanel (시스템 선택, 미리보기, 다운로드)
   - EquipmentAssignment 모델 + 마이그레이션 + 시드 데이터
-- 다음 작업: Phase 4 기능 (인증/권한, Cross-layer 검증, 전산 출력 확장, 대시보드)
+- SPEC-AUTH-001 완료: JWT 인증/인가 시스템
+  - M1: Backend Auth 모듈 (JWT access/refresh token, bcrypt 해싱, OAuth2 의존성)
+  - M2: Frontend Auth UI (Zustand auth store, LoginPage, ProtectedRoute, Axios 인터셉터)
+  - M3: RBAC 강화 (전체 엔드포인트 인증 적용, 역할 기반 접근 제어)
+- 다음 작업: Phase 4 나머지 기능 (Cross-layer 검증, 전산 출력 확장, 대시보드)
 
 ## 개발 명령어
 
@@ -146,10 +151,11 @@ cd frontend && npm run dev
 - AG Grid 데이터, dirty cells, 검증 오류 등을 Zustand store로 관리
 - Redux 대비 보일러플레이트 적고, 카테고리 탭별 분할 로딩에 적합
 
-### Phase 1 인증: 드롭다운 사용자 선택
-- 로그인 없이, 헤더에 사용자 선택 드롭다운 배치
-- 선택된 사용자 ID를 change_log 등 기록용으로 사용
-- 본격적인 JWT 인증은 Phase 4에서 구현
+### 인증: JWT 기반 (SPEC-AUTH-001 완료)
+- JWT access token (15분) + refresh token (7일, HTTP-only cookie) 기반 인증
+- bcrypt 패스워드 해싱, FastAPI OAuth2PasswordBearer 의존성
+- RBAC: admin(전체), reviewer(승인/반려), editor(본인 프로젝트)
+- 프론트엔드: Zustand auth store, Bearer 토큰 자동 첨부, 401 자동 갱신
 
 ### 테스트 전략
 - **Backend**: pytest — 핵심 비즈니스 로직(backbone 복사, 검증, 벌크 저장)에 집중

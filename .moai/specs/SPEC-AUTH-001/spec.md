@@ -1,7 +1,7 @@
 ---
 id: SPEC-AUTH-001
 version: "1.0.0"
-status: approved
+status: completed
 created: "2026-02-19"
 updated: "2026-02-19"
 author: MoAI
@@ -168,3 +168,30 @@ bcrypt==4.2.1
 | M1       | 백엔드 Auth 모듈              | Priority High |
 | M2       | 프론트엔드 Auth UI            | Priority High |
 | M3       | RBAC 엔드포인트 강화          | Priority Medium |
+
+---
+
+## Implementation Notes (구현 노트)
+
+### 구현 완료일: 2026-02-19
+
+### 구현 범위
+- **M1 Backend Auth Module**: auth_service.py (JWT + bcrypt), dependencies/auth.py (5종 의존성), routers/auth.py (4 엔드포인트), Alembic 마이그레이션 008
+- **M2 Frontend Auth UI**: useAuthStore.ts (Zustand), authToken.ts (순환 의존성 해결), LoginPage.tsx, ProtectedRoute.tsx, RequireRole.tsx, client.ts (Bearer + 401 자동 갱신)
+- **M3 RBAC Enforcement**: projects.py (20+ 엔드포인트), admin.py (require_admin 모듈화), comments.py (X-User-Id → JWT 전환)
+
+### 주요 설계 결정
+- **authToken 싱글턴**: client.ts ↔ useAuthStore 순환 의존성 해결을 위해 별도 모듈 분리
+- **useUserStore 브릿지**: 하위 호환성을 위해 useAuthStore로 위임하는 브릿지 패턴 적용
+- **401 자동 갱신 큐**: isRefreshing 플래그 + Promise 큐 패턴으로 동시 401 처리
+- **인라인 역할 체크**: update_status 엔드포인트는 다중 상태 전환을 처리하므로 approve/reject에만 reviewer/admin 체크
+
+### 미구현 Optional 요구사항
+- REQ-AUTH-040: "로그인 상태 유지" 체크박스 (향후 구현 가능)
+- REQ-AUTH-041: 관리자 비밀번호 초기화 (향후 구현 가능)
+- REQ-AUTH-042: 로그인 5회 실패 시 계정 잠금 (향후 구현 가능)
+
+### 테스트 결과
+- Backend: 260 tests passed (10 new auth tests)
+- Frontend: 100 tests passed (30 new auth tests)
+- TypeScript: 0 type errors
