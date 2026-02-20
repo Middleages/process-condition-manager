@@ -6,7 +6,7 @@
 |------|-----|
 | SPEC ID | SPEC-EXPORT-001 |
 | 제목 | Export System Extension (전산 출력 확장) |
-| 상태 | Planned |
+| 상태 | Completed |
 | 우선순위 | High |
 | 생성일 | 2026-02-20 |
 | 선행 SPEC | SPEC-005 (전산 출력 기본), SPEC-AUTH-001 (인증/인가) |
