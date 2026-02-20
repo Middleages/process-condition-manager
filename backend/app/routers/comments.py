@@ -20,6 +20,7 @@ router = APIRouter(prefix="/api/projects/{project_id}/comments", tags=["comments
 async def create_comment(
     project_id: int,
     data: CommentCreate,
+    _user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new review comment."""
@@ -33,6 +34,7 @@ async def list_comments(
     is_resolved: bool | None = None,
     comment_type: str | None = None,
     project_layer_id: int | None = None,
+    _user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """List comments for a project with optional filters."""

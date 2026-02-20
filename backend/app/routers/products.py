@@ -4,8 +4,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
+from app.dependencies.auth import get_current_user
 from app.models import Product, ProductLayer
 from app.models.product import Layer
+from app.models.user import User
 from app.schemas.product import ProductResponse, ProductLayerResponse, LayerResponse
 
 router = APIRouter(prefix="/api/products", tags=["products"])
@@ -16,6 +18,7 @@ async def list_products(
     line_id: int | None = None,
     is_backbone: bool | None = None,
     search: str | None = None,
+    _user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     query = select(Product).order_by(Product.product_name)
@@ -30,7 +33,7 @@ async def list_products(
 
 
 @router.get("/layers/all", response_model=list[LayerResponse])
-async def list_all_layers(db: AsyncSession = Depends(get_db)):
+async def list_all_layers(_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """Return all available layers (master data)."""
     result = await db.execute(select(Layer).order_by(Layer.sort_order))
     return result.scalars().all()
@@ -39,6 +42,7 @@ async def list_all_layers(db: AsyncSession = Depends(get_db)):
 @router.get("/{product_id}/layers", response_model=list[ProductLayerResponse])
 async def get_product_layers(
     product_id: int,
+    _user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     product = await db.get(Product, product_id)

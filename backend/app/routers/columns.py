@@ -4,7 +4,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
+from app.dependencies.auth import get_current_user
 from app.models import ColumnCategory, ColumnDefinition
+from app.models.user import User
 from app.schemas.column import ColumnCategoryResponse
 
 router = APIRouter(prefix="/api/columns", tags=["columns"])
@@ -13,6 +15,7 @@ router = APIRouter(prefix="/api/columns", tags=["columns"])
 @router.get("", response_model=list[ColumnCategoryResponse])
 async def list_columns(
     category_code: str | None = None,
+    _user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     query = (
