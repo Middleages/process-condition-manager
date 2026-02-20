@@ -6,6 +6,7 @@ from app.models.column import ColumnCategory, ColumnDefinition, ColumnValidation
 from app.models.change_log import ChangeLog, ProjectStatusLog, ReviewComment
 from app.models.export import ExportSystem, ExportColumnMapping, RecipeXmlMapping, EquipmentAssignment
 from app.models.export_history import ExportHistory
+from app.models.export_data_source import ExportDataSource
 
 __all__ = [
     "User",
@@ -16,4 +17,5 @@ __all__ = [
     "ChangeLog", "ProjectStatusLog", "ReviewComment",
     "ExportSystem", "ExportColumnMapping", "RecipeXmlMapping", "EquipmentAssignment",
     "ExportHistory",
+    "ExportDataSource",
 ]
