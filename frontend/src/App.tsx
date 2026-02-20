@@ -12,6 +12,10 @@ import AdminLayout from './pages/admin/AdminLayout'
 import XmlMappingsPage from './pages/admin/XmlMappingsPage'
 import ValidationRulesPage from './pages/admin/ValidationRulesPage'
 import ExportSystemsPage from './pages/admin/ExportSystemsPage'
+import UserManagementPage from './pages/admin/UserManagementPage'
+import MasterDataPage from './pages/admin/MasterDataPage'
+import EnumManagementPage from './pages/admin/EnumManagementPage'
+import AuditLogPage from './pages/admin/AuditLogPage'
 import { ToastContainer } from './components/ui/toast'
 import { useAuthStore } from './stores/useAuthStore'
 
@@ -59,10 +63,14 @@ const router = createBrowserRouter([
             path: '/admin',
             element: <AdminLayout />,
             children: [
-              { index: true, element: <Navigate to="/admin/xml-mappings" replace /> },
+              { index: true, element: <Navigate to="/admin/users" replace /> },
+              { path: 'users', element: <UserManagementPage /> },
+              { path: 'master-data', element: <MasterDataPage /> },
+              { path: 'enum-options', element: <EnumManagementPage /> },
               { path: 'xml-mappings', element: <XmlMappingsPage /> },
               { path: 'validations', element: <ValidationRulesPage /> },
               { path: 'export-systems', element: <ExportSystemsPage /> },
+              { path: 'audit-logs', element: <AuditLogPage /> },
             ],
           },
         ],

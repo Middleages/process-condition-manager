@@ -21,6 +21,7 @@ from app.models import (
     User, Line, Product, Layer, ProductLayer,
     ColumnCategory, ColumnDefinition, ExportSystem, ExportColumnMapping, Project, ProjectLayer,
 )
+from app.services.auth_service import get_password_hash
 
 
 # ---------------------------------------------------------------------------
@@ -46,7 +47,11 @@ async def export_seed(db_session: AsyncSession):
     - 1 draft project
     """
     # Users
-    user = User(username="exp_tester", display_name="Export Tester", role="editor")
+    _hash = get_password_hash("changeme123!")
+    user = User(
+        username="exp_tester", display_name="Export Tester", role="editor",
+        password_hash=_hash, email="exp_tester@test.local",
+    )
     db_session.add(user)
     await db_session.flush()
 
@@ -178,20 +183,23 @@ class TestListExportSystems:
     """TC-050: REQ-050 - List active export systems with column counts."""
 
     @pytest.mark.asyncio
-    async def test_returns_200_with_system_list(self, client, export_seed):
-        response = await client.get("/api/export/systems")
+    async def test_returns_200_with_system_list(self, client, export_seed, auth_headers):
+        headers = auth_headers(export_seed["user"])
+        response = await client.get("/api/export/systems", headers=headers)
         assert response.status_code == 200
 
     @pytest.mark.asyncio
-    async def test_returns_only_active_systems(self, client, export_seed):
-        response = await client.get("/api/export/systems")
+    async def test_returns_only_active_systems(self, client, export_seed, auth_headers):
+        headers = auth_headers(export_seed["user"])
+        response = await client.get("/api/export/systems", headers=headers)
         data = response.json()
         # Only active systems should be returned
         assert all(s["is_active"] for s in data)
 
     @pytest.mark.asyncio
-    async def test_response_contains_expected_fields(self, client, export_seed):
-        response = await client.get("/api/export/systems")
+    async def test_response_contains_expected_fields(self, client, export_seed, auth_headers):
+        headers = auth_headers(export_seed["user"])
+        response = await client.get("/api/export/systems", headers=headers)
         data = response.json()
         assert len(data) >= 1
         system = data[0]
@@ -202,8 +210,9 @@ class TestListExportSystems:
         assert "is_active" in system
 
     @pytest.mark.asyncio
-    async def test_column_count_reflects_mappings(self, client, export_seed):
-        response = await client.get("/api/export/systems")
+    async def test_column_count_reflects_mappings(self, client, export_seed, auth_headers):
+        headers = auth_headers(export_seed["user"])
+        response = await client.get("/api/export/systems", headers=headers)
         data = response.json()
         active_sys = export_seed["active_system"]
         matching = [s for s in data if s["id"] == active_sys.id]
@@ -212,8 +221,9 @@ class TestListExportSystems:
         assert matching[0]["column_count"] == 1
 
     @pytest.mark.asyncio
-    async def test_inactive_system_not_in_list(self, client, export_seed):
-        response = await client.get("/api/export/systems")
+    async def test_inactive_system_not_in_list(self, client, export_seed, auth_headers):
+        headers = auth_headers(export_seed["user"])
+        response = await client.get("/api/export/systems", headers=headers)
         data = response.json()
         inactive_id = export_seed["inactive_system"].id
         assert not any(s["id"] == inactive_id for s in data)
@@ -228,21 +238,25 @@ class TestExportProjectStatusValidation:
     """TC-052: REQ-052, REQ-080 - Non-approved project returns 400."""
 
     @pytest.mark.asyncio
-    async def test_draft_project_returns_400(self, client, export_seed):
+    async def test_draft_project_returns_400(self, client, export_seed, auth_headers):
+        headers = auth_headers(export_seed["user"])
         project_id = export_seed["draft_project"].id
         system_id = export_seed["active_system"].id
         response = await client.post(
             f"/api/projects/{project_id}/export",
             json={"system_ids": [system_id]},
+            headers=headers,
         )
         assert response.status_code == 400
         assert "approved" in response.json()["detail"].lower()
 
     @pytest.mark.asyncio
-    async def test_nonexistent_project_returns_404(self, client, export_seed):
+    async def test_nonexistent_project_returns_404(self, client, export_seed, auth_headers):
+        headers = auth_headers(export_seed["user"])
         response = await client.post(
             "/api/projects/999999/export",
             json={"system_ids": [export_seed["active_system"].id]},
+            headers=headers,
         )
         assert response.status_code == 404
 
@@ -256,35 +270,41 @@ class TestExportSingleSystem:
     """TC-055: REQ-055 - Single system export returns Excel file."""
 
     @pytest.mark.asyncio
-    async def test_single_system_returns_excel_content_type(self, client, export_seed):
+    async def test_single_system_returns_excel_content_type(self, client, export_seed, auth_headers):
+        headers = auth_headers(export_seed["user"])
         project_id = export_seed["approved_project"].id
         system_id = export_seed["active_system"].id
         response = await client.post(
             f"/api/projects/{project_id}/export",
             json={"system_ids": [system_id]},
+            headers=headers,
         )
         assert response.status_code == 200
         content_type = response.headers.get("content-type", "")
         assert "spreadsheetml" in content_type
 
     @pytest.mark.asyncio
-    async def test_single_system_returns_non_empty_bytes(self, client, export_seed):
+    async def test_single_system_returns_non_empty_bytes(self, client, export_seed, auth_headers):
+        headers = auth_headers(export_seed["user"])
         project_id = export_seed["approved_project"].id
         system_id = export_seed["active_system"].id
         response = await client.post(
             f"/api/projects/{project_id}/export",
             json={"system_ids": [system_id]},
+            headers=headers,
         )
         assert response.status_code == 200
         assert len(response.content) > 0
 
     @pytest.mark.asyncio
-    async def test_single_system_content_disposition_has_xlsx_filename(self, client, export_seed):
+    async def test_single_system_content_disposition_has_xlsx_filename(self, client, export_seed, auth_headers):
+        headers = auth_headers(export_seed["user"])
         project_id = export_seed["approved_project"].id
         system_id = export_seed["active_system"].id
         response = await client.post(
             f"/api/projects/{project_id}/export",
             json={"system_ids": [system_id]},
+            headers=headers,
         )
         assert response.status_code == 200
         disposition = response.headers.get("content-disposition", "")
@@ -300,18 +320,24 @@ class TestExportNonExistentSystem:
     """TC-056: REQ-056 - Non-existent system_id returns 404."""
 
     @pytest.mark.asyncio
-    async def test_nonexistent_system_id_returns_404(self, client, export_seed):
+    async def test_nonexistent_system_id_returns_404(self, client, export_seed, auth_headers):
+        headers = auth_headers(export_seed["user"])
         project_id = export_seed["approved_project"].id
         response = await client.post(
             f"/api/projects/{project_id}/export",
             json={"system_ids": [999999]},
+            headers=headers,
         )
         assert response.status_code == 404
 
     @pytest.mark.asyncio
-    async def test_nonexistent_system_id_in_preview_returns_404(self, client, export_seed):
+    async def test_nonexistent_system_id_in_preview_returns_404(self, client, export_seed, auth_headers):
+        headers = auth_headers(export_seed["user"])
         project_id = export_seed["approved_project"].id
-        response = await client.get(f"/api/projects/{project_id}/export/preview/999999")
+        response = await client.get(
+            f"/api/projects/{project_id}/export/preview/999999",
+            headers=headers,
+        )
         assert response.status_code == 404
 
 
@@ -324,12 +350,14 @@ class TestExportInactiveSystem:
     """TC-057: REQ-057 - Inactive system_id returns 400."""
 
     @pytest.mark.asyncio
-    async def test_inactive_system_returns_400(self, client, export_seed):
+    async def test_inactive_system_returns_400(self, client, export_seed, auth_headers):
+        headers = auth_headers(export_seed["user"])
         project_id = export_seed["approved_project"].id
         inactive_id = export_seed["inactive_system"].id
         response = await client.post(
             f"/api/projects/{project_id}/export",
             json={"system_ids": [inactive_id]},
+            headers=headers,
         )
         assert response.status_code == 400
         assert "inactive" in response.json()["detail"].lower()
@@ -344,17 +372,25 @@ class TestExportPreview:
     """TC-053: REQ-053 - Preview returns first 5 rows as JSON."""
 
     @pytest.mark.asyncio
-    async def test_preview_returns_200(self, client, export_seed):
+    async def test_preview_returns_200(self, client, export_seed, auth_headers):
+        headers = auth_headers(export_seed["user"])
         project_id = export_seed["approved_project"].id
         system_id = export_seed["active_system"].id
-        response = await client.get(f"/api/projects/{project_id}/export/preview/{system_id}")
+        response = await client.get(
+            f"/api/projects/{project_id}/export/preview/{system_id}",
+            headers=headers,
+        )
         assert response.status_code == 200
 
     @pytest.mark.asyncio
-    async def test_preview_response_structure(self, client, export_seed):
+    async def test_preview_response_structure(self, client, export_seed, auth_headers):
+        headers = auth_headers(export_seed["user"])
         project_id = export_seed["approved_project"].id
         system_id = export_seed["active_system"].id
-        response = await client.get(f"/api/projects/{project_id}/export/preview/{system_id}")
+        response = await client.get(
+            f"/api/projects/{project_id}/export/preview/{system_id}",
+            headers=headers,
+        )
         data = response.json()
         assert "system_name" in data
         assert "format_type" in data
@@ -363,25 +399,37 @@ class TestExportPreview:
         assert "total_rows" in data
 
     @pytest.mark.asyncio
-    async def test_preview_rows_capped_at_5(self, client, export_seed):
+    async def test_preview_rows_capped_at_5(self, client, export_seed, auth_headers):
+        headers = auth_headers(export_seed["user"])
         project_id = export_seed["approved_project"].id
         system_id = export_seed["active_system"].id
-        response = await client.get(f"/api/projects/{project_id}/export/preview/{system_id}")
+        response = await client.get(
+            f"/api/projects/{project_id}/export/preview/{system_id}",
+            headers=headers,
+        )
         data = response.json()
         # The project has 2 layers, so rows should be <= 5
         assert len(data["rows"]) <= 5
 
     @pytest.mark.asyncio
-    async def test_preview_requires_approved_project(self, client, export_seed):
+    async def test_preview_requires_approved_project(self, client, export_seed, auth_headers):
+        headers = auth_headers(export_seed["user"])
         draft_id = export_seed["draft_project"].id
         system_id = export_seed["active_system"].id
-        response = await client.get(f"/api/projects/{draft_id}/export/preview/{system_id}")
+        response = await client.get(
+            f"/api/projects/{draft_id}/export/preview/{system_id}",
+            headers=headers,
+        )
         assert response.status_code == 400
 
     @pytest.mark.asyncio
-    async def test_preview_nonexistent_project_returns_404(self, client, export_seed):
+    async def test_preview_nonexistent_project_returns_404(self, client, export_seed, auth_headers):
+        headers = auth_headers(export_seed["user"])
         system_id = export_seed["active_system"].id
-        response = await client.get(f"/api/projects/999999/export/preview/{system_id}")
+        response = await client.get(
+            f"/api/projects/999999/export/preview/{system_id}",
+            headers=headers,
+        )
         assert response.status_code == 404
 
 
@@ -394,17 +442,21 @@ class TestExportOnlyMappedColumns:
     """TC-081: Only columns with export mappings appear in the preview/export output."""
 
     @pytest.mark.asyncio
-    async def test_preview_headers_contain_only_mapped_columns(self, client, export_seed):
+    async def test_preview_headers_contain_only_mapped_columns(self, client, export_seed, auth_headers):
         """The active system only maps SP_SPEED_rpm -> SPIN_SPEED.
         SC_ENERGY_mJ should NOT appear in headers since it has no mapping.
         """
+        headers = auth_headers(export_seed["user"])
         project_id = export_seed["approved_project"].id
         system_id = export_seed["active_system"].id
-        response = await client.get(f"/api/projects/{project_id}/export/preview/{system_id}")
+        response = await client.get(
+            f"/api/projects/{project_id}/export/preview/{system_id}",
+            headers=headers,
+        )
         data = response.json()
-        headers = data["headers"]
+        resp_headers = data["headers"]
         # Mapped column should appear
-        assert "SPIN_SPEED" in headers
+        assert "SPIN_SPEED" in resp_headers
         # Unmapped column should NOT appear
-        assert "SC_ENERGY_mJ" not in headers
-        assert "SC_ENERGY" not in headers
+        assert "SC_ENERGY_mJ" not in resp_headers
+        assert "SC_ENERGY" not in resp_headers

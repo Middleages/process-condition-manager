@@ -1,6 +1,7 @@
 """Admin service for XML mapping and validation rule management."""
 
 import json
+from datetime import datetime
 from typing import BinaryIO
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,11 +10,14 @@ from fastapi import HTTPException
 from openpyxl import load_workbook
 
 from app.models import (
-    RecipeXmlMapping, ColumnDefinition, ColumnCategory, ColumnValidation
+    RecipeXmlMapping, ColumnDefinition, ColumnCategory, ColumnValidation,
+    ChangeLog, ProjectLayer, Project, Product, Layer, User,
 )
 from app.schemas.admin import (
     RecipeMappingResponse, RecipeMappingCreate, RecipeMappingUpdate,
     ValidationRuleCreate, BulkUploadResponse,
+    ColumnSelectOptionsResponse, SelectOptionsUpdate,
+    AuditLogEntry, AuditLogListResponse,
 )
 
 from app.constants import ALLOWED_VALUE_TRANSFORMS, ALLOWED_RULE_TYPES
@@ -471,3 +475,145 @@ async def bulk_upload_validations(
         rules_created=rules_created,
         warnings=warnings,
     )
+
+
+# ---------------------------------------------------------------------------
+# Select Options Functions
+# ---------------------------------------------------------------------------
+
+async def list_select_columns(db: AsyncSession) -> list[ColumnSelectOptionsResponse]:
+    """List columns with data_type='select'."""
+    query = (
+        select(ColumnDefinition, ColumnCategory)
+        .join(ColumnCategory, ColumnDefinition.category_id == ColumnCategory.id)
+        .where(ColumnDefinition.data_type == "select")
+        .order_by(ColumnCategory.sort_order, ColumnDefinition.sort_order)
+    )
+    result = await db.execute(query)
+    rows = result.all()
+
+    return [
+        ColumnSelectOptionsResponse(
+            id=col.id,
+            column_name=col.column_name,
+            display_name=col.display_name,
+            category_code=cat.category_code,
+            data_type=col.data_type,
+            select_options=col.select_options,
+        )
+        for col, cat in rows
+    ]
+
+
+async def update_select_options(
+    db: AsyncSession, column_id: int, data: SelectOptionsUpdate
+) -> ColumnSelectOptionsResponse:
+    """Update select_options for a column."""
+    col = await db.get(ColumnDefinition, column_id)
+    if not col:
+        raise HTTPException(404, "Column not found")
+    if col.data_type != "select":
+        raise HTTPException(400, "Column is not a select type")
+
+    col.select_options = data.select_options
+    await db.commit()
+    await db.refresh(col)
+
+    # Get category
+    cat = await db.get(ColumnCategory, col.category_id)
+    return ColumnSelectOptionsResponse(
+        id=col.id,
+        column_name=col.column_name,
+        display_name=col.display_name,
+        category_code=cat.category_code if cat else None,
+        data_type=col.data_type,
+        select_options=col.select_options,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Audit Log Functions
+# ---------------------------------------------------------------------------
+
+async def list_audit_logs(
+    db: AsyncSession,
+    project_id: int | None = None,
+    line_id: int | None = None,
+    changed_by: int | None = None,
+    change_type: str | None = None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+    offset: int = 0,
+    limit: int = 50,
+) -> tuple[list[AuditLogEntry], int]:
+    """List audit logs with filters. Returns (items, total_count)."""
+    # Aliases for joins
+    from sqlalchemy.orm import aliased
+    from sqlalchemy import func
+
+    UserAlias = aliased(User, name="changed_by_user")
+    LayerAlias = aliased(Layer, name="layer_alias")
+
+    base_query = (
+        select(
+            ChangeLog,
+            Project.id.label("project_id"),
+            Product.product_name.label("project_name"),
+            LayerAlias.layer_name.label("layer_name"),
+            UserAlias.display_name.label("changed_by_name"),
+        )
+        .outerjoin(ProjectLayer, ChangeLog.project_layer_id == ProjectLayer.id)
+        .outerjoin(Project, ProjectLayer.project_id == Project.id)
+        .outerjoin(Product, Project.product_id == Product.id)
+        .outerjoin(LayerAlias, ProjectLayer.layer_id == LayerAlias.id)
+        .outerjoin(UserAlias, ChangeLog.changed_by == UserAlias.id)
+    )
+
+    # Apply filters
+    if project_id is not None:
+        base_query = base_query.where(Project.id == project_id)
+    if line_id is not None:
+        base_query = base_query.where(Product.line_id == line_id)
+    if changed_by is not None:
+        base_query = base_query.where(ChangeLog.changed_by == changed_by)
+    if change_type is not None:
+        base_query = base_query.where(ChangeLog.change_type == change_type)
+    if date_from is not None:
+        base_query = base_query.where(ChangeLog.changed_at >= date_from)
+    if date_to is not None:
+        base_query = base_query.where(ChangeLog.changed_at <= date_to)
+
+    # Count total
+    count_query = select(func.count()).select_from(base_query.subquery())
+    total_result = await db.execute(count_query)
+    total = total_result.scalar_one()
+
+    # Apply ordering and pagination
+    paginated_query = (
+        base_query
+        .order_by(ChangeLog.changed_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+
+    result = await db.execute(paginated_query)
+    rows = result.all()
+
+    items = [
+        AuditLogEntry(
+            id=row.ChangeLog.id,
+            project_id=row.project_id,
+            project_name=row.project_name,
+            layer_name=row.layer_name,
+            column_name=row.ChangeLog.column_name,
+            old_value=row.ChangeLog.old_value,
+            new_value=row.ChangeLog.new_value,
+            change_type=row.ChangeLog.change_type,
+            changed_by=row.ChangeLog.changed_by,
+            changed_by_name=row.changed_by_name,
+            changed_at=row.ChangeLog.changed_at,
+        )
+        for row in rows
+    ]
+
+    return items, total
