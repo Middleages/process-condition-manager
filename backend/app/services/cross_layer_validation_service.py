@@ -25,13 +25,17 @@ def _validate_reference_exists(
     rule: ColumnValidation,
     project_layer,
     layer_name: str,
+    step_seqs: set,
     layer_names: set,
     col_by_name: dict,
     errors: list,
 ) -> None:
     """참조 레이어 존재 여부 검증.
 
-    source_column 값이 프로젝트 내 레이어 이름으로 존재하는지 확인한다.
+    source_column 값이 프로젝트 내 레이어의 step_seq(또는 layer_name)로 존재하는지 확인한다.
+    rule_config의 target 필드에 따라 검증 대상을 결정한다:
+    - "step_seq" (기본값): step_seq 집합에서 검색
+    - "layer_names": layer_name 집합에서 검색
     """
     config = rule.rule_config
     source_column = config.get("source_column")
@@ -45,8 +49,12 @@ def _validate_reference_exists(
     if value is None or (isinstance(value, str) and value.strip() == ""):
         return
 
+    # target에 따라 검증 대상 집합 선택 (기본값: step_seq)
+    target = config.get("target", "step_seq")
+    lookup_set = step_seqs if target == "step_seq" else layer_names
+
     # 참조 레이어가 프로젝트에 존재하지 않으면 에러 추가
-    if str(value) not in layer_names:
+    if str(value) not in lookup_set:
         column_name = source_column
         errors.append({
             "layer_id": project_layer.id,
@@ -86,6 +94,7 @@ def _validate_compare_layers(
     rule: ColumnValidation,
     project_layer,
     layer_name: str,
+    step_seq_to_pl: dict,
     layer_name_to_pl: dict,
     col_by_name: dict,
     errors: list,
@@ -95,6 +104,9 @@ def _validate_compare_layers(
     reference_layer_column이 가리키는 참조 레이어의 column 값과
     현재 레이어의 column 값을 operator로 비교한다.
     threshold_ratio가 설정되어 있으면 참조값에 비율을 곱한 값과 비교한다.
+
+    참조 레이어 식별: reference_layer_column 값(OVL_REF_LAYER 등)은 step_seq를 저장하므로
+    step_seq_to_pl에서 먼저 검색하고, 없으면 layer_name_to_pl에서 fallback 검색한다.
     """
     config = rule.rule_config
     column = config.get("column")
@@ -107,13 +119,15 @@ def _validate_compare_layers(
 
     conditions = project_layer.conditions or {}
 
-    # 현재 레이어에서 참조 레이어 이름을 가져옴
-    ref_layer_name = conditions.get(reference_layer_column)
-    if ref_layer_name is None or (isinstance(ref_layer_name, str) and ref_layer_name.strip() == ""):
+    # 현재 레이어에서 참조 레이어 식별자를 가져옴 (일반적으로 step_seq)
+    ref_identifier = conditions.get(reference_layer_column)
+    if ref_identifier is None or (isinstance(ref_identifier, str) and ref_identifier.strip() == ""):
         return
 
-    # 참조 레이어가 프로젝트에 없으면 건너뜀
-    ref_pl = layer_name_to_pl.get(str(ref_layer_name))
+    # step_seq로 먼저 검색, 없으면 layer_name으로 fallback
+    ref_pl = step_seq_to_pl.get(str(ref_identifier))
+    if ref_pl is None:
+        ref_pl = layer_name_to_pl.get(str(ref_identifier))
     if ref_pl is None:
         return
 
@@ -141,6 +155,8 @@ def _validate_compare_layers(
     # 비교 검증: 실패 시 에러 추가
     if not _apply_operator(current_value, operator, threshold):
         column_name = column
+        # 참조 레이어의 이름을 에러 메시지에 표시 (step_seq가 아닌 사람이 읽기 쉬운 이름)
+        ref_layer_display = ref_pl.layer.layer_name if ref_pl.layer else str(ref_identifier)
         errors.append({
             "layer_id": project_layer.id,
             "layer_name": layer_name,
@@ -149,12 +165,12 @@ def _validate_compare_layers(
             "rule_type": "cross_layer",
             "message": (
                 f"{layer_name}의 {column_name} 값({current_value})이 "
-                f"참조 레이어 {ref_layer_name}의 값({ref_value}) "
+                f"참조 레이어 {ref_layer_display}의 값({ref_value}) "
                 f"대비 기준({operator} {threshold})을 초과합니다"
             ),
             "metadata": {
                 "check_type": "compare_layers",
-                "referenced_layer": str(ref_layer_name),
+                "referenced_layer": ref_layer_display,
                 "referenced_value": str(ref_value),
             },
         })
@@ -295,15 +311,23 @@ async def validate_cross_layer_rules(
         }
         cross_layer_rules.append(rule)
 
-    # 레이어 이름 → project_layer 매핑 구축 (한 번만 수행)
+    # step_seq → project_layer 및 layer_name → project_layer 매핑 구축 (한 번만 수행)
+    # OVL_REF_LAYER 등 layer_ref 컬럼은 step_seq를 저장하므로 step_seq 기반 매핑이 주요 검색 경로
+    step_seq_to_pl: dict[str, object] = {}
     layer_name_to_pl: dict[str, object] = {}
+    step_seqs: set[str] = set()
     layer_names: set[str] = set()
 
     for pl in project_layers:
-        lname = pl.layer.layer_name if pl.layer else None
-        if lname:
-            layer_name_to_pl[lname] = pl
-            layer_names.add(lname)
+        layer = pl.layer
+        if not layer:
+            continue
+        if layer.layer_name:
+            layer_name_to_pl[layer.layer_name] = pl
+            layer_names.add(layer.layer_name)
+        if layer.step_seq:
+            step_seq_to_pl[layer.step_seq] = pl
+            step_seqs.add(layer.step_seq)
 
     # equipment_compatibility 규칙 존재 여부 확인 (lazy loading)
     has_equipment_rules = any(
@@ -351,7 +375,7 @@ async def validate_cross_layer_rules(
                 if not lname:
                     continue
                 _validate_reference_exists(
-                    rule, pl, lname, layer_names, col_by_name, errors
+                    rule, pl, lname, step_seqs, layer_names, col_by_name, errors
                 )
 
         elif check_type == "compare_layers":
@@ -361,7 +385,8 @@ async def validate_cross_layer_rules(
                 if not lname:
                     continue
                 _validate_compare_layers(
-                    rule, pl, lname, layer_name_to_pl, col_by_name, errors
+                    rule, pl, lname, step_seq_to_pl, layer_name_to_pl,
+                    col_by_name, errors,
                 )
 
         elif check_type == "equipment_compatibility":

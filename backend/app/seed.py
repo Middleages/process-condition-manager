@@ -579,7 +579,7 @@ VALIDATION_RULES: list[tuple] = [
      "Strip Use가 Y일 때 Strip Method는 필수입니다"),
     # Cross-layer validation rules
     ("OVL_REF_LAYER", "cross_layer",
-     {"check_type": "reference_exists", "source_column": "OVL_REF_LAYER", "target": "layer_name"},
+     {"check_type": "reference_exists", "source_column": "OVL_REF_LAYER", "target": "step_seq"},
      "OVL_REF_LAYER 값에 해당하는 레이어가 프로젝트에 존재하지 않습니다"),
     ("SC_EXPOSE_ENERGY_mJ", "cross_layer",
      {

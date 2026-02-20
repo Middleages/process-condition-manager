@@ -73,7 +73,7 @@ export function ValidationEditModal({ open, onOpenChange, column }: ValidationEd
       defaultMessage = '조건부 필수 항목입니다.'
     } else if (ruleType === 'cross_layer') {
       // cross_layer 기본 설정: reference_exists 유형으로 시작
-      defaultConfig = { check_type: 'reference_exists', source_column: '', target: 'layer_names' }
+      defaultConfig = { check_type: 'reference_exists', source_column: '', target: 'step_seq' }
       defaultMessage = 'Cross-layer 검증 조건을 만족하지 않습니다.'
     }
 

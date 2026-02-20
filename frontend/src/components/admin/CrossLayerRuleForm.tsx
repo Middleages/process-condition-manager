@@ -51,7 +51,7 @@ export function CrossLayerRuleForm({
       onChange({
         check_type: newType,
         source_column: ruleConfig.source_column ?? '',
-        target: 'layer_names',
+        target: 'step_seq',
       })
     } else if (newType === 'compare_layers') {
       onChange({
@@ -125,11 +125,11 @@ export function CrossLayerRuleForm({
             'source_column',
             (ruleConfig.source_column as string) ?? ''
           )}
-          {/* target은 항상 layer_names로 고정 (읽기 전용 표시) */}
+          {/* target은 기본 step_seq로 고정 (읽기 전용 표시) */}
           <div>
             <label className="block text-sm font-medium mb-1">대상</label>
             <Input
-              value="layer_names"
+              value="step_seq"
               readOnly
               className="bg-muted text-muted-foreground cursor-not-allowed"
             />
