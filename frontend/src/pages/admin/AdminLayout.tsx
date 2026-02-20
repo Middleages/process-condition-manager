@@ -26,9 +26,9 @@ export default function AdminLayout() {
   ]
 
   return (
-    <div className="flex-1 flex flex-col min-h-0">
+    <div className="h-full flex flex-col">
       {/* Tab Navigation */}
-      <div className="border-b border-border">
+      <div className="border-b border-border shrink-0">
         <div className="flex gap-1 px-6 overflow-x-auto">
           {tabs.map((tab) => {
             const isActive = location.pathname === tab.path
@@ -50,7 +50,7 @@ export default function AdminLayout() {
       </div>
 
       {/* Tab Content */}
-      <div className="flex-1 overflow-auto min-h-0">
+      <div className="flex-1 overflow-auto">
         <Outlet />
       </div>
     </div>

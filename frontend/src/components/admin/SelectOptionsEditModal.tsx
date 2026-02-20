@@ -30,7 +30,7 @@ export default function SelectOptionsEditModal({
 
   useEffect(() => {
     if (column) {
-      setOptions(column.select_options ?? [])
+      setOptions((column.select_options ?? []).map(String))
     } else {
       setOptions([])
     }

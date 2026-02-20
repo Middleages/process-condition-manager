@@ -1,16 +1,14 @@
 import { useState } from 'react'
 import LineManagementPanel from '@/components/admin/LineManagementPanel'
 import ProductManagementPanel from '@/components/admin/ProductManagementPanel'
-import LayerManagementPanel from '@/components/admin/LayerManagementPanel'
 import ColumnMetadataPanel from '@/components/admin/ColumnMetadataPanel'
 import CategoryManagementPanel from '@/components/admin/CategoryManagementPanel'
 
-type Tab = 'lines' | 'products' | 'layers' | 'columns' | 'categories'
+type Tab = 'lines' | 'products' | 'columns' | 'categories'
 
 const tabList: { id: Tab; label: string }[] = [
   { id: 'lines', label: 'Lines' },
   { id: 'products', label: 'Products' },
-  { id: 'layers', label: 'Layers' },
   { id: 'columns', label: 'Columns' },
   { id: 'categories', label: 'Categories' },
 ]
@@ -42,7 +40,6 @@ export default function MasterDataPage() {
       {/* Tab Content */}
       {activeTab === 'lines' && <LineManagementPanel />}
       {activeTab === 'products' && <ProductManagementPanel />}
-      {activeTab === 'layers' && <LayerManagementPanel />}
       {activeTab === 'columns' && <ColumnMetadataPanel />}
       {activeTab === 'categories' && <CategoryManagementPanel />}
     </div>

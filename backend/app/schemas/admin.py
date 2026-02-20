@@ -135,7 +135,7 @@ class BulkUploadError(BaseModel):
 
 class SelectOptionsUpdate(BaseModel):
     """Schema for updating select_options of a column."""
-    select_options: list[str] = Field(..., description="List of allowed values for select-type column")
+    select_options: list[str | int | float] = Field(..., description="List of allowed values for select-type column")
 
 
 class ColumnSelectOptionsResponse(BaseModel):
@@ -145,7 +145,7 @@ class ColumnSelectOptionsResponse(BaseModel):
     display_name: str
     category_code: str | None = None
     data_type: str
-    select_options: list[str] | None = None
+    select_options: list[str | int | float] | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -1,12 +1,22 @@
 """Admin service for user management (CRUD, password reset, deactivation)."""
 
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException
 
 from app.models import User
 from app.schemas.admin_user import AdminUserCreate, AdminUserUpdate, AdminPasswordReset, AdminUserResponse
 from app.services.auth_service import get_password_hash
+
+
+async def _count_active_admins(db: AsyncSession) -> int:
+    """Count active users with admin role."""
+    result = await db.execute(
+        select(func.count()).select_from(User).where(
+            User.role == "admin", User.is_active.is_(True)
+        )
+    )
+    return result.scalar_one()
 
 
 async def list_users(db: AsyncSession, include_inactive: bool = False) -> list[AdminUserResponse]:
@@ -57,6 +67,13 @@ async def update_user(db: AsyncSession, user_id: int, data: AdminUserUpdate) -> 
     if data.email is not None:
         user.email = data.email
     if data.role is not None:
+        if user.role == "admin" and data.role != "admin":
+            admin_count = await _count_active_admins(db)
+            if admin_count <= 1:
+                raise HTTPException(
+                    status_code=400,
+                    detail="마지막 관리자의 역할을 변경할 수 없습니다",
+                )
         user.role = data.role
     if data.is_active is not None:
         user.is_active = data.is_active
@@ -74,6 +91,14 @@ async def deactivate_user(db: AsyncSession, user_id: int, current_user_id: int) 
     user = await db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+
+    if user.role == "admin":
+        admin_count = await _count_active_admins(db)
+        if admin_count <= 1:
+            raise HTTPException(
+                status_code=400,
+                detail="마지막 관리자를 비활성화할 수 없습니다",
+            )
 
     user.is_active = False
     await db.commit()

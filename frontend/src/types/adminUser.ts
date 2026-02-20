@@ -34,5 +34,5 @@ export interface ColumnSelectOptions {
   display_name: string
   category_code: string | null
   data_type: string
-  select_options: string[] | null
+  select_options: (string | number)[] | null
 }
