@@ -1,11 +1,13 @@
 import { useEffect } from 'react'
 import { createBrowserRouter, RouterProvider, Navigate } from 'react-router-dom'
+import ErrorBoundary from './components/ErrorBoundary'
 import Layout from './components/layout/Layout'
 import ProtectedRoute from './components/auth/ProtectedRoute'
 import LoginPage from './pages/LoginPage'
 import ProjectListPage from './pages/ProjectListPage'
 import ConditionEditorPage from './pages/ConditionEditorPage'
 import DashboardPage from './pages/DashboardPage'
+import NotFoundPage from './pages/NotFoundPage'
 import AdminLayout from './pages/admin/AdminLayout'
 import XmlMappingsPage from './pages/admin/XmlMappingsPage'
 import ValidationRulesPage from './pages/admin/ValidationRulesPage'
@@ -67,15 +69,21 @@ const router = createBrowserRouter([
       },
     ],
   },
+
+  // Catch-all 404
+  {
+    path: '*',
+    element: <NotFoundPage />,
+  },
 ])
 
 function App() {
   return (
-    <>
+    <ErrorBoundary>
       <AppInitializer />
       <RouterProvider router={router} />
       <ToastContainer />
-    </>
+    </ErrorBoundary>
   )
 }
 
