@@ -70,6 +70,7 @@ class ValidationErrorItem(BaseModel):
     display_name: str
     rule_type: str
     message: str
+    metadata: dict | None = None
 
 
 class ValidationResponse(BaseModel):

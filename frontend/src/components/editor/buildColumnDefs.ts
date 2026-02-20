@@ -5,7 +5,7 @@ import type { ColumnDefinition, DirtyCell } from '@/types'
 export interface BuildColumnDefsParams {
   columns: ColumnDefinition[]
   readOnly: boolean
-  errorMap: Map<string, string>
+  errorMap: Map<string, { messages: string[]; hasCrossLayer: boolean; hasSingleLayer: boolean }>
   backboneMap: Map<string, unknown>
   dirtyCellsRef: MutableRefObject<Map<string, DirtyCell>>
   recipeCellsRef: MutableRefObject<Set<string>>
@@ -37,6 +37,15 @@ export function buildColumnDefs(params: BuildColumnDefsParams): ColDef[] {
       lockPosition: true,
       cellClass: 'font-medium',
     },
+    {
+      headerName: 'Step Seq',
+      field: 'stepSeq',
+      pinned: 'left',
+      width: 100,
+      editable: false,
+      lockPosition: true,
+      cellClass: 'text-muted-foreground',
+    },
   ]
 
   const dynamic: ColDef[] = columns.map((col) => {
@@ -61,11 +70,13 @@ export function buildColumnDefs(params: BuildColumnDefsParams): ColDef[] {
           parts.push(`Backbone: ${bbVal ?? '(없음)'}`)
         }
 
-        // Show error
+        // Show errors (single-layer and cross-layer)
         const errKey = `${tooltipParams.data?.layerId}:${col.column_name}`
-        const err = errorMap.get(errKey)
-        if (err) {
-          parts.push(`⚠ ${err}`)
+        const errInfo = errorMap.get(errKey)
+        if (errInfo) {
+          for (const msg of errInfo.messages) {
+            parts.push(`⚠ ${msg}`)
+          }
         }
 
         // Show comment info
@@ -78,9 +89,17 @@ export function buildColumnDefs(params: BuildColumnDefsParams): ColDef[] {
         return parts.length > 0 ? parts.join('\n') : undefined
       },
       cellClassRules: {
+        // Single-layer error: red (higher priority than cross-layer)
         'bg-cell-error': (cellParams: CellClassParams) => {
           const key = `${cellParams.data?.layerId}:${col.column_name}`
-          return errorMap.has(key)
+          const errInfo = errorMap.get(key)
+          return errInfo?.hasSingleLayer === true
+        },
+        // Cross-layer only error: orange (shown only when no single-layer error)
+        'bg-cell-cross-error': (cellParams: CellClassParams) => {
+          const key = `${cellParams.data?.layerId}:${col.column_name}`
+          const errInfo = errorMap.get(key)
+          return errInfo?.hasCrossLayer === true && errInfo?.hasSingleLayer !== true
         },
         'bg-cell-recipe': (cellParams: CellClassParams) => {
           const plId = cellParams.data?.projectLayerId

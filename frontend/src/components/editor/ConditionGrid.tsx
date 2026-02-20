@@ -94,11 +94,25 @@ export function ConditionGrid({
   const rejectionCommentMapRef = useRef(rejectionCommentMap)
   const scrollToColumnNameRef = useRef(scrollToColumnName)
 
-  // Build error lookup: `${layerId}:${columnName}` → error message
+  // 오류 조회 맵: `${layerId}:${columnName}` → { messages: string[], hasCrossLayer: boolean, hasSingleLayer: boolean }
+  // 단일 셀에 여러 오류(단일 레이어 + 크로스 레이어)가 공존할 수 있으므로 타입별로 구분
   const errorMap = useMemo(() => {
-    const map = new Map<string, string>()
+    const map = new Map<string, { messages: string[]; hasCrossLayer: boolean; hasSingleLayer: boolean }>()
     for (const err of validationErrors) {
-      map.set(`${err.layer_id}:${err.column_name}`, err.message)
+      const key = `${err.layer_id}:${err.column_name}`
+      const existing = map.get(key)
+      const isCross = err.rule_type === 'cross_layer'
+      if (existing) {
+        existing.messages.push(err.message)
+        if (isCross) existing.hasCrossLayer = true
+        else existing.hasSingleLayer = true
+      } else {
+        map.set(key, {
+          messages: [err.message],
+          hasCrossLayer: isCross,
+          hasSingleLayer: !isCross,
+        })
+      }
     }
     return map
   }, [validationErrors])
@@ -142,7 +156,7 @@ export function ConditionGrid({
   const handleCellContextMenu = useCallback(
     (event: CellContextMenuEvent) => {
       const { data, colDef } = event
-      if (!data?.projectLayerId || !colDef?.field || colDef.field === 'layerName') return
+      if (!data?.projectLayerId || !colDef?.field || colDef.field === 'layerName' || colDef.field === 'stepSeq') return
 
       event.event?.preventDefault()
 

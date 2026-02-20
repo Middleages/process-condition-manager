@@ -103,6 +103,7 @@ export interface ValidationError {
   display_name: string
   rule_type: string
   message: string
+  metadata?: Record<string, unknown> | null
 }
 
 export interface ValidationResponse {

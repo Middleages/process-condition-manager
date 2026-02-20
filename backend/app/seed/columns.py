@@ -558,4 +558,12 @@ VALIDATION_RULES: list[tuple] = [
     ("DEV_STRIP_METHOD", "conditional_required",
      {"condition_column": "DEV_STRIP_USE", "condition_value": "Y", "operator": "equals"},
      "Strip Use\uac00 Y\uc77c \ub54c Strip Method\ub294 \ud544\uc218\uc785\ub2c8\ub2e4"),
+    # Cross-layer validations
+    ("OVL_REF_LAYER", "cross_layer",
+     {"check_type": "reference_exists", "source_column": "OVL_REF_LAYER", "target": "step_seq"},
+     "\ucc38\uc870 \ub808\uc774\uc5b4\uac00 \ud504\ub85c\uc81d\ud2b8\uc5d0 \uc874\uc7ac\ud558\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4"),
+    ("OVL_SPEC_VECTOR_nm", "cross_layer",
+     {"check_type": "compare_layers", "column": "OVL_SPEC_VECTOR_nm",
+      "operator": "<=", "reference_layer_column": "OVL_REF_LAYER", "threshold_ratio": 1.2},
+     "OVL Spec\uc774 \ucc38\uc870 \ub808\uc774\uc5b4 \ub300\ube44 \uae30\uc900\uc744 \ucd08\uacfc\ud569\ub2c8\ub2e4"),
 ]

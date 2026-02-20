@@ -103,6 +103,11 @@ export function validateCellValue(
         }
         break
       }
+
+      case 'cross_layer': {
+        // 크로스 레이어 검증은 서버 사이드에서만 수행 — 클라이언트에서는 오류를 생성하지 않음
+        break
+      }
     }
   }
 

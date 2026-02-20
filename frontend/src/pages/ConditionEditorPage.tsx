@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useParams, useBlocker } from 'react-router-dom'
-import { useProjectDetail, useDeleteLayer, useVersionHistory } from '@/hooks/useProjects'
+import { useProjectDetail, useDeleteLayer, useVersionHistory, useValidateProjectMutation } from '@/hooks/useProjects'
 import { useColumns } from '@/hooks/useColumns'
 import { useAllLayers } from '@/hooks/useProducts'
 import { useUsers } from '@/hooks/useUsers'
@@ -70,6 +70,8 @@ export default function ConditionEditorPage() {
   const isArchived = project?.status === 'archived'
   const isReadOnly = project?.status === 'review' || project?.status === 'approved' || project?.status === 'archived'
   const currentUser = users.find((u) => u.id === currentUserId) ?? null
+
+
   const activeCategoryData = categories.find((c) => c.category_code === activeCategory)
   const activeColumns = activeCategoryData?.columns ?? []
 
@@ -153,6 +155,19 @@ export default function ConditionEditorPage() {
       setActiveLayerId(project.layers[0].layer_id)
     }
   }, [project, setActiveLayerId])
+
+  // Auto-validate on project load to restore validation errors
+  const validateMutation = useValidateProjectMutation()
+  const setValidationErrors = useEditorStore((s) => s.setValidationErrors)
+  useEffect(() => {
+    if (!pid || !project) return
+    validateMutation.mutateAsync(pid).then((validation) => {
+      setValidationErrors(validation.errors)
+    }).catch(() => {
+      // Silently ignore validation errors on initial load
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pid])
 
   // --- Handlers (page-specific) ---
   const handleLayerDelete = useCallback(

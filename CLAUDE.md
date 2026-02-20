@@ -162,7 +162,12 @@ Draft → Review → Approved → (Revision 생성 시) Archived
   - 시드 패키지화: seed.py → seed/ 패키지 (master, product, column, project, export 모듈)
   - Excel 빌더 분리: export_service.py → export_service(오케스트레이션) + export_builders(순수 함수)
   - 그리드 컴포넌트 분할: ConditionGrid(425→314줄) + buildColumnDefs + GridContextMenu
-- 다음 작업: Phase 4 나머지 기능 (Cross-layer 검증, 전산 출력 확장, 대시보드)
+- SPEC-CROSS-001 완료: Cross-Layer 검증 엔진 (Phase 4)
+  - M1: 백엔드 검증 엔진 (reference_exists, compare_layers, equipment_compatibility 3종)
+  - M2: ValidationPanel 크로스 레이어 오류 구분 표시 + 필터 + 셀 하이라이팅
+  - M3: Admin UI 동적 규칙 폼 (CrossLayerRuleForm)
+  - Hotfix: step_seq 기반 참조 검증 수정, 에러 셀 포커싱 수정, Step Seq 고정 컬럼, Admin Cross-Layer 요약 컬럼
+- 다음 작업: Phase 4 나머지 기능 (전산 출력 확장, 대시보드)
 
 ## 개발 명령어
 
