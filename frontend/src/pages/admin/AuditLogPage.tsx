@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useAuditLogs } from '@/hooks/useAdminAudit'
 import { useUsers } from '@/hooks/useUsers'
+import { useProjects } from '@/hooks/useProjects'
 
 const LIMIT = 50
 
@@ -22,6 +23,7 @@ function changeTypeLabel(type: string) {
 export default function AuditLogPage() {
   const [projectIdInput, setProjectIdInput] = useState('')
   const [changedByInput, setChangedByInput] = useState('')
+  const { data: projects = [] } = useProjects()
   const [changeTypeInput, setChangeTypeInput] = useState('')
   const [dateFromInput, setDateFromInput] = useState('')
   const [dateToInput, setDateToInput] = useState('')
@@ -75,14 +77,19 @@ export default function AuditLogPage() {
       {/* Filter Bar */}
       <div className="flex flex-wrap gap-3 mb-4 p-4 bg-muted/50 rounded-lg">
         <div className="flex flex-col gap-1">
-          <label className="text-xs text-muted-foreground">프로젝트 ID</label>
-          <Input
-            type="number"
+          <label className="text-xs text-muted-foreground">프로젝트</label>
+          <select
+            className="border border-input rounded-md px-3 py-2 text-sm bg-background h-9 min-w-[180px]"
             value={projectIdInput}
             onChange={(e) => setProjectIdInput(e.target.value)}
-            placeholder="프로젝트 ID"
-            className="w-32"
-          />
+          >
+            <option value="">전체</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id.toString()}>
+                {p.product_name} (v{p.revision})
+              </option>
+            ))}
+          </select>
         </div>
         <div className="flex flex-col gap-1">
           <label className="text-xs text-muted-foreground">변경자</label>
