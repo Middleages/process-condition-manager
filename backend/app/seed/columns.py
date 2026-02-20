@@ -244,7 +244,7 @@ COLUMN_DEFS: list[tuple] = [
     # --- existing 14 OVL columns (UNCHANGED) ---
     ("OVL_SPEC_X_nm", "OVL Spec X", "OVL", "float", "nm", True, None),
     ("OVL_SPEC_Y_nm", "OVL Spec Y", "OVL", "float", "nm", True, None),
-    ("OVL_REF_LAYER", "Reference Layer", "OVL", "layer_ref", None, True, None),
+    ("OVL_REF_LAYER", "Reference Layer", "OVL", "layer_ref", None, False, None),
     ("OVL_CORRECT_X_nm", "Correction X", "OVL", "float", "nm", False, None),
     ("OVL_CORRECT_Y_nm", "Correction Y", "OVL", "float", "nm", False, None),
     ("OVL_APC_USE", "APC Use", "OVL", "select", None, False, ["Y", "N"]),

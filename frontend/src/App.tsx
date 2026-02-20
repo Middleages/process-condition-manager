@@ -8,6 +8,7 @@ import ConditionEditorPage from './pages/ConditionEditorPage'
 import AdminLayout from './pages/admin/AdminLayout'
 import XmlMappingsPage from './pages/admin/XmlMappingsPage'
 import ValidationRulesPage from './pages/admin/ValidationRulesPage'
+import ExportSystemsPage from './pages/admin/ExportSystemsPage'
 import { ToastContainer } from './components/ui/toast'
 import { useAuthStore } from './stores/useAuthStore'
 
@@ -58,6 +59,7 @@ const router = createBrowserRouter([
               { index: true, element: <Navigate to="/admin/xml-mappings" replace /> },
               { path: 'xml-mappings', element: <XmlMappingsPage /> },
               { path: 'validations', element: <ValidationRulesPage /> },
+              { path: 'export-systems', element: <ExportSystemsPage /> },
             ],
           },
         ],

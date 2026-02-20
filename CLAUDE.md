@@ -42,6 +42,10 @@ process-condition-manager/
 │   │   │   ├── condition_service.py, validation_service.py
 │   │   │   ├── backbone_service.py, recipe_service.py
 │   │   │   ├── export_service.py, export_builders.py  # 전산 출력 (서비스 + 빌더 분리)
+│   │   │   ├── export_admin_service.py   # 전산 출력 시스템/매핑 관리
+│   │   │   ├── export_history_service.py # 출력 이력 기록/조회
+│   │   │   ├── export_validation_service.py # 출력 전 데이터 검증
+│   │   │   ├── equipment_service.py      # 설비 할당 CRUD
 │   │   │   ├── admin_service.py, diff_service.py
 │   │   │   └── auth_service.py
 │   │   ├── schemas/          # Pydantic 스키마
@@ -113,6 +117,7 @@ process-condition-manager/
 - `column_definitions` / `column_categories` / `column_validations` — 컬럼 메타데이터·검증 규칙
 - `change_logs` — 셀 단위 변경 이력 (manual/backbone/recipe)
 - `export_systems` / `export_column_mappings` — 전산 출력 설정
+- `export_histories` — 전산 출력 이력 (감사 추적)
 - `recipe_xml_mappings` — XML XPath ↔ 조건표 컬럼 매핑
 
 ## 워크플로우 (상태 흐름)
@@ -167,7 +172,15 @@ Draft → Review → Approved → (Revision 생성 시) Archived
   - M2: ValidationPanel 크로스 레이어 오류 구분 표시 + 필터 + 셀 하이라이팅
   - M3: Admin UI 동적 규칙 폼 (CrossLayerRuleForm)
   - Hotfix: step_seq 기반 참조 검증 수정, 에러 셀 포커싱 수정, Step Seq 고정 컬럼, Admin Cross-Layer 요약 컬럼
-- 다음 작업: Phase 4 나머지 기능 (전산 출력 확장, 대시보드)
+- SPEC-EXPORT-001 완료: 전산 출력 확장 (Phase 4)
+  - M1: Export Admin UI (시스템 CRUD + 컬럼 매핑 관리)
+  - M2: Equipment Assignment UI (레이어별 설비 할당 CRUD)
+  - M3: Export Validation Report (다운로드 전 데이터 품질 검증)
+  - M4: Export History Logging (출력 이력 자동 기록 + 조회)
+  - ExportHistory 모델 + Alembic 마이그레이션, ExportAdminService, EquipmentService, ExportValidationService
+  - 프론트엔드: ExportSystemsPage, ExportMappingManager, EquipmentPanel, ExportHistoryPanel, ExportValidationReport
+  - Hotfix: OVL_REF_LAYER 필수 검증 해제, 설비 reorder 라우트 순서 수정, 관리자 UI 스크롤 수정, 더티셀 추적 기준값 수정
+- 다음 작업: Phase 4 나머지 기능 (대시보드)
 
 ## 개발 명령어
 

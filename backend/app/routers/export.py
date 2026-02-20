@@ -2,13 +2,25 @@ import io
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.dependencies.auth import require_active_user
 from app.models import Project, ExportSystem
-from app.schemas.export import ExportRequest, ExportSystemResponse, ExportPreviewResponse
+from app.models.project import ProjectLayer
+from app.models.user import User
+from app.schemas.export import (
+    ExportHistoryListResponse,
+    ExportRequest,
+    ExportSystemResponse,
+    ExportPreviewResponse,
+    ExportValidationRequest,
+    ExportValidationResponse,
+)
+from app.services.export_history_service import ExportHistoryService
 from app.services.export_service import ExportService
+from app.services.export_validation_service import ExportValidationService
 
 router = APIRouter(tags=["export"])
 
@@ -16,7 +28,10 @@ _export_service = ExportService()
 
 
 @router.get("/api/export/systems", response_model=list[ExportSystemResponse])
-async def list_export_systems(db: AsyncSession = Depends(get_db)):
+async def list_export_systems(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_active_user),
+):
     """REQ-050: List all active export systems with column mapping counts."""
     return await _export_service.get_systems(db)
 
@@ -26,6 +41,7 @@ async def export_project(
     project_id: int,
     body: ExportRequest,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_active_user),
 ):
     """REQ-051~055: Generate Excel (single) or ZIP (multi) export for an approved project.
 
@@ -62,9 +78,28 @@ async def export_project(
                 detail="Inactive export system cannot be used for export.",
             )
 
+    # Count project layers (each layer = 1 row in export)
+    count_result = await db.execute(
+        select(func.count()).select_from(ProjectLayer).where(ProjectLayer.project_id == project_id)
+    )
+    total_rows: int = count_result.scalar_one()
+
     # Single system → Excel; multiple → ZIP — REQ-054, REQ-055
     if len(body.system_ids) == 1:
         excel_bytes, filename = await _export_service.generate(db, project_id, body.system_ids[0])
+
+        # Log the export before returning the response
+        await ExportHistoryService.log_export(
+            db,
+            project_id=project_id,
+            export_system_id=body.system_ids[0],
+            exported_by=current_user.id,
+            export_type="single",
+            file_count=1,
+            total_rows=total_rows,
+        )
+        await db.commit()
+
         return StreamingResponse(
             io.BytesIO(excel_bytes),
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -72,6 +107,20 @@ async def export_project(
         )
     else:
         zip_bytes, zip_filename = await _export_service.generate_bulk(db, project_id, body.system_ids)
+
+        # Log each system export separately for bulk exports
+        for system_id in body.system_ids:
+            await ExportHistoryService.log_export(
+                db,
+                project_id=project_id,
+                export_system_id=system_id,
+                exported_by=current_user.id,
+                export_type="bulk",
+                file_count=1,
+                total_rows=total_rows,
+            )
+        await db.commit()
+
         return StreamingResponse(
             io.BytesIO(zip_bytes),
             media_type="application/zip",
@@ -113,3 +162,47 @@ async def preview_export(
 
     preview_data = await _export_service.generate_preview(db, project_id, system_id, limit=5)
     return ExportPreviewResponse(**preview_data)
+
+
+@router.post(
+    "/api/projects/{project_id}/export/validate",
+    response_model=ExportValidationResponse,
+)
+async def validate_export(
+    project_id: int,
+    data: ExportValidationRequest,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_active_user),
+):
+    """Validate export readiness for a project against one or more export systems.
+
+    Returns per-system validation results containing errors and warnings:
+    - ERROR: required columns with empty values
+    - ERROR: mapping references a non-existent column definition
+    - WARNING: non-numeric value in a numeric-typed column
+    - WARNING: layer data missing rate exceeds 50%
+    """
+    return await ExportValidationService.validate(db, project_id, data.system_ids)
+
+
+@router.get(
+    "/api/projects/{project_id}/export/history",
+    response_model=ExportHistoryListResponse,
+)
+async def get_export_history(
+    project_id: int,
+    offset: int = 0,
+    limit: int = 10,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_active_user),
+):
+    """Return paginated export history for a specific project."""
+    # Verify project exists
+    project = await db.get(Project, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+
+    items, total = await ExportHistoryService.get_project_history(
+        db, project_id, offset=offset, limit=limit
+    )
+    return ExportHistoryListResponse(items=items, total=total)
