@@ -148,6 +148,15 @@ export function ConditionGrid({
         lockPosition: true,
         cellClass: 'font-medium',
       },
+      {
+        headerName: 'Step Seq',
+        field: 'stepSeq',
+        pinned: 'left',
+        width: 100,
+        editable: false,
+        lockPosition: true,
+        cellClass: 'text-muted-foreground',
+      },
     ]
 
     const dynamic: ColDef[] = columns.map((col) => {
@@ -263,7 +272,7 @@ export function ConditionGrid({
   const handleCellContextMenu = useCallback(
     (event: CellContextMenuEvent) => {
       const { data, colDef } = event
-      if (!data?.projectLayerId || !colDef?.field || colDef.field === 'layerName') return
+      if (!data?.projectLayerId || !colDef?.field || colDef.field === 'layerName' || colDef.field === 'stepSeq') return
 
       event.event?.preventDefault()
 
