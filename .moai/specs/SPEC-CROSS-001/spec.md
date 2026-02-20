@@ -359,3 +359,47 @@ ValidationErrorItem에 optional metadata 필드 추가:
 | REQ-CL-UI-003      | Phase 4, 4.2 Highlighting              | frontend/src/pages/ConditionEditorPage.tsx                  |
 | REQ-CL-ADMIN-001   | Phase 4, Admin UI                      | frontend/src/components/admin/ValidationEditModal.tsx       |
 | REQ-CL-ADMIN-002   | Phase 4, Admin Preview                 | frontend/src/components/admin/ValidationEditModal.tsx       |
+
+## 구현 후 수정사항 (Post-Release Fixes)
+
+### 개요
+
+초기 구현 이후 3가지 핫픽스 커밋을 통해 도메인 로직 정정, 버그 수정, UI 개선사항을 반영했다.
+
+### 수정 내역
+
+#### Fix 1: step_seq 기반 참조 레이어 검증 (커밋 5a9d993)
+
+**배경**: 참조 레이어 검증이 레이어명 기반으로만 동작하여 같은 이름의 레이어가 여러 제품에 있는 경우 모호성 발생.
+
+**수정 사항**:
+- `cross_layer_validation_service.py`: dual mappings 구성 (step_seq_to_pl + layer_name_to_pl). reference_exists는 rule config의 `target` 필드("step_seq" 기본값)로 조회 집합 선택. compare_layers는 step_seq 우선 시도 후 layer_name 폴백.
+- Seed 데이터: 크로스 레이어 규칙 config의 `"target": "layer_name"` → `"target": "step_seq"` 변경
+- 프론트엔드: CrossLayerRuleForm.tsx, ValidationEditModal.tsx의 기본값을 'layer_names' → 'step_seq'로 변경
+
+#### Fix 2: 에러 셀 포커싱 + Step Seq 고정 컬럼 (커밋 d670746)
+
+**배경**: 크로스 레이어 에러가 ProjectLayer.id를 layer_id로 사용했으나, 프론트엔드 네비게이션은 Layer.id를 기대하여 셀 포커싱 실패.
+
+**수정 사항**:
+- 백엔드: 모든 에러 append 호출에서 `project_layer.id` → `project_layer.layer.id`로 수정
+- 프론트엔드: AG Grid에 Step Seq를 고정 컬럼으로 추가 (너비=100, Layer 컬럼 직후)
+- Step Seq를 컨텍스트 메뉴 제외 목록에 추가
+
+#### Fix 3: 관리자 검증 규칙 테이블 Cross-Layer 요약 컬럼 (커밋 94b87cf)
+
+**수정 사항**:
+- `ValidationRulesPage.tsx`: `getCrossLayerSummary()` 함수 추가로 check_type 약자(Ref, Cmp, Eq) 표시
+- 검증 규칙 테이블에 Cross-Layer 컬럼 추가 (헤더 + 데이터 셀)
+
+### 영향 범위
+
+- **백엔드**: cross_layer_validation_service.py, seed/columns.py
+- **프론트엔드**: CrossLayerRuleForm.tsx, ValidationEditModal.tsx, ValidationRulesPage.tsx, ConditionGrid 컴포넌트 분할(buildColumnDefs.ts, GridContextMenu.tsx)
+
+### 검증 항목
+
+- ✅ step_seq 기반 참조 검증이 정확히 동작
+- ✅ 크로스 레이어 에러의 셀 포커싱 정상
+- ✅ 관리자 UI에서 규칙의 크로스 레이어 유형 확인 가능
+- ✅ Step Seq 고정 컬럼이 그리드 네비게이션 개선

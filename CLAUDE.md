@@ -117,6 +117,7 @@ Draft → Review → Approved → (Revision 생성 시) Archived
   - M1: 백엔드 검증 엔진 (reference_exists, compare_layers, equipment_compatibility 3종)
   - M2: ValidationPanel 크로스 레이어 오류 구분 표시 + 필터 + 셀 하이라이팅
   - M3: Admin UI 동적 규칙 폼 (CrossLayerRuleForm)
+  - Hotfix: step_seq 기반 참조 검증 수정, 에러 셀 포커싱 수정, Step Seq 고정 컬럼, Admin Cross-Layer 요약 컬럼
 - 다음 작업: Phase 4 나머지 기능 (전산 출력 확장, 대시보드)
 
 ## 개발 명령어
