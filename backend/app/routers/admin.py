@@ -165,6 +165,7 @@ async def get_all_export_history(
 @router.get("/audit-logs", response_model=AuditLogListResponse)
 async def list_audit_logs(
     project_id: int | None = Query(None),
+    line_id: int | None = Query(None),
     changed_by: int | None = Query(None),
     change_type: str | None = Query(None),
     date_from: datetime | None = Query(None),
@@ -178,6 +179,7 @@ async def list_audit_logs(
     items, total = await admin_service.list_audit_logs(
         db,
         project_id=project_id,
+        line_id=line_id,
         changed_by=changed_by,
         change_type=change_type,
         date_from=date_from,

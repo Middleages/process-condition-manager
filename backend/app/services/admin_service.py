@@ -538,6 +538,7 @@ async def update_select_options(
 async def list_audit_logs(
     db: AsyncSession,
     project_id: int | None = None,
+    line_id: int | None = None,
     changed_by: int | None = None,
     change_type: str | None = None,
     date_from: datetime | None = None,
@@ -571,6 +572,8 @@ async def list_audit_logs(
     # Apply filters
     if project_id is not None:
         base_query = base_query.where(Project.id == project_id)
+    if line_id is not None:
+        base_query = base_query.where(Product.line_id == line_id)
     if changed_by is not None:
         base_query = base_query.where(ChangeLog.changed_by == changed_by)
     if change_type is not None:

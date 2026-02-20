@@ -21,6 +21,7 @@ export interface AuditLogListResponse {
 
 export interface AuditLogParams {
   project_id?: number
+  line_id?: number
   changed_by?: number
   change_type?: string
   date_from?: string

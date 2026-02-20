@@ -1,10 +1,12 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Search, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Combobox } from '@/components/ui/combobox'
 import { useAuditLogs } from '@/hooks/useAdminAudit'
 import { useUsers } from '@/hooks/useUsers'
 import { useProjects } from '@/hooks/useProjects'
+import { useLines } from '@/hooks/useLines'
 
 const LIMIT = 50
 
@@ -22,8 +24,8 @@ function changeTypeLabel(type: string) {
 
 export default function AuditLogPage() {
   const [projectIdInput, setProjectIdInput] = useState('')
+  const [lineIdInput, setLineIdInput] = useState('')
   const [changedByInput, setChangedByInput] = useState('')
-  const { data: projects = [] } = useProjects()
   const [changeTypeInput, setChangeTypeInput] = useState('')
   const [dateFromInput, setDateFromInput] = useState('')
   const [dateToInput, setDateToInput] = useState('')
@@ -32,6 +34,7 @@ export default function AuditLogPage() {
   // Applied filter state
   const [appliedFilters, setAppliedFilters] = useState({
     project_id: undefined as number | undefined,
+    line_id: undefined as number | undefined,
     changed_by: undefined as number | undefined,
     change_type: '',
     date_from: '',
@@ -39,6 +42,21 @@ export default function AuditLogPage() {
   })
 
   const { data: users = [] } = useUsers()
+  const { data: projects = [] } = useProjects()
+  const { data: lines = [] } = useLines()
+
+  const projectOptions = useMemo(() => {
+    const filtered = lineIdInput
+      ? projects.filter((p) => p.line_id === Number(lineIdInput))
+      : projects
+    return [
+      { value: '', label: '전체' },
+      ...filtered.map((p) => ({
+        value: p.id.toString(),
+        label: `${p.product_name} (v${p.revision})`,
+      })),
+    ]
+  }, [projects, lineIdInput])
 
   const { data, isLoading } = useAuditLogs({
     ...appliedFilters,
@@ -58,11 +76,18 @@ export default function AuditLogPage() {
     setOffset(0)
     setAppliedFilters({
       project_id: projectIdInput ? parseInt(projectIdInput) : undefined,
+      line_id: lineIdInput ? parseInt(lineIdInput) : undefined,
       changed_by: changedByInput ? parseInt(changedByInput) : undefined,
       change_type: changeTypeInput,
       date_from: dateFromInput,
       date_to: dateToInput,
     })
+  }
+
+  const handleLineChange = (value: string) => {
+    setLineIdInput(value)
+    // Reset project selection when line changes
+    setProjectIdInput('')
   }
 
   const handlePrev = () => setOffset((prev) => Math.max(0, prev - LIMIT))
@@ -75,21 +100,30 @@ export default function AuditLogPage() {
       </div>
 
       {/* Filter Bar */}
-      <div className="flex flex-wrap gap-3 mb-4 p-4 bg-muted/50 rounded-lg">
+      <div className="flex flex-wrap gap-3 mb-4 p-4 bg-muted/50 rounded-lg items-end">
         <div className="flex flex-col gap-1">
-          <label className="text-xs text-muted-foreground">프로젝트</label>
+          <label className="text-xs text-muted-foreground">라인</label>
           <select
-            className="border border-input rounded-md px-3 py-2 text-sm bg-background h-9 min-w-[180px]"
-            value={projectIdInput}
-            onChange={(e) => setProjectIdInput(e.target.value)}
+            className="border border-input rounded-md px-3 py-2 text-sm bg-background h-9"
+            value={lineIdInput}
+            onChange={(e) => handleLineChange(e.target.value)}
           >
             <option value="">전체</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id.toString()}>
-                {p.product_name} (v{p.revision})
-              </option>
+            {lines.map((l) => (
+              <option key={l.id} value={l.id.toString()}>{l.line_name}</option>
             ))}
           </select>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-muted-foreground">프로젝트</label>
+          <Combobox
+            options={projectOptions}
+            value={projectIdInput}
+            onChange={setProjectIdInput}
+            placeholder="전체"
+            searchPlaceholder="프로젝트 검색..."
+            className="w-[220px]"
+          />
         </div>
         <div className="flex flex-col gap-1">
           <label className="text-xs text-muted-foreground">변경자</label>
@@ -135,12 +169,10 @@ export default function AuditLogPage() {
             className="w-36"
           />
         </div>
-        <div className="flex items-end">
-          <Button onClick={handleApplyFilters} size="sm">
-            <Search className="h-4 w-4 mr-1" />
-            적용
-          </Button>
-        </div>
+        <Button onClick={handleApplyFilters} size="sm">
+          <Search className="h-4 w-4 mr-1" />
+          적용
+        </Button>
       </div>
 
       {/* Results */}
