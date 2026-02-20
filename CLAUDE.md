@@ -179,6 +179,7 @@ Draft → Review → Approved → (Revision 생성 시) Archived
   - M4: Export History Logging (출력 이력 자동 기록 + 조회)
   - ExportHistory 모델 + Alembic 마이그레이션, ExportAdminService, EquipmentService, ExportValidationService
   - 프론트엔드: ExportSystemsPage, ExportMappingManager, EquipmentPanel, ExportHistoryPanel, ExportValidationReport
+  - Hotfix: OVL_REF_LAYER 필수 검증 해제, 설비 reorder 라우트 순서 수정, 관리자 UI 스크롤 수정, 더티셀 추적 기준값 수정
 - 다음 작업: Phase 4 나머지 기능 (대시보드)
 
 ## 개발 명령어

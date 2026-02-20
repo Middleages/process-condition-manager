@@ -50,8 +50,8 @@ export function useEditorCellEdit({
       }
 
       const layer = project?.layers.find((l) => l.id === projectLayerId)
-      const backboneValue = layer?.backbone_conditions[columnName]
-      setCellValue(projectLayerId, columnName, newValue, backboneValue)
+      const serverValue = layer?.conditions[columnName]
+      setCellValue(projectLayerId, columnName, newValue, serverValue)
 
       if (layer && activeCategoryData) {
         const colDef = activeCategoryData.columns.find((c) => c.column_name === columnName)

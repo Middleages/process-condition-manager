@@ -50,6 +50,21 @@ async def create_equipment(
 
 
 @router.put(
+    "/{project_id}/layers/{layer_id}/equipment/reorder",
+    response_model=list[EquipmentResponse],
+)
+async def reorder_equipment(
+    project_id: int,
+    layer_id: int,
+    data: EquipmentReorderRequest,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_active_user),
+):
+    """Reorder equipment assignments for a project-layer."""
+    return await EquipmentService.reorder_equipment(db, project_id, layer_id, data.ordered_ids)
+
+
+@router.put(
     "/{project_id}/layers/{layer_id}/equipment/{eq_id}",
     response_model=EquipmentResponse,
 )
@@ -79,18 +94,3 @@ async def delete_equipment(
 ):
     """Delete an equipment assignment."""
     await EquipmentService.delete_equipment(db, project_id, layer_id, eq_id)
-
-
-@router.put(
-    "/{project_id}/layers/{layer_id}/equipment/reorder",
-    response_model=list[EquipmentResponse],
-)
-async def reorder_equipment(
-    project_id: int,
-    layer_id: int,
-    data: EquipmentReorderRequest,
-    db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_active_user),
-):
-    """Reorder equipment assignments for a project-layer."""
-    return await EquipmentService.reorder_equipment(db, project_id, layer_id, data.ordered_ids)

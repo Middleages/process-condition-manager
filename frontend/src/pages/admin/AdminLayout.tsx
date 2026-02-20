@@ -22,7 +22,7 @@ export default function AdminLayout() {
   ]
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
+    <div className="flex-1 flex flex-col min-h-0">
       {/* Tab Navigation */}
       <div className="border-b border-border">
         <div className="flex gap-1 px-6">
@@ -46,7 +46,7 @@ export default function AdminLayout() {
       </div>
 
       {/* Tab Content */}
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-auto min-h-0">
         <Outlet />
       </div>
     </div>
