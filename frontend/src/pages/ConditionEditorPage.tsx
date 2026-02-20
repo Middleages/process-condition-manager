@@ -147,6 +147,17 @@ export default function ConditionEditorPage() {
     }
   }, [project, setActiveLayerId])
 
+  // Auto-validate on project load to restore validation errors
+  useEffect(() => {
+    if (!pid || !project) return
+    validateMutation.mutateAsync(pid).then((validation) => {
+      setValidationErrors(validation.errors)
+    }).catch(() => {
+      // Silently ignore validation errors on initial load
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pid])
+
   // Get active category's columns
   const activeCategoryData = categories.find((c) => c.category_code === activeCategory)
   const activeColumns = activeCategoryData?.columns ?? []
