@@ -16,9 +16,7 @@ from app.schemas.admin import (
     ValidationRuleCreate, BulkUploadResponse,
 )
 
-# Constants
-ALLOWED_VALUE_TRANSFORMS = ("to_int", "to_float", "yn_to_bool")
-ALLOWED_RULE_TYPES = ("range", "required", "conditional_required", "cross_layer")
+from app.constants import ALLOWED_VALUE_TRANSFORMS, ALLOWED_RULE_TYPES
 
 
 # ---------------------------------------------------------------------------

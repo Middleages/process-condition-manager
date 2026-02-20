@@ -1,14 +1,17 @@
 """
 Service layer for review comments.
+
+Business logic (authorization, validation, state transitions) lives here.
+All query logic is delegated to CommentRepository to avoid N+1 problems.
 """
 from datetime import datetime, timezone
 from fastapi import HTTPException
-from sqlalchemy import select, func
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload
 
-from app.models import ReviewComment, Project, ProjectLayer, User, Layer, ColumnDefinition
-from app.schemas.comment import CommentCreate, CommentUpdate, CommentResponse
+from app.models import ReviewComment, Project, User
+from app.repositories import CommentRepository
+from app.schemas.comment import CommentCreate, CommentUpdate
 
 
 async def create_comment(
@@ -65,57 +68,14 @@ async def create_comment(
     await db.flush()
     await db.refresh(review_comment)
 
-    # Join user info for creator
-    result = await db.execute(
-        select(User).where(User.id == review_comment.created_by)
+    # Fetch the newly created comment with all joins in a single query
+    comment_data = await CommentRepository.fetch_comment_with_joins(
+        db, review_comment.id, project_id
     )
-    creator = result.scalar_one()
-
-    # Build response with joined data
-    response_data = {
-        "id": review_comment.id,
-        "project_id": project_id,
-        "project_layer_id": review_comment.project_layer_id,
-        "layer_name": None,
-        "column_name": review_comment.column_name,
-        "column_display_name": None,
-        "content": review_comment.comment,
-        "comment_type": review_comment.comment_type,
-        "is_resolved": review_comment.is_resolved,
-        "created_by": review_comment.created_by,
-        "creator_name": creator.display_name,
-        "creator_role": creator.role,
-        "created_at": review_comment.created_at,
-        "resolved_at": review_comment.resolved_at,
-        "resolved_by": review_comment.resolved_by,
-        "resolver_name": None,
-    }
-
-    # For cell/layer comments, join layer info
-    if review_comment.project_layer_id:
-        result = await db.execute(
-            select(ProjectLayer, Layer)
-            .join(Layer, ProjectLayer.layer_id == Layer.id)
-            .where(ProjectLayer.id == review_comment.project_layer_id)
-        )
-        row = result.first()
-        if row:
-            _, layer = row
-            response_data["layer_name"] = layer.layer_name
-
-    # For cell comments, join column definition
-    if review_comment.column_name:
-        result = await db.execute(
-            select(ColumnDefinition)
-            .where(ColumnDefinition.column_name == review_comment.column_name)
-        )
-        col_def = result.scalar_one_or_none()
-        if col_def:
-            response_data["column_display_name"] = col_def.display_name
 
     await db.commit()
 
-    return response_data
+    return comment_data
 
 
 async def list_comments(
@@ -138,101 +98,21 @@ async def list_comments(
     Returns:
         Dictionary with comments list, total count, and unresolved count
     """
-    # Base query - comments for this project
-    query = select(ReviewComment).where(
-        ReviewComment.project_id == project_id
+    # Fetch all comments with a single JOIN query (replaces N+1 loop)
+    comments = await CommentRepository.fetch_comments_with_joins(
+        db,
+        project_id,
+        is_resolved=is_resolved,
+        comment_type=comment_type,
+        project_layer_id=project_layer_id,
     )
 
-    # Apply filters
-    if is_resolved is not None:
-        query = query.where(ReviewComment.is_resolved == is_resolved)
-
-    if comment_type is not None:
-        query = query.where(ReviewComment.comment_type == comment_type)
-
-    if project_layer_id is not None:
-        query = query.where(ReviewComment.project_layer_id == project_layer_id)
-
-    # Order by created_at descending
-    query = query.order_by(ReviewComment.created_at.desc())
-
-    # Execute query
-    result = await db.execute(query)
-    comments = result.scalars().all()
-
-    # Build response with joined data
-    response_comments = []
-    for comment in comments:
-        # Join creator info
-        result = await db.execute(
-            select(User).where(User.id == comment.created_by)
-        )
-        creator = result.scalar_one()
-
-        # Join resolver info if resolved
-        resolver_name = None
-        if comment.resolved_by:
-            result = await db.execute(
-                select(User).where(User.id == comment.resolved_by)
-            )
-            resolver = result.scalar_one_or_none()
-            if resolver:
-                resolver_name = resolver.display_name
-
-        # Join layer info if applicable
-        layer_name = None
-        if comment.project_layer_id:
-            result = await db.execute(
-                select(ProjectLayer, Layer)
-                .join(Layer, ProjectLayer.layer_id == Layer.id)
-                .where(ProjectLayer.id == comment.project_layer_id)
-            )
-            row = result.first()
-            if row:
-                _, layer = row
-                layer_name = layer.layer_name
-
-        # Join column definition if applicable
-        column_display_name = None
-        if comment.column_name:
-            result = await db.execute(
-                select(ColumnDefinition)
-                .where(ColumnDefinition.column_name == comment.column_name)
-            )
-            col_def = result.scalar_one_or_none()
-            if col_def:
-                column_display_name = col_def.display_name
-
-        response_comments.append({
-            "id": comment.id,
-            "project_id": project_id,
-            "project_layer_id": comment.project_layer_id,
-            "layer_name": layer_name,
-            "column_name": comment.column_name,
-            "column_display_name": column_display_name,
-            "content": comment.comment,
-            "comment_type": comment.comment_type,
-            "is_resolved": comment.is_resolved,
-            "created_by": comment.created_by,
-            "creator_name": creator.display_name,
-            "creator_role": creator.role,
-            "created_at": comment.created_at,
-            "resolved_at": comment.resolved_at,
-            "resolved_by": comment.resolved_by,
-            "resolver_name": resolver_name,
-        })
-
-    # Count unresolved comments
-    unresolved_query = select(func.count(ReviewComment.id)).where(
-        ReviewComment.project_id == project_id,
-        ReviewComment.is_resolved == False,
-    )
-    unresolved_result = await db.execute(unresolved_query)
-    unresolved_count = unresolved_result.scalar() or 0
+    # Count unresolved comments with a single COUNT query
+    unresolved_count = await CommentRepository.count_unresolved(db, project_id)
 
     return {
-        "comments": response_comments,
-        "total": len(response_comments),
+        "comments": comments,
+        "total": len(comments),
         "unresolved_count": unresolved_count,
     }
 
@@ -260,7 +140,7 @@ async def update_comment(
     Raises:
         HTTPException: 404 if comment not found, 403 if not authorized
     """
-    # Fetch comment
+    # Fetch comment for authorization check
     result = await db.execute(
         select(ReviewComment).where(
             ReviewComment.id == comment_id,
@@ -304,59 +184,14 @@ async def update_comment(
     await db.flush()
     await db.refresh(comment)
 
-    # Build response with joins
-    result = await db.execute(select(User).where(User.id == comment.created_by))
-    creator = result.scalar_one()
-
-    resolver_name = None
-    if comment.resolved_by:
-        result = await db.execute(select(User).where(User.id == comment.resolved_by))
-        resolver = result.scalar_one_or_none()
-        if resolver:
-            resolver_name = resolver.display_name
-
-    layer_name = None
-    if comment.project_layer_id:
-        result = await db.execute(
-            select(ProjectLayer, Layer)
-            .join(Layer, ProjectLayer.layer_id == Layer.id)
-            .where(ProjectLayer.id == comment.project_layer_id)
-        )
-        row = result.first()
-        if row:
-            _, layer = row
-            layer_name = layer.layer_name
-
-    column_display_name = None
-    if comment.column_name:
-        result = await db.execute(
-            select(ColumnDefinition)
-            .where(ColumnDefinition.column_name == comment.column_name)
-        )
-        col_def = result.scalar_one_or_none()
-        if col_def:
-            column_display_name = col_def.display_name
+    # Fetch the updated comment with all joins in a single query
+    comment_data = await CommentRepository.fetch_comment_with_joins(
+        db, comment_id, project_id
+    )
 
     await db.commit()
 
-    return {
-        "id": comment.id,
-        "project_id": project_id,
-        "project_layer_id": comment.project_layer_id,
-        "layer_name": layer_name,
-        "column_name": comment.column_name,
-        "column_display_name": column_display_name,
-        "content": comment.comment,
-        "comment_type": comment.comment_type,
-        "is_resolved": comment.is_resolved,
-        "created_by": comment.created_by,
-        "creator_name": creator.display_name,
-        "creator_role": creator.role,
-        "created_at": comment.created_at,
-        "resolved_at": comment.resolved_at,
-        "resolved_by": comment.resolved_by,
-        "resolver_name": resolver_name,
-    }
+    return comment_data
 
 
 async def delete_comment(
@@ -418,9 +253,4 @@ async def get_unresolved_count(db: AsyncSession, project_id: int) -> int:
     Returns:
         Count of unresolved comments
     """
-    query = select(func.count(ReviewComment.id)).where(
-        ReviewComment.project_id == project_id,
-        ReviewComment.is_resolved == False,
-    )
-    result = await db.execute(query)
-    return result.scalar() or 0
+    return await CommentRepository.count_unresolved(db, project_id)

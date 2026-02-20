@@ -1,3 +1,8 @@
+"""
+Project core CRUD service.
+
+Handles project creation, retrieval, listing, revision, and product revisions.
+"""
 import copy
 
 from sqlalchemy import select, func
@@ -5,12 +10,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from fastapi import HTTPException
 
-from app.models import (
-    Product, ProductLayer, Project, ProjectLayer, Layer,
-    ProjectStatusLog, ChangeLog, User
-)
-from app.services import validation_service
-from app.services.comment_service import get_unresolved_count
+from app.models import Product, ProductLayer, Project, ProjectLayer
+
+# Re-exports for backward compatibility (used by tests and other modules)
+from app.services.project_status_service import update_project_status  # noqa: F401
+from app.services.project_analytics_service import get_change_summary, get_version_history  # noqa: F401
 
 
 async def create_project(
@@ -220,9 +224,8 @@ async def revise_project(
         revision=original.revision + 1,
         parent_project_id=original.id,
         is_latest=True,
-        created_by=original.created_by,  # Inherit creator or could be parameterized
+        created_by=original.created_by,
     )
-    # 개정 사유 저장 (입력된 경우에만)
     if revision_reason:
         new_project.revision_reason = revision_reason
     db.add(new_project)
@@ -235,7 +238,7 @@ async def revise_project(
             layer_id=original_layer.layer_id,
             backbone_product_id=original_layer.backbone_product_id,
             conditions=copy.deepcopy(original_layer.conditions),
-            backbone_conditions=copy.deepcopy(original_layer.conditions),  # Important: use approved conditions
+            backbone_conditions=copy.deepcopy(original_layer.conditions),
             sort_order=original_layer.sort_order,
         )
         db.add(new_layer)
@@ -260,281 +263,3 @@ async def get_product_revisions(
         .order_by(Project.revision.desc())
     )
     return list(result.scalars().all())
-
-
-async def update_project_status(
-    db: AsyncSession,
-    project_id: int,
-    new_status: str,
-    changed_by: int,
-    comment: str | None = None,
-) -> dict:
-    """
-    Update project status with state machine validation.
-
-    State transitions:
-    - draft → review (requires validation errors = 0)
-    - review → approved (requires reviewer/admin role)
-    - review → rejected (requires reviewer/admin role + unresolved comments > 0)
-    - approved → archived
-
-    Args:
-        db: Database session
-        project_id: Project ID
-        new_status: Target status
-        changed_by: User ID making the change
-        comment: Optional comment for the transition
-
-    Returns:
-        Dictionary with id, status, previous_status, changed_by, changed_at
-
-    Raises:
-        HTTPException: 404 if project not found, 400 for invalid transitions,
-                       403 for insufficient permissions
-    """
-    VALID_TRANSITIONS = {
-        "draft": ["review"],
-        "review": ["approved", "rejected"],
-        "approved": ["archived"],
-    }
-
-    # Fetch project
-    project = await db.get(Project, project_id)
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-
-    current_status = project.status
-
-    # Check archived status blocked
-    if current_status == "archived":
-        raise HTTPException(
-            status_code=400,
-            detail="Cannot change status of archived project"
-        )
-
-    # Check transition validity
-    allowed_transitions = VALID_TRANSITIONS.get(current_status, [])
-    if new_status not in allowed_transitions:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid status transition from {current_status} to {new_status}"
-        )
-
-    # For Draft → Review: validate no errors
-    if current_status == "draft" and new_status == "review":
-        validation_result = await validation_service.validate_project(db, project_id)
-        if validation_result.error_count > 0:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Cannot submit for review: {validation_result.error_count} validation errors found"
-            )
-
-    # For Review → Approved/Rejected: check role
-    if current_status == "review" and new_status in ["approved", "rejected"]:
-        user = await db.get(User, changed_by)
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
-
-        if user.role not in ["reviewer", "admin"]:
-            raise HTTPException(
-                status_code=403,
-                detail="Only reviewers can approve or reject projects"
-            )
-
-    # For Review → Rejected: check unresolved comments
-    if current_status == "review" and new_status == "rejected":
-        unresolved_count = await get_unresolved_count(db, project_id)
-        if unresolved_count == 0:
-            raise HTTPException(
-                status_code=400,
-                detail="At least one comment is required for rejection"
-            )
-
-        # Rejection creates dual log: review→rejected + rejected→draft
-        # Set project status to draft (not permanently rejected)
-        log_rejected = ProjectStatusLog(
-            project_id=project_id,
-            from_status=current_status,
-            to_status="rejected",
-            changed_by=changed_by,
-            comment=comment,
-        )
-        db.add(log_rejected)
-        await db.flush()
-
-        log_to_draft = ProjectStatusLog(
-            project_id=project_id,
-            from_status="rejected",
-            to_status="draft",
-            changed_by=changed_by,
-            comment="Automatic transition after rejection",
-        )
-        db.add(log_to_draft)
-        await db.flush()
-
-        project.status = "draft"
-        await db.commit()
-
-        return {
-            "id": project.id,
-            "status": "draft",
-            "previous_status": current_status,
-            "changed_by": changed_by,
-            "changed_at": log_to_draft.changed_at,
-        }
-
-    # For all other transitions: create single status log
-    status_log = ProjectStatusLog(
-        project_id=project_id,
-        from_status=current_status,
-        to_status=new_status,
-        changed_by=changed_by,
-        comment=comment,
-    )
-    db.add(status_log)
-
-    # Update project status
-    project.status = new_status
-    await db.flush()
-    await db.commit()
-
-    return {
-        "id": project.id,
-        "status": new_status,
-        "previous_status": current_status,
-        "changed_by": changed_by,
-        "changed_at": status_log.changed_at,
-    }
-
-
-async def get_change_summary(db: AsyncSession, project_id: int) -> dict:
-    """
-    Get change summary statistics for a project.
-
-    Returns:
-        Dictionary with:
-        - validation_error_count
-        - changed_layers_count
-        - total_layers_count
-        - changed_cells_count
-        - backbone_replacements_count
-        - recipe_applications_count
-    """
-    # Get validation error count
-    validation_result = await validation_service.validate_project(db, project_id)
-    validation_error_count = validation_result.error_count
-
-    # Get total layers count
-    total_layers_result = await db.execute(
-        select(func.count(ProjectLayer.id))
-        .where(ProjectLayer.project_id == project_id)
-    )
-    total_layers_count = total_layers_result.scalar() or 0
-
-    # Get project layer IDs
-    project_layers_result = await db.execute(
-        select(ProjectLayer.id)
-        .where(ProjectLayer.project_id == project_id)
-    )
-    project_layer_ids = [row[0] for row in project_layers_result.fetchall()]
-
-    if not project_layer_ids:
-        return {
-            "validation_error_count": validation_error_count,
-            "changed_layers_count": 0,
-            "total_layers_count": total_layers_count,
-            "changed_cells_count": 0,
-            "backbone_replacements_count": 0,
-            "recipe_applications_count": 0,
-        }
-
-    # Count distinct layers with changes
-    changed_layers_result = await db.execute(
-        select(func.count(func.distinct(ChangeLog.project_layer_id)))
-        .where(ChangeLog.project_layer_id.in_(project_layer_ids))
-    )
-    changed_layers_count = changed_layers_result.scalar() or 0
-
-    # Count total changed cells
-    changed_cells_result = await db.execute(
-        select(func.count(ChangeLog.id))
-        .where(ChangeLog.project_layer_id.in_(project_layer_ids))
-    )
-    changed_cells_count = changed_cells_result.scalar() or 0
-
-    # Count backbone replacements (distinct layers)
-    backbone_replacements_result = await db.execute(
-        select(func.count(func.distinct(ChangeLog.project_layer_id)))
-        .where(
-            ChangeLog.project_layer_id.in_(project_layer_ids),
-            ChangeLog.change_type == "backbone",
-        )
-    )
-    backbone_replacements_count = backbone_replacements_result.scalar() or 0
-
-    # Count recipe applications (distinct layers)
-    recipe_applications_result = await db.execute(
-        select(func.count(func.distinct(ChangeLog.project_layer_id)))
-        .where(
-            ChangeLog.project_layer_id.in_(project_layer_ids),
-            ChangeLog.change_type == "recipe",
-        )
-    )
-    recipe_applications_count = recipe_applications_result.scalar() or 0
-
-    return {
-        "validation_error_count": validation_error_count,
-        "changed_layers_count": changed_layers_count,
-        "total_layers_count": total_layers_count,
-        "changed_cells_count": changed_cells_count,
-        "backbone_replacements_count": backbone_replacements_count,
-        "recipe_applications_count": recipe_applications_count,
-    }
-
-
-async def get_version_history(
-    db: AsyncSession,
-    project_id: int,
-):
-    """Get version history for all projects sharing the same product as the given project."""
-    from app.schemas.project import VersionItem, VersionHistoryResponse
-
-    # Get project with product relationship
-    project = await db.get(Project, project_id)
-    if not project:
-        raise HTTPException(404, "Project not found")
-
-    # Get product info
-    product = await db.get(Product, project.product_id)
-    if not product:
-        raise HTTPException(404, "Product not found")
-
-    # Query all projects with same product_id, ordered by revision DESC
-    result = await db.execute(
-        select(Project)
-        .options(selectinload(Project.creator))
-        .where(Project.product_id == project.product_id)
-        .order_by(Project.revision.desc())
-    )
-    projects = list(result.scalars().all())
-
-    versions = [
-        VersionItem(
-            project_id=p.id,
-            revision=p.revision,
-            status=p.status,
-            is_latest=p.is_latest,
-            is_current=(p.id == project_id),
-            created_by_name=p.creator.display_name if p.creator else None,
-            created_at=p.created_at,
-            revision_reason=p.revision_reason,
-        )
-        for p in projects
-    ]
-
-    return VersionHistoryResponse(
-        product_id=product.id,
-        product_name=product.product_name,
-        current_project_id=project_id,
-        versions=versions,
-    )
