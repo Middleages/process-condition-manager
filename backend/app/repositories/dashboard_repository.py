@@ -14,7 +14,9 @@ class DashboardRepository:
     """Data access layer for Dashboard with optimized aggregation queries."""
 
     @staticmethod
-    async def fetch_status_counts(db: AsyncSession) -> dict[str, int]:
+    async def fetch_status_counts(
+        db: AsyncSession, line_id: int | None = None
+    ) -> dict[str, int]:
         """Fetch project counts per status using PostgreSQL FILTER clause.
 
         Only counts latest revisions (is_latest=true), excludes archived.
@@ -25,6 +27,10 @@ class DashboardRepository:
             func.count().filter(Project.status == "approved").label("approved"),
             func.count().filter(Project.status == "rejected").label("rejected"),
         ).where(Project.is_latest.is_(True))
+        if line_id is not None:
+            query = query.join(Product, Project.product_id == Product.id).where(
+                Product.line_id == line_id
+            )
 
         result = await db.execute(query)
         row = result.one()
@@ -37,7 +43,7 @@ class DashboardRepository:
 
     @staticmethod
     async def fetch_my_recent_projects(
-        db: AsyncSession, user_id: int, limit: int = 5
+        db: AsyncSession, user_id: int, limit: int = 5, line_id: int | None = None
     ) -> list[dict]:
         """Fetch user's recent projects with changed_cells_count subquery."""
         changed_cells_subq = (
@@ -63,6 +69,8 @@ class DashboardRepository:
             .order_by(Project.updated_at.desc())
             .limit(limit)
         )
+        if line_id is not None:
+            query = query.where(Product.line_id == line_id)
 
         result = await db.execute(query)
         return [
@@ -78,7 +86,9 @@ class DashboardRepository:
         ]
 
     @staticmethod
-    async def fetch_review_pending(db: AsyncSession, limit: int = 5) -> list[dict]:
+    async def fetch_review_pending(
+        db: AsyncSession, limit: int = 5, line_id: int | None = None
+    ) -> list[dict]:
         """Fetch projects in review status with creator info and review_requested_at."""
         changed_cells_subq = (
             select(func.count(ChangeLog.id))
@@ -116,6 +126,8 @@ class DashboardRepository:
             .order_by(review_requested_subq.desc())
             .limit(limit)
         )
+        if line_id is not None:
+            query = query.where(Product.line_id == line_id)
 
         result = await db.execute(query)
         return [
@@ -130,7 +142,9 @@ class DashboardRepository:
         ]
 
     @staticmethod
-    async def fetch_recent_activity(db: AsyncSession, limit: int = 5) -> list[dict]:
+    async def fetch_recent_activity(
+        db: AsyncSession, limit: int = 5, line_id: int | None = None
+    ) -> list[dict]:
         """Fetch recent status change events for the activity timeline."""
         query = (
             select(
@@ -149,6 +163,8 @@ class DashboardRepository:
             .order_by(ProjectStatusLog.changed_at.desc())
             .limit(limit)
         )
+        if line_id is not None:
+            query = query.where(Product.line_id == line_id)
 
         result = await db.execute(query)
         return [

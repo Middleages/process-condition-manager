@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useProjects } from '@/hooks/useProjects'
+import { useLines } from '@/hooks/useLines'
 import { StatusBadge } from '@/components/projects/StatusBadge'
 import { ProjectCreateModal } from '@/components/projects/ProjectCreateModal'
 import { VersionHistoryModal } from '@/components/projects/VersionHistoryModal'
@@ -8,6 +9,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import type { ProjectStatus } from '@/types'
 import { Plus, Search, Loader2, History } from 'lucide-react'
+
+const VALID_STATUSES: ProjectStatus[] = ['draft', 'review', 'approved', 'rejected']
 
 const STATUS_FILTERS: { label: string; value: ProjectStatus | 'all' }[] = [
   { label: '전체', value: 'all' },
@@ -19,20 +22,38 @@ const STATUS_FILTERS: { label: string; value: ProjectStatus | 'all' }[] = [
 
 export default function ProjectListPage() {
   const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
-  const initialStatus = searchParams.get('status') as ProjectStatus | null
-  const validStatuses: (ProjectStatus | 'all')[] = ['draft', 'review', 'approved', 'rejected']
-  const [statusFilter, setStatusFilter] = useState<ProjectStatus | 'all'>(
-    initialStatus && validStatuses.includes(initialStatus) ? initialStatus : 'all'
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  const paramStatus = searchParams.get('status') as ProjectStatus | null
+  const statusFilter: ProjectStatus | 'all' =
+    paramStatus && VALID_STATUSES.includes(paramStatus) ? paramStatus : 'all'
+  const lineFilter = searchParams.get('line_id')
+    ? Number(searchParams.get('line_id'))
+    : undefined
+
+  const updateParams = useCallback(
+    (updates: Record<string, string | undefined>) => {
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev)
+        for (const [key, val] of Object.entries(updates)) {
+          if (val == null || val === '') next.delete(key)
+          else next.set(key, val)
+        }
+        return next
+      })
+    },
+    [setSearchParams],
   )
+
   const [searchText, setSearchText] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
   const [isLatestOnly, setIsLatestOnly] = useState(true)
   const [historyProductId, setHistoryProductId] = useState<number | null>(null)
   const [historyProjectId, setHistoryProjectId] = useState<number>(0)
 
+  const { data: lines = [] } = useLines()
   const queryStatus = statusFilter === 'all' ? undefined : statusFilter
-  const { data: projects = [], isLoading } = useProjects(queryStatus)
+  const { data: projects = [], isLoading } = useProjects(queryStatus, lineFilter)
 
   const filtered = searchText
     ? projects.filter((p) =>
@@ -46,17 +67,31 @@ export default function ProjectListPage() {
     <div className="h-full flex flex-col p-6">
       {/* Toolbar */}
       <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          {STATUS_FILTERS.map((f) => (
-            <Button
-              key={f.value}
-              variant={statusFilter === f.value ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setStatusFilter(f.value)}
-            >
-              {f.label}
-            </Button>
-          ))}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            {STATUS_FILTERS.map((f) => (
+              <Button
+                key={f.value}
+                variant={statusFilter === f.value ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => updateParams({ status: f.value === 'all' ? undefined : f.value })}
+              >
+                {f.label}
+              </Button>
+            ))}
+          </div>
+          <select
+            value={lineFilter ?? ''}
+            onChange={(e) => updateParams({ line_id: e.target.value || undefined })}
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+          >
+            <option value="">전체 라인</option>
+            {lines.map((line) => (
+              <option key={line.id} value={line.id}>
+                {line.line_name}
+              </option>
+            ))}
+          </select>
         </div>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
@@ -94,6 +129,7 @@ export default function ProjectListPage() {
             <tr className="border-b">
               <th className="text-left px-4 py-3 font-medium w-12">#</th>
               <th className="text-left px-4 py-3 font-medium">제품명</th>
+              <th className="text-left px-4 py-3 font-medium w-24">라인</th>
               <th className="text-left px-4 py-3 font-medium">Backbone</th>
               <th className="text-left px-4 py-3 font-medium w-20">레이어</th>
               <th className="text-left px-4 py-3 font-medium w-24">버전</th>
@@ -105,13 +141,13 @@ export default function ProjectListPage() {
           <tbody>
             {isLoading ? (
               <tr>
-                <td colSpan={8} className="text-center py-12">
+                <td colSpan={9} className="text-center py-12">
                   <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
                 </td>
               </tr>
             ) : displayProjects.length === 0 ? (
               <tr>
-                <td colSpan={8} className="text-center py-12 text-muted-foreground">
+                <td colSpan={9} className="text-center py-12 text-muted-foreground">
                   프로젝트가 없습니다.
                 </td>
               </tr>
@@ -128,6 +164,7 @@ export default function ProjectListPage() {
                   >
                     {project.product_name}
                   </td>
+                  <td className="px-4 py-3 text-muted-foreground">{project.line_name ?? '-'}</td>
                   <td className="px-4 py-3 text-muted-foreground">{project.backbone_name}</td>
                   <td className="px-4 py-3 text-center text-muted-foreground">{project.layer_count}</td>
                   <td className="px-4 py-3">

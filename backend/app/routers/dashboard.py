@@ -12,7 +12,8 @@ router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
 @router.get("/overview", response_model=DashboardOverviewResponse)
 async def dashboard_overview(
+    line_id: int | None = None,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await get_dashboard_overview(db, user.id)
+    return await get_dashboard_overview(db, user.id, line_id=line_id)

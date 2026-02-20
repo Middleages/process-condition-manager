@@ -74,6 +74,7 @@ process-condition-manager/
 │   │   │   ├── useEditorCellEdit.ts    # 셀 편집/저장/오토세이브
 │   │   │   ├── useEditorNavigation.ts  # 레이어/에러/셀 네비게이션
 │   │   │   ├── useEditorModals.ts      # 모달 상태 관리
+│   │   │   ├── useLines.ts             # 라인 목록 조회
 │   │   │   └── useProjects.ts, useColumns.ts, useAutoSave.ts ...
 │   │   ├── pages/            # 페이지 컴포넌트 (DashboardPage, ProjectListPage, ConditionEditorPage)
 │   │   ├── stores/           # Zustand 스토어
@@ -188,6 +189,12 @@ Draft → Review → Approved → (Revision 생성 시) Archived
   - Frontend: DashboardPage (상태 카드, 내 프로젝트, 검토 대기, 활동 타임라인)
   - 라우팅: `/` = DashboardPage, Header에 프로젝트 네비게이션 추가
 - Phase 4 전체 완료: 인증/권한, Cross-layer 검증, 전산 출력 확장, 대시보드
+- Line Filter 완료: 라인별 프로젝트/대시보드 필터링
+  - Backend: ProjectResponse에 line_id/line_name 추가, 프로젝트 목록·대시보드 4종 쿼리에 line_id 필터
+  - Frontend: useLines 훅 + fetchLines API, ProjectListPage/DashboardPage 라인 드롭다운
+  - ProjectCreateModal: 라인 필수 선택 → 제품/Backbone 목록 연동 필터
+  - ProjectListPage: URL 쿼리 양방향 동기화 (`?status=X&line_id=Y`, useSearchParams 기반)
+  - DashboardPage → ProjectListPage 간 라인 필터 전달
 
 ## 개발 명령어
 

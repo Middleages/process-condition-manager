@@ -19,6 +19,8 @@ export interface Project {
   id: number
   product_id: number
   product_name: string
+  line_id: number | null
+  line_name: string | null
   main_backbone_id: number
   backbone_name: string
   status: ProjectStatus

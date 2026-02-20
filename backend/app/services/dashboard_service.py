@@ -13,13 +13,13 @@ from app.schemas.dashboard import (
 
 
 async def get_dashboard_overview(
-    db: AsyncSession, user_id: int
+    db: AsyncSession, user_id: int, line_id: int | None = None
 ) -> DashboardOverviewResponse:
     """Build the full dashboard overview by calling 4 repository queries."""
-    status_counts = await DashboardRepository.fetch_status_counts(db)
-    my_projects = await DashboardRepository.fetch_my_recent_projects(db, user_id)
-    review_pending = await DashboardRepository.fetch_review_pending(db)
-    activity = await DashboardRepository.fetch_recent_activity(db)
+    status_counts = await DashboardRepository.fetch_status_counts(db, line_id=line_id)
+    my_projects = await DashboardRepository.fetch_my_recent_projects(db, user_id, line_id=line_id)
+    review_pending = await DashboardRepository.fetch_review_pending(db, line_id=line_id)
+    activity = await DashboardRepository.fetch_recent_activity(db, line_id=line_id)
 
     return DashboardOverviewResponse(
         status_counts=StatusCounts(**status_counts),

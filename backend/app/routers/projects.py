@@ -16,10 +16,13 @@ router = APIRouter(prefix="/api/projects", tags=["projects"])
 
 
 def _build_project_response(project, *, layer_count: int = 0) -> ProjectResponse:
+    product = project.product
     return ProjectResponse(
         id=project.id,
         product_id=project.product_id,
-        product_name=project.product.product_name,
+        product_name=product.product_name,
+        line_id=product.line_id,
+        line_name=product.line.line_name if product.line else None,
         main_backbone_id=project.main_backbone_id,
         backbone_name=project.backbone.product_name,
         status=project.status,
@@ -54,10 +57,13 @@ def _build_project_detail_response(project) -> ProjectDetailResponse:
         ))
     layers.sort(key=lambda x: x.sort_order)
 
+    product = project.product
     return ProjectDetailResponse(
         id=project.id,
         product_id=project.product_id,
-        product_name=project.product.product_name,
+        product_name=product.product_name,
+        line_id=product.line_id,
+        line_name=product.line.line_name if product.line else None,
         main_backbone_id=project.main_backbone_id,
         backbone_name=project.backbone.product_name,
         status=project.status,
@@ -88,11 +94,14 @@ async def create_project(
 async def list_projects(
     status: str | None = None,
     product_id: int | None = None,
+    line_id: int | None = None,
     is_latest: bool | None = Query(None, description="Filter by is_latest flag"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    results = await project_service.get_projects_list(db, status, product_id, is_latest=is_latest)
+    results = await project_service.get_projects_list(
+        db, status, product_id, is_latest=is_latest, line_id=line_id,
+    )
     return [_build_project_response(p, layer_count=lc) for p, lc in results]
 
 

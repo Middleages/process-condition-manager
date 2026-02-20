@@ -3,13 +3,13 @@ import { fetchDashboardOverview } from '@/api/dashboard'
 
 export const dashboardKeys = {
   all: ['dashboard'] as const,
-  overview: () => [...dashboardKeys.all, 'overview'] as const,
+  overview: (lineId?: number) => [...dashboardKeys.all, 'overview', lineId] as const,
 }
 
-export function useDashboardOverview() {
+export function useDashboardOverview(lineId?: number) {
   return useQuery({
-    queryKey: dashboardKeys.overview(),
-    queryFn: fetchDashboardOverview,
+    queryKey: dashboardKeys.overview(lineId),
+    queryFn: () => fetchDashboardOverview(lineId),
   })
 }
 

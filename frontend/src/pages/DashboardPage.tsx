@@ -1,8 +1,10 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { RefreshCw, Loader2, FileEdit, Eye, CheckCircle, XCircle, Clock, ArrowRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { useDashboardOverview, useRefreshDashboard } from '@/hooks/useDashboard'
+import { useLines } from '@/hooks/useLines'
 import type { StatusCounts, MyRecentProject, ReviewPendingItem, ActivityItem } from '@/types'
 
 const STATUS_LABELS: Record<string, string> = {
@@ -168,18 +170,36 @@ function ActivityTimeline({ items }: { items: ActivityItem[] }) {
 }
 
 export default function DashboardPage() {
-  const { data, isLoading, isError } = useDashboardOverview()
+  const [lineFilter, setLineFilter] = useState<number | undefined>(undefined)
+  const { data: lines = [] } = useLines()
+  const { data, isLoading, isError } = useDashboardOverview(lineFilter)
   const refresh = useRefreshDashboard()
   const navigate = useNavigate()
 
   const handleStatusClick = (status: string) => {
-    navigate(`/projects?status=${status}`)
+    const params = new URLSearchParams({ status })
+    if (lineFilter) params.set('line_id', String(lineFilter))
+    navigate(`/projects?${params.toString()}`)
   }
 
   return (
     <div className="max-w-6xl mx-auto p-6 space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Dashboard</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-bold">Dashboard</h1>
+          <select
+            value={lineFilter ?? ''}
+            onChange={(e) => setLineFilter(e.target.value ? Number(e.target.value) : undefined)}
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+          >
+            <option value="">전체 라인</option>
+            {lines.map((line) => (
+              <option key={line.id} value={line.id}>
+                {line.line_name}
+              </option>
+            ))}
+          </select>
+        </div>
         <Button variant="outline" size="sm" onClick={refresh} disabled={isLoading}>
           {isLoading ? (
             <Loader2 className="h-4 w-4 animate-spin mr-1" />

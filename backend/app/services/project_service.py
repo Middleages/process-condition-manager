@@ -111,7 +111,7 @@ async def get_project_detail(db: AsyncSession, project_id: int) -> Project:
     result = await db.execute(
         select(Project)
         .options(
-            selectinload(Project.product),
+            selectinload(Project.product).selectinload(Product.line),
             selectinload(Project.backbone),
             selectinload(Project.creator),
             selectinload(Project.layers).selectinload(ProjectLayer.layer),
@@ -131,6 +131,7 @@ async def get_projects_list(
     product_id: int | None = None,
     include_all_versions: bool = False,
     is_latest: bool | None = None,
+    line_id: int | None = None,
 ) -> list[tuple[Project, int]]:
     """List projects with optional filters, returning (project, layer_count) tuples.
 
@@ -148,7 +149,7 @@ async def get_projects_list(
     query = (
         select(Project, layer_count_sq)
         .options(
-            selectinload(Project.product),
+            selectinload(Project.product).selectinload(Product.line),
             selectinload(Project.backbone),
             selectinload(Project.creator),
         )
@@ -162,6 +163,8 @@ async def get_projects_list(
         query = query.where(Project.status == status)
     if product_id is not None:
         query = query.where(Project.product_id == product_id)
+    if line_id is not None:
+        query = query.join(Product, Project.product_id == Product.id).where(Product.line_id == line_id)
 
     result = await db.execute(query)
     return list(result.unique().all())

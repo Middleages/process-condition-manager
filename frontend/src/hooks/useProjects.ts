@@ -32,7 +32,7 @@ import type {
 export const projectKeys = {
   all: ['projects'] as const,
   lists: () => [...projectKeys.all, 'list'] as const,
-  list: (filters: { status?: ProjectStatus }) =>
+  list: (filters: { status?: ProjectStatus; line_id?: number }) =>
     [...projectKeys.lists(), filters] as const,
   details: () => [...projectKeys.all, 'detail'] as const,
   detail: (id: number) => [...projectKeys.details(), id] as const,
@@ -47,10 +47,15 @@ export const projectKeys = {
     [...projectKeys.detail(projectId), 'versionHistory'] as const,
 }
 
-export function useProjects(status?: ProjectStatus) {
+export function useProjects(status?: ProjectStatus, lineId?: number) {
   return useQuery({
-    queryKey: projectKeys.list({ status }),
-    queryFn: () => fetchProjects(status ? { status } : undefined),
+    queryKey: projectKeys.list({ status, line_id: lineId }),
+    queryFn: () => {
+      const params: { status?: ProjectStatus; line_id?: number } = {}
+      if (status) params.status = status
+      if (lineId) params.line_id = lineId
+      return fetchProjects(Object.keys(params).length > 0 ? params : undefined)
+    },
   })
 }
 
