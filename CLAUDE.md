@@ -113,7 +113,11 @@ Draft → Review → Approved → (Revision 생성 시) Archived
   - M1: Backend Auth 모듈 (JWT access/refresh token, bcrypt 해싱, OAuth2 의존성)
   - M2: Frontend Auth UI (Zustand auth store, LoginPage, ProtectedRoute, Axios 인터셉터)
   - M3: RBAC 강화 (전체 엔드포인트 인증 적용, 역할 기반 접근 제어)
-- 다음 작업: Phase 4 나머지 기능 (Cross-layer 검증, 전산 출력 확장, 대시보드)
+- SPEC-CROSS-001 완료: Cross-Layer 검증 엔진 (Phase 4)
+  - M1: 백엔드 검증 엔진 (reference_exists, compare_layers, equipment_compatibility 3종)
+  - M2: ValidationPanel 크로스 레이어 오류 구분 표시 + 필터 + 셀 하이라이팅
+  - M3: Admin UI 동적 규칙 폼 (CrossLayerRuleForm)
+- 다음 작업: Phase 4 나머지 기능 (전산 출력 확장, 대시보드)
 
 ## 개발 명령어
 
