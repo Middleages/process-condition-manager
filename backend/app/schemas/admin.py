@@ -127,3 +127,49 @@ class BulkUploadError(BaseModel):
     row: int
     column_name: str
     error: str
+
+
+# ---------------------------------------------------------------------------
+# Select Options Schemas
+# ---------------------------------------------------------------------------
+
+class SelectOptionsUpdate(BaseModel):
+    """Schema for updating select_options of a column."""
+    select_options: list[str] = Field(..., description="List of allowed values for select-type column")
+
+
+class ColumnSelectOptionsResponse(BaseModel):
+    """Response schema for a column with select_options."""
+    id: int
+    column_name: str
+    display_name: str
+    category_code: str | None = None
+    data_type: str
+    select_options: list[str] | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ---------------------------------------------------------------------------
+# Audit Log Schemas
+# ---------------------------------------------------------------------------
+
+class AuditLogEntry(BaseModel):
+    id: int
+    project_id: int | None = None
+    project_name: str | None = None
+    layer_name: str | None = None
+    column_name: str
+    old_value: str | None = None
+    new_value: str | None = None
+    change_type: str
+    changed_by: int
+    changed_by_name: str | None = None
+    changed_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AuditLogListResponse(BaseModel):
+    items: list[AuditLogEntry]
+    total: int

@@ -195,6 +195,21 @@ Draft → Review → Approved → (Revision 생성 시) Archived
   - ProjectCreateModal: 라인 필수 선택 → 제품/Backbone 목록 연동 필터
   - ProjectListPage: URL 쿼리 양방향 동기화 (`?status=X&line_id=Y`, useSearchParams 기반)
   - DashboardPage → ProjectListPage 간 라인 필터 전달
+- SPEC-ADMIN-001 완료: Admin Enhancement (관리자 섹션 확장)
+  - M1: User CRUD + Enum(select_options) 관리
+    - Backend: admin_user_service (list/create/update/deactivate/reset_password), admin_users router (5 endpoints)
+    - Backend: admin_service에 select_options 조회/수정 추가 (2 endpoints)
+    - Frontend: UserManagementPage (테이블 + CRUD + 역할 배지 + 비활성화), UserFormModal, PasswordResetModal
+    - Frontend: EnumManagementPage (select 컬럼 목록 + 옵션 편집), SelectOptionsEditModal
+  - M2: Master Data (Line/Product/Layer/Column/Category) 관리
+    - Backend: admin_master_service (CRUD + FK 보호 삭제 + reorder), admin_master router (17 endpoints)
+    - Frontend: MasterDataPage (내부 서브탭 5종), Line/Product/Layer/Column/Category 관리 패널
+    - Public 쿼리 키 무효화: Admin 변경 시 일반 사용자 드롭다운도 즉시 갱신
+  - M3: Audit Log 조회 + Category 관리
+    - Backend: admin_service에 audit_logs 조회 추가 (JOIN 5 tables, 필터 + 페이지네이션)
+    - Frontend: AuditLogPage (필터 바 + 페이지네이션 테이블), CategoryManagementPanel
+  - Admin 탭 순서: 사용자 관리 | 마스터 데이터 | 선택 옵션 | XML 매핑 | 검증 규칙 | 전산 출력 | 변경 이력
+  - Default: `/admin/users`
 
 ## 개발 명령어
 

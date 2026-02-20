@@ -1,5 +1,6 @@
 """Admin router for XML mappings and validation rules management."""
 
+from datetime import datetime
 from fastapi import APIRouter, Depends, Query, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,6 +13,9 @@ from app.schemas.admin import (
     RecipeMappingUpdate,
     ValidationRulesReplace,
     BulkUploadResponse,
+    ColumnSelectOptionsResponse,
+    SelectOptionsUpdate,
+    AuditLogListResponse,
 )
 from app.schemas.column import ColumnCategoryResponse
 from app.schemas.export import ExportHistoryListResponse
@@ -81,6 +85,31 @@ async def list_columns_with_validations(
     return await admin_service.list_columns_with_validations(db, category_code=category_code)
 
 
+# ---------------------------------------------------------------------------
+# Select Options endpoints
+# (Must appear before /columns/{column_id}/validations to avoid path conflict)
+# ---------------------------------------------------------------------------
+
+@router.get("/columns/select-options", response_model=list[ColumnSelectOptionsResponse])
+async def list_select_columns(
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    """List columns with data_type='select' and their options."""
+    return await admin_service.list_select_columns(db)
+
+
+@router.put("/columns/{column_id}/select-options", response_model=ColumnSelectOptionsResponse)
+async def update_select_options(
+    column_id: int,
+    data: SelectOptionsUpdate,
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    """Update select_options for a specific column."""
+    return await admin_service.update_select_options(db, column_id, data)
+
+
 @router.put("/columns/{column_id}/validations", response_model=dict)
 async def replace_column_validations(
     column_id: int,
@@ -127,3 +156,33 @@ async def get_all_export_history(
         db, offset=offset, limit=limit
     )
     return ExportHistoryListResponse(items=items, total=total)
+
+
+# ---------------------------------------------------------------------------
+# Audit Log endpoints
+# ---------------------------------------------------------------------------
+
+@router.get("/audit-logs", response_model=AuditLogListResponse)
+async def list_audit_logs(
+    project_id: int | None = Query(None),
+    changed_by: int | None = Query(None),
+    change_type: str | None = Query(None),
+    date_from: datetime | None = Query(None),
+    date_to: datetime | None = Query(None),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    """List change audit logs with optional filters (admin only)."""
+    items, total = await admin_service.list_audit_logs(
+        db,
+        project_id=project_id,
+        changed_by=changed_by,
+        change_type=change_type,
+        date_from=date_from,
+        date_to=date_to,
+        offset=offset,
+        limit=limit,
+    )
+    return AuditLogListResponse(items=items, total=total)

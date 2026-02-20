@@ -16,23 +16,27 @@ export default function AdminLayout() {
   }
 
   const tabs = [
+    { path: '/admin/users', label: '사용자 관리' },
+    { path: '/admin/master-data', label: '마스터 데이터 관리' },
+    { path: '/admin/enum-options', label: '선택 옵션 관리' },
     { path: '/admin/xml-mappings', label: 'XML 매핑 관리' },
     { path: '/admin/validations', label: '검증 규칙 관리' },
     { path: '/admin/export-systems', label: '전산 출력 시스템 관리' },
+    { path: '/admin/audit-logs', label: '변경 이력 조회' },
   ]
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
       {/* Tab Navigation */}
       <div className="border-b border-border">
-        <div className="flex gap-1 px-6">
+        <div className="flex gap-1 px-6 overflow-x-auto">
           {tabs.map((tab) => {
             const isActive = location.pathname === tab.path
             return (
               <Link
                 key={tab.path}
                 to={tab.path}
-                className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                   isActive
                     ? 'border-primary text-primary'
                     : 'border-transparent text-muted-foreground hover:text-foreground'
