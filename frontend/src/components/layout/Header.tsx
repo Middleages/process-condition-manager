@@ -1,6 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/useAuthStore'
-import { LogOut, Settings, User } from 'lucide-react'
+import { LogOut, Settings, User, FolderOpen } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 export default function Header() {
@@ -16,8 +16,16 @@ export default function Header() {
 
   return (
     <header className="h-12 bg-primary text-primary-foreground flex items-center px-5 gap-6 shrink-0">
-      <Link to="/projects" className="font-bold text-base no-underline text-primary-foreground">
+      <Link to="/" className="font-bold text-base no-underline text-primary-foreground">
         PCM - Process Condition Manager
+      </Link>
+
+      <Link
+        to="/projects"
+        className="flex items-center gap-1.5 text-sm no-underline text-primary-foreground hover:text-primary-foreground/80"
+      >
+        <FolderOpen className="h-4 w-4" />
+        프로젝트
       </Link>
 
       {isAdmin && (

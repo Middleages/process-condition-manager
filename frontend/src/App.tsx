@@ -5,6 +5,7 @@ import ProtectedRoute from './components/auth/ProtectedRoute'
 import LoginPage from './pages/LoginPage'
 import ProjectListPage from './pages/ProjectListPage'
 import ConditionEditorPage from './pages/ConditionEditorPage'
+import DashboardPage from './pages/DashboardPage'
 import AdminLayout from './pages/admin/AdminLayout'
 import XmlMappingsPage from './pages/admin/XmlMappingsPage'
 import ValidationRulesPage from './pages/admin/ValidationRulesPage'
@@ -49,7 +50,7 @@ const router = createBrowserRouter([
       {
         element: <Layout />,
         children: [
-          { path: '/', element: <Navigate to="/projects" replace /> },
+          { path: '/', element: <DashboardPage /> },
           { path: '/projects', element: <ProjectListPage /> },
           { path: '/projects/:projectId/edit', element: <ConditionEditorPage /> },
           {
