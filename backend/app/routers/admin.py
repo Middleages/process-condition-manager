@@ -14,7 +14,9 @@ from app.schemas.admin import (
     BulkUploadResponse,
 )
 from app.schemas.column import ColumnCategoryResponse
+from app.schemas.export import ExportHistoryListResponse
 from app.services import admin_service
+from app.services.export_history_service import ExportHistoryService
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -107,3 +109,21 @@ async def bulk_upload_validations(
     contents = await file.read()
     from io import BytesIO
     return await admin_service.bulk_upload_validations(db, BytesIO(contents))
+
+
+# ---------------------------------------------------------------------------
+# Export History endpoints
+# ---------------------------------------------------------------------------
+
+@router.get("/export-history", response_model=ExportHistoryListResponse)
+async def get_all_export_history(
+    offset: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    """Return paginated export history across all projects (admin only)."""
+    items, total = await ExportHistoryService.get_all_history(
+        db, offset=offset, limit=limit
+    )
+    return ExportHistoryListResponse(items=items, total=total)

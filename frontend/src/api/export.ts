@@ -1,5 +1,5 @@
 import client from './client'
-import type { ExportSystem, ExportPreview } from '@/types/export'
+import type { ExportSystem, ExportPreview, ExportHistoryList, ExportValidationResponse } from '@/types/export'
 
 // 전산 출력 시스템 목록 조회
 export async function fetchExportSystems(): Promise<ExportSystem[]> {
@@ -14,6 +14,19 @@ export async function fetchExportPreview(
 ): Promise<ExportPreview> {
   const { data } = await client.get<ExportPreview>(
     `/projects/${projectId}/export/preview/${systemId}`
+  )
+  return data
+}
+
+// 전산 출력 이력 조회
+export async function fetchExportHistory(
+  projectId: number,
+  offset: number = 0,
+  limit: number = 5
+): Promise<ExportHistoryList> {
+  const { data } = await client.get<ExportHistoryList>(
+    `/projects/${projectId}/export/history`,
+    { params: { offset, limit } }
   )
   return data
 }
@@ -35,4 +48,16 @@ export async function downloadExport(
   const filename = filenameMatch ? filenameMatch[1] : 'export.xlsx'
 
   return { blob: response.data, filename }
+}
+
+// 전산 출력 검증
+export async function validateExport(
+  projectId: number,
+  systemIds: number[]
+): Promise<ExportValidationResponse> {
+  const { data } = await client.post<ExportValidationResponse>(
+    `/projects/${projectId}/export/validate`,
+    { system_ids: systemIds }
+  )
+  return data
 }

@@ -5,6 +5,7 @@ from app.models.project import Project, ProjectLayer
 from app.models.column import ColumnCategory, ColumnDefinition, ColumnValidation
 from app.models.change_log import ChangeLog, ProjectStatusLog, ReviewComment
 from app.models.export import ExportSystem, ExportColumnMapping, RecipeXmlMapping, EquipmentAssignment
+from app.models.export_history import ExportHistory
 
 __all__ = [
     "User",
@@ -14,4 +15,5 @@ __all__ = [
     "ColumnCategory", "ColumnDefinition", "ColumnValidation",
     "ChangeLog", "ProjectStatusLog", "ReviewComment",
     "ExportSystem", "ExportColumnMapping", "RecipeXmlMapping", "EquipmentAssignment",
+    "ExportHistory",
 ]

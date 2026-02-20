@@ -18,6 +18,7 @@ export default function AdminLayout() {
   const tabs = [
     { path: '/admin/xml-mappings', label: 'XML 매핑 관리' },
     { path: '/admin/validations', label: '검증 규칙 관리' },
+    { path: '/admin/export-systems', label: '전산 출력 시스템 관리' },
   ]
 
   return (
