@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Trash2 } from 'lucide-react'
+import { CrossLayerRuleForm } from './CrossLayerRuleForm'
 
 interface ValidationEditModalProps {
   open: boolean
@@ -71,8 +72,9 @@ export function ValidationEditModal({ open, onOpenChange, column }: ValidationEd
       defaultConfig = { condition_column: '', condition_value: '', operator: 'equals' }
       defaultMessage = '조건부 필수 항목입니다.'
     } else if (ruleType === 'cross_layer') {
-      defaultConfig = {}
-      defaultMessage = 'Phase 4 - Cross-layer 검증은 추후 지원됩니다.'
+      // cross_layer 기본 설정: reference_exists 유형으로 시작
+      defaultConfig = { check_type: 'reference_exists', source_column: '', target: 'layer_names' }
+      defaultMessage = 'Cross-layer 검증 조건을 만족하지 않습니다.'
     }
 
     const newRule: EditableRule = {
@@ -236,9 +238,17 @@ export function ValidationEditModal({ open, onOpenChange, column }: ValidationEd
                 )}
 
                 {rule.rule_type === 'cross_layer' && (
-                  <div className="text-sm text-muted-foreground">
-                    Phase 4 - 아직 구현되지 않았습니다.
-                  </div>
+                  // CrossLayerRuleForm: check_type에 따라 동적으로 필드를 렌더링
+                  <CrossLayerRuleForm
+                    ruleConfig={rule.rule_config}
+                    onChange={(updatedConfig) =>
+                      handleRuleChange(rule.id, 'rule_config', updatedConfig)
+                    }
+                    allColumns={allColumns.map((col) => ({
+                      column_name: col.column_name,
+                      display_name: col.display_name,
+                    }))}
+                  />
                 )}
 
                 {/* Error Message */}

@@ -94,11 +94,25 @@ export function ConditionGrid({
   const rejectionCommentMapRef = useRef(rejectionCommentMap)
   const scrollToColumnNameRef = useRef(scrollToColumnName)
 
-  // Build error lookup: `${layerId}:${columnName}` → error message
+  // 오류 조회 맵: `${layerId}:${columnName}` → { messages: string[], hasCrossLayer: boolean, hasSingleLayer: boolean }
+  // 단일 셀에 여러 오류(단일 레이어 + 크로스 레이어)가 공존할 수 있으므로 타입별로 구분
   const errorMap = useMemo(() => {
-    const map = new Map<string, string>()
+    const map = new Map<string, { messages: string[]; hasCrossLayer: boolean; hasSingleLayer: boolean }>()
     for (const err of validationErrors) {
-      map.set(`${err.layer_id}:${err.column_name}`, err.message)
+      const key = `${err.layer_id}:${err.column_name}`
+      const existing = map.get(key)
+      const isCross = err.rule_type === 'cross_layer'
+      if (existing) {
+        existing.messages.push(err.message)
+        if (isCross) existing.hasCrossLayer = true
+        else existing.hasSingleLayer = true
+      } else {
+        map.set(key, {
+          messages: [err.message],
+          hasCrossLayer: isCross,
+          hasSingleLayer: !isCross,
+        })
+      }
     }
     return map
   }, [validationErrors])
@@ -158,11 +172,13 @@ export function ConditionGrid({
             parts.push(`Backbone: ${bbVal ?? '(없음)'}`)
           }
 
-          // Show error
+          // 오류 메시지 표시 (단일 레이어 및 크로스 레이어 오류 모두 포함)
           const errKey = `${params.data?.layerId}:${col.column_name}`
-          const err = errorMap.get(errKey)
-          if (err) {
-            parts.push(`⚠ ${err}`)
+          const errInfo = errorMap.get(errKey)
+          if (errInfo) {
+            for (const msg of errInfo.messages) {
+              parts.push(`⚠ ${msg}`)
+            }
           }
 
           // Show comment info
@@ -175,9 +191,17 @@ export function ConditionGrid({
           return parts.length > 0 ? parts.join('\n') : undefined
         },
         cellClassRules: {
+          // 단일 레이어 오류: 빨간색 (크로스 레이어보다 우선순위 높음)
           'bg-cell-error': (params: CellClassParams) => {
             const key = `${params.data?.layerId}:${col.column_name}`
-            return errorMap.has(key)
+            const errInfo = errorMap.get(key)
+            return errInfo?.hasSingleLayer === true
+          },
+          // 크로스 레이어 전용 오류: 주황색 (단일 레이어 오류가 없는 경우에만 표시)
+          'bg-cell-cross-error': (params: CellClassParams) => {
+            const key = `${params.data?.layerId}:${col.column_name}`
+            const errInfo = errorMap.get(key)
+            return errInfo?.hasCrossLayer === true && errInfo?.hasSingleLayer !== true
           },
           'bg-cell-recipe': (params: CellClassParams) => {
             const plId = params.data?.projectLayerId

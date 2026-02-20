@@ -213,6 +213,104 @@ async def list_columns_with_validations(
     return categories
 
 
+def _validate_cross_layer_rule_config(rule_config: dict) -> None:
+    """cross_layer 규칙의 rule_config 유효성을 검증한다.
+
+    check_type별 필수 필드와 허용 값을 확인하고,
+    유효하지 않으면 HTTPException(422)을 발생시킨다.
+    """
+    from app.services.cross_layer_validation_service import (
+        ALLOWED_CHECK_TYPES,
+        ALLOWED_OPERATORS,
+        ALLOWED_COMPATIBILITY_TYPES,
+    )
+
+    check_type = rule_config.get("check_type")
+    if not check_type or check_type not in ALLOWED_CHECK_TYPES:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"cross_layer 규칙의 check_type은 다음 중 하나여야 합니다: "
+                f"{', '.join(ALLOWED_CHECK_TYPES)}. 현재 값: '{check_type}'"
+            ),
+        )
+
+    if check_type == "reference_exists":
+        # source_column (str) 필수, target (str) 필수
+        if not isinstance(rule_config.get("source_column"), str) or not rule_config.get("source_column"):
+            raise HTTPException(
+                status_code=422,
+                detail="reference_exists 규칙은 'source_column' (문자열) 필드가 필수입니다",
+            )
+        if not isinstance(rule_config.get("target"), str) or not rule_config.get("target"):
+            raise HTTPException(
+                status_code=422,
+                detail="reference_exists 규칙은 'target' (문자열) 필드가 필수입니다",
+            )
+
+    elif check_type == "compare_layers":
+        # column (str), operator (str), reference_layer_column (str) 필수
+        # threshold_ratio (number) 선택
+        if not isinstance(rule_config.get("column"), str) or not rule_config.get("column"):
+            raise HTTPException(
+                status_code=422,
+                detail="compare_layers 규칙은 'column' (문자열) 필드가 필수입니다",
+            )
+        operator = rule_config.get("operator")
+        if operator not in ALLOWED_OPERATORS:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"compare_layers 규칙의 operator는 다음 중 하나여야 합니다: "
+                    f"{', '.join(ALLOWED_OPERATORS)}. 현재 값: '{operator}'"
+                ),
+            )
+        if not isinstance(rule_config.get("reference_layer_column"), str) or not rule_config.get("reference_layer_column"):
+            raise HTTPException(
+                status_code=422,
+                detail="compare_layers 규칙은 'reference_layer_column' (문자열) 필드가 필수입니다",
+            )
+        if "threshold_ratio" in rule_config:
+            try:
+                float(rule_config["threshold_ratio"])
+            except (TypeError, ValueError):
+                raise HTTPException(
+                    status_code=422,
+                    detail="compare_layers 규칙의 'threshold_ratio'는 숫자여야 합니다",
+                )
+
+    elif check_type == "equipment_compatibility":
+        # column (str), compatibility (str) 필수
+        # within_range 시 range_tolerance (number) 필수
+        if not isinstance(rule_config.get("column"), str) or not rule_config.get("column"):
+            raise HTTPException(
+                status_code=422,
+                detail="equipment_compatibility 규칙은 'column' (문자열) 필드가 필수입니다",
+            )
+        compatibility = rule_config.get("compatibility")
+        if compatibility not in ALLOWED_COMPATIBILITY_TYPES:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"equipment_compatibility 규칙의 compatibility는 다음 중 하나여야 합니다: "
+                    f"{', '.join(ALLOWED_COMPATIBILITY_TYPES)}. 현재 값: '{compatibility}'"
+                ),
+            )
+        if compatibility == "within_range":
+            if "range_tolerance" not in rule_config:
+                raise HTTPException(
+                    status_code=422,
+                    detail="within_range 호환성 타입은 'range_tolerance' (숫자) 필드가 필수입니다",
+                )
+            try:
+                float(rule_config["range_tolerance"])
+            except (TypeError, ValueError):
+                raise HTTPException(
+                    status_code=422,
+                    detail="equipment_compatibility 규칙의 'range_tolerance'는 숫자여야 합니다",
+                )
+
+
 async def replace_validations(
     db: AsyncSession,
     column_id: int,
@@ -243,6 +341,9 @@ async def replace_validations(
                     f"conditional_required rule requires: {', '.join(required_fields)}. "
                     f"Missing: {', '.join(missing_fields)}"
                 )
+
+        if rule.rule_type == "cross_layer":
+            _validate_cross_layer_rule_config(rule.rule_config)
 
     # Delete existing validations
     await db.execute(

@@ -28,6 +28,7 @@
 
   --color-cell-changed: #fef9c3;
   --color-cell-error: #fecaca;
+  --color-cell-cross-error: #fed7aa;
   --color-cell-recipe: #bbf7d0;
 
   --radius-sm: 0.25rem;
@@ -55,6 +56,11 @@
 
 .ag-theme-alpine .bg-cell-error {
   background-color: var(--color-cell-error) !important;
+}
+
+/* 크로스 레이어 전용 오류: 단일 레이어 오류가 없는 셀에만 적용 */
+.ag-theme-alpine .bg-cell-cross-error {
+  background-color: var(--color-cell-cross-error) !important;
 }
 
 .ag-theme-alpine .bg-cell-recipe {

@@ -577,6 +577,26 @@ VALIDATION_RULES: list[tuple] = [
     ("DEV_STRIP_METHOD", "conditional_required",
      {"condition_column": "DEV_STRIP_USE", "condition_value": "Y", "operator": "equals"},
      "Strip Use가 Y일 때 Strip Method는 필수입니다"),
+    # Cross-layer validation rules
+    ("OVL_REF_LAYER", "cross_layer",
+     {"check_type": "reference_exists", "source_column": "OVL_REF_LAYER", "target": "layer_name"},
+     "OVL_REF_LAYER 값에 해당하는 레이어가 프로젝트에 존재하지 않습니다"),
+    ("SC_EXPOSE_ENERGY_mJ", "cross_layer",
+     {
+         "check_type": "compare_layers",
+         "column": "SC_EXPOSE_ENERGY_mJ",
+         "operator": "<=",
+         "reference_layer_column": "OVL_REF_LAYER",
+         "threshold_ratio": 1.5,
+     },
+     "노광 에너지가 참조 레이어 대비 기준을 초과합니다"),
+    ("SC_ILLUM_MODE", "cross_layer",
+     {
+         "check_type": "equipment_compatibility",
+         "column": "SC_ILLUM_MODE",
+         "compatibility": "same_value",
+     },
+     "동일 설비에 배정된 레이어들의 조명 모드가 일치하지 않습니다"),
 ]
 
 

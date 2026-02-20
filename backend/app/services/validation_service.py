@@ -10,6 +10,7 @@ from app.models import (
     ColumnValidation, Layer,
 )
 from app.schemas.project import ValidationResponse, ValidationErrorItem
+from app.services.cross_layer_validation_service import validate_cross_layer_rules
 
 
 def _validate_range(
@@ -171,6 +172,9 @@ async def validate_project(
                     _validate_conditional_required(
                         value, rule, col_name, conditions, col_by_name, layer, errors,
                     )
+
+    # 4. 크로스 레이어 검증 (레이어 루프 완료 후 실행)
+    await validate_cross_layer_rules(db, project.layers, errors)
 
     return ValidationResponse(
         project_id=project_id,
