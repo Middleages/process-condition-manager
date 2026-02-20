@@ -79,6 +79,21 @@ export default function ValidationRulesPage() {
     return `${config.condition_column ?? '?'}=${config.condition_value ?? '?'}`
   }
 
+  const getCrossLayerSummary = (validations: ColumnValidation[]) => {
+    const crossRules = validations.filter(
+      (v) => v.is_active && v.rule_type === 'cross_layer'
+    )
+    if (crossRules.length === 0) return '--'
+    const types = crossRules.map((v) => {
+      const checkType = (v.rule_config as { check_type?: string }).check_type
+      if (checkType === 'reference_exists') return 'Ref'
+      if (checkType === 'compare_layers') return 'Cmp'
+      if (checkType === 'equipment_compatibility') return 'Eq'
+      return checkType ?? '?'
+    })
+    return types.join(', ')
+  }
+
   const getRulesCount = (validations: ColumnValidation[]) => {
     return validations.length
   }
@@ -133,6 +148,7 @@ export default function ValidationRulesPage() {
                 <th className="px-4 py-3 text-left text-sm font-medium">필수</th>
                 <th className="px-4 py-3 text-left text-sm font-medium">범위</th>
                 <th className="px-4 py-3 text-left text-sm font-medium">조건부 필수</th>
+                <th className="px-4 py-3 text-left text-sm font-medium">Cross-Layer</th>
                 <th className="px-4 py-3 text-center text-sm font-medium">규칙 수</th>
                 <th className="px-4 py-3 text-right text-sm font-medium">작업</th>
               </tr>
@@ -148,6 +164,7 @@ export default function ValidationRulesPage() {
                   <td className="px-4 py-3 text-sm">{getRequiredSummary(col.validations)}</td>
                   <td className="px-4 py-3 text-sm">{getRangeSummary(col.validations)}</td>
                   <td className="px-4 py-3 text-sm">{getConditionalSummary(col.validations)}</td>
+                  <td className="px-4 py-3 text-sm">{getCrossLayerSummary(col.validations)}</td>
                   <td className="px-4 py-3 text-center text-sm">
                     <Badge variant="secondary">{getRulesCount(col.validations)}</Badge>
                   </td>
