@@ -135,6 +135,7 @@ async def export_project(
 async def preview_export(
     project_id: int,
     system_id: int,
+    _user: User = Depends(require_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     """REQ-053: Preview first 5 rows of export as JSON.
