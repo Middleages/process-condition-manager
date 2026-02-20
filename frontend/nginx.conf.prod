@@ -5,6 +5,13 @@ server {
     root /usr/share/nginx/html;
     index index.html;
 
+    # Health check for Docker HEALTHCHECK
+    location /health {
+        access_log off;
+        return 200 "ok";
+        add_header Content-Type text/plain;
+    }
+
     # SPA fallback: serve index.html for all routes
     location / {
         try_files $uri $uri/ /index.html;
