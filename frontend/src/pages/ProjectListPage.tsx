@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useProjects } from '@/hooks/useProjects'
 import { StatusBadge } from '@/components/projects/StatusBadge'
 import { ProjectCreateModal } from '@/components/projects/ProjectCreateModal'
@@ -19,7 +19,12 @@ const STATUS_FILTERS: { label: string; value: ProjectStatus | 'all' }[] = [
 
 export default function ProjectListPage() {
   const navigate = useNavigate()
-  const [statusFilter, setStatusFilter] = useState<ProjectStatus | 'all'>('all')
+  const [searchParams] = useSearchParams()
+  const initialStatus = searchParams.get('status') as ProjectStatus | null
+  const validStatuses: (ProjectStatus | 'all')[] = ['draft', 'review', 'approved', 'rejected']
+  const [statusFilter, setStatusFilter] = useState<ProjectStatus | 'all'>(
+    initialStatus && validStatuses.includes(initialStatus) ? initialStatus : 'all'
+  )
   const [searchText, setSearchText] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
   const [isLatestOnly, setIsLatestOnly] = useState(true)
