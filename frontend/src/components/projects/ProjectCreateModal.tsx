@@ -4,6 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Button } from '@/components/ui/button'
 import { Combobox } from '@/components/ui/combobox'
 import { useProducts, useBackboneProducts } from '@/hooks/useProducts'
+import { useLines } from '@/hooks/useLines'
 import { useCreateProject } from '@/hooks/useProjects'
 import { useUserStore } from '@/stores/useUserStore'
 import { Loader2 } from 'lucide-react'
@@ -16,22 +17,24 @@ interface Props {
 export function ProjectCreateModal({ open, onOpenChange }: Props) {
   const navigate = useNavigate()
   const currentUserId = useUserStore((s) => s.currentUserId)
-  const { data: allProducts = [] } = useProducts()
-  const { data: backboneProducts = [] } = useBackboneProducts()
+  const [selectedLineId, setSelectedLineId] = useState<number | undefined>(undefined)
+  const { data: lines = [] } = useLines()
+  const { data: allProducts = [] } = useProducts(
+    selectedLineId ? { line_id: selectedLineId } : undefined
+  )
+  const { data: backboneProducts = [] } = useBackboneProducts(selectedLineId)
   const createProject = useCreateProject()
 
   const [productId, setProductId] = useState('')
   const [backboneProductId, setBackboneProductId] = useState('')
 
-  const productOptions = allProducts.map((p) => ({
-    value: String(p.id),
-    label: p.product_name,
-  }))
-
-  const backboneOptions = backboneProducts.map((p) => ({
-    value: String(p.id),
-    label: p.product_name,
-  }))
+  const lineSelected = selectedLineId != null
+  const productOptions = lineSelected
+    ? allProducts.map((p) => ({ value: String(p.id), label: p.product_name }))
+    : []
+  const backboneOptions = lineSelected
+    ? backboneProducts.map((p) => ({ value: String(p.id), label: p.product_name }))
+    : []
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -44,6 +47,7 @@ export function ProjectCreateModal({ open, onOpenChange }: Props) {
         created_by: currentUserId,
       })
       onOpenChange(false)
+      setSelectedLineId(undefined)
       setProductId('')
       setBackboneProductId('')
       navigate(`/projects/${result.id}/edit`)
@@ -61,13 +65,37 @@ export function ProjectCreateModal({ open, onOpenChange }: Props) {
         <form onSubmit={handleSubmit}>
           <div className="space-y-4">
             <div>
+              <label className="text-sm font-medium mb-1.5 block">
+                라인 <span className="text-destructive">*</span>
+              </label>
+              <select
+                value={selectedLineId ?? ''}
+                onChange={(e) => {
+                  setSelectedLineId(e.target.value ? Number(e.target.value) : undefined)
+                  setProductId('')
+                  setBackboneProductId('')
+                }}
+                className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+                required
+              >
+                <option value="">라인을 선택하세요</option>
+                {lines.map((line) => (
+                  <option key={line.id} value={line.id}>
+                    {line.line_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
               <label className="text-sm font-medium mb-1.5 block">대상 제품</label>
               <Combobox
                 options={productOptions}
                 value={productId}
                 onChange={setProductId}
-                placeholder="제품을 선택하세요"
+                placeholder={lineSelected ? '제품을 선택하세요' : '라인을 먼저 선택하세요'}
                 searchPlaceholder="제품 검색..."
+                disabled={!lineSelected}
                 required
               />
             </div>
@@ -78,8 +106,9 @@ export function ProjectCreateModal({ open, onOpenChange }: Props) {
                 options={backboneOptions}
                 value={backboneProductId}
                 onChange={setBackboneProductId}
-                placeholder="Backbone을 선택하세요"
+                placeholder={lineSelected ? 'Backbone을 선택하세요' : '라인을 먼저 선택하세요'}
                 searchPlaceholder="Backbone 검색..."
+                disabled={!lineSelected}
                 required
               />
             </div>
@@ -101,7 +130,7 @@ export function ProjectCreateModal({ open, onOpenChange }: Props) {
             </Button>
             <Button
               type="submit"
-              disabled={!productId || !backboneProductId || !currentUserId || createProject.isPending}
+              disabled={!selectedLineId || !productId || !backboneProductId || !currentUserId || createProject.isPending}
             >
               {createProject.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               생성

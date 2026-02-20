@@ -31,6 +31,7 @@ import type {
 export async function fetchProjects(params?: {
   status?: ProjectStatus
   product_id?: number
+  line_id?: number
   is_latest?: boolean
 }): Promise<Project[]> {
   const { data } = await client.get<Project[]>('/projects', { params })

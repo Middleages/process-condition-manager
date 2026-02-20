@@ -26,18 +26,21 @@ process-condition-manager/
 │   │   ├── dependencies/     # FastAPI 인증 의존성 (auth.py)
 │   │   ├── repositories/     # 데이터 접근 계층 (N+1 최적화)
 │   │   │   ├── comment_repository.py    # ReviewComment 조회 (JOIN 최적화)
-│   │   │   └── change_log_repository.py # ChangeLog/StatusLog 조회 + 통계
+│   │   │   ├── change_log_repository.py # ChangeLog/StatusLog 조회 + 통계
+│   │   │   └── dashboard_repository.py  # 대시보드 집계 쿼리 (4종)
 │   │   ├── routers/          # API 엔드포인트 (도메인별 분리)
 │   │   │   ├── projects.py              # 프로젝트 CRUD (3 endpoints)
 │   │   │   ├── project_conditions.py    # 조건 저장/검증/이력 (7 endpoints)
 │   │   │   ├── project_layers.py        # Backbone/Recipe/레이어 (5 endpoints)
 │   │   │   ├── project_lifecycle.py     # 상태 전환/개정/요약 (5 endpoints)
+│   │   │   ├── dashboard.py             # 대시보드 개요 (1 endpoint)
 │   │   │   ├── comments.py, admin.py, export.py, auth.py
 │   │   │   └── users.py, lines.py, columns.py, products.py
 │   │   ├── services/         # 비즈니스 로직 (도메인별 분리)
 │   │   │   ├── project_service.py           # 프로젝트 CRUD + 개정
 │   │   │   ├── project_status_service.py    # 상태 전환 워크플로우
 │   │   │   ├── project_analytics_service.py # 변경 요약 + 버전 히스토리
+│   │   │   ├── dashboard_service.py         # 대시보드 오케스트레이션
 │   │   │   ├── comment_service.py, change_log_service.py
 │   │   │   ├── condition_service.py, validation_service.py
 │   │   │   ├── backbone_service.py, recipe_service.py
@@ -71,13 +74,14 @@ process-condition-manager/
 │   │   │   ├── useEditorCellEdit.ts    # 셀 편집/저장/오토세이브
 │   │   │   ├── useEditorNavigation.ts  # 레이어/에러/셀 네비게이션
 │   │   │   ├── useEditorModals.ts      # 모달 상태 관리
+│   │   │   ├── useLines.ts             # 라인 목록 조회
 │   │   │   └── useProjects.ts, useColumns.ts, useAutoSave.ts ...
-│   │   ├── pages/            # 페이지 컴포넌트
+│   │   ├── pages/            # 페이지 컴포넌트 (DashboardPage, ProjectListPage, ConditionEditorPage)
 │   │   ├── stores/           # Zustand 스토어
 │   │   ├── types/            # TypeScript 타입 (도메인별 분리)
 │   │   │   ├── user.ts, master.ts, column.ts
 │   │   │   ├── project.ts, changelog.ts, editor.ts
-│   │   │   ├── admin.ts, export.ts
+│   │   │   ├── admin.ts, export.ts, dashboard.ts
 │   │   │   └── index.ts     # Re-export 허브
 │   │   └── lib/              # 유틸리티 (validation, diff)
 │   ├── package.json
@@ -180,7 +184,17 @@ Draft → Review → Approved → (Revision 생성 시) Archived
   - ExportHistory 모델 + Alembic 마이그레이션, ExportAdminService, EquipmentService, ExportValidationService
   - 프론트엔드: ExportSystemsPage, ExportMappingManager, EquipmentPanel, ExportHistoryPanel, ExportValidationReport
   - Hotfix: OVL_REF_LAYER 필수 검증 해제, 설비 reorder 라우트 순서 수정, 관리자 UI 스크롤 수정, 더티셀 추적 기준값 수정
-- 다음 작업: Phase 4 나머지 기능 (대시보드)
+- SPEC-DASHBOARD-001 완료: 대시보드 (Phase 4)
+  - Backend: DashboardRepository (4종 집계 쿼리) + DashboardService + Dashboard Router
+  - Frontend: DashboardPage (상태 카드, 내 프로젝트, 검토 대기, 활동 타임라인)
+  - 라우팅: `/` = DashboardPage, Header에 프로젝트 네비게이션 추가
+- Phase 4 전체 완료: 인증/권한, Cross-layer 검증, 전산 출력 확장, 대시보드
+- Line Filter 완료: 라인별 프로젝트/대시보드 필터링
+  - Backend: ProjectResponse에 line_id/line_name 추가, 프로젝트 목록·대시보드 4종 쿼리에 line_id 필터
+  - Frontend: useLines 훅 + fetchLines API, ProjectListPage/DashboardPage 라인 드롭다운
+  - ProjectCreateModal: 라인 필수 선택 → 제품/Backbone 목록 연동 필터
+  - ProjectListPage: URL 쿼리 양방향 동기화 (`?status=X&line_id=Y`, useSearchParams 기반)
+  - DashboardPage → ProjectListPage 간 라인 필터 전달
 
 ## 개발 명령어
 

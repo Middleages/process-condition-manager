@@ -44,6 +44,8 @@ class ProjectResponse(BaseModel):
     id: int
     product_id: int
     product_name: str
+    line_id: int | None = None
+    line_name: str | None = None
     main_backbone_id: int
     backbone_name: str
     status: str
