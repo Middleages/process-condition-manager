@@ -10,7 +10,7 @@ from app.services.auth_service import get_password_hash
 from app.seed.columns import CATEGORIES, COLUMN_DEFS, VALIDATION_RULES
 from app.seed.layers import LAYERS, LAYER_NAMES, LAYER_PROFILES
 from app.seed.products import LINES, PRODUCTS, NON_BACKBONE_PRODUCTS, generate_conditions
-from app.seed.exports import _build_export_target_names
+from app.seed.exports import _build_export_target_names, seed_external_data_sources
 from app.seed.users import USERS
 
 engine = create_engine(settings.DATABASE_URL_SYNC)
@@ -483,6 +483,9 @@ def seed():
             )
             rxm_count += 1
         print(f"  Recipe XML Mappings: {rxm_count}")
+
+        # --- External Data Sources (mock tables + registration) ---
+        seed_external_data_sources(session)
 
         session.commit()
         print("\nSeed completed successfully!")

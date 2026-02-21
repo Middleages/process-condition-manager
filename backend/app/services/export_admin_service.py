@@ -1,12 +1,13 @@
 """Admin service for ExportSystem and ExportColumnMapping CRUD operations."""
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from fastapi import HTTPException
 
 from app.models.export import ExportSystem, ExportColumnMapping
 from app.models.column import ColumnDefinition
+from app.models.export_data_source import ExportDataSource
 from app.schemas.export_admin import (
     ExportSystemCreate,
     ExportSystemUpdate,
@@ -19,6 +20,96 @@ from app.schemas.export_admin import (
 
 class ExportAdminService:
     """CRUD service for export system and mapping administration."""
+
+    # ---------------------------------------------------------------------------
+    # Internal helpers
+    # ---------------------------------------------------------------------------
+
+    @staticmethod
+    async def _validate_external_source(
+        db: AsyncSession,
+        data_source_id: int,
+        source_column_name: str,
+    ) -> ExportDataSource:
+        """Validate that the data source is active and the column exists in its table.
+
+        Raises:
+            HTTPException 404: If data source not found.
+            HTTPException 400: If data source is inactive.
+            HTTPException 400: If source_column_name does not exist in the external table.
+        """
+        source = await db.get(ExportDataSource, data_source_id)
+        if not source:
+            raise HTTPException(status_code=404, detail="Data source not found")
+        if not source.is_active:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Data source '{source.source_name}' is not active",
+            )
+
+        # Validate that source_column_name exists in the external table via information_schema
+        result = await db.execute(
+            text(
+                "SELECT 1 FROM information_schema.columns "
+                "WHERE table_schema = :schema AND table_name = :table "
+                "AND column_name = :column"
+            ),
+            {
+                "schema": source.schema_name,
+                "table": source.table_name,
+                "column": source_column_name,
+            },
+        )
+        if result.fetchone() is None:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Column '{source_column_name}' does not exist in "
+                    f"'{source.schema_name}.{source.table_name}'"
+                ),
+            )
+
+        return source
+
+    @staticmethod
+    def _build_mapping_response(m: ExportColumnMapping) -> ExportMappingResponse:
+        """Build ExportMappingResponse from an ORM instance with loaded relationships."""
+        if m.source_type == "condition":
+            column_name = m.column_definition.column_name if m.column_definition else None
+            category_code = (
+                m.column_definition.category.category_code
+                if m.column_definition and m.column_definition.category
+                else None
+            )
+            return ExportMappingResponse(
+                id=m.id,
+                source_type=m.source_type,
+                column_id=m.column_id,
+                column_name=column_name,
+                category_code=category_code,
+                data_source_id=None,
+                data_source_name=None,
+                source_column_name=None,
+                target_column_name=m.target_column_name,
+                sort_order=m.sort_order,
+                is_required=m.is_required,
+            )
+        else:
+            # source_type == 'external'
+            data_source_name = m.data_source.source_name if m.data_source else None
+            return ExportMappingResponse(
+                id=m.id,
+                source_type=m.source_type,
+                column_id=None,
+                column_name=None,
+                category_code=None,
+                data_source_id=m.data_source_id,
+                data_source_name=data_source_name,
+                source_column_name=m.source_column_name,
+                target_column_name=m.target_column_name,
+                sort_order=m.sort_order,
+                is_required=m.is_required,
+            )
 
     # ---------------------------------------------------------------------------
     # System CRUD
@@ -127,7 +218,11 @@ class ExportAdminService:
         db: AsyncSession,
         system_id: int,
     ) -> list[ExportMappingResponse]:
-        """Return mappings for a system ordered by sort_order, joined with column info."""
+        """Return mappings for a system ordered by sort_order.
+
+        Joins with column_definition (for condition mappings) and data_source
+        (for external mappings) to populate response fields.
+        """
         system = await db.get(ExportSystem, system_id)
         if not system:
             raise HTTPException(status_code=404, detail="Export system not found")
@@ -138,7 +233,8 @@ class ExportAdminService:
             .options(
                 selectinload(ExportColumnMapping.column_definition).selectinload(
                     ColumnDefinition.category
-                )
+                ),
+                selectinload(ExportColumnMapping.data_source),
             )
             .order_by(ExportColumnMapping.sort_order)
         )
@@ -146,19 +242,7 @@ class ExportAdminService:
         mappings = result.scalars().all()
 
         return [
-            ExportMappingResponse(
-                id=m.id,
-                column_id=m.column_id,
-                column_name=m.column_definition.column_name,
-                category_code=(
-                    m.column_definition.category.category_code
-                    if m.column_definition.category
-                    else None
-                ),
-                target_column_name=m.target_column_name,
-                sort_order=m.sort_order,
-                is_required=m.is_required,
-            )
+            ExportAdminService._build_mapping_response(m)
             for m in mappings
         ]
 
@@ -168,7 +252,15 @@ class ExportAdminService:
         system_id: int,
         data: ExportMappingCreate,
     ) -> ExportColumnMapping:
-        """Create a new column mapping for the given system. Auto-assigns sort_order."""
+        """Create a new column mapping for the given system.
+
+        Supports two source types:
+        - 'condition': maps a PCM condition column (requires column_id).
+        - 'external': maps a column from an external data source (requires
+          data_source_id + source_column_name, validated via information_schema).
+
+        Auto-assigns sort_order as max existing + 1 (or 0 if first).
+        """
         system = await db.get(ExportSystem, system_id)
         if not system:
             raise HTTPException(status_code=404, detail="Export system not found")
@@ -182,13 +274,40 @@ class ExportAdminService:
         max_order = max_result.scalar_one_or_none()
         next_order = (max_order + 1) if max_order is not None else 0
 
-        mapping = ExportColumnMapping(
-            export_system_id=system_id,
-            column_id=data.column_id,
-            target_column_name=data.target_column_name,
-            sort_order=next_order,
-            is_required=data.is_required,
-        )
+        if data.source_type == "condition":
+            # Validate that the column_definition exists
+            col = await db.get(ColumnDefinition, data.column_id)
+            if not col:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Column definition {data.column_id} not found",
+                )
+            mapping = ExportColumnMapping(
+                export_system_id=system_id,
+                source_type="condition",
+                column_id=data.column_id,
+                data_source_id=None,
+                source_column_name=None,
+                target_column_name=data.target_column_name,
+                sort_order=next_order,
+                is_required=data.is_required,
+            )
+        else:
+            # source_type == 'external'
+            await ExportAdminService._validate_external_source(
+                db, data.data_source_id, data.source_column_name
+            )
+            mapping = ExportColumnMapping(
+                export_system_id=system_id,
+                source_type="external",
+                column_id=None,
+                data_source_id=data.data_source_id,
+                source_column_name=data.source_column_name,
+                target_column_name=data.target_column_name,
+                sort_order=next_order,
+                is_required=data.is_required,
+            )
+
         db.add(mapping)
         await db.commit()
         await db.refresh(mapping)
@@ -201,7 +320,10 @@ class ExportAdminService:
         mapping_id: int,
         data: ExportMappingUpdate,
     ) -> ExportColumnMapping:
-        """Update a column mapping. Raises 404 if system or mapping not found."""
+        """Update a column mapping. Raises 404 if system or mapping not found.
+
+        When source_type changes, re-validates the new source fields.
+        """
         system = await db.get(ExportSystem, system_id)
         if not system:
             raise HTTPException(status_code=404, detail="Export system not found")
@@ -210,10 +332,58 @@ class ExportAdminService:
         if not mapping or mapping.export_system_id != system_id:
             raise HTTPException(status_code=404, detail="Export mapping not found")
 
+        # Apply common fields
         if data.target_column_name is not None:
             mapping.target_column_name = data.target_column_name
         if data.is_required is not None:
             mapping.is_required = data.is_required
+
+        # Handle source_type change or external field updates
+        if data.source_type is not None and data.source_type != mapping.source_type:
+            # Source type is changing — validate and switch
+            if data.source_type == "condition":
+                # Switching to condition: column_id must already be set or provided
+                # Since ExportMappingUpdate does not carry column_id, this path
+                # would leave column_id NULL; caller should use create_mapping instead.
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Cannot switch source_type to 'condition' via update. "
+                        "Delete and recreate the mapping with the correct source_type."
+                    ),
+                )
+            elif data.source_type == "external":
+                # Switching to external: data_source_id + source_column_name required
+                if data.data_source_id is None or not data.source_column_name:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            "data_source_id and source_column_name are required "
+                            "when switching source_type to 'external'"
+                        ),
+                    )
+                await ExportAdminService._validate_external_source(
+                    db, data.data_source_id, data.source_column_name
+                )
+                mapping.source_type = "external"
+                mapping.column_id = None
+                mapping.data_source_id = data.data_source_id
+                mapping.source_column_name = data.source_column_name
+            else:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid source_type: '{data.source_type}'",
+                )
+        elif mapping.source_type == "external":
+            # Same source type = 'external'; allow updating data_source_id / source_column_name
+            new_ds_id = data.data_source_id if data.data_source_id is not None else mapping.data_source_id
+            new_col_name = data.source_column_name if data.source_column_name is not None else mapping.source_column_name
+            if data.data_source_id is not None or data.source_column_name is not None:
+                await ExportAdminService._validate_external_source(
+                    db, new_ds_id, new_col_name
+                )
+                mapping.data_source_id = new_ds_id
+                mapping.source_column_name = new_col_name
 
         await db.commit()
         await db.refresh(mapping)
@@ -255,7 +425,8 @@ class ExportAdminService:
             .options(
                 selectinload(ExportColumnMapping.column_definition).selectinload(
                     ColumnDefinition.category
-                )
+                ),
+                selectinload(ExportColumnMapping.data_source),
             )
         )
         result = await db.execute(stmt)
@@ -277,18 +448,6 @@ class ExportAdminService:
         )
 
         return [
-            ExportMappingResponse(
-                id=m.id,
-                column_id=m.column_id,
-                column_name=m.column_definition.column_name,
-                category_code=(
-                    m.column_definition.category.category_code
-                    if m.column_definition.category
-                    else None
-                ),
-                target_column_name=m.target_column_name,
-                sort_order=m.sort_order,
-                is_required=m.is_required,
-            )
+            ExportAdminService._build_mapping_response(m)
             for m in updated
         ]
