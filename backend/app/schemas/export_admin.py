@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Any, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 
 
 # ---------------------------------------------------------------------------
@@ -52,11 +52,39 @@ class ExportSystemAdminResponse(BaseModel):
 
 
 class ExportMappingCreate(BaseModel):
-    """Schema for creating a new export column mapping."""
+    """Schema for creating a new export column mapping.
 
-    column_id: int
+    For source_type='condition': column_id is required.
+    For source_type='external': data_source_id and source_column_name are required.
+    """
+
+    source_type: str = "condition"
+    column_id: Optional[int] = None
+    data_source_id: Optional[int] = None
+    source_column_name: Optional[str] = None
     target_column_name: str
     is_required: bool = False
+
+    @model_validator(mode="after")
+    def validate_source_fields(self) -> "ExportMappingCreate":
+        """Validate that required fields are provided based on source_type."""
+        if self.source_type == "condition":
+            if self.column_id is None:
+                raise ValueError("column_id is required when source_type is 'condition'")
+        elif self.source_type == "external":
+            if self.data_source_id is None:
+                raise ValueError(
+                    "data_source_id is required when source_type is 'external'"
+                )
+            if not self.source_column_name:
+                raise ValueError(
+                    "source_column_name is required when source_type is 'external'"
+                )
+        else:
+            raise ValueError(
+                f"source_type must be 'condition' or 'external', got '{self.source_type}'"
+            )
+        return self
 
 
 class ExportMappingUpdate(BaseModel):
@@ -64,15 +92,25 @@ class ExportMappingUpdate(BaseModel):
 
     target_column_name: Optional[str] = None
     is_required: Optional[bool] = None
+    source_type: Optional[str] = None
+    data_source_id: Optional[int] = None
+    source_column_name: Optional[str] = None
 
 
 class ExportMappingResponse(BaseModel):
     """Response schema for an export column mapping."""
 
     id: int
-    column_id: int
-    column_name: str
-    category_code: Optional[str]
+    source_type: str
+    # Condition-source fields (None for external mappings)
+    column_id: Optional[int] = None
+    column_name: Optional[str] = None
+    category_code: Optional[str] = None
+    # External-source fields (None for condition mappings)
+    data_source_id: Optional[int] = None
+    data_source_name: Optional[str] = None
+    source_column_name: Optional[str] = None
+    # Common fields
     target_column_name: str
     sort_order: int
     is_required: bool

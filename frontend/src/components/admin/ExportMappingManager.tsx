@@ -1,6 +1,8 @@
 // ExportMappingManager.tsx
 // Panel that displays and manages column mappings for a specific export system.
 // Supports add, edit, delete, and reorder operations.
+// Renders both 'condition' source-type mappings (PCM columns) and
+// 'external' source-type mappings (external data source columns).
 
 import { useState } from 'react'
 import { useExportMappings, useDeleteExportMapping, useReorderExportMappings } from '@/hooks/useExportAdmin'
@@ -20,6 +22,52 @@ const CATEGORY_BADGE_STYLES: Record<string, string> = {
   SC: 'bg-green-100 text-green-800 border-green-200',
   OVL: 'bg-orange-100 text-orange-800 border-orange-200',
   DEV: 'bg-purple-100 text-purple-800 border-purple-200',
+}
+
+const EXTERNAL_BADGE = 'bg-teal-100 text-teal-800 border-teal-200'
+
+// Returns the human-readable source label for a mapping row.
+function SourceBadge({ mapping }: { mapping: ExportMapping }) {
+  if (mapping.source_type === 'external') {
+    return (
+      <span
+        className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${EXTERNAL_BADGE}`}
+      >
+        EXT
+      </span>
+    )
+  }
+
+  // condition source type — show category code badge
+  if (mapping.category_code) {
+    return (
+      <span
+        className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${
+          CATEGORY_BADGE_STYLES[mapping.category_code] ?? 'bg-gray-100 text-gray-800'
+        }`}
+      >
+        {mapping.category_code}
+      </span>
+    )
+  }
+
+  return <span className="text-muted-foreground">--</span>
+}
+
+// Returns the human-readable column display string for a mapping row.
+function ColumnDisplay({ mapping }: { mapping: ExportMapping }) {
+  if (mapping.source_type === 'external') {
+    const parts = [mapping.data_source_name, mapping.source_column_name].filter(Boolean)
+    return (
+      <span className="font-mono text-xs">
+        {parts.length > 0 ? parts.join(' > ') : '--'}
+      </span>
+    )
+  }
+
+  return (
+    <span className="font-mono text-xs">{mapping.column_name ?? '--'}</span>
+  )
 }
 
 export function ExportMappingManager({ system, onClose }: ExportMappingManagerProps) {
@@ -107,8 +155,8 @@ export function ExportMappingManager({ system, onClose }: ExportMappingManagerPr
             <thead className="bg-muted/50">
               <tr>
                 <th className="px-4 py-2 text-left font-medium w-8">#</th>
+                <th className="px-4 py-2 text-left font-medium">소스</th>
                 <th className="px-4 py-2 text-left font-medium">컬럼명</th>
-                <th className="px-4 py-2 text-left font-medium">카테고리</th>
                 <th className="px-4 py-2 text-left font-medium">출력 컬럼명</th>
                 <th className="px-4 py-2 text-center font-medium">필수</th>
                 <th className="px-4 py-2 text-right font-medium">작업</th>
@@ -118,19 +166,11 @@ export function ExportMappingManager({ system, onClose }: ExportMappingManagerPr
               {mappings.map((mapping, index) => (
                 <tr key={mapping.id} className="hover:bg-muted/30">
                   <td className="px-4 py-2 text-muted-foreground">{mapping.sort_order}</td>
-                  <td className="px-4 py-2 font-mono text-xs">{mapping.column_name}</td>
                   <td className="px-4 py-2">
-                    {mapping.category_code ? (
-                      <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${
-                          CATEGORY_BADGE_STYLES[mapping.category_code] ?? 'bg-gray-100 text-gray-800'
-                        }`}
-                      >
-                        {mapping.category_code}
-                      </span>
-                    ) : (
-                      <span className="text-muted-foreground">--</span>
-                    )}
+                    <SourceBadge mapping={mapping} />
+                  </td>
+                  <td className="px-4 py-2">
+                    <ColumnDisplay mapping={mapping} />
                   </td>
                   <td className="px-4 py-2">{mapping.target_column_name}</td>
                   <td className="px-4 py-2 text-center">

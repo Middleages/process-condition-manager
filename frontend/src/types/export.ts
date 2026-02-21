@@ -1,5 +1,49 @@
 // 전산 출력 시스템 타입 정의
 
+// ========== External Data Source Types ==========
+
+// JOIN key mapping type
+export interface JoinKeyMapping {
+  external_column: string
+  pcm_field: 'project.product_id' | 'layer.step_seq' | 'layer.layer_name' | 'layer.layer_number'
+}
+
+export interface ExportDataSource {
+  id: number
+  source_name: string
+  table_name: string
+  schema_name: string
+  description: string | null
+  join_key_mappings: JoinKeyMapping[]
+  is_active: boolean
+  created_at: string
+  updated_at: string
+  mapping_count: number
+}
+
+export interface ExportDataSourceCreate {
+  source_name: string
+  table_name: string
+  schema_name?: string
+  description?: string
+  join_key_mappings: JoinKeyMapping[]
+  is_active?: boolean
+}
+
+export interface ExportDataSourceUpdate {
+  source_name?: string
+  table_name?: string
+  schema_name?: string
+  description?: string
+  join_key_mappings?: JoinKeyMapping[]
+  is_active?: boolean
+}
+
+export interface ColumnInfo {
+  column_name: string
+  data_type: string
+}
+
 export interface ExportSystem {
   id: number
   system_name: string
@@ -58,16 +102,23 @@ export interface ExportSystemCreate {
 
 export interface ExportMapping {
   id: number
-  column_id: number
-  column_name: string
+  source_type: 'condition' | 'external'
+  column_id: number | null
+  column_name: string | null
   category_code: string | null
+  data_source_id: number | null
+  data_source_name: string | null
+  source_column_name: string | null
   target_column_name: string
   sort_order: number
   is_required: boolean
 }
 
 export interface ExportMappingCreate {
-  column_id: number
+  source_type?: 'condition' | 'external'
+  column_id?: number
+  data_source_id?: number
+  source_column_name?: string
   target_column_name: string
   is_required?: boolean
 }

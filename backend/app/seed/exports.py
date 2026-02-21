@@ -1,4 +1,9 @@
-"""Export column target name mapping functions for seed data."""
+"""Export column target name mapping functions and external data source seed data."""
+import json
+
+from sqlalchemy.orm import Session
+from sqlalchemy import text
+
 from app.seed.columns import COLUMN_DEFS
 
 
@@ -80,3 +85,137 @@ def _build_export_target_names() -> tuple[dict, dict, dict, dict]:
         elif cat_code == "DEV":
             dev_targets[col_name] = target
     return sp_targets, sc_targets, ovl_targets, dev_targets
+
+
+# ---------------------------------------------------------------------------
+# External data source seed: mock tables + ExportDataSource records
+# ---------------------------------------------------------------------------
+
+def seed_external_data_sources(session: Session) -> None:
+    """Create mock external PostgreSQL tables and register them as ExportDataSource records.
+
+    Tables created:
+    - ext_mes_data  : MES measurement data linked by product_id + step_seq
+    - ext_eqp_status: Equipment status data linked by product_id + layer_name
+
+    Idempotent: skips if export_data_sources already has rows.
+    """
+    existing = session.execute(text("SELECT count(*) FROM export_data_sources")).scalar()
+    if existing and existing > 0:
+        print("  External data sources already seeded. Skipping.")
+        return
+
+    # --- Create ext_mes_data table ---
+    session.execute(text("""
+        CREATE TABLE IF NOT EXISTS ext_mes_data (
+            id          SERIAL PRIMARY KEY,
+            product_id  INTEGER NOT NULL,
+            step_seq    VARCHAR(30) NOT NULL,
+            ppid        VARCHAR(100),
+            measure_value NUMERIC(12, 4),
+            status      VARCHAR(20) DEFAULT 'OK'
+        )
+    """))
+
+    # Insert ~10 rows of sample MES data (step_seq matches Layer.step_seq format: ac100000, ac105000, ...)
+    mes_rows = [
+        (1, "ac100000", "PPID-SP-001", 245.3, "OK"),
+        (1, "ac105000", "PPID-SC-001", 38.5, "OK"),
+        (1, "ac110000", "PPID-DEV-001", 120.1, "WARNING"),
+        (1, "ac115000", "PPID-OVL-001", 5.2, "OK"),
+        (2, "ac100000", "PPID-SP-001", 248.7, "OK"),
+        (2, "ac105000", "PPID-SC-002", 37.9, "OK"),
+        (2, "ac110000", "PPID-DEV-001", 118.4, "OK"),
+        (3, "ac100000", "PPID-SP-002", 241.0, "OK"),
+        (3, "ac105000", "PPID-SC-001", 39.1, "FAIL"),
+        (3, "ac120000", "PPID-DEV-002", 125.6, "OK"),
+    ]
+    for row in mes_rows:
+        session.execute(
+            text(
+                "INSERT INTO ext_mes_data (product_id, step_seq, ppid, measure_value, status) "
+                "VALUES (:pid, :seq, :ppid, :val, :status)"
+            ),
+            {"pid": row[0], "seq": row[1], "ppid": row[2], "val": row[3], "status": row[4]},
+        )
+
+    # --- Create ext_eqp_status table ---
+    session.execute(text("""
+        CREATE TABLE IF NOT EXISTS ext_eqp_status (
+            id              SERIAL PRIMARY KEY,
+            product_id      INTEGER NOT NULL,
+            layer_name      VARCHAR(100) NOT NULL,
+            equipment_id    VARCHAR(50),
+            run_count       INTEGER DEFAULT 0,
+            last_pm_date    DATE
+        )
+    """))
+
+    # Insert ~10 rows of sample equipment status data
+    eqp_rows = [
+        (1, "LAYER-01-PRE", "NSR-S322F-01", 1520, "2026-01-15"),
+        (1, "LAYER-02-CORE", "NSR-S322F-01", 1520, "2026-01-15"),
+        (1, "LAYER-03-CUT", "NSR-S631E-01", 830, "2026-01-20"),
+        (2, "LAYER-01-PRE", "NSR-S322F-02", 980, "2026-01-18"),
+        (2, "LAYER-02-CORE", "XT-1400E-01", 2100, "2025-12-30"),
+        (2, "LAYER-04-VIA", "NXT-2000-01", 450, "2026-02-01"),
+        (3, "LAYER-01-PRE", "NSR-S322F-01", 1521, "2026-01-15"),
+        (3, "LAYER-05-MET", "XT-1400E-01", 2101, "2025-12-30"),
+        (1, "LAYER-06-CAP", "NSR-S631E-01", 831, "2026-01-20"),
+        (3, "LAYER-03-CUT", "NXT-2000-01", 451, "2026-02-01"),
+    ]
+    for row in eqp_rows:
+        session.execute(
+            text(
+                "INSERT INTO ext_eqp_status "
+                "(product_id, layer_name, equipment_id, run_count, last_pm_date) "
+                "VALUES (:pid, :lname, :eid, :rc, CAST(:pm AS date))"
+            ),
+            {
+                "pid": row[0], "lname": row[1], "eid": row[2],
+                "rc": row[3], "pm": row[4],
+            },
+        )
+
+    # --- Register ExportDataSource records ---
+    data_sources = [
+        {
+            "source_name": "MES-Measurement-Data",
+            "table_name": "ext_mes_data",
+            "schema_name": "public",
+            "description": "MES measurement data linked by product and process step",
+            "join_key_mappings": json.dumps([
+                {"external_column": "product_id", "pcm_field": "project.product_id"},
+                {"external_column": "step_seq", "pcm_field": "layer.step_seq"},
+            ]),
+            "is_active": True,
+        },
+        {
+            "source_name": "Equipment-Status-Data",
+            "table_name": "ext_eqp_status",
+            "schema_name": "public",
+            "description": "Equipment status and PM history linked by product and layer name",
+            "join_key_mappings": json.dumps([
+                {"external_column": "product_id", "pcm_field": "project.product_id"},
+                {"external_column": "layer_name", "pcm_field": "layer.layer_name"},
+            ]),
+            "is_active": True,
+        },
+    ]
+    for ds in data_sources:
+        session.execute(
+            text(
+                "INSERT INTO export_data_sources "
+                "(source_name, table_name, schema_name, description, join_key_mappings, is_active) "
+                "VALUES (:sname, :tname, :schema, :desc, CAST(:jkm AS jsonb), :active)"
+            ),
+            {
+                "sname": ds["source_name"],
+                "tname": ds["table_name"],
+                "schema": ds["schema_name"],
+                "desc": ds["description"],
+                "jkm": ds["join_key_mappings"],
+                "active": ds["is_active"],
+            },
+        )
+    print(f"  External Data Sources: {len(data_sources)} (+ mock tables ext_mes_data, ext_eqp_status)")

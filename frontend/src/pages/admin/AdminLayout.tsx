@@ -21,6 +21,7 @@ export default function AdminLayout() {
     { path: '/admin/enum-options', label: '선택 옵션 관리' },
     { path: '/admin/xml-mappings', label: 'XML 매핑 관리' },
     { path: '/admin/validations', label: '검증 규칙 관리' },
+    { path: '/admin/data-sources', label: '데이터 소스 관리' },
     { path: '/admin/export-systems', label: '전산 출력 시스템 관리' },
     { path: '/admin/audit-logs', label: '변경 이력 조회' },
   ]

@@ -16,6 +16,7 @@ import UserManagementPage from './pages/admin/UserManagementPage'
 import MasterDataPage from './pages/admin/MasterDataPage'
 import EnumManagementPage from './pages/admin/EnumManagementPage'
 import AuditLogPage from './pages/admin/AuditLogPage'
+import ExportDataSourcesPage from './pages/admin/ExportDataSourcesPage'
 import { ToastContainer } from './components/ui/toast'
 import { useAuthStore } from './stores/useAuthStore'
 
@@ -69,6 +70,7 @@ const router = createBrowserRouter([
               { path: 'enum-options', element: <EnumManagementPage /> },
               { path: 'xml-mappings', element: <XmlMappingsPage /> },
               { path: 'validations', element: <ValidationRulesPage /> },
+              { path: 'data-sources', element: <ExportDataSourcesPage /> },
               { path: 'export-systems', element: <ExportSystemsPage /> },
               { path: 'audit-logs', element: <AuditLogPage /> },
             ],

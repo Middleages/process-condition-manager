@@ -86,11 +86,14 @@ class ExportValidationService:
     async def _get_column_mappings(
         cls, db: AsyncSession, system_id: int
     ) -> list[ExportColumnMapping]:
-        """Fetch column mappings for a system with column_definition eagerly loaded."""
+        """Fetch column mappings for a system with column_definition and data_source eagerly loaded."""
         query = (
             select(ExportColumnMapping)
             .where(ExportColumnMapping.export_system_id == system_id)
-            .options(selectinload(ExportColumnMapping.column_definition))
+            .options(
+                selectinload(ExportColumnMapping.column_definition),
+                selectinload(ExportColumnMapping.data_source),
+            )
             .order_by(ExportColumnMapping.sort_order)
         )
         result = await db.execute(query)
@@ -125,7 +128,10 @@ class ExportValidationService:
         mappings = await cls._get_column_mappings(db, system_id)
         issues: list[ExportValidationIssue] = []
 
-        for mapping in mappings:
+        # --- Validate condition-type mappings ---
+        condition_mappings = [m for m in mappings if m.source_type == "condition"]
+
+        for mapping in condition_mappings:
             column_def = mapping.column_definition
 
             # ERROR: mapping references a column that no longer exists in column_definitions
@@ -187,19 +193,51 @@ class ExportValidationService:
                             )
                         )
 
-        # WARNING: per-layer missing data rate > 50%
-        if mappings:
+        # --- Validate external-type mappings ---
+        external_mappings = [m for m in mappings if m.source_type == "external"]
+
+        for mapping in external_mappings:
+            # ERROR: data source is missing entirely
+            if mapping.data_source is None:
+                issues.append(
+                    ExportValidationIssue(
+                        level="error",
+                        layer_name="",
+                        column_name=mapping.source_column_name or "",
+                        message=(
+                            f"외부 데이터 소스가 존재하지 않습니다 (ID: {mapping.data_source_id})"
+                        ),
+                    )
+                )
+                continue
+
+            # WARNING: data source is inactive
+            if not mapping.data_source.is_active:
+                issues.append(
+                    ExportValidationIssue(
+                        level="warning",
+                        layer_name="",
+                        column_name=mapping.source_column_name or "",
+                        message=(
+                            f"외부 데이터 소스 '{mapping.data_source.source_name}'"
+                            f"이 비활성 상태입니다"
+                        ),
+                    )
+                )
+
+        # WARNING: per-layer missing data rate > 50% (condition mappings only)
+        if condition_mappings:
             for pl in layers:
                 layer_name = pl.layer.layer_name if pl.layer else str(pl.id)
                 conditions = pl.conditions or {}
                 empty_count = sum(
                     1
-                    for m in mappings
+                    for m in condition_mappings
                     if m.column_definition is not None
                     and cls._is_empty(conditions.get(m.column_definition.column_name))
                 )
                 total_mapped = sum(
-                    1 for m in mappings if m.column_definition is not None
+                    1 for m in condition_mappings if m.column_definition is not None
                 )
                 if total_mapped > 0:
                     missing_pct = (empty_count / total_mapped) * 100
