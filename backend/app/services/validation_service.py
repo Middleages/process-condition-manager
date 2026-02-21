@@ -123,7 +123,7 @@ async def validate_project(
     )
     project = result.scalars().first()
     if not project:
-        raise HTTPException(404, "Project not found")
+        raise HTTPException(status_code=404, detail="Project not found")
 
     # 2. Load all column definitions with active validations
     result = await db.execute(

@@ -16,7 +16,7 @@ async def update_project_status(
     db: AsyncSession,
     project_id: int,
     new_status: str,
-    changed_by: int,
+    current_user: User,
     comment: str | None = None,
 ) -> dict:
     """
@@ -32,7 +32,7 @@ async def update_project_status(
         db: Database session
         project_id: Project ID
         new_status: Target status
-        changed_by: User ID making the change
+        current_user: Authenticated user making the change
         comment: Optional comment for the transition
 
     Returns:
@@ -75,17 +75,13 @@ async def update_project_status(
 
     # For Review → Approved/Rejected: check role
     if current_status == "review" and new_status in ["approved", "rejected"]:
-        user = await db.get(User, changed_by)
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
-
-        if user.role not in ["reviewer", "admin"]:
+        if current_user.role not in ["reviewer", "admin"]:
             raise HTTPException(
                 status_code=403,
                 detail="Only reviewers can approve or reject projects"
             )
 
-    # For Review → Rejected: check unresolved comments
+    # For Review → Rejected: check unresolved comments, then execute dual-log transition
     if current_status == "review" and new_status == "rejected":
         unresolved_count = await get_unresolved_count(db, project_id)
         if unresolved_count == 0:
@@ -94,22 +90,23 @@ async def update_project_status(
                 detail="At least one comment is required for rejection"
             )
 
-        # Rejection creates dual log: review→rejected + rejected→draft
+        # Dual log: review→rejected (state machine validates this transition above)
         log_rejected = ProjectStatusLog(
             project_id=project_id,
             from_status=current_status,
             to_status="rejected",
-            changed_by=changed_by,
+            changed_by=current_user.id,
             comment=comment,
         )
         db.add(log_rejected)
         await db.flush()
 
+        # Second leg: rejected→draft (also valid per state machine: "rejected": ["draft"])
         log_to_draft = ProjectStatusLog(
             project_id=project_id,
             from_status="rejected",
             to_status="draft",
-            changed_by=changed_by,
+            changed_by=current_user.id,
             comment="Automatic transition after rejection",
         )
         db.add(log_to_draft)
@@ -122,7 +119,7 @@ async def update_project_status(
             "id": project.id,
             "status": "draft",
             "previous_status": current_status,
-            "changed_by": changed_by,
+            "changed_by": current_user.id,
             "changed_at": log_to_draft.changed_at,
         }
 
@@ -131,7 +128,7 @@ async def update_project_status(
         project_id=project_id,
         from_status=current_status,
         to_status=new_status,
-        changed_by=changed_by,
+        changed_by=current_user.id,
         comment=comment,
     )
     db.add(status_log)
@@ -145,6 +142,6 @@ async def update_project_status(
         "id": project.id,
         "status": new_status,
         "previous_status": current_status,
-        "changed_by": changed_by,
+        "changed_by": current_user.id,
         "changed_at": status_log.changed_at,
     }

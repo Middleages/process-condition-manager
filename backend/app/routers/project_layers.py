@@ -15,6 +15,7 @@ from app.schemas.recipe import (
     RecipeApplyRequest,
     RecipeApplyResponse,
 )
+from app.models import Layer, Product
 from app.services import backbone_service, recipe_service
 
 router = APIRouter(prefix="/api/projects", tags=["project-layers"])
@@ -30,7 +31,6 @@ async def replace_layer_backbone(
     current_user: User = Depends(require_project_owner),
     db: AsyncSession = Depends(get_db),
 ):
-    from app.models import Product
     pl, changed_count = await backbone_service.replace_layer_backbone(
         db,
         project_id=project_id,
@@ -68,7 +68,6 @@ async def add_project_layer(
         source_layer_name=request.source_layer_name,
     )
     # Eager-load relationships for response
-    from app.models import Layer, Product
     layer = await db.get(Layer, pl.layer_id)
     bb_product = await db.get(Product, pl.backbone_product_id) if pl.backbone_product_id else None
     return LayerAddResponse(

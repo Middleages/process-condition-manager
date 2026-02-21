@@ -2,6 +2,7 @@ import io
 import logging
 import zipfile
 
+from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -64,7 +65,7 @@ class ExportService:
             unit_mappings = (system.additional_config or {}).get("unit_mappings", {})
             excel_bytes = export_builders.generate_type_c(product_name, layers_data, mappings, unit_mappings)
         else:
-            raise ValueError(f"Unknown format type: {system.format_type}")
+            raise HTTPException(status_code=422, detail=f"Unknown format type: {system.format_type}")
 
         filename = f"{sanitize_filename(product_name)}_{sanitize_filename(system.system_name)}.xlsx"
         return excel_bytes, filename
@@ -88,7 +89,7 @@ class ExportService:
             unit_mappings = (system.additional_config or {}).get("unit_mappings", {})
             headers, all_rows = export_builders.build_type_c_data(product_name, layers_data, mappings, unit_mappings)
         else:
-            raise ValueError(f"Unknown format type: {system.format_type}")
+            raise HTTPException(status_code=422, detail=f"Unknown format type: {system.format_type}")
 
         return {
             "system_name": system.system_name,
@@ -130,7 +131,7 @@ class ExportService:
         result = await db.execute(query)
         project = result.scalar_one_or_none()
         if not project:
-            raise ValueError(f"Project {project_id} not found")
+            raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
         return project
 
     async def _get_export_system(self, db: AsyncSession, system_id: int) -> ExportSystem:
@@ -139,7 +140,7 @@ class ExportService:
         result = await db.execute(query)
         system = result.scalar_one_or_none()
         if not system:
-            raise ValueError(f"Export system {system_id} not found")
+            raise HTTPException(status_code=404, detail=f"Export system {system_id} not found")
         return system
 
     async def _get_column_mappings(

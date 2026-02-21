@@ -14,6 +14,7 @@ VALID_STATUS_TRANSITIONS: dict[str, list[str]] = {
     "draft": ["review"],
     "review": ["approved", "rejected"],
     "approved": ["archived"],
+    "rejected": ["draft"],
 }
 
 # --- Column categories ---

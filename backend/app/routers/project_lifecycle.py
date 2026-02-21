@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.models import Product
 from app.models.user import User
 from app.dependencies.auth import get_current_user, require_active_user
 from app.schemas.project import (
@@ -12,10 +13,9 @@ from app.schemas.project import (
     StatusTransitionRequest,
     StatusTransitionResponse,
     StatusHistoryResponse,
-    StatusHistoryItem,
     ChangeSummaryResponse,
 )
-from app.services import project_service, project_status_service, project_analytics_service
+from app.services import project_service, project_status_service, project_analytics_service, change_log_service
 from app.routers.projects import _build_project_detail_response
 
 router = APIRouter(prefix="/api/projects", tags=["project-lifecycle"])
@@ -48,10 +48,9 @@ async def get_product_revisions(
     db: AsyncSession = Depends(get_db),
 ):
     """Get revision history for a product."""
-    from app.models import Product
     product = await db.get(Product, product_id)
     if not product:
-        raise HTTPException(404, "Product not found")
+        raise HTTPException(status_code=404, detail="Product not found")
 
     projects = await project_service.get_product_revisions(db, product_id)
     revisions = [
@@ -89,16 +88,11 @@ async def update_status(
     - 'review' status: project owner or admin
     - 'approved' / 'rejected' status: reviewer or admin only
     """
-    if data.new_status in ("approved", "rejected") and current_user.role not in ("reviewer", "admin"):
-        raise HTTPException(
-            status_code=403,
-            detail="Reviewer or admin access required for approve/reject",
-        )
     result = await project_status_service.update_project_status(
         db=db,
         project_id=project_id,
         new_status=data.new_status,
-        changed_by=current_user.id,
+        current_user=current_user,
         comment=data.comment,
     )
     return result
@@ -111,32 +105,7 @@ async def get_status_history(
     db: AsyncSession = Depends(get_db),
 ):
     """Get status change history for a project."""
-    from app.models import ProjectStatusLog, User
-    from sqlalchemy import select
-
-    # Query status logs with user join
-    result = await db.execute(
-        select(ProjectStatusLog, User)
-        .join(User, ProjectStatusLog.changed_by == User.id)
-        .where(ProjectStatusLog.project_id == project_id)
-        .order_by(ProjectStatusLog.changed_at.desc())
-    )
-    rows = result.fetchall()
-
-    history = [
-        StatusHistoryItem(
-            id=log.id,
-            from_status=log.from_status,
-            to_status=log.to_status,
-            changed_by=log.changed_by,
-            changer_name=user.display_name,
-            comment=log.comment,
-            changed_at=log.changed_at,
-        )
-        for log, user in rows
-    ]
-
-    return StatusHistoryResponse(history=history)
+    return await change_log_service.get_status_history(db, project_id)
 
 
 @router.get("/{project_id}/change-summary", response_model=ChangeSummaryResponse)

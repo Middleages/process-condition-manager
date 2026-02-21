@@ -121,13 +121,13 @@ async def parse_recipe_xml(
     )
     project = result.scalars().first()
     if not project:
-        raise HTTPException(404, "Project not found")
+        raise HTTPException(status_code=404, detail="Project not found")
 
     # 2. Parse XML
     try:
         xml_root = etree.fromstring(xml_content)
     except etree.XMLSyntaxError as e:
-        raise HTTPException(400, f"XML 파싱 오류: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"XML 파싱 오류: {str(e)}")
 
     # 3. Identify target layer
     layer_key = extract_layer_key(xml_root, filename)
@@ -249,9 +249,9 @@ async def apply_recipe_changes(
     # 1. Load project and validate status
     project = await db.get(Project, project_id)
     if not project:
-        raise HTTPException(404, "Project not found")
+        raise HTTPException(status_code=404, detail="Project not found")
     if project.status != "draft":
-        raise HTTPException(400, "Can only apply recipe changes to draft projects")
+        raise HTTPException(status_code=400, detail="Can only apply recipe changes to draft projects")
 
     # 2. Load project layers
     pl_result = await db.execute(
@@ -266,7 +266,7 @@ async def apply_recipe_changes(
     for change in request.changes:
         pl = pl_map.get(change.project_layer_id)
         if not pl:
-            raise HTTPException(400, f"Invalid project_layer_id: {change.project_layer_id}")
+            raise HTTPException(status_code=400, detail=f"Invalid project_layer_id: {change.project_layer_id}")
 
         old_conditions = pl.conditions or {}
         old_value = old_conditions.get(change.column_name)

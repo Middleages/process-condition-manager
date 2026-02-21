@@ -28,7 +28,7 @@ async def create_project(
     # 1. Validate target product exists and load its product_layers
     product = await db.get(Product, product_id)
     if not product:
-        raise HTTPException(404, "Product not found")
+        raise HTTPException(status_code=404, detail="Product not found")
 
     result = await db.execute(
         select(ProductLayer)
@@ -37,14 +37,14 @@ async def create_project(
     )
     target_product_layers = result.scalars().all()
     if not target_product_layers:
-        raise HTTPException(400, "Product has no layers assigned")
+        raise HTTPException(status_code=400, detail="Product has no layers assigned")
 
     # 2. Validate backbone exists and is_backbone=True
     backbone = await db.get(Product, backbone_product_id)
     if not backbone:
-        raise HTTPException(404, "Backbone product not found")
+        raise HTTPException(status_code=404, detail="Backbone product not found")
     if not backbone.is_backbone:
-        raise HTTPException(400, "Selected product is not a backbone")
+        raise HTTPException(status_code=400, detail="Selected product is not a backbone")
 
     # 3. Build backbone lookup: {layer_id: conditions}
     result = await db.execute(
@@ -64,7 +64,7 @@ async def create_project(
     )
     existing = result.scalars().first()
     if existing:
-        raise HTTPException(409, "Active project already exists for this product")
+        raise HTTPException(status_code=409, detail="Active project already exists for this product")
 
     # 5. Create Project
     project = Project(
@@ -121,7 +121,7 @@ async def get_project_detail(db: AsyncSession, project_id: int) -> Project:
     )
     project = result.scalars().first()
     if not project:
-        raise HTTPException(404, "Project not found")
+        raise HTTPException(status_code=404, detail="Project not found")
     return project
 
 
@@ -199,9 +199,9 @@ async def revise_project(
     )
     original = result.scalars().first()
     if not original:
-        raise HTTPException(404, "Project not found")
+        raise HTTPException(status_code=404, detail="Project not found")
     if original.status != "approved":
-        raise HTTPException(400, f"Can only revise approved projects. Current status: {original.status}")
+        raise HTTPException(status_code=400, detail=f"Can only revise approved projects. Current status: {original.status}")
 
     # 2. Check no active project exists for same product
     result = await db.execute(
@@ -213,7 +213,7 @@ async def revise_project(
     )
     existing = result.scalars().first()
     if existing:
-        raise HTTPException(409, f"Active project (status={existing.status}) already exists for this product")
+        raise HTTPException(status_code=409, detail=f"Active project (status={existing.status}) already exists for this product")
 
     # 3. Archive original
     original.status = "archived"

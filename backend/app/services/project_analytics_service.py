@@ -74,12 +74,12 @@ async def get_version_history(
     # Get project with product relationship
     project = await db.get(Project, project_id)
     if not project:
-        raise HTTPException(404, "Project not found")
+        raise HTTPException(status_code=404, detail="Project not found")
 
     # Get product info
     product = await db.get(Product, project.product_id)
     if not product:
-        raise HTTPException(404, "Product not found")
+        raise HTTPException(status_code=404, detail="Product not found")
 
     # Query all projects with same product_id, ordered by revision DESC
     result = await db.execute(

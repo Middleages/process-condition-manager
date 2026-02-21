@@ -12,6 +12,7 @@ from app.schemas.admin import (
     RecipeMappingCreate,
     RecipeMappingUpdate,
     ValidationRulesReplace,
+    ValidationRulesReplaceResponse,
     BulkUploadResponse,
     ColumnSelectOptionsResponse,
     SelectOptionsUpdate,
@@ -110,7 +111,7 @@ async def update_select_options(
     return await admin_service.update_select_options(db, column_id, data)
 
 
-@router.put("/columns/{column_id}/validations", response_model=dict)
+@router.put("/columns/{column_id}/validations", response_model=ValidationRulesReplaceResponse)
 async def replace_column_validations(
     column_id: int,
     data: ValidationRulesReplace,
