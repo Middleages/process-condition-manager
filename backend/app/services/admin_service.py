@@ -110,11 +110,11 @@ async def create_mapping(
     # Validate column exists
     col_def = await db.get(ColumnDefinition, data.column_id)
     if not col_def:
-        raise HTTPException(404, "Column not found")
+        raise HTTPException(status_code=404, detail="Column not found")
 
     # Validate value_transform
     if data.value_transform is not None and data.value_transform not in ALLOWED_VALUE_TRANSFORMS:
-        raise ValueError(f"Invalid value_transform: {data.value_transform}")
+        raise HTTPException(status_code=422, detail=f"Invalid value_transform: {data.value_transform}")
 
     # Create mapping
     mapping = RecipeXmlMapping(
@@ -140,11 +140,11 @@ async def update_mapping(
     # Find mapping
     mapping = await db.get(RecipeXmlMapping, mapping_id)
     if not mapping:
-        raise HTTPException(404, "Mapping not found")
+        raise HTTPException(status_code=404, detail="Mapping not found")
 
     # Validate value_transform if provided
     if data.value_transform is not None and data.value_transform not in ALLOWED_VALUE_TRANSFORMS:
-        raise ValueError(f"Invalid value_transform: {data.value_transform}")
+        raise HTTPException(status_code=422, detail=f"Invalid value_transform: {data.value_transform}")
 
     # Update fields
     if data.xpath is not None:
@@ -153,7 +153,7 @@ async def update_mapping(
         # Validate new column exists
         col_def = await db.get(ColumnDefinition, data.column_id)
         if not col_def:
-            raise HTTPException(404, "Column not found")
+            raise HTTPException(status_code=404, detail="Column not found")
         mapping.column_id = data.column_id
     if data.value_transform is not None:
         mapping.value_transform = data.value_transform
@@ -174,7 +174,7 @@ async def delete_mapping(
     """Delete a recipe XML mapping."""
     mapping = await db.get(RecipeXmlMapping, mapping_id)
     if not mapping:
-        raise HTTPException(404, "Mapping not found")
+        raise HTTPException(status_code=404, detail="Mapping not found")
 
     await db.delete(mapping)
     await db.commit()
@@ -322,26 +322,29 @@ async def replace_validations(
     # Validate column exists
     col_def = await db.get(ColumnDefinition, column_id)
     if not col_def:
-        raise HTTPException(404, "Column not found")
+        raise HTTPException(status_code=404, detail="Column not found")
 
     # Validate all rules before making changes
     for rule in rules:
         # Validate rule_type
         if rule.rule_type not in ALLOWED_RULE_TYPES:
-            raise ValueError(f"Invalid rule_type: {rule.rule_type}. Must be one of: {', '.join(ALLOWED_RULE_TYPES)}")
+            raise HTTPException(status_code=422, detail=f"Invalid rule_type: {rule.rule_type}. Must be one of: {', '.join(ALLOWED_RULE_TYPES)}")
 
         # Validate rule_config for specific rule types
         if rule.rule_type == "range":
             if "min" not in rule.rule_config or "max" not in rule.rule_config:
-                raise ValueError("Range rule requires 'min' and 'max' in rule_config")
+                raise HTTPException(status_code=422, detail="Range rule requires 'min' and 'max' in rule_config")
 
         if rule.rule_type == "conditional_required":
             required_fields = ["condition_column", "condition_value", "operator"]
             missing_fields = [f for f in required_fields if f not in rule.rule_config]
             if missing_fields:
-                raise ValueError(
-                    f"conditional_required rule requires: {', '.join(required_fields)}. "
-                    f"Missing: {', '.join(missing_fields)}"
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        f"conditional_required rule requires: {', '.join(required_fields)}. "
+                        f"Missing: {', '.join(missing_fields)}"
+                    ),
                 )
 
         if rule.rule_type == "cross_layer":
@@ -380,7 +383,7 @@ async def bulk_upload_validations(
         wb = load_workbook(file)
         ws = wb.active
     except Exception as e:
-        raise HTTPException(400, f"Failed to read Excel file: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Failed to read Excel file: {str(e)}")
 
     # Read header row
     headers = [cell.value for cell in ws[1]]
@@ -511,9 +514,9 @@ async def update_select_options(
     """Update select_options for a column."""
     col = await db.get(ColumnDefinition, column_id)
     if not col:
-        raise HTTPException(404, "Column not found")
+        raise HTTPException(status_code=404, detail="Column not found")
     if col.data_type != "select":
-        raise HTTPException(400, "Column is not a select type")
+        raise HTTPException(status_code=400, detail="Column is not a select type")
 
     col.select_options = data.select_options
     await db.commit()

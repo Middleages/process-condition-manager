@@ -28,9 +28,9 @@ async def replace_layer_backbone(
     # 1. Load project, verify status == 'draft'
     project = await db.get(Project, project_id)
     if not project:
-        raise HTTPException(404, "Project not found")
+        raise HTTPException(status_code=404, detail="Project not found")
     if project.status != "draft":
-        raise HTTPException(400, "Can only replace backbone in draft projects")
+        raise HTTPException(status_code=400, detail="Can only replace backbone in draft projects")
 
     # 2. Load the target project_layer
     result = await db.execute(
@@ -43,14 +43,14 @@ async def replace_layer_backbone(
     )
     target_pl = result.scalars().first()
     if not target_pl:
-        raise HTTPException(404, "Project layer not found")
+        raise HTTPException(status_code=404, detail="Project layer not found")
 
     # 3. Validate source product is backbone
     source_product = await db.get(Product, source_product_id)
     if not source_product:
-        raise HTTPException(404, "Source product not found")
+        raise HTTPException(status_code=404, detail="Source product not found")
     if not source_product.is_backbone:
-        raise HTTPException(400, "Source product is not a backbone")
+        raise HTTPException(status_code=400, detail="Source product is not a backbone")
 
     # 4. Find matching layer in source product
     layer_name = source_layer_name or target_pl.layer.layer_name
@@ -120,14 +120,14 @@ async def add_layer(
     # 1. Verify project status == 'draft'
     project = await db.get(Project, project_id)
     if not project:
-        raise HTTPException(404, "Project not found")
+        raise HTTPException(status_code=404, detail="Project not found")
     if project.status != "draft":
-        raise HTTPException(400, "Can only add layers in draft projects")
+        raise HTTPException(status_code=400, detail="Can only add layers in draft projects")
 
     # 2. Verify layer exists
     layer = await db.get(Layer, layer_id)
     if not layer:
-        raise HTTPException(404, "Layer not found")
+        raise HTTPException(status_code=404, detail="Layer not found")
 
     # 3. Check not already in project
     result = await db.execute(
@@ -137,7 +137,7 @@ async def add_layer(
         )
     )
     if result.scalars().first():
-        raise HTTPException(409, f"Layer '{layer.layer_name}' already exists in this project")
+        raise HTTPException(status_code=409, detail=f"Layer '{layer.layer_name}' already exists in this project")
 
     # 4. Get conditions from source if provided
     conditions = {}
@@ -147,9 +147,9 @@ async def add_layer(
     if source_product_id is not None:
         source_product = await db.get(Product, source_product_id)
         if not source_product:
-            raise HTTPException(404, "Source product not found")
+            raise HTTPException(status_code=404, detail="Source product not found")
         if not source_product.is_backbone:
-            raise HTTPException(400, "Source product is not a backbone")
+            raise HTTPException(status_code=400, detail="Source product is not a backbone")
 
         # Find the matching layer
         match_name = source_layer_name or layer.layer_name
@@ -195,9 +195,9 @@ async def delete_layer(
     # 1. Verify project status == 'draft'
     project = await db.get(Project, project_id)
     if not project:
-        raise HTTPException(404, "Project not found")
+        raise HTTPException(status_code=404, detail="Project not found")
     if project.status != "draft":
-        raise HTTPException(400, "Can only delete layers in draft projects")
+        raise HTTPException(status_code=400, detail="Can only delete layers in draft projects")
 
     # 2. Verify project_layer belongs to this project
     result = await db.execute(
@@ -208,7 +208,7 @@ async def delete_layer(
     )
     pl = result.scalars().first()
     if not pl:
-        raise HTTPException(404, "Project layer not found")
+        raise HTTPException(status_code=404, detail="Project layer not found")
 
     # 3. Delete (change_logs cascade via FK)
     await db.delete(pl)

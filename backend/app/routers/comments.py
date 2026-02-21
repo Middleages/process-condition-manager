@@ -16,7 +16,7 @@ from app.services import comment_service
 router = APIRouter(prefix="/api/projects/{project_id}/comments", tags=["comments"])
 
 
-@router.post("/", response_model=CommentResponse, status_code=201)
+@router.post("", response_model=CommentResponse, status_code=201)
 async def create_comment(
     project_id: int,
     data: CommentCreate,
@@ -28,7 +28,7 @@ async def create_comment(
     return result
 
 
-@router.get("/", response_model=CommentListResponse)
+@router.get("", response_model=CommentListResponse)
 async def list_comments(
     project_id: int,
     is_resolved: bool | None = None,

@@ -7,7 +7,7 @@ Business logic (HTTPException, validation) remains in the service layer.
 """
 from datetime import datetime
 
-from sqlalchemy import case, func, select
+from sqlalchemy import case, func, literal, null, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import ChangeLog, ProjectLayer, ProjectStatusLog, User
@@ -164,6 +164,118 @@ class ChangeLogRepository:
         )
         result = await db.execute(query)
         return result.all()
+
+    @staticmethod
+    async def fetch_timeline(
+        db: AsyncSession,
+        project_id: int,
+        project_layer_ids: list[int],
+        *,
+        change_type: str | None = None,
+        changed_by: int | None = None,
+        include_status_changes: bool = True,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[dict], int]:
+        """Fetch merged timeline entries using UNION ALL (DB-side sort and pagination).
+
+        Returns a list of raw dicts with keys:
+          entry_id, entry_type, timestamp, user_id, user_name,
+          layer_name, column_name, old_value, new_value, change_type_val,
+          from_status, to_status, comment
+
+        Args:
+            db: Async database session
+            project_id: Project ID (for status logs filter)
+            project_layer_ids: List of project_layer IDs (for change logs filter)
+            change_type: Optional filter by change type (change_logs only)
+            changed_by: Optional filter by user ID
+            include_status_changes: Whether to include status_change entries
+            limit: Page size
+            offset: Row offset for pagination
+
+        Returns:
+            Tuple of (list of row dicts, total count)
+        """
+        # Build change_logs branch (only when project_layer_ids is non-empty)
+        branches = []
+
+        if project_layer_ids:
+            cl_filter = ChangeLog.project_layer_id.in_(project_layer_ids)
+            if change_type:
+                cl_filter = cl_filter & (ChangeLog.change_type == change_type)
+            if changed_by:
+                cl_filter = cl_filter & (ChangeLog.changed_by == changed_by)
+
+            cl_branch = (
+                select(
+                    ChangeLog.id.label("row_id"),
+                    literal("cell_change").label("entry_type"),
+                    ChangeLog.changed_at.label("timestamp"),
+                    User.id.label("user_id"),
+                    User.display_name.label("user_name"),
+                    Layer.layer_name.label("layer_name"),
+                    ChangeLog.column_name.label("column_name"),
+                    ChangeLog.old_value.label("old_value"),
+                    ChangeLog.new_value.label("new_value"),
+                    ChangeLog.change_type.label("change_type_val"),
+                    null().label("from_status"),
+                    null().label("to_status"),
+                    null().label("comment"),
+                )
+                .join(User, ChangeLog.changed_by == User.id)
+                .join(ProjectLayer, ChangeLog.project_layer_id == ProjectLayer.id)
+                .join(Layer, ProjectLayer.layer_id == Layer.id)
+                .where(cl_filter)
+            )
+            branches.append(cl_branch)
+
+        if include_status_changes:
+            sl_filter = ProjectStatusLog.project_id == project_id
+            if changed_by:
+                sl_filter = sl_filter & (ProjectStatusLog.changed_by == changed_by)
+
+            sl_branch = (
+                select(
+                    ProjectStatusLog.id.label("row_id"),
+                    literal("status_change").label("entry_type"),
+                    ProjectStatusLog.changed_at.label("timestamp"),
+                    User.id.label("user_id"),
+                    User.display_name.label("user_name"),
+                    null().label("layer_name"),
+                    null().label("column_name"),
+                    null().label("old_value"),
+                    null().label("new_value"),
+                    null().label("change_type_val"),
+                    ProjectStatusLog.from_status.label("from_status"),
+                    ProjectStatusLog.to_status.label("to_status"),
+                    ProjectStatusLog.comment.label("comment"),
+                )
+                .join(User, ProjectStatusLog.changed_by == User.id)
+                .where(sl_filter)
+            )
+            branches.append(sl_branch)
+
+        if not branches:
+            return [], 0
+
+        combined = union_all(*branches).subquery("timeline_union")
+
+        # Total count (before pagination)
+        count_query = select(func.count()).select_from(combined)
+        total = (await db.execute(count_query)).scalar() or 0
+
+        # Paginated rows ordered by timestamp DESC
+        rows_query = (
+            select(combined)
+            .order_by(combined.c.timestamp.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        result = await db.execute(rows_query)
+        rows = result.mappings().all()
+
+        return [dict(r) for r in rows], total
 
     @staticmethod
     async def fetch_change_summary_stats(

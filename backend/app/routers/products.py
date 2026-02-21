@@ -47,7 +47,7 @@ async def get_product_layers(
 ):
     product = await db.get(Product, product_id)
     if not product:
-        raise HTTPException(404, "Product not found")
+        raise HTTPException(status_code=404, detail="Product not found")
 
     result = await db.execute(
         select(ProductLayer)

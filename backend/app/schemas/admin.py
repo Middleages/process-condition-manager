@@ -88,6 +88,12 @@ class ValidationRulesReplace(BaseModel):
     validations: list[ValidationRuleCreate] = Field(..., description="New validation rules")
 
 
+class ValidationRulesReplaceResponse(BaseModel):
+    """Response schema for replacing validation rules for a column."""
+    column_id: int
+    rules_replaced: int
+
+
 class ColumnValidationResponse(BaseModel):
     """Response schema for a column validation rule."""
     id: int

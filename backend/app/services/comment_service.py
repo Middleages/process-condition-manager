@@ -66,14 +66,12 @@ async def create_comment(
 
     db.add(review_comment)
     await db.flush()
-    await db.refresh(review_comment)
+    await db.commit()
 
     # Fetch the newly created comment with all joins in a single query
     comment_data = await CommentRepository.fetch_comment_with_joins(
         db, review_comment.id, project_id
     )
-
-    await db.commit()
 
     return comment_data
 
@@ -182,14 +180,12 @@ async def update_comment(
         comment.resolved_by = data.resolved_by
 
     await db.flush()
-    await db.refresh(comment)
+    await db.commit()
 
     # Fetch the updated comment with all joins in a single query
     comment_data = await CommentRepository.fetch_comment_with_joins(
         db, comment_id, project_id
     )
-
-    await db.commit()
 
     return comment_data
 

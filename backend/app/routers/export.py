@@ -22,12 +22,12 @@ from app.services.export_history_service import ExportHistoryService
 from app.services.export_service import ExportService
 from app.services.export_validation_service import ExportValidationService
 
-router = APIRouter(tags=["export"])
+router = APIRouter(prefix="/api", tags=["export"])
 
 _export_service = ExportService()
 
 
-@router.get("/api/export/systems", response_model=list[ExportSystemResponse])
+@router.get("/export/systems", response_model=list[ExportSystemResponse])
 async def list_export_systems(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_active_user),
@@ -36,7 +36,7 @@ async def list_export_systems(
     return await _export_service.get_systems(db)
 
 
-@router.post("/api/projects/{project_id}/export")
+@router.post("/projects/{project_id}/export")
 async def export_project(
     project_id: int,
     body: ExportRequest,
@@ -129,7 +129,7 @@ async def export_project(
 
 
 @router.get(
-    "/api/projects/{project_id}/export/preview/{system_id}",
+    "/projects/{project_id}/export/preview/{system_id}",
     response_model=ExportPreviewResponse,
 )
 async def preview_export(
@@ -166,7 +166,7 @@ async def preview_export(
 
 
 @router.post(
-    "/api/projects/{project_id}/export/validate",
+    "/projects/{project_id}/export/validate",
     response_model=ExportValidationResponse,
 )
 async def validate_export(
@@ -187,7 +187,7 @@ async def validate_export(
 
 
 @router.get(
-    "/api/projects/{project_id}/export/history",
+    "/projects/{project_id}/export/history",
     response_model=ExportHistoryListResponse,
 )
 async def get_export_history(

@@ -20,9 +20,9 @@ async def bulk_save_conditions(
     # 1. Load project and validate status
     project = await db.get(Project, project_id)
     if not project:
-        raise HTTPException(404, "Project not found")
+        raise HTTPException(status_code=404, detail="Project not found")
     if project.status != "draft":
-        raise HTTPException(400, "Can only edit draft projects")
+        raise HTTPException(status_code=400, detail="Can only edit draft projects")
 
     # 2. Conflict detection
     if project.updated_at and request.expected_updated_at:
@@ -30,8 +30,8 @@ async def bulk_save_conditions(
         client_time = request.expected_updated_at.replace(tzinfo=timezone.utc) if request.expected_updated_at.tzinfo is None else request.expected_updated_at
         if server_time > client_time:
             raise HTTPException(
-                409,
-                f"Project has been modified by another user. Server updated_at: {project.updated_at.isoformat()}"
+                status_code=409,
+                detail=f"Project has been modified by another user. Server updated_at: {project.updated_at.isoformat()}"
             )
 
     # 3. Load existing project_layers
@@ -50,7 +50,7 @@ async def bulk_save_conditions(
         new_conditions = layer_update.conditions
 
         if pl_id not in existing_map:
-            raise HTTPException(400, f"Invalid project_layer_id: {pl_id}")
+            raise HTTPException(status_code=400, detail=f"Invalid project_layer_id: {pl_id}")
 
         existing_pl = existing_map[pl_id]
         old_conditions = existing_pl.conditions or {}
@@ -98,7 +98,7 @@ async def get_project_conditions(
     # Verify project exists
     project = await db.get(Project, project_id)
     if not project:
-        raise HTTPException(404, "Project not found")
+        raise HTTPException(status_code=404, detail="Project not found")
 
     result = await db.execute(
         select(ProjectLayer)

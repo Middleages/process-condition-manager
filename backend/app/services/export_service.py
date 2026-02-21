@@ -3,6 +3,7 @@ import logging
 import zipfile
 from typing import Any
 
+from fastapi import HTTPException
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -76,7 +77,7 @@ class ExportService:
                 product_name, layers_data, mappings, unit_mappings, external_data
             )
         else:
-            raise ValueError(f"Unknown format type: {system.format_type}")
+            raise HTTPException(status_code=422, detail=f"Unknown format type: {system.format_type}")
 
         filename = f"{sanitize_filename(product_name)}_{sanitize_filename(system.system_name)}.xlsx"
         return excel_bytes, filename
@@ -111,7 +112,7 @@ class ExportService:
                 product_name, layers_data, mappings, unit_mappings, external_data
             )
         else:
-            raise ValueError(f"Unknown format type: {system.format_type}")
+            raise HTTPException(status_code=422, detail=f"Unknown format type: {system.format_type}")
 
         return {
             "system_name": system.system_name,
@@ -153,7 +154,7 @@ class ExportService:
         result = await db.execute(query)
         project = result.scalar_one_or_none()
         if not project:
-            raise ValueError(f"Project {project_id} not found")
+            raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
         return project
 
     async def _get_export_system(self, db: AsyncSession, system_id: int) -> ExportSystem:
@@ -162,7 +163,7 @@ class ExportService:
         result = await db.execute(query)
         system = result.scalar_one_or_none()
         if not system:
-            raise ValueError(f"Export system {system_id} not found")
+            raise HTTPException(status_code=404, detail=f"Export system {system_id} not found")
         return system
 
     async def _get_column_mappings(

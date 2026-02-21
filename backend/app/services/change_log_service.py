@@ -13,6 +13,8 @@ from app.schemas.project import (
     TimelineResponse,
     CellHistoryItem,
     CellHistoryResponse,
+    StatusHistoryItem,
+    StatusHistoryResponse,
 )
 
 
@@ -35,7 +37,7 @@ async def get_change_logs(
     # Verify project exists
     project = await db.get(Project, project_id)
     if not project:
-        raise HTTPException(404, "Project not found")
+        raise HTTPException(status_code=404, detail="Project not found")
 
     # Fetch project_layer_id -> layer_name map (optionally filtered by layer_id)
     pl_layer_names = await ChangeLogRepository.fetch_project_layer_map(
@@ -92,6 +94,9 @@ async def get_timeline(
 ) -> TimelineResponse:
     """Get a merged timeline of cell changes and status changes for a project.
 
+    Uses a UNION ALL query (DB-side sort + pagination) to avoid loading all
+    records into memory.
+
     Optional filters:
     - layer_id: filter by layer (matched via project_layers.layer_id)
     - change_type: filter by change type (manual/backbone/recipe); when active,
@@ -102,7 +107,7 @@ async def get_timeline(
     # Verify project exists
     project = await db.get(Project, project_id)
     if not project:
-        raise HTTPException(404, "Project not found")
+        raise HTTPException(status_code=404, detail="Project not found")
 
     # Fetch project_layer_id -> layer_name map (optionally filtered by layer_id)
     pl_layer_names = await ChangeLogRepository.fetch_project_layer_map(
@@ -110,69 +115,58 @@ async def get_timeline(
     )
     pl_ids = list(pl_layer_names.keys())
 
-    all_entries: list[TimelineEntry] = []
-
-    # Fetch change_logs with user join
-    if pl_ids:
-        cl_rows = await ChangeLogRepository.fetch_change_logs(
-            db,
-            pl_ids,
-            change_type=change_type,
-            changed_by=changed_by,
-            limit=10_000_000,  # fetch all for in-memory merge
-            offset=0,
-        )
-        rows, _ = cl_rows
-        for log, display_name in rows:
-            entry = TimelineEntry(
-                id=f"change-{log.id}",
-                entry_type="cell_change",
-                timestamp=log.changed_at,
-                user_id=log.changed_by,
-                user_name=display_name,
-                details=TimelineEntryDetails(
-                    layer_name=pl_layer_names.get(log.project_layer_id, ""),
-                    column_name=log.column_name,
-                    old_value=log.old_value,
-                    new_value=log.new_value,
-                    change_type=log.change_type,
-                ),
-            )
-            all_entries.append(entry)
-
     # When change_type filter is active (manual/backbone/recipe), exclude status_change entries
     cell_change_types = {"manual", "backbone", "recipe"}
     include_status_changes = change_type is None or change_type not in cell_change_types
 
-    if include_status_changes:
-        sl_rows = await ChangeLogRepository.fetch_status_logs(
-            db, project_id, changed_by=changed_by
-        )
-        for log, display_name, user_id in sl_rows:
+    # DB-side UNION ALL merge with pagination
+    page_offset = (page - 1) * limit
+    raw_rows, total = await ChangeLogRepository.fetch_timeline(
+        db,
+        project_id,
+        pl_ids,
+        change_type=change_type,
+        changed_by=changed_by,
+        include_status_changes=include_status_changes,
+        limit=limit,
+        offset=page_offset,
+    )
+
+    # Build TimelineEntry objects from raw row dicts
+    paginated_entries: list[TimelineEntry] = []
+    for row in raw_rows:
+        entry_type = row["entry_type"]
+        if entry_type == "cell_change":
             entry = TimelineEntry(
-                id=f"status-{log.id}",
-                entry_type="status_change",
-                timestamp=log.changed_at,
-                user_id=user_id,
-                user_name=display_name,
+                id=f"change-{row['row_id']}",
+                entry_type="cell_change",
+                timestamp=row["timestamp"],
+                user_id=row["user_id"],
+                user_name=row["user_name"],
                 details=TimelineEntryDetails(
-                    from_status=log.from_status,
-                    to_status=log.to_status,
-                    comment=log.comment,
+                    layer_name=row.get("layer_name") or "",
+                    column_name=row.get("column_name"),
+                    old_value=row.get("old_value"),
+                    new_value=row.get("new_value"),
+                    change_type=row.get("change_type_val"),
                 ),
             )
-            all_entries.append(entry)
+        else:
+            entry = TimelineEntry(
+                id=f"status-{row['row_id']}",
+                entry_type="status_change",
+                timestamp=row["timestamp"],
+                user_id=row["user_id"],
+                user_name=row["user_name"],
+                details=TimelineEntryDetails(
+                    from_status=row.get("from_status"),
+                    to_status=row.get("to_status"),
+                    comment=row.get("comment"),
+                ),
+            )
+        paginated_entries.append(entry)
 
-    # Sort all entries by timestamp DESC
-    all_entries.sort(key=lambda e: e.timestamp, reverse=True)
-
-    total = len(all_entries)
-
-    # Apply pagination
-    page_offset = (page - 1) * limit
-    paginated_entries = all_entries[page_offset: page_offset + limit]
-
-    # Group by date (YYYY-MM-DD)
+    # Group by date (YYYY-MM-DD) — rows are already sorted DESC by the DB
     groups_dict: dict[str, list[TimelineEntry]] = {}
     for entry in paginated_entries:
         date_str = entry.timestamp.strftime("%Y-%m-%d")
@@ -200,12 +194,12 @@ async def get_cell_history(
     # Verify project exists
     project = await db.get(Project, project_id)
     if not project:
-        raise HTTPException(404, "Project not found")
+        raise HTTPException(status_code=404, detail="Project not found")
 
     # Verify project_layer_id belongs to this project and get layer_name
     pl_layer_names = await ChangeLogRepository.fetch_project_layer_map(db, project_id)
     if project_layer_id not in pl_layer_names:
-        raise HTTPException(404, "Project layer not found in this project")
+        raise HTTPException(status_code=404, detail="Project layer not found in this project")
 
     layer_name = pl_layer_names[project_layer_id]
 
@@ -231,3 +225,37 @@ async def get_cell_history(
         total=len(items),
         items=items,
     )
+
+
+async def get_status_history(
+    db: AsyncSession,
+    project_id: int,
+) -> StatusHistoryResponse:
+    """Get status change history for a project.
+
+    Args:
+        db: Database session
+        project_id: Project ID to query status logs for
+
+    Returns:
+        StatusHistoryResponse with history list sorted by changed_at DESC
+    """
+    rows = await ChangeLogRepository.fetch_status_logs(db, project_id)
+
+    history = [
+        StatusHistoryItem(
+            id=log.id,
+            from_status=log.from_status,
+            to_status=log.to_status,
+            changed_by=log.changed_by,
+            changer_name=display_name,
+            comment=log.comment,
+            changed_at=log.changed_at,
+        )
+        for log, display_name, _user_id in rows
+    ]
+
+    # Sort by changed_at DESC (fetch_status_logs does not guarantee order)
+    history.sort(key=lambda h: h.changed_at, reverse=True)
+
+    return StatusHistoryResponse(history=history)
