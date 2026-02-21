@@ -10,7 +10,7 @@ interface EditingRow {
   category_name: string
 }
 
-export default function CategoryManagementPanel() {
+export function CategoryManagementPanel() {
   const { data: categories = [], isLoading } = useAdminCategories()
   const updateMutation = useUpdateCategory()
   const reorderMutation = useReorderCategories()

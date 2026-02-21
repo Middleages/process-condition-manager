@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Button } from '@/components/ui/button'
 import { useBackboneProducts } from '@/hooks/useProducts'
 import { useAddLayer } from '@/hooks/useProjects'
-import { useUserStore } from '@/stores/useUserStore'
+import { useAuthStore } from '@/stores/useAuthStore'
 import { useToastStore } from '@/stores/useToastStore'
 import { Loader2 } from 'lucide-react'
 import { fetchProductLayers } from '@/api/products'
@@ -24,7 +24,7 @@ export function LayerAddModal({
   existingLayers,
   allLayers,
 }: Props) {
-  const currentUserId = useUserStore((s) => s.currentUserId)
+  const currentUserId = useAuthStore((s) => s.user?.id ?? null)
   const addToast = useToastStore((s) => s.addToast)
   const { data: backboneProducts = [] } = useBackboneProducts()
   const addLayer = useAddLayer(projectId)

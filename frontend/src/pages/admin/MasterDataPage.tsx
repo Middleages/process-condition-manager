@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import LineManagementPanel from '@/components/admin/LineManagementPanel'
-import ProductManagementPanel from '@/components/admin/ProductManagementPanel'
-import ColumnMetadataPanel from '@/components/admin/ColumnMetadataPanel'
-import CategoryManagementPanel from '@/components/admin/CategoryManagementPanel'
+import { LineManagementPanel } from '@/components/admin/LineManagementPanel'
+import { ProductManagementPanel } from '@/components/admin/ProductManagementPanel'
+import { ColumnMetadataPanel } from '@/components/admin/ColumnMetadataPanel'
+import { CategoryManagementPanel } from '@/components/admin/CategoryManagementPanel'
 
 type Tab = 'lines' | 'products' | 'columns' | 'categories'
 

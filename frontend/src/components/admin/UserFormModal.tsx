@@ -17,7 +17,7 @@ interface UserFormModalProps {
   user?: AdminUser | null
 }
 
-export default function UserFormModal({ isOpen, onClose, user }: UserFormModalProps) {
+export function UserFormModal({ isOpen, onClose, user }: UserFormModalProps) {
   const isEdit = !!user
 
   const [username, setUsername] = useState('')

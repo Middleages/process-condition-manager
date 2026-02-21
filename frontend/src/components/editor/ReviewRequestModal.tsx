@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { useChangeSummary, useStatusTransition } from '@/hooks/useComments'
-import { useUserStore } from '@/stores/useUserStore'
+import { useAuthStore } from '@/stores/useAuthStore'
 import { useToastStore } from '@/stores/useToastStore'
 import { Loader2, CheckCircle2, AlertTriangle, FileText } from 'lucide-react'
 
@@ -14,7 +14,7 @@ interface Props {
 }
 
 export function ReviewRequestModal({ open, onOpenChange, projectId, validationErrorCount }: Props) {
-  const currentUserId = useUserStore((s) => s.currentUserId)
+  const currentUserId = useAuthStore((s) => s.user?.id ?? null)
   const addToast = useToastStore((s) => s.addToast)
   const { data: summary, isLoading: summaryLoading } = useChangeSummary(projectId)
   const statusTransition = useStatusTransition(projectId)

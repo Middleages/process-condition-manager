@@ -1,3 +1,5 @@
+import { useNavigate } from 'react-router-dom'
+import { useVersionHistory } from '@/hooks/useProjects'
 import type { ProjectStatus } from '@/types'
 import { Info, AlertTriangle, CheckCircle2, XCircle, Archive } from 'lucide-react'
 
@@ -48,12 +50,24 @@ const statusConfig: Record<ProjectStatus, {
 interface Props {
   status: ProjectStatus
   revision?: number
-  onBackToCurrent?: () => void
+  projectId?: number
 }
 
-export function StatusBanner({ status, revision, onBackToCurrent }: Props) {
+export function StatusBanner({ status, revision, projectId }: Props) {
+  const navigate = useNavigate()
+  const { data: versionData } = useVersionHistory(
+    status === 'archived' && projectId ? projectId : 0
+  )
   const config = statusConfig[status]
   const Icon = config.icon
+
+  const handleBackToCurrent = () => {
+    if (!versionData) return
+    const latestVersion = versionData.versions.find((v) => v.is_latest)
+    if (latestVersion) {
+      navigate(`/projects/${latestVersion.project_id}/edit`)
+    }
+  }
 
   return (
     <div className={`flex items-center gap-2 px-4 py-2 border-b ${config.bg} ${config.border} ${config.text} text-sm shrink-0`}>
@@ -63,12 +77,12 @@ export function StatusBanner({ status, revision, onBackToCurrent }: Props) {
           ? `보관됨 (v${revision}). 이전 버전입니다.`
           : config.message}
       </span>
-      {status === 'archived' && onBackToCurrent && (
+      {status === 'archived' && versionData && (
         <>
           <div className="flex-1" />
           <button
             type="button"
-            onClick={onBackToCurrent}
+            onClick={handleBackToCurrent}
             className="px-3 py-1 text-xs font-medium bg-white/80 hover:bg-white border border-gray-300 rounded"
           >
             최신 버전으로 이동

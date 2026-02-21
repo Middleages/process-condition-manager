@@ -98,6 +98,24 @@ export interface BulkSaveResponse {
   updated_at: string
 }
 
+// ========== Recipe Apply ==========
+export interface RecipeApplyItem {
+  project_layer_id: number
+  column_name: string
+  new_value: unknown
+}
+
+export interface RecipeApplyRequest {
+  changes: RecipeApplyItem[]
+  applied_by: number
+}
+
+export interface RecipeApplyResponse {
+  applied_count: number
+  change_log_count: number
+  updated_at: string
+}
+
 export interface ValidationError {
   layer_id: number
   layer_name: string

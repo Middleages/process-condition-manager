@@ -2,11 +2,11 @@ import { useState } from 'react'
 import { Plus, Pencil, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import ProductFormModal from './ProductFormModal'
+import { ProductFormModal } from './ProductFormModal'
 import { useAdminProducts, useDeleteProduct, useAdminLines } from '@/hooks/useAdminMaster'
 import type { ProductResponse } from '@/api/adminMaster'
 
-export default function ProductManagementPanel() {
+export function ProductManagementPanel() {
   const [selectedLineId, setSelectedLineId] = useState<string>('')
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [selectedProduct, setSelectedProduct] = useState<ProductResponse | null>(null)

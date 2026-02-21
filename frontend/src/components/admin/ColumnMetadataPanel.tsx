@@ -13,7 +13,7 @@ interface EditingRow {
   is_required: boolean
 }
 
-export default function ColumnMetadataPanel() {
+export function ColumnMetadataPanel() {
   const { data: categories = [], isLoading } = useColumns()
   const updateMutation = useUpdateColumnMetadata()
   const [editingRow, setEditingRow] = useState<EditingRow | null>(null)

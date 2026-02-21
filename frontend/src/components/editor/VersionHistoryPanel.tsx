@@ -4,6 +4,7 @@ import { ChevronDown, ChevronRight, Loader2 } from 'lucide-react'
 import { useVersionHistory, useVersionDiff } from '@/hooks/useProjects'
 import type { ProjectStatus, VersionItem } from '@/types'
 import { VersionDiffView } from './VersionDiffView'
+import { formatDate } from '@/lib/utils'
 
 interface Props {
   projectId: number
@@ -26,18 +27,6 @@ const statusBadgeClass: Record<ProjectStatus, string> = {
   approved: 'bg-green-100 text-green-700',
   rejected: 'bg-red-100 text-red-700',
   archived: 'bg-gray-100 text-gray-600',
-}
-
-function formatDate(dateStr: string): string {
-  try {
-    const d = new Date(dateStr)
-    const year = d.getFullYear()
-    const month = String(d.getMonth() + 1).padStart(2, '0')
-    const day = String(d.getDate()).padStart(2, '0')
-    return `${year}-${month}-${day}`
-  } catch {
-    return dateStr
-  }
 }
 
 // 버전 항목 하나와 그 다음 버전(successor) 간의 diff를 보여주는 서브 컴포넌트

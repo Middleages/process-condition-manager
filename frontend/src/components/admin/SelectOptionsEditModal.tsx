@@ -18,7 +18,7 @@ interface SelectOptionsEditModalProps {
   column: ColumnSelectOptions | null
 }
 
-export default function SelectOptionsEditModal({
+export function SelectOptionsEditModal({
   isOpen,
   onClose,
   column,

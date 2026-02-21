@@ -17,7 +17,7 @@ interface PasswordResetModalProps {
   user: AdminUser | null
 }
 
-export default function PasswordResetModal({ isOpen, onClose, user }: PasswordResetModalProps) {
+export function PasswordResetModal({ isOpen, onClose, user }: PasswordResetModalProps) {
   const [newPassword, setNewPassword] = useState('')
   const [serverError, setServerError] = useState('')
 

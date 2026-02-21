@@ -17,7 +17,7 @@ interface LineFormModalProps {
   line?: LineResponse | null
 }
 
-export default function LineFormModal({ isOpen, onClose, line }: LineFormModalProps) {
+export function LineFormModal({ isOpen, onClose, line }: LineFormModalProps) {
   const isEdit = !!line
   const [lineCode, setLineCode] = useState('')
   const [lineName, setLineName] = useState('')

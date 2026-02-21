@@ -1,5 +1,6 @@
 import { useStatusHistory } from '@/hooks/useComments'
 import { ArrowRight, Clock, Loader2 } from 'lucide-react'
+import { formatDate } from '@/lib/utils'
 
 const statusLabels: Record<string, string> = {
   draft: 'Draft',
@@ -7,17 +8,6 @@ const statusLabels: Record<string, string> = {
   approved: 'Approved',
   rejected: 'Rejected',
   archived: 'Archived',
-}
-
-function formatDate(dateStr: string): string {
-  const d = new Date(dateStr)
-  return d.toLocaleString('ko-KR', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
 }
 
 interface Props {
