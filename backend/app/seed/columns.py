@@ -1,9 +1,17 @@
-"""Column definitions, categories, and validation rules for seed data."""
+"""Column definitions, categories, and validation rules for seed data.
+
+컬럼 정의, 카테고리, 검증 규칙 시드 데이터.
+이 파일에서 공정조건표의 컬럼 구조(~350개)와 입력값 검증 규칙(~80개)을 정의한다.
+컬럼을 추가/수정하려면 COLUMN_DEFS 리스트를, 검증 규칙을 변경하려면 VALIDATION_RULES를 수정한다.
+"""
 
 # ---------------------------------------------------------------------------
-# 1. Column Categories & Definitions (350 columns)
+# 1. 컬럼 카테고리 & 정의 (350개 컬럼)
 # ---------------------------------------------------------------------------
 
+# 카테고리 목록: 조건표 컬럼을 4개 탭으로 그룹핑
+# category_code: 컬럼명 접두사와 일치 (SP_xxx, SC_xxx 등)
+# sort_order: 편집기 UI에서 탭 표시 순서
 CATEGORIES = [
     {"category_code": "SP", "category_name": "Spin / PR", "sort_order": 1},
     {"category_code": "SC", "category_name": "Scanner / Expose", "sort_order": 2},
@@ -11,6 +19,8 @@ CATEGORIES = [
     {"category_code": "DEV", "category_name": "Develop", "sort_order": 4},
 ]
 
+# 스캐너(노광장비) 선택 옵션: SC_TOOL_ID 컬럼의 드롭다운에서 표시됨
+# 새로운 스캐너 장비를 추가할 때 이 리스트에 추가
 SCANNER_TOOL_OPTIONS = [
     "NSR-S322F-01", "NSR-S322F-02", "NSR-S322F-03",
     "NSR-S631E-01", "XT-1400E-01",
@@ -18,12 +28,20 @@ SCANNER_TOOL_OPTIONS = [
     "EUV-3400-01", "EUV-3400-02",
 ]
 
-# (column_name, display_name, category_code, data_type, unit, is_required, select_options)
+# 컬럼 정의 튜플 구조:
+# (column_name,   - DB 저장용 컬럼 키 (JSONB의 키로 사용됨, 접두사가 카테고리 코드)
+#  display_name,  - 화면 표시명 (AG Grid 헤더에 표시)
+#  category_code, - 소속 카테고리 (SP/SC/OVL/DEV)
+#  data_type,     - 데이터 타입 (string/integer/float/select/layer_ref)
+#  unit,          - 단위 (nm, rpm, mJ 등, 없으면 None)
+#  is_required,   - 필수 입력 여부 (True면 빈값 시 검증 오류)
+#  select_options) - select 타입일 때 선택 가능한 값 목록 (없으면 None)
 COLUMN_DEFS: list[tuple] = [
     # -----------------------------------------------------------------------
-    # SP category (~85 columns)
+    # SP 카테고리 (~85개 컬럼): 포토레지스트(PR) 도포 공정 파라미터
+    # PR 종류, 스핀 속도, 베이크 온도/시간, 접착층(HMDS), BARC/TARC 등
     # -----------------------------------------------------------------------
-    # --- existing 20 SP columns (UNCHANGED) ---
+    # --- 기존 20개 SP 컬럼 ---
     ("SP_PR_TYPE", "PR Type", "SP", "select", None, True,
      ["KrF-A01", "KrF-B02", "ArF-C01", "ArF-D01", "EUV-E01"]),
     ("SP_PR_VENDOR", "PR Vendor", "SP", "select", None, False,
@@ -48,7 +66,7 @@ COLUMN_DEFS: list[tuple] = [
      ["SPIN", "SPRAY", "SLIT"]),
     ("SP_HUMIDITY_PCT", "Humidity", "SP", "float", "%", False, None),
     ("SP_BACKSIDE_RINSE", "Backside Rinse", "SP", "select", None, False, ["Y", "N"]),
-    # --- new SP columns (~65) ---
+    # --- 추가 SP 컬럼 (~65개): BARC/TARC, 이중 코팅, 엣지 처리, 분사 조건 등 ---
     ("SP_BARC_USE", "BARC Use", "SP", "select", None, False, ["Y", "N"]),
     ("SP_BARC_TYPE", "BARC Type", "SP", "select", None, False,
      ["ARC-29A", "ARC-40A", "ARC-29B", "DBARC-11", "NONE"]),
@@ -113,7 +131,7 @@ COLUMN_DEFS: list[tuple] = [
     ("SP_PREWET_USE", "Prewet Use", "SP", "select", None, False, ["Y", "N"]),
     ("SP_PREWET_VOL_ml", "Prewet Volume", "SP", "float", "ml", False, None),
     ("SP_PREWET_TIME_sec", "Prewet Time", "SP", "integer", "s", False, None),
-    # --- additional SP columns (10 more -> total SP 85) ---
+    # --- 보충 SP 컬럼 (10개 추가 -> SP 총 85개): 노즐, 스핀 램프, 칠 플레이트 등 ---
     ("SP_NOZZLE_MATERIAL", "Nozzle Material", "SP", "select", None, False,
      ["PTFE", "PEEK", "SS316", "CERAMIC"]),
     ("SP_SPIN_RAMP_TIME_sec", "Spin Ramp Time", "SP", "integer", "s", False, None),
@@ -128,9 +146,10 @@ COLUMN_DEFS: list[tuple] = [
      ["OPEN", "CLOSED", "EXHAUST"]),
 
     # -----------------------------------------------------------------------
-    # SC category (~90 columns)
+    # SC 카테고리 (~90개 컬럼): 스캐너/노광 공정 파라미터
+    # 노광 에너지, 포커스, 조명 모드, 정렬, 레티클, EUV 설정 등
     # -----------------------------------------------------------------------
-    # --- existing 19 SC columns (UNCHANGED) ---
+    # --- 기존 19개 SC 컬럼 ---
     ("SC_TOOL_ID", "Scanner Tool", "SC", "select", None, True, SCANNER_TOOL_OPTIONS),
     ("SC_RETICLE_ID", "Reticle ID", "SC", "string", None, True, None),
     ("SC_EXPOSE_ENERGY_mJ", "Expose Energy", "SC", "float", "mJ", True, None),
@@ -155,7 +174,7 @@ COLUMN_DEFS: list[tuple] = [
     ("SC_MASK_TYPE", "Mask Type", "SC", "select", None, False,
      ["BINARY", "PSM", "EAPSM", "ALTPSM"]),
     ("SC_IMMERSION", "Immersion", "SC", "select", None, False, ["Y", "N"]),
-    # --- new SC columns (~71) ---
+    # --- 추가 SC 컬럼 (~71개): 수차 보정, Dose/Focus 맵, 샷 크기, EUV 전용 설정 등 ---
     ("SC_ABER_COMA_X", "Aberration Coma X", "SC", "float", "nm", False, None),
     ("SC_ABER_COMA_Y", "Aberration Coma Y", "SC", "float", "nm", False, None),
     ("SC_ABER_ASTIG_X", "Aberration Astig X", "SC", "float", "nm", False, None),
@@ -227,7 +246,7 @@ COLUMN_DEFS: list[tuple] = [
     ("SC_MEF", "MEF", "SC", "float", None, False, None),
     ("SC_THPUT_WPH", "Throughput", "SC", "float", "wph", False, None),
     ("SC_IMAGE_LOG_SLOPE", "Image Log Slope", "SC", "float", None, False, None),
-    # --- additional SC columns (9 more -> total SC 90) ---
+    # --- 보충 SC 컬럼 (9개 추가 -> SC 총 90개): 포커스 드리프트, 렌즈 보정, 웨이퍼 수 등 ---
     ("SC_FOCUS_DRIFT_nm_hr", "Focus Drift", "SC", "float", "nm/hr", False, None),
     ("SC_DOSE_DRIFT_PCT_hr", "Dose Drift", "SC", "float", "%/hr", False, None),
     ("SC_RETICLE_HEAT_CORR", "Reticle Heat Correction", "SC", "select", None, False, ["Y", "N"]),
@@ -239,9 +258,10 @@ COLUMN_DEFS: list[tuple] = [
     ("SC_WAFER_COUNT", "Wafer Count", "SC", "integer", None, False, None),
 
     # -----------------------------------------------------------------------
-    # OVL category (~80 columns)
+    # OVL 카테고리 (~80개 컬럼): 오버레이(정렬) 공정 파라미터
+    # OVL 스펙, 참조 레이어, 보정값, APC, 측정 조건, SPC 관리 한계 등
     # -----------------------------------------------------------------------
-    # --- existing 14 OVL columns (UNCHANGED) ---
+    # --- 기존 14개 OVL 컬럼 ---
     ("OVL_SPEC_X_nm", "OVL Spec X", "OVL", "float", "nm", True, None),
     ("OVL_SPEC_Y_nm", "OVL Spec Y", "OVL", "float", "nm", True, None),
     ("OVL_REF_LAYER", "Reference Layer", "OVL", "layer_ref", None, False, None),
@@ -261,7 +281,7 @@ COLUMN_DEFS: list[tuple] = [
     ("OVL_FEEDFORWARD_USE", "Feedforward Use", "OVL", "select", None, False, ["Y", "N"]),
     ("OVL_TARGET_TYPE", "Target Type", "OVL", "select", None, False,
      ["uDBO", "AIM", "AIMplus"]),
-    # --- new OVL columns (~66) ---
+    # --- 추가 OVL 컬럼 (~66개): 다중 참조, 웨이퍼 휨/워프, 공정 시프트, 측정 파라미터, SPC 등 ---
     ("OVL_REF_LAYER_2", "Reference Layer 2", "OVL", "layer_ref", None, False, None),
     ("OVL_REF_LAYER_3", "Reference Layer 3", "OVL", "layer_ref", None, False, None),
     ("OVL_REF_WEIGHT_1", "Ref Weight 1", "OVL", "float", None, False, None),
@@ -325,7 +345,7 @@ COLUMN_DEFS: list[tuple] = [
     ("OVL_MMO_Y_nm", "MMO Y", "OVL", "float", "nm", False, None),
     ("OVL_SPEC_VECTOR_nm", "Spec Vector", "OVL", "float", "nm", False, None),
     ("OVL_GOLDEN_REF_USE", "Golden Ref Use", "OVL", "select", None, False, ["Y", "N"]),
-    # --- additional OVL columns (5 more -> total OVL 80) ---
+    # --- 보충 OVL 컬럼 (5개 추가 -> OVL 총 80개): 필드 회전, 교정 날짜, 장비 유발 시프트 ---
     ("OVL_FIELD_ROTATION_urad", "Field Rotation", "OVL", "float", "\u03bcrad", False, None),
     ("OVL_FIELD_MAG_PPM", "Field Magnification", "OVL", "float", "ppm", False, None),
     ("OVL_CALIB_DATE", "Calibration Date", "OVL", "string", None, False, None),
@@ -333,9 +353,10 @@ COLUMN_DEFS: list[tuple] = [
     ("OVL_TOOL_INDUCED_SHIFT_Y", "Tool Induced Shift Y", "OVL", "float", "nm", False, None),
 
     # -----------------------------------------------------------------------
-    # DEV category (~95 columns)
+    # DEV 카테고리 (~95개 컬럼): 현상(Develop) 공정 파라미터
+    # 현상액 종류, 퍼들 시간, CD 타겟/스펙, 검사 장비, 재작업 조건 등
     # -----------------------------------------------------------------------
-    # --- existing 14 DEV columns (UNCHANGED) ---
+    # --- 기존 14개 DEV 컬럼 ---
     ("DEV_TYPE", "Developer Type", "DEV", "select", None, True,
      ["NMD-3", "TMAH_2.38", "NMD-W", "AZ300MIF"]),
     ("DEV_PUDDLE_TIME_sec", "Puddle Time", "DEV", "integer", "s", True, None),
@@ -354,7 +375,7 @@ COLUMN_DEFS: list[tuple] = [
     ("DEV_INSPECT_TOOL", "Inspect Tool", "DEV", "select", None, False,
      ["KLA-2810", "KLA-2815", "KLA-Puma"]),
     ("DEV_DEFECT_SPEC", "Defect Spec", "DEV", "integer", None, False, None),
-    # --- new DEV columns (~81) ---
+    # --- 추가 DEV 컬럼 (~81개): OCD/AFM 측정, 결함 분류, 재작업, PEB, SPC, 패턴 붕괴 등 ---
     ("DEV_OCD_USE", "OCD Use", "DEV", "select", None, False, ["Y", "N"]),
     ("DEV_OCD_TOOL", "OCD Tool", "DEV", "select", None, False,
      ["OCD-01", "OCD-02", "NOVA-T600", "NONE"]),
@@ -431,7 +452,7 @@ COLUMN_DEFS: list[tuple] = [
     ("DEV_RINSE_SPIN_rpm", "Rinse Spin Speed", "DEV", "integer", "rpm", False, None),
     ("DEV_DRY_SPIN_rpm", "Dry Spin Speed", "DEV", "integer", "rpm", False, None),
     ("DEV_DRY_TIME_sec", "Dry Time", "DEV", "integer", "s", False, None),
-    # --- additional DEV columns (14 more -> total DEV 95) ---
+    # --- 보충 DEV 컬럼 (14개 추가 -> DEV 총 95개): 2차 퍼들, 메가소닉, CD SEM, 브릿지/넥 검사 ---
     ("DEV_PUDDLE2_TIME_sec", "Puddle2 Time", "DEV", "integer", "s", False, None),
     ("DEV_PUDDLE2_TEMP_C", "Puddle2 Temp", "DEV", "integer", "\u2103", False, None),
     ("DEV_MEGA_SONIC_USE", "Mega Sonic Use", "DEV", "select", None, False, ["Y", "N"]),
@@ -451,11 +472,17 @@ COLUMN_DEFS: list[tuple] = [
 ]
 
 # ---------------------------------------------------------------------------
-# 2. Validation Rules (~80)
+# 2. 검증 규칙 (~80개)
 # ---------------------------------------------------------------------------
+# 각 규칙은 (컬럼명, 규칙타입, 규칙파라미터, 오류메시지) 튜플로 정의
+# - range: {"min": 최솟값, "max": 최댓값} - 입력값이 범위를 벗어나면 오류
+# - conditional_required: {"condition_column": 조건컬럼, "condition_value": 조건값, "operator": 비교연산자}
+#   → 조건컬럼이 특정 값일 때 이 컬럼이 필수가 됨 (예: BARC Use=Y이면 BARC Type 필수)
+# - cross_layer: {"check_type": 검증종류} - 레이어 간 교차 검증 (참조 레이어 존재 여부 등)
+# 새로운 검증 규칙을 추가할 때 이 리스트에 튜플을 추가하면 됨
 
 VALIDATION_RULES: list[tuple] = [
-    # Range validations - existing
+    # 범위 검증 - SP 카테고리 (스핀 속도, 온도, 시간, 두께 등의 물리적 범위 제한)
     ("SP_SPIN1_SPEED_rpm", "range", {"min": 500, "max": 8000}, "Spin1 Speed\ub294 500~8000 rpm \ubc94\uc704\uc5ec\uc57c \ud569\ub2c8\ub2e4"),
     ("SP_SPIN2_SPEED_rpm", "range", {"min": 500, "max": 8000}, "Spin2 Speed\ub294 500~8000 rpm \ubc94\uc704\uc5ec\uc57c \ud569\ub2c8\ub2e4"),
     ("SP_PREBAKE_TEMP_C", "range", {"min": 0, "max": 300}, "Prebake \uc628\ub3c4\ub294 0~300\u2103 \ubc94\uc704\uc5ec\uc57c \ud569\ub2c8\ub2e4"),
@@ -472,7 +499,7 @@ VALIDATION_RULES: list[tuple] = [
     ("DEV_POSTBAKE_TEMP_C", "range", {"min": 0, "max": 300}, "Postbake \uc628\ub3c4\ub294 0~300\u2103 \ubc94\uc704\uc5ec\uc57c \ud569\ub2c8\ub2e4"),
     ("DEV_CD_TARGET_nm", "range", {"min": 1.0, "max": 5000.0}, "CD Target\uc740 1~5000nm \ubc94\uc704\uc5ec\uc57c \ud569\ub2c8\ub2e4"),
     ("DEV_DEFECT_SPEC", "range", {"min": 0, "max": 1000}, "Defect Spec\uc740 0~1000 \ubc94\uc704\uc5ec\uc57c \ud569\ub2c8\ub2e4"),
-    # Conditional required - existing
+    # 조건부 필수 검증 - 특정 컬럼 값에 따라 다른 컬럼이 필수가 되는 규칙
     ("SP_ADHESION_TYPE", "conditional_required",
      {"condition_column": "SP_ADHESION_USE", "condition_value": "Y", "operator": "equals"},
      "Adhesion Use\uac00 Y\uc77c \ub54c Adhesion Type\uc740 \ud544\uc218\uc785\ub2c8\ub2e4"),
@@ -482,7 +509,7 @@ VALIDATION_RULES: list[tuple] = [
     ("OVL_APC_TYPE", "conditional_required",
      {"condition_column": "OVL_APC_USE", "condition_value": "Y", "operator": "equals"},
      "APC Use\uac00 Y\uc77c \ub54c APC Type\uc740 \ud544\uc218\uc785\ub2c8\ub2e4"),
-    # Range validations - new SP
+    # 범위 검증 - 추가 SP 컬럼 (BARC/TARC 두께, 온도, 엣지 폭, 분사량 등)
     ("SP_BARC_THICKNESS_nm", "range", {"min": 20, "max": 200}, "BARC \ub450\uaed8\ub294 20~200nm \ubc94\uc704\uc5ec\uc57c \ud569\ub2c8\ub2e4"),
     ("SP_TARC_THICKNESS_nm", "range", {"min": 20, "max": 150}, "TARC \ub450\uaed8\ub294 20~150nm \ubc94\uc704\uc5ec\uc57c \ud569\ub2c8\ub2e4"),
     ("SP_BARC_BAKE_TEMP_C", "range", {"min": 150, "max": 300}, "BARC Bake \uc628\ub3c4\ub294 150~300\u2103 \ubc94\uc704\uc5ec\uc57c \ud569\ub2c8\ub2e4"),
@@ -494,7 +521,7 @@ VALIDATION_RULES: list[tuple] = [
     ("SP_SPIN3_SPEED_rpm", "range", {"min": 500, "max": 8000}, "Spin3 Speed\ub294 500~8000 rpm \ubc94\uc704\uc5ec\uc57c \ud569\ub2c8\ub2e4"),
     ("SP_AMBIENT_TEMP_C", "range", {"min": 20, "max": 30}, "Ambient Temp\ub294 20~30\u2103 \ubc94\uc704\uc5ec\uc57c \ud569\ub2c8\ub2e4"),
     ("SP_CHUCK_TEMP_C", "range", {"min": 15, "max": 30}, "Chuck Temp\ub294 15~30\u2103 \ubc94\uc704\uc5ec\uc57c \ud569\ub2c8\ub2e4"),
-    # Conditional required - new SP
+    # 조건부 필수 검증 - 추가 SP 컬럼 (BARC/TARC/Prewet 사용 시 관련 항목 필수)
     ("SP_BARC_TYPE", "conditional_required",
      {"condition_column": "SP_BARC_USE", "condition_value": "Y", "operator": "equals"},
      "BARC Use\uac00 Y\uc77c \ub54c BARC Type\uc740 \ud544\uc218\uc785\ub2c8\ub2e4"),
@@ -507,7 +534,7 @@ VALIDATION_RULES: list[tuple] = [
     ("SP_PREWET_VOL_ml", "conditional_required",
      {"condition_column": "SP_PREWET_USE", "condition_value": "Y", "operator": "equals"},
      "Prewet Use\uac00 Y\uc77c \ub54c Prewet Vol\uc740 \ud544\uc218\uc785\ub2c8\ub2e4"),
-    # Range validations - new SC
+    # 범위 검증 - SC 카테고리 (수차 보정, Dose/Focus 보정, EUV 파워, 스캔 속도 등)
     ("SC_ABER_COMA_X", "range", {"min": -5.0, "max": 5.0}, "Coma X\ub294 -5~5nm \ubc94\uc704\uc5ec\uc57c \ud569\ub2c8\ub2e4"),
     ("SC_ABER_COMA_Y", "range", {"min": -5.0, "max": 5.0}, "Coma Y\ub294 -5~5nm \ubc94\uc704\uc5ec\uc57c \ud569\ub2c8\ub2e4"),
     ("SC_ABER_ASTIG_X", "range", {"min": -5.0, "max": 5.0}, "Astig X\ub294 -5~5nm \ubc94\uc704\uc5ec\uc57c \ud569\ub2c8\ub2e4"),
@@ -518,14 +545,14 @@ VALIDATION_RULES: list[tuple] = [
     ("SC_EUV_FLARE_PCT", "range", {"min": 0.0, "max": 10.0}, "EUV Flare\ub294 0~10% \ubc94\uc704\uc5ec\uc57c \ud569\ub2c8\ub2e4"),
     ("SC_SCAN_SPEED_mm_s", "range", {"min": 100.0, "max": 1000.0}, "Scan Speed\ub294 100~1000 mm/s \ubc94\uc704\uc5ec\uc57c \ud569\ub2c8\ub2e4"),
     ("SC_PUPIL_FILL", "range", {"min": 10.0, "max": 100.0}, "Pupil Fill\uc740 10~100% \ubc94\uc704\uc5ec\uc57c \ud569\ub2c8\ub2e4"),
-    # Conditional required - new SC
+    # 조건부 필수 검증 - SC 카테고리 (EUV 파장 사용 시 Power 필수, Pellicle 사용 시 Type 필수)
     ("SC_EUV_POWER_W", "conditional_required",
      {"condition_column": "SC_WAVELENGTH_nm", "condition_value": 13, "operator": "equals"},
      "EUV \ud30c\uc7a5(13nm) \uc0ac\uc6a9 \uc2dc EUV Power\ub294 \ud544\uc218\uc785\ub2c8\ub2e4"),
     ("SC_PELLICLE_TYPE", "conditional_required",
      {"condition_column": "SC_PELLICLE_USE", "condition_value": "Y", "operator": "equals"},
      "Pellicle Use\uac00 Y\uc77c \ub54c Pellicle Type\uc740 \ud544\uc218\uc785\ub2c8\ub2e4"),
-    # Range validations - new OVL
+    # 범위 검증 - OVL 카테고리 (웨이퍼 휨, 피드백 게인, 측정 파장, TIS, 스펙 벡터 등)
     ("OVL_WAFER_BOW_um", "range", {"min": -200.0, "max": 200.0}, "Wafer Bow\ub294 -200~200\u03bcm \ubc94\uc704\uc5ec\uc57c \ud569\ub2c8\ub2e4"),
     ("OVL_WAFER_WARP_um", "range", {"min": 0.0, "max": 400.0}, "Wafer Warp\ub294 0~400\u03bcm \ubc94\uc704\uc5ec\uc57c \ud569\ub2c8\ub2e4"),
     ("OVL_FEEDBACK_GAIN", "range", {"min": 0.0, "max": 1.0}, "Feedback Gain\uc740 0~1.0 \ubc94\uc704\uc5ec\uc57c \ud569\ub2c8\ub2e4"),
@@ -535,7 +562,7 @@ VALIDATION_RULES: list[tuple] = [
     ("OVL_TIS_X_nm", "range", {"min": -5.0, "max": 5.0}, "TIS X\ub294 -5~5nm \ubc94\uc704\uc5ec\uc57c \ud569\ub2c8\ub2e4"),
     ("OVL_TIS_Y_nm", "range", {"min": -5.0, "max": 5.0}, "TIS Y\ub294 -5~5nm \ubc94\uc704\uc5ec\uc57c \ud569\ub2c8\ub2e4"),
     ("OVL_SPEC_VECTOR_nm", "range", {"min": 0.1, "max": 100.0}, "Spec Vector\ub294 0.1~100nm \ubc94\uc704\uc5ec\uc57c \ud569\ub2c8\ub2e4"),
-    # Range validations - new DEV
+    # 범위 검증 - DEV 카테고리 (PEB 온도/시간, 현상 온도, 유량, Hard Bake, CD 균일도 등)
     ("DEV_PEB_TEMP_C", "range", {"min": 80, "max": 200}, "PEB \uc628\ub3c4\ub294 80~200\u2103 \ubc94\uc704\uc5ec\uc57c \ud569\ub2c8\ub2e4"),
     ("DEV_PEB_TIME_sec", "range", {"min": 30, "max": 300}, "PEB \uc2dc\uac04\uc740 30~300\ucd08 \ubc94\uc704\uc5ec\uc57c \ud569\ub2c8\ub2e4"),
     ("DEV_PEB_DELAY_sec", "range", {"min": 0, "max": 600}, "PEB Delay\ub294 0~600\ucd08 \ubc94\uc704\uc5ec\uc57c \ud569\ub2c8\ub2e4"),
@@ -548,7 +575,7 @@ VALIDATION_RULES: list[tuple] = [
     ("DEV_CD_UNIFORMITY_PCT", "range", {"min": 0.0, "max": 10.0}, "CD Uniformity\ub294 0~10% \ubc94\uc704\uc5ec\uc57c \ud569\ub2c8\ub2e4"),
     ("DEV_REWORK_CD_LOW_nm", "range", {"min": 1.0, "max": 5000.0}, "Rework CD Low\ub294 1~5000nm \ubc94\uc704\uc5ec\uc57c \ud569\ub2c8\ub2e4"),
     ("DEV_REWORK_OVL_LIMIT_nm", "range", {"min": 1.0, "max": 100.0}, "Rework OVL Limit\uc740 1~100nm \ubc94\uc704\uc5ec\uc57c \ud569\ub2c8\ub2e4"),
-    # Conditional required - new DEV
+    # 조건부 필수 검증 - DEV 카테고리 (OCD/Rework/Strip 사용 시 관련 항목 필수)
     ("DEV_OCD_RECIPE", "conditional_required",
      {"condition_column": "DEV_OCD_USE", "condition_value": "Y", "operator": "equals"},
      "OCD Use\uac00 Y\uc77c \ub54c OCD Recipe\ub294 \ud544\uc218\uc785\ub2c8\ub2e4"),
@@ -558,7 +585,9 @@ VALIDATION_RULES: list[tuple] = [
     ("DEV_STRIP_METHOD", "conditional_required",
      {"condition_column": "DEV_STRIP_USE", "condition_value": "Y", "operator": "equals"},
      "Strip Use\uac00 Y\uc77c \ub54c Strip Method\ub294 \ud544\uc218\uc785\ub2c8\ub2e4"),
-    # Cross-layer validations
+    # 크로스 레이어 검증 - 레이어 간 교차 검증 (참조 레이어 존재, 값 비교 등)
+    # reference_exists: 참조 레이어가 프로젝트에 존재하는지 확인
+    # compare_layers: 참조 레이어와 현재 레이어의 값을 비교
     ("OVL_REF_LAYER", "cross_layer",
      {"check_type": "reference_exists", "source_column": "OVL_REF_LAYER", "target": "step_seq"},
      "\ucc38\uc870 \ub808\uc774\uc5b4\uac00 \ud504\ub85c\uc81d\ud2b8\uc5d0 \uc874\uc7ac\ud558\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4"),

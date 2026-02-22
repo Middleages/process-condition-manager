@@ -26,7 +26,6 @@ export function ApprovalButtons({ projectId, projectStatus, currentUser }: Props
     try {
       await statusTransition.mutateAsync({
         new_status: 'approved',
-        changed_by: currentUserId,
       })
       addToast('프로젝트가 승인되었습니다.', 'success')
     } catch {
@@ -46,7 +45,6 @@ export function ApprovalButtons({ projectId, projectStatus, currentUser }: Props
     try {
       await statusTransition.mutateAsync({
         new_status: 'rejected',
-        changed_by: currentUserId,
       })
       addToast('프로젝트가 반려되었습니다.', 'success')
     } catch {

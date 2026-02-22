@@ -135,10 +135,11 @@ async def parse_recipe_xml(
     if layer_key:
         matched_pl = match_layer_to_project(layer_key, project.layers)
 
-    # 4. Load active XML mappings with column definitions
+    # 4. Load active XML mappings with column definitions (eager-load category)
     mapping_result = await db.execute(
         select(RecipeXmlMapping, ColumnDefinition)
         .join(ColumnDefinition, RecipeXmlMapping.column_id == ColumnDefinition.id)
+        .options(selectinload(ColumnDefinition.category))
         .where(RecipeXmlMapping.is_active)
     )
     mappings = mapping_result.all()
@@ -203,14 +204,8 @@ async def parse_recipe_xml(
 
         current_value = current_conditions.get(col_def.column_name)
 
-        # Get category code from column definition
-        cat_result = await db.execute(
-            select(ColumnDefinition)
-            .options(selectinload(ColumnDefinition.category))
-            .where(ColumnDefinition.id == col_def.id)
-        )
-        col_with_cat = cat_result.scalars().first()
-        category_code = col_with_cat.category.category_code if col_with_cat and col_with_cat.category else None
+        # Get category code from eagerly-loaded category relation
+        category_code = col_def.category.category_code if col_def.category else None
 
         items.append(RecipeDiffItem(
             column_name=col_def.column_name,

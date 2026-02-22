@@ -36,7 +36,6 @@ export function ReviewRequestModal({ open, onOpenChange, projectId, validationEr
     try {
       await statusTransition.mutateAsync({
         new_status: 'review',
-        changed_by: currentUserId,
         comment: memo || undefined,
       })
       addToast('검토 요청이 제출되었습니다.', 'success')

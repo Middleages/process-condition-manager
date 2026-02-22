@@ -1,18 +1,28 @@
-"""Layer definitions, profiles, and OVL reference mappings for seed data."""
+"""Layer definitions, profiles, and OVL reference mappings for seed data.
+
+레이어 정의, 프로파일(노광 조건), OVL 참조 매핑 시드 데이터.
+반도체 Photo 공정의 150개 레이어(공정 단계)를 프로그래밍 방식으로 생성한다.
+레이어는 FEOL(전공정) → MOL(중간배선) → BEOL(후공정) → Special 순서로 정의되며,
+각 레이어에는 step_seq(공정 순번), layer_number, sort_order가 자동 부여된다.
+"""
 
 
 # ---------------------------------------------------------------------------
-# 4. Layers (150 Photo process steps) - built programmatically
+# 4. 레이어 (150개 Photo 공정 단계) - 프로그래밍 방식으로 생성
 # ---------------------------------------------------------------------------
 
 def _build_layers() -> list[tuple]:
-    """Build 150 layers programmatically.
-    Returns list of (layer_name, step_seq, layer_number, sort_order).
+    """150개 레이어를 프로그래밍 방식으로 생성.
+    반환값: (layer_name, step_seq, layer_number, sort_order) 튜플 리스트.
+    - layer_name: 레이어 이름 (예: AA_PHOTO, M1_PHOTO)
+    - step_seq: 공정 순번 코드 (예: ac100000) - OVL 참조에서 레이어를 식별하는 키
+    - layer_number: 레이어 번호 (예: 1.0, 2.0)
+    - sort_order: UI 표시 순서
     """
     layers = []
-    seq = 100000
-    sort = 10
-    layer_num = 1
+    seq = 100000       # step_seq 시작값 (5000씩 증가)
+    sort = 10          # sort_order 시작값 (10씩 증가)
+    layer_num = 1      # layer_number 시작값
 
     def add(name: str) -> None:
         nonlocal seq, sort, layer_num
@@ -21,7 +31,8 @@ def _build_layers() -> list[tuple]:
         sort += 10
         layer_num += 1
 
-    # FEOL (~40)
+    # FEOL (~40개): 전공정 - 트랜지스터 형성 단계
+    # AA(Active Area), STI, Well 이온주입, Gate, Contact 등
     feol_names = [
         "AA_PHOTO", "STI_PHOTO", "NWELL_PHOTO", "PWELL_PHOTO", "DWELL_PHOTO",
         "TRIPLE_WELL_PHOTO", "POLY_PHOTO", "POLY_CUT_PHOTO", "GATE_PHOTO",
@@ -37,7 +48,8 @@ def _build_layers() -> list[tuple]:
     for n in feol_names:
         add(n)
 
-    # MOL (~10)
+    # MOL (~10개): 중간배선 - 트랜지스터와 금속배선 사이 연결층
+    # VIA0, LI(Local Interconnect), MOL Plug 등
     mol_names = [
         "VIA0_PHOTO", "VIA0_A_PHOTO", "LI_PHOTO", "LI_CUT_PHOTO",
         "MOL_PLUG_PHOTO", "MOL_CAP_PHOTO", "LI_A_PHOTO", "LI_B_PHOTO",
@@ -46,7 +58,8 @@ def _build_layers() -> list[tuple]:
     for n in mol_names:
         add(n)
 
-    # BEOL (~80)
+    # BEOL (~80개): 후공정 - 금속배선 및 비아(Via) 형성
+    # M1~M15(금속배선층), V1~V14(비아층), IMD, Hardmask, FinFET 관련 등
     beol_names = [
         "M1_PHOTO", "M1_A_PHOTO", "M1_B_PHOTO", "M1_CUT_PHOTO",
         "V1_PHOTO", "V1_A_PHOTO",
@@ -88,7 +101,8 @@ def _build_layers() -> list[tuple]:
     for n in beol_names:
         add(n)
 
-    # Special (~24 -> total 150)
+    # Special (~24개, 총 150개): 패키징/테스트 관련
+    # PAD, FUSE, BUMP, Passivation, TSV, RDL, 다이싱, 테스트키 등
     special_names = [
         "PAD_PHOTO", "FUSE_PHOTO", "TRIM_PHOTO", "RDL_PHOTO", "BUMP_PHOTO",
         "PASSIV_PHOTO", "PASSIV2_PHOTO", "BOND_PHOTO", "SEAL_PHOTO",
@@ -104,16 +118,23 @@ def _build_layers() -> list[tuple]:
     return layers
 
 
+# 전체 레이어 목록 (150개 튜플)
 LAYERS = _build_layers()
+# 레이어 이름만 추출한 리스트 (제품 시드에서 사용)
 LAYER_NAMES = [l[0] for l in LAYERS]
+# 레이어 이름 → step_seq 매핑 딕셔너리 (OVL 참조에서 사용)
 _LAYER_STEP_SEQ = {l[0]: l[1] for l in LAYERS}
 
 
 # ---------------------------------------------------------------------------
-# 5. Layer Profiles
+# 5. 레이어 프로파일 (노광 조건 프리셋)
 # ---------------------------------------------------------------------------
+# 각 레이어의 노광 기본 조건을 결정하는 프로파일
+# 레이어가 EUV/ArFi/KrF 중 어떤 파장대를 사용하는지에 따라
+# PR 종류, 마스크 타입, 기본 에너지, CD 타겟이 결정됨
 
-# Critical EUV layers
+# 주요 EUV 레이어 (13nm 파장, 최첨단 미세 패터닝)
+# Gate, 하위 금속배선(M1~M2), Via(V1~V2), FinFET 관련 등
 _EUV_LAYERS = {
     "GATE_PHOTO", "CONTACT_A_PHOTO", "CONTACT_B_PHOTO",
     "M1_PHOTO", "M1_A_PHOTO", "M1_B_PHOTO", "M1_CUT_PHOTO",
@@ -124,7 +145,7 @@ _EUV_LAYERS = {
     "DUMMY_GATE_PHOTO", "LI_A_PHOTO", "LI_B_PHOTO", "LI_CUT_PHOTO",
 }
 
-# Critical ArFi layers
+# 주요 ArFi 레이어 (193nm 파장, 액침 노광 - 중간 미세도)
 _ARFI_LAYERS = {
     "POLY_PHOTO", "POLY_CUT_PHOTO", "GATE_CUT_PHOTO", "HKMG_PHOTO",
     "CONTACT_PHOTO", "VIA0_PHOTO", "VIA0_A_PHOTO", "LI_PHOTO",
@@ -132,7 +153,7 @@ _ARFI_LAYERS = {
     "V3_PHOTO", "V3_A_PHOTO", "M4_PHOTO",
 }
 
-# KrF dry layers (coarse)
+# KrF 건식 레이어 (248nm 파장, 거친 패턴 - PAD, 패키징 등)
 _KRF_LAYERS = {
     "PAD_PHOTO", "FUSE_PHOTO", "TRIM_PHOTO", "RDL_PHOTO", "BUMP_PHOTO",
     "PASSIV_PHOTO", "PASSIV2_PHOTO", "BOND_PHOTO", "SEAL_PHOTO",
@@ -143,7 +164,10 @@ _KRF_LAYERS = {
 
 
 def _get_layer_profile(layer_name: str) -> tuple:
-    """Return (pr_type, wavelength, immersion, mask_type, base_energy, base_cd_target)."""
+    """레이어 이름으로 노광 프로파일을 결정.
+    반환값: (PR종류, 파장nm, 액침여부, 마스크타입, 기본에너지mJ, 기본CD타겟nm)
+    우선순위: 명시적 EUV/ArFi/KrF 세트 → 이름 패턴 매칭 → 기본값(ArF dry)
+    """
     if layer_name in _EUV_LAYERS:
         return ("EUV-E01", 13, "N", "EAPSM", 20.0, 18.0)
     elif layer_name in _ARFI_LAYERS:
@@ -181,15 +205,19 @@ def _get_layer_profile(layer_name: str) -> tuple:
     return ("ArF-C01", 193, "N", "EAPSM", 40.0, 130.0)
 
 
+# 전체 레이어의 노광 프로파일 딕셔너리 (조건 생성 시 참조)
 LAYER_PROFILES = {name: _get_layer_profile(name) for name in LAYER_NAMES}
 
 
 # ---------------------------------------------------------------------------
-# 6. OVL Reference Layers
+# 6. OVL 참조 레이어 매핑
 # ---------------------------------------------------------------------------
+# 오버레이(정렬) 측정 시 각 레이어가 어느 레이어를 기준으로 정렬하는지 정의
+# 기본적으로 이전 레이어를 참조하되, 물리적으로 의미 있는 참조로 오버라이드
+# 예: M1 → Contact, V1 → M1, M2 → V1 (실제 공정 흐름에 맞춤)
 
 def _build_ovl_refs() -> dict:
-    """Build OVL reference mapping: each layer references a preceding layer."""
+    """OVL 참조 매핑 생성: 각 레이어가 참조하는 이전 레이어의 step_seq를 반환."""
     refs = {}
     zero_align = "za000000"
     # First layer references zero align
@@ -226,4 +254,7 @@ def _build_ovl_refs() -> dict:
     return refs
 
 
+# 전체 레이어의 OVL 참조 step_seq 딕셔너리
+# 키: 레이어 이름, 값: 참조 레이어의 step_seq (예: "ac100000")
+# 첫 번째 레이어는 "za000000" (zero align, 기준점 없음)
 OVL_REFS_STEP_SEQ = _build_ovl_refs()
