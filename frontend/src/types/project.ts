@@ -164,7 +164,6 @@ export interface RevisionListResponse {
 // ========== Status Transition ==========
 export interface StatusTransitionRequest {
   new_status: 'review' | 'approved' | 'rejected'
-  changed_by: number
   comment?: string
 }
 

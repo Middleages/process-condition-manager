@@ -15,7 +15,6 @@ export function useAutoSave({ onSave, enabled }: UseAutoSaveOptions) {
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const isSavingRef = useRef(false)
-  const addToast = useToastStore.getState().addToast
 
   const doAutoSave = useCallback(async () => {
     const { dirtyCells, isSaving } = useEditorStore.getState()
@@ -31,11 +30,11 @@ export function useAutoSave({ onSave, enabled }: UseAutoSaveOptions) {
         now.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
       )
     } catch {
-      addToast('자동 저장에 실패했습니다. 수동으로 저장해주세요.', 'error')
+      useToastStore.getState().addToast('자동 저장에 실패했습니다. 수동으로 저장해주세요.', 'error')
     } finally {
       isSavingRef.current = false
     }
-  }, [onSave, addToast])
+  }, [onSave])
 
   useEffect(() => {
     if (!enabled) {
