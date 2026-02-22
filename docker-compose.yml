@@ -1,60 +1,81 @@
 version: '3.8'
 
+# PCM (Process Condition Manager) Docker Compose 구성
+# 실행: docker-compose up -d (전체 서비스 시작)
+# 개별 실행: docker-compose up backend (백엔드만 실행, hot reload 지원)
+# DB/사용자/비밀번호는 .env 파일로 오버라이드 가능
+
 services:
+  # 데이터베이스 서비스: PostgreSQL 16
+  # 조건표 데이터(JSONB), 사용자, 변경이력 등 모든 데이터 저장
+  # 데이터는 pgdata 볼륨에 영구 저장됨 (컨테이너 재시작해도 유지)
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: ${DB_NAME:-pcm}
-      POSTGRES_USER: ${DB_USER:-pcm_user}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-pcm_pass}
+      POSTGRES_DB: ${DB_NAME:-pcm}           # 데이터베이스 이름 (기본값: pcm)
+      POSTGRES_USER: ${DB_USER:-pcm_user}    # DB 사용자 (기본값: pcm_user)
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-pcm_pass}  # DB 비밀번호 (운영환경에서 변경 필수)
     ports:
-      - "5432:5432"
+      - "5432:5432"    # 호스트:컨테이너 포트 매핑 (로컬 DB 도구로 접속 시 사용)
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql/data    # DB 데이터 영구 저장 볼륨
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-pcm_user} -d ${DB_NAME:-pcm}"]
       interval: 5s
       timeout: 3s
       retries: 5
 
+  # 백엔드 서비스: FastAPI 앱 (포트 8000)
+  # API 엔드포인트 제공, --reload 옵션으로 코드 변경 시 자동 재시작
+  # DB가 정상 기동된 후에만 시작됨 (depends_on + healthcheck)
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     volumes:
-      - ./backend:/app
+      - ./backend:/app    # 로컬 backend 디렉토리를 컨테이너에 마운트 (hot reload용)
     ports:
-      - "8000:8000"
+      - "8000:8000"    # API 서버 포트 (Swagger UI: http://localhost:8000/docs)
     environment:
+      # 비동기 DB URL (FastAPI에서 사용)
       DATABASE_URL: postgresql+asyncpg://${DB_USER:-pcm_user}:${DB_PASSWORD:-pcm_pass}@db:5432/${DB_NAME:-pcm}
+      # 동기 DB URL (Alembic 마이그레이션에서 사용)
       DATABASE_URL_SYNC: postgresql://${DB_USER:-pcm_user}:${DB_PASSWORD:-pcm_pass}@db:5432/${DB_NAME:-pcm}
     depends_on:
       db:
-        condition: service_healthy
+        condition: service_healthy    # DB 헬스체크 통과 후 시작
 
+  # 프론트엔드 서비스: React + Vite 개발 서버 (포트 5173)
+  # 브라우저에서 http://localhost:5173 으로 접속
+  # node_modules는 별도 볼륨으로 분리 (호스트와 충돌 방지)
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
     command: npm run dev -- --host 0.0.0.0
     volumes:
-      - ./frontend:/app
-      - /app/node_modules
+      - ./frontend:/app          # 로컬 frontend 디렉토리 마운트 (hot reload용)
+      - /app/node_modules        # node_modules는 컨테이너 내부 것 사용
     ports:
-      - "5173:5173"
+      - "5173:5173"    # Vite 개발 서버 포트
     environment:
-      VITE_API_URL: http://localhost:8000
+      VITE_API_URL: http://localhost:8000    # 백엔드 API 주소 (프론트에서 API 호출 시 사용)
 
+  # 리버스 프록시: Nginx (포트 80)
+  # 운영환경에서 프론트엔드/백엔드를 단일 도메인으로 서빙
+  # /api/* 요청은 backend로, 나머지는 frontend로 라우팅
   nginx:
     build:
       context: ./nginx
       dockerfile: Dockerfile
     ports:
-      - "80:80"
+      - "80:80"    # HTTP 기본 포트
     depends_on:
       - backend
       - frontend
 
+# 명명된 볼륨: 컨테이너가 삭제되어도 데이터 유지
+# 초기화하려면: docker-compose down -v (주의: DB 데이터 전부 삭제됨)
 volumes:
   pgdata:

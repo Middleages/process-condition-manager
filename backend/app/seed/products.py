@@ -1,12 +1,20 @@
-"""Product definitions and condition generators for seed data."""
+"""Product definitions and condition generators for seed data.
+
+제품 정의 및 조건 데이터 생성기 시드 데이터.
+생산 라인, 제품(backbone/비backbone), 스캐너 할당, 조건값 생성 로직을 정의한다.
+- Backbone 제품: 기존 양산 제품으로, 신규 제품 생성 시 조건 복사의 원본이 됨
+- 비-Backbone 제품: 개발 중인 제품으로, 아직 조건이 확정되지 않은 상태
+"""
 import random
 
 from app.seed.layers import LAYER_NAMES, LAYER_PROFILES, OVL_REFS_STEP_SEQ, _EUV_LAYERS, _ARFI_LAYERS
 
 
 # ---------------------------------------------------------------------------
-# 7. Lines
+# 7. 생산 라인 (Fab Line)
 # ---------------------------------------------------------------------------
+# 각 라인은 사용 가능한 노광 장비 종류가 다름
+# 프로젝트 생성 시 라인을 선택하면 해당 라인의 제품/Backbone만 표시됨
 
 LINES = [
     {"line_code": "LINE-A", "line_name": "A\ub77c\uc778 (KrF/ArF)"},
@@ -16,8 +24,12 @@ LINES = [
 
 
 # ---------------------------------------------------------------------------
-# 8. Products (8 backbone + 4 non-backbone = 12 total)
+# 8. 제품 (Backbone 8개 + 비-Backbone 4개 = 총 12개)
 # ---------------------------------------------------------------------------
+# Backbone 제품 (is_backbone=True): 양산 제품의 확정된 조건표
+# 신규 프로젝트 생성 시 이 제품의 조건을 복사하여 초안을 만듦
+# product_name: 제품명, description: 설명, line_code: 소속 라인
+# part_id: 제품 고유 ID (전산 출력 시 사용)
 
 PRODUCTS = [
     {"product_name": "PROD-2024X", "description": "\uc8fc\ub825 \uc591\uc0b0\uc81c\ud488 (KrF/ArF \ud63c\ud569)", "is_backbone": True,
@@ -38,6 +50,8 @@ PRODUCTS = [
      "line_code": "LINE-A", "part_id": "IOT-LP-V1"},
 ]
 
+# 비-Backbone 제품 (is_backbone=False): 개발 중인 제품 (조건 미설정)
+# layer_names: 이 제품이 사용하는 레이어 목록 (전체 또는 일부)
 NON_BACKBONE_PRODUCTS = [
     {"product_name": "DEV-2025A", "description": "\uac1c\ubc1c \uc81c\ud488 A (\uc870\uac74 \ubbf8\uc124\uc815)",
      "is_backbone": False, "line_code": "LINE-A", "part_id": "DEV-2025A",
@@ -55,8 +69,11 @@ NON_BACKBONE_PRODUCTS = [
 
 
 # ---------------------------------------------------------------------------
-# 9. Scanners per product
+# 9. 제품별 스캐너(노광장비) 할당
 # ---------------------------------------------------------------------------
+# 각 제품이 사용하는 스캐너 장비 목록
+# 조건 생성 시 이 목록에서 랜덤 선택하여 SC_TOOL_ID에 할당
+# 신규 제품의 스캐너를 변경하려면 이 딕셔너리에 항목 추가/수정
 
 SCANNERS: dict[str, list] = {
     "PROD-2024X": ["NSR-S322F-01", "NSR-S322F-02", "NSR-S631E-01"],
@@ -75,22 +92,31 @@ def _get_scanners(product_name: str) -> list:
 
 
 # ---------------------------------------------------------------------------
-# 10. Conditions Generator
+# 10. 조건 데이터 생성기
 # ---------------------------------------------------------------------------
+# Backbone 제품의 각 레이어에 대해 현실적인 공정 조건값을 자동 생성
+# 레이어 프로파일(EUV/ArF/KrF)과 제품별 오프셋을 기반으로 값을 결정하며,
+# random jitter를 추가하여 제품 간 약간의 차이를 만듦
 
 def _jitter(base: float, pct: float = 0.05) -> float:
+    """기준값에 +-pct% 범위의 랜덤 변동을 추가 (실수)"""
     return round(base * (1 + random.uniform(-pct, pct)), 2)
 
 
 def _jitter_int(base: int, pct: float = 0.05) -> int:
+    """기준값에 +-pct% 범위의 랜덤 변동을 추가 (정수)"""
     return int(round(base * (1 + random.uniform(-pct, pct))))
 
 
 def generate_conditions(layer_name: str, product_name: str) -> dict:
-    """Generate realistic conditions for a given layer + product (all 350 columns)."""
+    """주어진 레이어+제품 조합의 현실적인 조건값 생성 (350개 컬럼 전체).
+    레이어 프로파일(파장, PR종류 등)과 제품 오프셋을 기반으로 각 섹션(SP/SC/OVL/DEV)의 값을 결정.
+    None 값은 최종 딕셔너리에서 제거됨 (해당 레이어에 불필요한 항목).
+    """
     prof = LAYER_PROFILES[layer_name]
     pr_type, wavelength, immersion, mask_type, base_energy, base_cd = prof
 
+    # 제품별 오프셋: 동일 레이어라도 제품마다 조건값이 약간 다르게 생성됨
     offsets = {
         "PROD-2024X": 0, "PROD-2024Y": 1, "PROD-2024Z": -1,
         "HBM-3E-MEM": 1, "AP-5G-MOB": 2, "MCU-AUTO-V2": -1,
@@ -106,7 +132,7 @@ def generate_conditions(layer_name: str, product_name: str) -> dict:
     is_critical = layer_name in _EUV_LAYERS | _ARFI_LAYERS
     use_barc = is_arf and not is_euv and random.random() > 0.4
 
-    # ---- SP section ----
+    # ---- SP 섹션: 포토레지스트 도포 관련 조건 ----
     sp = {
         "SP_PR_TYPE": pr_type,
         "SP_PR_VENDOR": "TOK" if "KrF" in pr_type else ("JSR" if is_euv else "Shin-Etsu"),
@@ -197,7 +223,7 @@ def generate_conditions(layer_name: str, product_name: str) -> dict:
         "SP_SPIN_CUP_TYPE": random.choice(["OPEN", "CLOSED"]),
     }
 
-    # ---- SC section ----
+    # ---- SC 섹션: 스캐너/노광 관련 조건 ----
     sc = {
         "SC_TOOL_ID": scanner,
         "SC_RETICLE_ID": f"RTL-{layer_name.replace('_PHOTO', '')}-{str(off + 1).zfill(3)}",
@@ -293,7 +319,7 @@ def generate_conditions(layer_name: str, product_name: str) -> dict:
         "SC_WAFER_COUNT": random.randint(10, 5000),
     }
 
-    # ---- OVL section ----
+    # ---- OVL 섹션: 오버레이(정렬) 관련 조건 ----
     ref_step_seq = OVL_REFS_STEP_SEQ.get(layer_name, "za000000")
     base_spec = 3.0 if is_euv else (5.0 if is_critical else (8.0 if is_arf else 12.0))
     ovl = {
@@ -381,7 +407,7 @@ def generate_conditions(layer_name: str, product_name: str) -> dict:
         "OVL_TOOL_INDUCED_SHIFT_Y": round(random.uniform(-1.0, 1.0), 2) if is_critical else None,
     }
 
-    # ---- DEV section ----
+    # ---- DEV 섹션: 현상 공정 관련 조건 ----
     dev = {
         "DEV_TYPE": "NMD-3" if "KrF" in pr_type else "TMAH_2.38",
         "DEV_PUDDLE_TIME_sec": random.choice([30, 45, 60]) + off * 5,
@@ -482,7 +508,7 @@ def generate_conditions(layer_name: str, product_name: str) -> dict:
         "DEV_DEFECT_SCAN_SPEED": "HIGH" if is_critical else "MEDIUM",
     }
 
-    # Merge all sections, strip None values
+    # 모든 섹션을 병합하고, None 값은 제거 (해당 레이어에 불필요한 항목 제외)
     conditions = {}
     for d in (sp, sc, ovl, dev):
         for k, v in d.items():
