@@ -1,12 +1,12 @@
 """
-Tests for get_version_history() service (TDD - new function).
+Tests for list_version_history() service (TDD - new function).
 Covers: single version, multiple versions, is_current flag, creator name, 404.
 """
 import pytest
 from fastapi import HTTPException
 
-from app.services.project_service import create_project, get_version_history
-from app.services.project_service import update_project_status, revise_project
+from app.services.project_service import create_project, update_project_status, revise_project
+from app.services.project_analytics_service import list_version_history
 
 
 @pytest.mark.asyncio
@@ -18,7 +18,7 @@ class TestVersionHistory:
             db_session, data["target"].id, data["backbone"].id, data["user"].id,
         )
 
-        result = await get_version_history(db_session, project.id)
+        result = await list_version_history(db_session, project.id)
 
         assert result.product_id == data["target"].id
         assert result.product_name == data["target"].product_name
@@ -41,13 +41,13 @@ class TestVersionHistory:
         )
 
         # Transition to approved state to allow revision
-        await update_project_status(db_session, project_v1.id, "review", data["user"].id)
-        await update_project_status(db_session, project_v1.id, "approved", data["admin_user"].id)
+        await update_project_status(db_session, project_v1.id, "review", data["user"])
+        await update_project_status(db_session, project_v1.id, "approved", data["admin_user"])
 
         # Create a new revision
         project_v2 = await revise_project(db_session, project_v1.id, revision_reason=None)
 
-        result = await get_version_history(db_session, project_v2.id)
+        result = await list_version_history(db_session, project_v2.id)
 
         assert len(result.versions) == 2
         # Should be ordered by revision DESC
@@ -62,18 +62,18 @@ class TestVersionHistory:
         project_v1 = await create_project(
             db_session, data["target"].id, data["backbone"].id, data["user"].id,
         )
-        await update_project_status(db_session, project_v1.id, "review", data["user"].id)
-        await update_project_status(db_session, project_v1.id, "approved", data["admin_user"].id)
+        await update_project_status(db_session, project_v1.id, "review", data["user"])
+        await update_project_status(db_session, project_v1.id, "approved", data["admin_user"])
         project_v2 = await revise_project(db_session, project_v1.id, revision_reason=None)
 
         # View history from v1's perspective
-        result_from_v1 = await get_version_history(db_session, project_v1.id)
+        result_from_v1 = await list_version_history(db_session, project_v1.id)
         current_versions_v1 = [v for v in result_from_v1.versions if v.is_current]
         assert len(current_versions_v1) == 1
         assert current_versions_v1[0].project_id == project_v1.id
 
         # View history from v2's perspective
-        result_from_v2 = await get_version_history(db_session, project_v2.id)
+        result_from_v2 = await list_version_history(db_session, project_v2.id)
         current_versions_v2 = [v for v in result_from_v2.versions if v.is_current]
         assert len(current_versions_v2) == 1
         assert current_versions_v2[0].project_id == project_v2.id
@@ -85,7 +85,7 @@ class TestVersionHistory:
             db_session, data["target"].id, data["backbone"].id, data["user"].id,
         )
 
-        result = await get_version_history(db_session, project.id)
+        result = await list_version_history(db_session, project.id)
 
         assert len(result.versions) == 1
         v = result.versions[0]
@@ -95,7 +95,7 @@ class TestVersionHistory:
     async def test_project_not_found_raises_404(self, db_session, seed_test_data):
         """Non-existent project_id raises HTTPException 404."""
         with pytest.raises(HTTPException) as exc_info:
-            await get_version_history(db_session, 999999)
+            await list_version_history(db_session, 999999)
         assert exc_info.value.status_code == 404
 
     async def test_versions_include_correct_status(self, db_session, seed_test_data):
@@ -105,11 +105,11 @@ class TestVersionHistory:
         project_v1 = await create_project(
             db_session, data["target"].id, data["backbone"].id, data["user"].id,
         )
-        await update_project_status(db_session, project_v1.id, "review", data["user"].id)
-        await update_project_status(db_session, project_v1.id, "approved", data["admin_user"].id)
+        await update_project_status(db_session, project_v1.id, "review", data["user"])
+        await update_project_status(db_session, project_v1.id, "approved", data["admin_user"])
         project_v2 = await revise_project(db_session, project_v1.id, revision_reason=None)
 
-        result = await get_version_history(db_session, project_v2.id)
+        result = await list_version_history(db_session, project_v2.id)
 
         statuses = {v.project_id: v.status for v in result.versions}
         assert statuses[project_v2.id] == "draft"
@@ -122,11 +122,11 @@ class TestVersionHistory:
         project_v1 = await create_project(
             db_session, data["target"].id, data["backbone"].id, data["user"].id,
         )
-        await update_project_status(db_session, project_v1.id, "review", data["user"].id)
-        await update_project_status(db_session, project_v1.id, "approved", data["admin_user"].id)
+        await update_project_status(db_session, project_v1.id, "review", data["user"])
+        await update_project_status(db_session, project_v1.id, "approved", data["admin_user"])
         project_v2 = await revise_project(db_session, project_v1.id, revision_reason=None)
 
-        result = await get_version_history(db_session, project_v2.id)
+        result = await list_version_history(db_session, project_v2.id)
 
         latest_versions = [v for v in result.versions if v.is_latest]
         assert len(latest_versions) == 1
