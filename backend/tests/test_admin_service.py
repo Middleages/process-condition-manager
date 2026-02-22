@@ -317,7 +317,7 @@ async def test_replace_validations_valid(db_session: AsyncSession, seed_test_dat
 
     result = await admin_service.replace_validations(db_session, col_speed.id, new_rules)
     assert result["column_id"] == col_speed.id
-    assert result["rules_replaced"] == 2
+    assert result["validation_count"] == 2
 
     # Verify validations were replaced
     updated_col = (await db_session.execute(
@@ -391,9 +391,10 @@ async def test_replace_validations_range_missing_min_max(db_session: AsyncSessio
         ),
     ]
 
-    with pytest.raises(ValueError) as exc_info:
+    with pytest.raises(HTTPException) as exc_info:
         await admin_service.replace_validations(db_session, col_speed.id, new_rules)
-    assert "min" in str(exc_info.value).lower() or "max" in str(exc_info.value).lower()
+    assert exc_info.value.status_code == 422
+    assert "min" in exc_info.value.detail.lower() or "max" in exc_info.value.detail.lower()
 
 
 @pytest.mark.asyncio
@@ -413,9 +414,10 @@ async def test_replace_validations_conditional_missing_fields(db_session: AsyncS
         ),
     ]
 
-    with pytest.raises(ValueError) as exc_info:
+    with pytest.raises(HTTPException) as exc_info:
         await admin_service.replace_validations(db_session, col_type.id, new_rules)
-    assert "condition_column" in str(exc_info.value).lower() or "condition_value" in str(exc_info.value).lower()
+    assert exc_info.value.status_code == 422
+    assert "condition_column" in exc_info.value.detail.lower() or "condition_value" in exc_info.value.detail.lower()
 
 
 @pytest.mark.asyncio

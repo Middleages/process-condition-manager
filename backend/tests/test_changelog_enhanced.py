@@ -1,5 +1,5 @@
 """
-Tests for enhanced get_change_logs() service with new filter params.
+Tests for enhanced list_change_logs() service with new filter params.
 Covers: change_type, changed_by, date_from, date_to, page, backward compat with offset.
 """
 import pytest
@@ -47,7 +47,7 @@ class TestChangelogEnhancedFilters:
         """Filter by change_type=manual returns only manual entries."""
         project_id, data = await self._create_project_with_changes(db_session, seed_test_data)
 
-        result = await change_log_service.get_change_logs(
+        result = await change_log_service.list_change_logs(
             db_session, project_id, change_type="manual"
         )
         assert result.total > 0
@@ -58,7 +58,7 @@ class TestChangelogEnhancedFilters:
         """Filter by change_type=backbone returns 0 when no backbone changes exist."""
         project_id, data = await self._create_project_with_changes(db_session, seed_test_data)
 
-        result = await change_log_service.get_change_logs(
+        result = await change_log_service.list_change_logs(
             db_session, project_id, change_type="backbone"
         )
         # No backbone entries were created in this test scenario
@@ -70,7 +70,7 @@ class TestChangelogEnhancedFilters:
         project_id, data = await self._create_project_with_changes(db_session, seed_test_data)
         user = data["user"]
 
-        result = await change_log_service.get_change_logs(
+        result = await change_log_service.list_change_logs(
             db_session, project_id, changed_by=user.id
         )
         assert result.total > 0
@@ -82,7 +82,7 @@ class TestChangelogEnhancedFilters:
         project_id, data = await self._create_project_with_changes(db_session, seed_test_data)
         reviewer = data["reviewer_user"]
 
-        result = await change_log_service.get_change_logs(
+        result = await change_log_service.list_change_logs(
             db_session, project_id, changed_by=reviewer.id
         )
         assert result.total == 0
@@ -94,7 +94,7 @@ class TestChangelogEnhancedFilters:
 
         # Use a time well in the past to get all entries
         date_from = datetime(2000, 1, 1, tzinfo=timezone.utc)
-        result = await change_log_service.get_change_logs(
+        result = await change_log_service.list_change_logs(
             db_session, project_id, date_from=date_from
         )
         assert result.total > 0
@@ -104,7 +104,7 @@ class TestChangelogEnhancedFilters:
         project_id, data = await self._create_project_with_changes(db_session, seed_test_data)
 
         date_to = datetime(2099, 1, 1, tzinfo=timezone.utc)
-        result = await change_log_service.get_change_logs(
+        result = await change_log_service.list_change_logs(
             db_session, project_id, date_to=date_to
         )
         assert result.total > 0
@@ -116,7 +116,7 @@ class TestChangelogEnhancedFilters:
         # Far in the past
         date_from = datetime(2000, 1, 1, tzinfo=timezone.utc)
         date_to = datetime(2001, 1, 1, tzinfo=timezone.utc)
-        result = await change_log_service.get_change_logs(
+        result = await change_log_service.list_change_logs(
             db_session, project_id, date_from=date_from, date_to=date_to
         )
         assert result.total == 0
@@ -127,7 +127,7 @@ class TestChangelogEnhancedFilters:
         project_id, data = await self._create_project_with_changes(db_session, seed_test_data)
         user = data["user"]
 
-        result = await change_log_service.get_change_logs(
+        result = await change_log_service.list_change_logs(
             db_session, project_id, change_type="manual", changed_by=user.id
         )
         assert result.total > 0
@@ -139,7 +139,7 @@ class TestChangelogEnhancedFilters:
         """Page-based pagination: page=1 limit=50 returns results."""
         project_id, data = await self._create_project_with_changes(db_session, seed_test_data)
 
-        result = await change_log_service.get_change_logs(
+        result = await change_log_service.list_change_logs(
             db_session, project_id, page=1, limit=50
         )
         assert result.page == 1
@@ -150,24 +150,24 @@ class TestChangelogEnhancedFilters:
         """Page 2 with small total returns empty items."""
         project_id, data = await self._create_project_with_changes(db_session, seed_test_data)
 
-        result = await change_log_service.get_change_logs(
+        result = await change_log_service.list_change_logs(
             db_session, project_id, page=2, limit=50
         )
         # We have only 2 changes, so page 2 is empty
         assert result.page == 2
         assert result.items == []
 
-    async def test_backward_compat_offset_param(self, db_session, seed_test_data):
-        """Backward compatibility: offset param still works and overrides page."""
+    async def test_page_based_pagination_skips_items(self, db_session, seed_test_data):
+        """Page-based pagination: page=1 returns items, high page returns empty."""
         project_id, data = await self._create_project_with_changes(db_session, seed_test_data)
 
-        # offset=0 returns all items
-        result_all = await change_log_service.get_change_logs(
-            db_session, project_id, offset=0, limit=50
+        # page=1 returns all items
+        result_all = await change_log_service.list_change_logs(
+            db_session, project_id, page=1, limit=50
         )
-        # offset=1000 skips all items
-        result_skip = await change_log_service.get_change_logs(
-            db_session, project_id, offset=1000, limit=50
+        # Very high page returns no items
+        result_skip = await change_log_service.list_change_logs(
+            db_session, project_id, page=9999, limit=50
         )
         assert result_all.total > 0
         assert len(result_skip.items) == 0
@@ -176,14 +176,14 @@ class TestChangelogEnhancedFilters:
         """Non-existent project raises HTTPException 404."""
         from fastapi import HTTPException
         with pytest.raises(HTTPException) as exc_info:
-            await change_log_service.get_change_logs(db_session, 999999)
+            await change_log_service.list_change_logs(db_session, 999999)
         assert exc_info.value.status_code == 404
 
     async def test_response_includes_page_field(self, db_session, seed_test_data):
         """ChangeLogListResponse now includes a page field."""
         project_id, data = await self._create_project_with_changes(db_session, seed_test_data)
 
-        result = await change_log_service.get_change_logs(
+        result = await change_log_service.list_change_logs(
             db_session, project_id, page=3
         )
         assert result.page == 3

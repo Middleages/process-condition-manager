@@ -48,6 +48,9 @@ def make_mapping(
         column_definition=make_col_def(column_name),
         sort_order=sort_order,
         is_required=is_required,
+        source_type="condition",
+        data_source_id=None,
+        source_column_name=None,
     )
 
 
