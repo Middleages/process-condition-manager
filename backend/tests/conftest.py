@@ -154,10 +154,10 @@ async def seed_test_data(db_session: AsyncSession):
         layers.append(layer)
     await db_session.flush()
 
-    # -- Backbone product (is_backbone=True) with 3 layers --
+    # -- Backbone product (has Approved project) with 3 layers --
     backbone = Product(
         product_name="BB-PROD", description="Backbone product",
-        is_backbone=True, line_id=line.id, part_id="BB-PROD",
+        line_id=line.id, part_id="BB-PROD",
     )
     db_session.add(backbone)
     await db_session.flush()
@@ -186,7 +186,7 @@ async def seed_test_data(db_session: AsyncSession):
         db_session.add(pl)
 
     # -- Approved project for backbone product (required by BackboneRepository) --
-    # The backbone source of truth is now the Approved project, not just is_backbone flag.
+    # Backbone eligibility is determined by the existence of an Approved project.
     # Create an Approved project for BB-PROD so BackboneRepository.validate_backbone_source passes.
     from app.models import Project, ProjectLayer as PL
     backbone_project = Project(
@@ -213,10 +213,10 @@ async def seed_test_data(db_session: AsyncSession):
         db_session.add(bpl)
     await db_session.flush()
 
-    # -- Target product (is_backbone=False) with 3 layers, empty conditions --
+    # -- Target product (no Approved project) with 3 layers, empty conditions --
     target = Product(
         product_name="NEW-PROD", description="Target product",
-        is_backbone=False, line_id=line.id, part_id="NEW-PROD",
+        line_id=line.id, part_id="NEW-PROD",
     )
     db_session.add(target)
     await db_session.flush()
@@ -228,7 +228,7 @@ async def seed_test_data(db_session: AsyncSession):
     # -- Partial product with only 2 layers --
     partial = Product(
         product_name="PARTIAL-PROD", description="Partial layers product",
-        is_backbone=False, line_id=line.id, part_id="PARTIAL-PROD",
+        line_id=line.id, part_id="PARTIAL-PROD",
     )
     db_session.add(partial)
     await db_session.flush()

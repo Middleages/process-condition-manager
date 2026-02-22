@@ -62,17 +62,17 @@ async def backbone_repo_data(db_session: AsyncSession):
     # Product A: has an Approved project -> usable as backbone
     prod_approved = Product(
         product_name="REPO-PROD-A", description="Has approved project",
-        is_backbone=True, line_id=line_a.id, part_id="REPO-PROD-A",
+        line_id=line_a.id, part_id="REPO-PROD-A",
     )
     # Product B: only has a Draft project -> NOT usable as backbone
     prod_draft = Product(
         product_name="REPO-PROD-B", description="Only draft project",
-        is_backbone=False, line_id=line_a.id, part_id="REPO-PROD-B",
+        line_id=line_a.id, part_id="REPO-PROD-B",
     )
     # Product C: no project at all -> NOT usable as backbone
     prod_none = Product(
         product_name="REPO-PROD-C", description="No project",
-        is_backbone=False, line_id=line_b.id, part_id="REPO-PROD-C",
+        line_id=line_b.id, part_id="REPO-PROD-C",
     )
     db_session.add_all([prod_approved, prod_draft, prod_none])
     await db_session.flush()
@@ -124,7 +124,7 @@ async def backbone_repo_data(db_session: AsyncSession):
     # Second product also on line_a with approved project (for list tests)
     prod_line_a_2 = Product(
         product_name="REPO-PROD-D", description="Line A second approved product",
-        is_backbone=True, line_id=line_a.id, part_id="REPO-PROD-D",
+        line_id=line_a.id, part_id="REPO-PROD-D",
     )
     db_session.add(prod_line_a_2)
     await db_session.flush()

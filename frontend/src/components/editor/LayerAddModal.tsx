@@ -6,8 +6,7 @@ import { useAddLayer } from '@/hooks/useProjects'
 import { useAuthStore } from '@/stores/useAuthStore'
 import { useToastStore } from '@/stores/useToastStore'
 import { Loader2 } from 'lucide-react'
-import { fetchProductLayers } from '@/api/products'
-import type { ProjectLayerData, LayerInfo } from '@/types'
+import type { ProjectLayerData, LayerInfo, BackboneProduct } from '@/types'
 
 interface Props {
   open: boolean
@@ -32,23 +31,10 @@ export function LayerAddModal({
   const [layerId, setLayerId] = useState('')
   const [useSource, setUseSource] = useState(false)
   const [sourceProductId, setSourceProductId] = useState('')
-  const [loadingLayers, setLoadingLayers] = useState(false)
 
   // Filter out already-existing layers
   const existingLayerIds = new Set(existingLayers.map((l) => l.layer_id))
   const availableLayers = allLayers.filter((l) => !existingLayerIds.has(l.id))
-
-  // Load source product layers
-  useEffect(() => {
-    if (!sourceProductId) {
-      return
-    }
-    setLoadingLayers(true)
-    fetchProductLayers(Number(sourceProductId))
-      .then(() => {})
-      .catch(() => {})
-      .finally(() => setLoadingLayers(false))
-  }, [sourceProductId])
 
   // Reset on open
   useEffect(() => {
@@ -74,6 +60,14 @@ export function LayerAddModal({
     } catch {
       // Error handled by interceptor
     }
+  }
+
+  // Build product option label with version info
+  const getProductLabel = (p: BackboneProduct) => {
+    const versionSuffix = p.revision
+      ? ` (v${p.revision}${p.approved_at ? ', ' + new Date(p.approved_at).toLocaleDateString('ko-KR') : ''})`
+      : ''
+    return `${p.product_name}${versionSuffix}`
   }
 
   return (
@@ -130,16 +124,10 @@ export function LayerAddModal({
                   <option value="">Backbone 제품을 선택하세요</option>
                   {backboneProducts.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.product_name}
+                      {getProductLabel(p)}
                     </option>
                   ))}
                 </select>
-                {loadingLayers && (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground py-1">
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                    확인 중...
-                  </div>
-                )}
               </div>
             )}
 

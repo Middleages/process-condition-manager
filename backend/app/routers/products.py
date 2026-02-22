@@ -2,13 +2,13 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select, exists, and_
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.dependencies.auth import get_current_user
-from app.models import Product, ProductLayer, Project, ProjectLayer
+from app.models import Product, ProductLayer
 from app.models.product import Layer
 from app.models.user import User
 from app.repositories.backbone_repository import BackboneRepository
@@ -26,7 +26,6 @@ class BackboneProductResponse(BaseModel):
     id: int
     product_name: str
     description: str | None = None
-    is_backbone: bool
     line_id: int | None = None
     part_id: str | None = None
     revision: int
@@ -55,7 +54,6 @@ class BackboneLayerResponse(BaseModel):
 @router.get("", response_model=list[ProductResponse])
 async def list_products(
     line_id: int | None = None,
-    is_backbone: bool | None = None,
     search: str | None = None,
     _user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -63,19 +61,6 @@ async def list_products(
     query = select(Product).order_by(Product.product_name)
     if line_id is not None:
         query = query.where(Product.line_id == line_id)
-    if is_backbone is not None:
-        if is_backbone:
-            # Use EXISTS subquery: products that have an Approved is_latest project
-            approved_exists = exists().where(
-                and_(
-                    Project.product_id == Product.id,
-                    Project.status == "approved",
-                    Project.is_latest == True,  # noqa: E712
-                )
-            )
-            query = query.where(approved_exists)
-        else:
-            query = query.where(Product.is_backbone == False)  # noqa: E712
     if search:
         query = query.where(Product.product_name.ilike(f"%{search}%"))
     result = await db.execute(query)
@@ -103,8 +88,8 @@ async def list_backbone_products(
     Returns product information enriched with the revision number and
     approval timestamp from the Approved project.
 
-    This endpoint replaces the old is_backbone=True filter for backbone
-    selection in the project creation workflow.
+    This is the canonical endpoint for backbone selection in the project
+    creation workflow. Backbone eligibility is determined dynamically.
     """
     products = await BackboneRepository.list_backbone_products(db, line_id=line_id)
     return products

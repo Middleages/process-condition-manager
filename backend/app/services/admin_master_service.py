@@ -141,7 +141,6 @@ async def list_products(db: AsyncSession, line_id: int | None = None) -> list[Pr
             id=product.id,
             product_name=product.product_name,
             description=product.description,
-            is_backbone=product.is_backbone,
             line_id=product.line_id,
             line_name=line_name,
             part_id=product.part_id,
@@ -165,7 +164,6 @@ async def create_product(db: AsyncSession, data: ProductCreate) -> ProductRespon
     product = Product(
         product_name=data.product_name,
         description=data.description,
-        is_backbone=data.is_backbone,
         line_id=data.line_id,
         part_id=data.part_id,
     )
@@ -182,7 +180,6 @@ async def create_product(db: AsyncSession, data: ProductCreate) -> ProductRespon
         id=product.id,
         product_name=product.product_name,
         description=product.description,
-        is_backbone=product.is_backbone,
         line_id=product.line_id,
         line_name=line_name,
         part_id=product.part_id,
@@ -204,8 +201,6 @@ async def update_product(db: AsyncSession, product_id: int, data: ProductUpdate)
 
     if data.description is not None:
         product.description = data.description
-    if data.is_backbone is not None:
-        product.is_backbone = data.is_backbone
     if data.line_id is not None:
         line = await db.get(Line, data.line_id)
         if not line:
@@ -226,7 +221,6 @@ async def update_product(db: AsyncSession, product_id: int, data: ProductUpdate)
         id=product.id,
         product_name=product.product_name,
         description=product.description,
-        is_backbone=product.is_backbone,
         line_id=product.line_id,
         line_name=line_name,
         part_id=product.part_id,

@@ -57,14 +57,14 @@ async def export_data(db_session: AsyncSession):
 
     bb = Product(
         product_name="EXP-BB", description="Backbone",
-        is_backbone=True, line_id=line.id, part_id="EXP-BB",
+        line_id=line.id, part_id="EXP-BB",
     )
     db_session.add(bb)
     await db_session.flush()
 
     prod = Product(
         product_name="EXP-PROD", description="Product",
-        is_backbone=False, line_id=line.id, part_id="EXP-PROD",
+        line_id=line.id, part_id="EXP-PROD",
     )
     db_session.add(prod)
     await db_session.flush()

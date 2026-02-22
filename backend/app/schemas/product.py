@@ -26,7 +26,6 @@ class ProductResponse(BaseModel):
     id: int
     product_name: str
     description: str | None = None
-    is_backbone: bool
     line_id: int | None = None
     part_id: str | None = None
 

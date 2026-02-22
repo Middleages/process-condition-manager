@@ -10,7 +10,7 @@
 |----------|------|----------|--------|
 | M1 | Backbone 자격 판정 + 조건 복사 소스 변경 (Backend) | Primary Goal | 없음 |
 | M2 | Frontend Backbone 선택 UI 변경 | Secondary Goal | M1 완료 |
-| M3 | `is_backbone` 플래그 제거 (선택적 정리) | Optional Goal | M1, M2 완료 |
+| M3 | `is_backbone` 플래그 제거 (동시 진행) | Required Goal | M1, M2 완료 |
 
 ---
 
@@ -31,17 +31,25 @@
 
 ### 구현 순서
 
-**Step 1: 공통 유틸리티 생성**
-- `backend/app/services/backbone_eligibility.py` 신규 생성
-- `get_approved_project_for_product(db, product_id) -> Project | None`
-- `get_backbone_layer_map(db, product_id) -> dict[int, dict]` (layer_id -> conditions)
-- `validate_backbone_source(db, product_id) -> Project` (검증 + 조회 통합, 실패 시 HTTPException)
+**Step 1: Backbone Repository 생성**
+- `backend/app/repositories/backbone_repository.py` 신규 생성 (기존 Repository 패턴과 일관)
+- `BackboneRepository.get_approved_project_for_product(db, product_id) -> Project | None`
+- `BackboneRepository.get_backbone_layer_map(db, product_id) -> dict[int, dict]` (layer_id -> conditions)
+- `BackboneRepository.validate_backbone_source(db, product_id) -> Project` (검증 + 조회 통합, 실패 시 HTTPException)
+- `BackboneRepository.list_backbone_products(db, line_id) -> list[dict]` (Backbone 목록 + revision/approved_at)
+- `BackboneRepository.get_backbone_layers(db, product_id) -> list[ProjectLayer]` (소스 레이어 조회)
 
-**Step 2: `products.py` 라우터 변경**
+**Step 1.5: Partial Index 마이그레이션**
+- `alembic revision -m "add_backbone_lookup_partial_index"`
+- `CREATE INDEX ix_projects_backbone_lookup ON projects (product_id, status, is_latest) WHERE status = 'approved' AND is_latest = true`
+
+**Step 2: `products.py` 라우터 변경 + 신규 엔드포인트**
 - `list_products()` 엔드포인트에서 `is_backbone=True` 쿼리 파라미터 수신 시:
   - 기존: `Product.is_backbone == True` WHERE 조건
   - 변경: `EXISTS (SELECT 1 FROM projects WHERE product_id = products.id AND status='approved' AND is_latest=true)` 서브쿼리
 - `ProductResponse`에 `is_backbone` 필드는 동적 계산값으로 유지 (하위 호환성)
+- 신규 `GET /api/products/backbones`: `BackboneRepository.list_backbone_products()` 호출, revision/approved_at 포함
+- 신규 `GET /api/products/{product_id}/backbone-layers`: `BackboneRepository.get_backbone_layers()` 호출
 
 **Step 3: `project_service.py` 변경**
 - `create_project()`:
@@ -56,7 +64,13 @@
 - `add_layer()`:
   - 동일 패턴 변경
 
-**Step 5: 테스트 수정**
+**Step 5: 시드 데이터 업데이트**
+- `backend/app/seed/products.py`: Backbone 제품별 Approved 프로젝트 자동 생성
+  - 각 Backbone 제품에 대해 `status='approved', is_latest=true` 프로젝트 생성
+  - `project_layers.conditions`에 기존 `product_layers.conditions` 복사
+  - `is_backbone=True` 설정 코드 제거 (M3)
+
+**Step 6: 테스트 수정**
 - `conftest.py`: Backbone fixture를 `is_backbone=True` 설정에서 Approved 프로젝트 생성 패턴으로 변경
 - 기존 backbone 관련 테스트 전부 갱신
 - 신규 테스트 케이스:
@@ -65,6 +79,7 @@
   - 개정 중(Draft) 제품 -> Backbone 목록에서 제외
   - 개정 승인 후 -> Backbone 자격 회복
   - 조건 복사가 Approved 프로젝트 `project_layers`에서 수행되는지 검증
+  - 신규 API 엔드포인트 (`/backbones`, `/backbone-layers`) 테스트
 
 ### 리스크와 대응
 

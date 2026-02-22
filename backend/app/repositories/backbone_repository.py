@@ -3,7 +3,7 @@ Repository layer for backbone-related queries.
 
 Encapsulates all queries needed to identify and load backbone data from
 Approved projects. An "Approved" project with is_latest=True is the new
-source of truth for backbone conditions, replacing the old is_backbone flag.
+source of truth for backbone conditions. Backbone eligibility is determined dynamically.
 
 All heavy query logic is centralized here. Business logic (validation,
 error messages) remains in the calling service.
@@ -153,7 +153,6 @@ class BackboneRepository:
                 "id": row.Product.id,
                 "product_name": row.Product.product_name,
                 "description": row.Product.description,
-                "is_backbone": row.Product.is_backbone,
                 "line_id": row.Product.line_id,
                 "part_id": row.Product.part_id,
                 "revision": row.revision,

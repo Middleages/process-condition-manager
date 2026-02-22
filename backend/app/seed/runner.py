@@ -149,16 +149,15 @@ def seed():
             line_ids[line["line_code"]] = result.scalar()
         print(f"  Lines: {len(line_ids)}")
 
-        # --- Products (Backbone) + ProductLayers ---
+        # --- Products (with Approved projects) + ProductLayers ---
         product_ids = {}
         pl_count = 0
         for prod in PRODUCTS:
             session.execute(
-                text("INSERT INTO products (product_name, description, is_backbone, line_id, part_id) "
-                     "VALUES (:name, :desc, :bb, :lid, :pid)"),
+                text("INSERT INTO products (product_name, description, line_id, part_id) "
+                     "VALUES (:name, :desc, :lid, :pid)"),
                 {
                     "name": prod["product_name"], "desc": prod["description"],
-                    "bb": prod["is_backbone"],
                     "lid": line_ids[prod["line_code"]],
                     "pid": prod["part_id"],
                 },
@@ -180,19 +179,18 @@ def seed():
                     {"pid": pid, "lid": layer_ids[layer_name], "cond": json.dumps(conditions)},
                 )
                 pl_count += 1
-        print(f"  Products (backbone): {len(product_ids)}")
+        print(f"  Products (approved-backbone): {len(product_ids)}")
         print(f"  Product Layers: {pl_count} ({len(PRODUCTS)} products x {len(LAYER_NAMES)} layers)")
 
-        # --- Non-backbone Products ---
+        # --- Non-approved Products (no Approved project) ---
         nb_count = 0
         nb_pl_count = 0
         for prod in NON_BACKBONE_PRODUCTS:
             session.execute(
-                text("INSERT INTO products (product_name, description, is_backbone, line_id, part_id) "
-                     "VALUES (:name, :desc, :bb, :lid, :pid)"),
+                text("INSERT INTO products (product_name, description, line_id, part_id) "
+                     "VALUES (:name, :desc, :lid, :pid)"),
                 {
                     "name": prod["product_name"], "desc": prod["description"],
-                    "bb": prod["is_backbone"],
                     "lid": line_ids[prod["line_code"]],
                     "pid": prod["part_id"],
                 },
@@ -214,8 +212,8 @@ def seed():
                     {"pid": pid, "lid": layer_ids[layer_name], "cond": json.dumps({})},
                 )
                 nb_pl_count += 1
-        print(f"  Products (non-backbone): {nb_count}")
-        print(f"  Non-backbone Product Layers: {nb_pl_count}")
+        print(f"  Products (non-approved): {nb_count}")
+        print(f"  Non-approved Product Layers: {nb_pl_count}")
 
         # --- Export Systems ---
         EXPORT_SYSTEMS = [
@@ -369,10 +367,10 @@ def seed():
             ecm_count += 1
         print(f"  Export Column Mappings: {ecm_count}")
 
-        # --- Approved Projects for ALL backbone products (backbone source of truth) ---
-        # Each backbone product gets an Approved project (status='approved', is_latest=True, revision=1)
+        # --- Approved Projects for products in PRODUCTS list (backbone source of truth) ---
+        # Each product in PRODUCTS gets an Approved project (status='approved', is_latest=True, revision=1)
         # with project_layers copied from product_layers. This makes them eligible as backbone sources
-        # via BackboneRepository without relying solely on is_backbone flag.
+        # via BackboneRepository (backbone eligibility is determined dynamically by Approved project existence).
         random.seed(99)
         backbone_project_ids = {}
         project_layer_ids = {}  # For the first backbone product (PROD-2024X), used for equipment assignments

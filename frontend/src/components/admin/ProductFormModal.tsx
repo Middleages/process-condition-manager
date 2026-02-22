@@ -21,7 +21,6 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
   const isEdit = !!product
   const [productName, setProductName] = useState('')
   const [description, setDescription] = useState('')
-  const [isBackbone, setIsBackbone] = useState(false)
   const [lineId, setLineId] = useState<string>('')
   const [partId, setPartId] = useState('')
   const [serverError, setServerError] = useState('')
@@ -34,13 +33,11 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
     if (product) {
       setProductName(product.product_name)
       setDescription(product.description ?? '')
-      setIsBackbone(product.is_backbone)
       setLineId(product.line_id?.toString() ?? '')
       setPartId(product.part_id ?? '')
     } else {
       setProductName('')
       setDescription('')
-      setIsBackbone(false)
       setLineId('')
       setPartId('')
     }
@@ -53,7 +50,6 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
     const payload = {
       product_name: productName,
       description: description || null,
-      is_backbone: isBackbone,
       line_id: lineId ? parseInt(lineId) : null,
       part_id: partId || null,
     }
@@ -103,16 +99,6 @@ export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalP
           <div>
             <label className="block text-sm font-medium mb-1">Part ID</label>
             <Input value={partId} onChange={(e) => setPartId(e.target.value)} placeholder="Part ID" />
-          </div>
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="isBackbone"
-              checked={isBackbone}
-              onChange={(e) => setIsBackbone(e.target.checked)}
-              className="h-4 w-4"
-            />
-            <label htmlFor="isBackbone" className="text-sm font-medium">Backbone 제품</label>
           </div>
           {serverError && <p className="text-red-600 text-sm">{serverError}</p>}
           <DialogFooter>

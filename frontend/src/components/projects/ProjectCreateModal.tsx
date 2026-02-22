@@ -22,7 +22,7 @@ export function ProjectCreateModal({ open, onOpenChange }: Props) {
   const { data: allProducts = [] } = useProducts(
     selectedLineId ? { line_id: selectedLineId } : undefined
   )
-  const { data: backboneProducts = [] } = useBackboneProducts(selectedLineId)
+  const { data: backboneProducts = [], isLoading: backboneLoading } = useBackboneProducts(selectedLineId)
   const createProject = useCreateProject()
 
   const [productId, setProductId] = useState('')
@@ -33,7 +33,13 @@ export function ProjectCreateModal({ open, onOpenChange }: Props) {
     ? allProducts.map((p) => ({ value: String(p.id), label: p.product_name }))
     : []
   const backboneOptions = lineSelected
-    ? backboneProducts.map((p) => ({ value: String(p.id), label: p.product_name }))
+    ? backboneProducts.map((p) => {
+        // Display backbone version info if available
+        const versionSuffix = p.revision
+          ? ` (v${p.revision}${p.approved_at ? ', ' + new Date(p.approved_at).toLocaleDateString('ko-KR') : ''})`
+          : ''
+        return { value: String(p.id), label: `${p.product_name}${versionSuffix}` }
+      })
     : []
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -106,11 +112,24 @@ export function ProjectCreateModal({ open, onOpenChange }: Props) {
                 options={backboneOptions}
                 value={backboneProductId}
                 onChange={setBackboneProductId}
-                placeholder={lineSelected ? 'Backbone을 선택하세요' : '라인을 먼저 선택하세요'}
+                placeholder={
+                  !lineSelected
+                    ? '라인을 먼저 선택하세요'
+                    : backboneLoading
+                    ? '로딩 중...'
+                    : backboneOptions.length === 0
+                    ? 'Backbone 제품이 없습니다'
+                    : 'Backbone을 선택하세요'
+                }
                 searchPlaceholder="Backbone 검색..."
-                disabled={!lineSelected}
+                disabled={!lineSelected || backboneOptions.length === 0}
                 required
               />
+              {lineSelected && !backboneLoading && backboneOptions.length === 0 && (
+                <p className="text-xs text-amber-600 mt-1">
+                  이 라인에 Approved 상태의 Backbone 프로젝트가 없습니다.
+                </p>
+              )}
             </div>
 
             {!currentUserId && (
@@ -130,7 +149,14 @@ export function ProjectCreateModal({ open, onOpenChange }: Props) {
             </Button>
             <Button
               type="submit"
-              disabled={!selectedLineId || !productId || !backboneProductId || !currentUserId || createProject.isPending}
+              disabled={
+                !selectedLineId ||
+                !productId ||
+                !backboneProductId ||
+                !currentUserId ||
+                createProject.isPending ||
+                backboneOptions.length === 0
+              }
             >
               {createProject.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               생성

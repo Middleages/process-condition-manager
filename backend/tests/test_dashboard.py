@@ -62,22 +62,22 @@ async def dashboard_data(db_session: AsyncSession):
     db_session.add_all([layer1, layer2])
     await db_session.flush()
 
-    # Products: 2 backbone products (one per line) as backbone sources
+    # Products: 2 backbone source products (one per line, will have Approved projects)
     bb_a = Product(
         product_name="BB-A", description="Backbone A",
-        is_backbone=True, line_id=line_a.id, part_id="BB-A",
+        line_id=line_a.id, part_id="BB-A",
     )
     bb_b = Product(
         product_name="BB-B", description="Backbone B",
-        is_backbone=True, line_id=line_b.id, part_id="BB-B",
+        line_id=line_b.id, part_id="BB-B",
     )
     prod_a = Product(
         product_name="PROD-A", description="Product A",
-        is_backbone=False, line_id=line_a.id, part_id="PROD-A",
+        line_id=line_a.id, part_id="PROD-A",
     )
     prod_b = Product(
         product_name="PROD-B", description="Product B",
-        is_backbone=False, line_id=line_b.id, part_id="PROD-B",
+        line_id=line_b.id, part_id="PROD-B",
     )
     db_session.add_all([bb_a, bb_b, prod_a, prod_b])
     await db_session.flush()

@@ -94,8 +94,8 @@
 **REQ-BB-003** [Event-Driven]
 **WHEN** 제품에 대한 개정(Revision)이 진행 중이어서 최신 프로젝트가 `status='draft'`이고, 이전 버전이 `status='archived' AND is_latest=false`인 경우 **THEN** 해당 제품은 Backbone 후보 목록에서 제외되어야 한다. (Approved 상태인 is_latest=true 프로젝트가 없으므로)
 
-**REQ-BB-004** [Optional]
-**가능하면** Backbone 목록 API 응답에 소스 프로젝트의 `revision` 번호와 `approved_at` 일시를 포함하여, 사용자가 Backbone 데이터의 신선도를 확인할 수 있도록 한다.
+**REQ-BB-004** [Ubiquitous]
+시스템은 **항상** Backbone 목록 API 응답에 소스 프로젝트의 `revision` 번호와 `approved_at` 일시를 포함하여, 사용자가 Backbone 데이터의 신선도를 확인할 수 있도록 해야 한다.
 
 #### 3.2 Backbone 조건 복사 소스 변경
 
@@ -190,10 +190,14 @@
 
 ### 4.1 DB 스키마 변경
 
-#### 변경 없음 (M1, M2)
+#### M1: Partial Index 추가
+| 작업 | 대상 | 설명 |
+|------|------|------|
+| CREATE INDEX | `ix_projects_backbone_lookup` | Partial index: `(product_id, status, is_latest) WHERE status = 'approved' AND is_latest = true` |
+
 - 기존 `products`, `projects`, `project_layers` 테이블 스키마 변경 없음
 - 신규 테이블 추가 없음
-- 쿼리 로직만 변경
+- 쿼리 로직만 변경 + 성능 인덱스 추가
 
 #### M3 (선택적 - `is_backbone` 제거)
 | 작업 | 대상 | 설명 |
@@ -238,17 +242,12 @@ WHERE pj.product_id = :source_product_id
 | POST | `/api/projects/{id}/layers/{layer_id}/backbone` | `replace_layer_backbone()`: 소스 검증 및 조건 복사 소스 변경 (위와 동일) |
 | POST | `/api/projects/{id}/layers` | `add_layer()`: 소스 검증 및 조건 복사 소스 변경 (위와 동일) |
 
-#### 신규 API (Optional - REQ-BB-004)
+#### 신규 API (REQ-BB-004)
 
 | Method | Path | 설명 |
 |--------|------|------|
 | GET | `/api/products/backbones` | 전용 Backbone 목록 엔드포인트. 제품 정보 + Approved 프로젝트 revision, approved_at 포함 |
-
-#### 소스 레이어 목록 API 변경
-
-| Method | Path | 변경 내용 |
-|--------|------|-----------|
-| GET | `/api/products/{product_id}/layers` | (선택) Approved 프로젝트의 `project_layers` 반환으로 변경하거나, 별도 엔드포인트 추가 |
+| GET | `/api/products/{product_id}/backbone-layers` | 소스 제품의 Approved 프로젝트 `project_layers` 반환. BackboneReplaceModal에서 사용 |
 
 ### 4.4 서비스 계층 변경
 
@@ -277,23 +276,41 @@ WHERE pj.product_id = :source_product_id
   - `is_backbone=True` 파라미터 처리 로직 변경
   - JOIN + subquery 방식으로 Approved 프로젝트 존재 여부 기반 필터링
 
-#### 공통 유틸리티 함수 (신규 추출 권장)
+#### 공통 Repository 함수 (신규 - `repositories/backbone_repository.py`)
 
 ```python
-async def get_approved_project_for_product(
-    db: AsyncSession, product_id: int
-) -> Project | None:
-    """제품의 현재 Approved 프로젝트를 조회한다."""
-    result = await db.execute(
-        select(Project)
-        .options(selectinload(Project.layers).selectinload(ProjectLayer.layer))
-        .where(
-            Project.product_id == product_id,
-            Project.status == "approved",
-            Project.is_latest == True,
-        )
-    )
-    return result.scalars().first()
+class BackboneRepository:
+    """Backbone 자격 판정 및 조건 조회 Repository."""
+
+    @staticmethod
+    async def get_approved_project_for_product(
+        db: AsyncSession, product_id: int
+    ) -> Project | None:
+        """제품의 현재 Approved 프로젝트를 조회한다."""
+
+    @staticmethod
+    async def get_backbone_layer_map(
+        db: AsyncSession, product_id: int
+    ) -> dict[int, dict]:
+        """Approved 프로젝트의 layer_id -> conditions 매핑을 반환한다."""
+
+    @staticmethod
+    async def validate_backbone_source(
+        db: AsyncSession, product_id: int
+    ) -> Project:
+        """Backbone 소스 검증 + 조회 통합. 실패 시 HTTPException."""
+
+    @staticmethod
+    async def list_backbone_products(
+        db: AsyncSession, line_id: int | None = None
+    ) -> list[dict]:
+        """Approved 프로젝트가 있는 제품 목록 + 메타정보(revision, approved_at)."""
+
+    @staticmethod
+    async def get_backbone_layers(
+        db: AsyncSession, product_id: int
+    ) -> list[ProjectLayer]:
+        """소스 제품의 Approved 프로젝트 project_layers 반환."""
 ```
 
 ### 4.5 Frontend 변경
@@ -360,9 +377,13 @@ async def get_approved_project_for_product(
 **마이그레이션:**
 - `backend/alembic/versions/xxx_drop_is_backbone.py` - `is_backbone` 컬럼 제거 (M3)
 
-#### 신규 파일 (선택)
+#### 신규 파일
 
-- `backend/app/services/backbone_eligibility.py` - Backbone 자격 판정 공통 유틸리티 함수 (권장)
+- `backend/app/repositories/backbone_repository.py` - Backbone 자격 판정 Repository (기존 Repository 패턴 일관성)
+
+#### 시드 데이터 변경
+
+- `backend/app/seed/products.py` - Backbone 제품에 대한 Approved 프로젝트 자동 생성 추가
 
 ### 4.8 보안
 
