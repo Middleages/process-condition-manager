@@ -46,7 +46,6 @@ async def get_change_logs(
     layer_id: int | None = Query(None, description="Filter by layer_id"),
     column_name: str | None = Query(None, description="Filter by column_name"),
     limit: int = Query(50, ge=1, le=200),
-    offset: int = Query(0, ge=0),
     change_type: str | None = Query(None, description="Filter by change_type (manual/backbone/recipe)"),
     changed_by: int | None = Query(None, description="Filter by user ID"),
     date_from: datetime | None = Query(None, description="Filter changes from this datetime"),
@@ -55,9 +54,9 @@ async def get_change_logs(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await change_log_service.get_change_logs(
+    return await change_log_service.list_change_logs(
         db, project_id, layer_id=layer_id, column_name=column_name,
-        limit=limit, offset=offset, change_type=change_type,
+        limit=limit, change_type=change_type,
         changed_by=changed_by, date_from=date_from, date_to=date_to, page=page,
     )
 
@@ -73,7 +72,7 @@ async def get_timeline(
     _current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await change_log_service.get_timeline(
+    return await change_log_service.list_timeline(
         db, project_id,
         page=page,
         limit=limit,
@@ -102,7 +101,7 @@ async def get_version_history(
     _current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await project_analytics_service.get_version_history(db, project_id)
+    return await project_analytics_service.list_version_history(db, project_id)
 
 
 @router.get("/{project_id}/versions/{compare_project_id}/diff", response_model=VersionDiffResponse)

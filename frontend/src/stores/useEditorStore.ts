@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { DirtyCell, ValidationError } from '@/types'
+import type { DirtyCell, ValidationError, CategoryCode } from '@/types'
 
 function cellKey(projectLayerId: number, columnName: string) {
   return `${projectLayerId}:${columnName}`
@@ -7,7 +7,7 @@ function cellKey(projectLayerId: number, columnName: string) {
 
 interface EditorState {
   // Active selections
-  activeCategory: string // "SP" | "SC" | "OVL" | "DEV"
+  activeCategory: CategoryCode
   activeLayerId: number | null
   activeColumnName: string | null
 
@@ -31,7 +31,7 @@ interface EditorState {
   isVersionHistoryOpen: boolean
 
   // Actions
-  setActiveCategory: (code: string) => void
+  setActiveCategory: (code: CategoryCode) => void
   setActiveLayerId: (layerId: number | null) => void
   setActiveColumnName: (columnName: string | null) => void
   setCellValue: (projectLayerId: number, columnName: string, value: unknown, originalValue: unknown) => void
@@ -62,7 +62,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   cellHistoryTarget: null,
   isVersionHistoryOpen: false,
 
-  setActiveCategory: (code) => set({ activeCategory: code }),
+  setActiveCategory: (code: CategoryCode) => set({ activeCategory: code }),
 
   setActiveLayerId: (layerId) => set({ activeLayerId: layerId }),
 

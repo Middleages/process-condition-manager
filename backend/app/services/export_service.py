@@ -23,7 +23,7 @@ class ExportService:
 
     # --- Public API ---
 
-    async def get_systems(self, db: AsyncSession) -> list[dict]:
+    async def list_systems(self, db: AsyncSession) -> list[dict]:
         """Return all active export systems with column mapping counts."""
         query = (
             select(ExportSystem)

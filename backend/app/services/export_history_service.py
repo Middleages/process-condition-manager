@@ -49,7 +49,7 @@ class ExportHistoryService:
         return record
 
     @staticmethod
-    async def get_project_history(
+    async def list_project_history(
         db: AsyncSession,
         project_id: int,
         *,
@@ -109,7 +109,7 @@ class ExportHistoryService:
         return items, total
 
     @staticmethod
-    async def get_all_history(
+    async def list_all_history(
         db: AsyncSession,
         *,
         offset: int = 0,

@@ -1,4 +1,6 @@
 // ========== Column ==========
+export type CategoryCode = 'SP' | 'SC' | 'OVL' | 'DEV'
+
 export interface ColumnValidation {
   id: number
   rule_type: 'range' | 'required' | 'conditional_required' | 'cross_layer'

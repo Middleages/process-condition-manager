@@ -116,12 +116,19 @@ export interface RecipeApplyResponse {
   updated_at: string
 }
 
+export type RuleType =
+  | 'required'
+  | 'range'
+  | 'conditional_required'
+  | 'cross_layer'
+  | 'client'
+
 export interface ValidationError {
   layer_id: number
   layer_name: string
   column_name: string
   display_name: string
-  rule_type: string
+  rule_type: RuleType
   message: string
   metadata?: Record<string, unknown> | null
 }

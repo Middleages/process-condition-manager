@@ -18,14 +18,13 @@ from app.schemas.project import (
 )
 
 
-async def get_change_logs(
+async def list_change_logs(
     db: AsyncSession,
     project_id: int,
     *,
     layer_id: int | None = None,
     column_name: str | None = None,
     limit: int = 50,
-    offset: int = 0,
     change_type: str | None = None,
     changed_by: int | None = None,
     date_from: datetime | None = None,
@@ -48,8 +47,8 @@ async def get_change_logs(
     if not pl_ids:
         return ChangeLogListResponse(total=0, page=page, items=[])
 
-    # Page-to-offset conversion: use offset if > 0, otherwise use page-based pagination
-    effective_offset = offset if offset > 0 else (page - 1) * limit
+    # Page-based pagination: compute offset internally
+    effective_offset = (page - 1) * limit
 
     rows, total = await ChangeLogRepository.fetch_change_logs(
         db,
@@ -82,7 +81,7 @@ async def get_change_logs(
     return ChangeLogListResponse(total=total, page=page, items=items)
 
 
-async def get_timeline(
+async def list_timeline(
     db: AsyncSession,
     project_id: int,
     *,

@@ -1,13 +1,9 @@
 import { create } from 'zustand'
 import client from '@/api/client'
 import { authToken } from '@/api/authToken'
+import type { AuthUser } from '@/types/user'
 
-export interface AuthUser {
-  id: number
-  username: string
-  display_name: string
-  role: string
-}
+export type { AuthUser }
 
 interface AuthState {
   user: AuthUser | null

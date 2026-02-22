@@ -27,10 +27,12 @@ export function GridContextMenu({
 }: GridContextMenuProps) {
   return (
     <div
+      role="menu"
       className="fixed z-50 bg-white border border-gray-200 rounded-md shadow-lg py-1 min-w-[160px]"
       style={{ left: x, top: y }}
     >
       <button
+        role="menuitem"
         className="w-full text-left px-3 py-1.5 text-sm hover:bg-gray-100 flex items-center gap-2"
         onClick={() => {
           onViewHistory?.(projectLayerId, layerName, columnName)
@@ -42,6 +44,7 @@ export function GridContextMenu({
       </button>
       {projectStatus === 'review' && (currentUserRole === 'reviewer' || currentUserRole === 'admin') && (
         <button
+          role="menuitem"
           className="w-full text-left px-3 py-1.5 text-sm hover:bg-gray-100 flex items-center gap-2"
           onClick={() => {
             onAddComment?.(projectLayerId, layerName, columnName, columnDisplayName)

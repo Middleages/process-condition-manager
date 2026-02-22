@@ -285,7 +285,7 @@ export function ConditionGrid({
   }, [])
 
   return (
-    <div className="ag-theme-alpine flex-1 w-full relative">
+    <div className="ag-theme-alpine flex-1 w-full relative" aria-label="공정조건 데이터 테이블">
       <AgGridReact
         rowData={rowData}
         columnDefs={columnDefs}
