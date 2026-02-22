@@ -17,7 +17,7 @@ interface LayerFormModalProps {
   layer?: LayerResponse | null
 }
 
-export default function LayerFormModal({ isOpen, onClose, layer }: LayerFormModalProps) {
+export function LayerFormModal({ isOpen, onClose, layer }: LayerFormModalProps) {
   const isEdit = !!layer
   const [layerName, setLayerName] = useState('')
   const [stepSeq, setStepSeq] = useState('')

@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Plus, Pencil, Trash2, ArrowUp, ArrowDown, X, Loader2, Check } from 'lucide-react'
 import { ExportMappingForm } from '@/components/admin/ExportMappingForm'
+import { useConfirm } from '@/hooks/useConfirm'
 
 interface ExportMappingManagerProps {
   system: ExportSystemAdmin
@@ -78,6 +79,13 @@ export function ExportMappingManager({ system, onClose }: ExportMappingManagerPr
   const deleteMutation = useDeleteExportMapping(system.id)
   const reorderMutation = useReorderExportMappings(system.id)
 
+  const { confirm: confirmDelete, ConfirmDialogElement: DeleteDialog } = useConfirm({
+    title: '매핑 삭제',
+    description: '선택한 매핑을 삭제하시겠습니까?',
+    confirmText: '삭제',
+    variant: 'destructive',
+  })
+
   const handleAdd = () => {
     setEditingMapping(null)
     setIsFormOpen(true)
@@ -93,9 +101,8 @@ export function ExportMappingManager({ system, onClose }: ExportMappingManagerPr
     setEditingMapping(null)
   }
 
-  const handleDelete = (mapping: ExportMapping) => {
-    const message = `매핑 '${mapping.target_column_name}'을 삭제하시겠습니까?`
-    if (window.confirm(message)) {
+  const handleDelete = async (mapping: ExportMapping) => {
+    if (await confirmDelete()) {
       deleteMutation.mutate(mapping.id)
     }
   }
@@ -235,6 +242,8 @@ export function ExportMappingManager({ system, onClose }: ExportMappingManagerPr
         systemId={system.id}
         mapping={editingMapping}
       />
+
+      {DeleteDialog}
     </div>
   )
 }

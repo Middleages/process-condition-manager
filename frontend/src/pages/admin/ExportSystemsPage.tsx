@@ -6,6 +6,7 @@ import { ExportSystemForm } from '@/components/admin/ExportSystemForm'
 import { ExportMappingManager } from '@/components/admin/ExportMappingManager'
 import type { ExportSystemAdmin } from '@/types/export'
 import { Plus, Pencil, Trash2, Settings } from 'lucide-react'
+import { useConfirm } from '@/hooks/useConfirm'
 
 const FORMAT_BADGE_STYLES: Record<string, string> = {
   TYPE_A: 'bg-blue-100 text-blue-800 border-blue-200',
@@ -22,6 +23,13 @@ export default function ExportSystemsPage() {
   const { data: systems = [], isLoading } = useAdminExportSystems()
   const deleteMutation = useDeleteExportSystem()
 
+  const { confirm: confirmDelete, ConfirmDialogElement: DeleteDialog } = useConfirm({
+    title: '시스템 삭제',
+    description: '연관된 컬럼 매핑이 함께 삭제됩니다. 계속하시겠습니까?',
+    confirmText: '삭제',
+    variant: 'destructive',
+  })
+
   const handleAdd = () => {
     setSelectedSystem(null)
     setIsEditing(false)
@@ -34,9 +42,8 @@ export default function ExportSystemsPage() {
     setIsFormOpen(true)
   }
 
-  const handleDelete = (system: ExportSystemAdmin) => {
-    const message = `시스템 '${system.system_name}'과 연관된 컬럼 매핑 ${system.column_count}개가 함께 삭제됩니다. 계속하시겠습니까?`
-    if (window.confirm(message)) {
+  const handleDelete = async (system: ExportSystemAdmin) => {
+    if (await confirmDelete()) {
       deleteMutation.mutate(system.id)
     }
   }
@@ -176,6 +183,8 @@ export default function ExportSystemsPage() {
         onClose={handleFormClose}
         system={isEditing ? selectedSystem : null}
       />
+
+      {DeleteDialog}
     </div>
   )
 }

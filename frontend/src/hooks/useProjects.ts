@@ -45,6 +45,9 @@ export const projectKeys = {
     [...projectKeys.detail(projectId), 'cellHistory', projectLayerId, columnName] as const,
   versionHistory: (projectId: number) =>
     [...projectKeys.detail(projectId), 'versionHistory'] as const,
+  productRevisions: (productId: number) => ['projects', 'productRevisions', productId] as const,
+  versionDiff: (projectId: number, compareProjectId: number) =>
+    ['projects', 'versionDiff', projectId, compareProjectId] as const,
 }
 
 export function useProjects(status?: ProjectStatus, lineId?: number) {
@@ -180,7 +183,7 @@ export function useReviseProject() {
 
 export function useProductRevisions(productId: number | null) {
   return useQuery({
-    queryKey: ['product-revisions', productId],
+    queryKey: projectKeys.productRevisions(productId!),
     queryFn: () => getProductRevisions(productId!),
     enabled: !!productId,
   })
@@ -220,7 +223,7 @@ export function useVersionDiff(
   enabled: boolean = false
 ) {
   return useQuery({
-    queryKey: ['versionDiff', projectId, compareProjectId],
+    queryKey: projectKeys.versionDiff(projectId, compareProjectId),
     queryFn: () => getVersionDiff(projectId, compareProjectId),
     enabled: enabled && !!projectId && !!compareProjectId,
   })

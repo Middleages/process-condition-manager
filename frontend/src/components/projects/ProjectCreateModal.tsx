@@ -6,7 +6,7 @@ import { Combobox } from '@/components/ui/combobox'
 import { useProducts, useBackboneProducts } from '@/hooks/useProducts'
 import { useLines } from '@/hooks/useLines'
 import { useCreateProject } from '@/hooks/useProjects'
-import { useUserStore } from '@/stores/useUserStore'
+import { useAuthStore } from '@/stores/useAuthStore'
 import { Loader2 } from 'lucide-react'
 
 interface Props {
@@ -16,7 +16,7 @@ interface Props {
 
 export function ProjectCreateModal({ open, onOpenChange }: Props) {
   const navigate = useNavigate()
-  const currentUserId = useUserStore((s) => s.currentUserId)
+  const currentUserId = useAuthStore((s) => s.user?.id ?? null)
   const [selectedLineId, setSelectedLineId] = useState<number | undefined>(undefined)
   const { data: lines = [] } = useLines()
   const { data: allProducts = [] } = useProducts(

@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { Plus, Pencil, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import LineFormModal from './LineFormModal'
+import { LineFormModal } from './LineFormModal'
 import { useAdminLines, useDeleteLine } from '@/hooks/useAdminMaster'
 import type { LineResponse } from '@/api/adminMaster'
 
-export default function LineManagementPanel() {
+export function LineManagementPanel() {
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [selectedLine, setSelectedLine] = useState<LineResponse | null>(null)
 

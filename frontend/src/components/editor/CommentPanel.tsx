@@ -58,7 +58,7 @@ export function CommentPanel({ projectId, categories, layers, onToggle, isOpen =
     const layer = layers.find(l => l.id === comment.project_layer_id)
     if (layer) {
       setActiveLayerId(layer.layer_id)
-      setTimeout(() => setActiveColumnName(comment.column_name!), 0)
+      requestAnimationFrame(() => setActiveColumnName(comment.column_name!))
     }
   }
 

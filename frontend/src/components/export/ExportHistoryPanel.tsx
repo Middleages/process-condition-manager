@@ -1,20 +1,10 @@
 import { Loader2 } from 'lucide-react'
 import { useExportHistory } from '@/hooks/useExportHistory'
 import type { ExportHistory } from '@/types/export'
+import { formatDate } from '@/lib/utils'
 
 interface ExportHistoryPanelProps {
   projectId: number
-}
-
-// 날짜 포맷: "2024-01-15 09:30" 형식
-function formatDate(isoString: string): string {
-  const date = new Date(isoString)
-  const y = date.getFullYear()
-  const m = String(date.getMonth() + 1).padStart(2, '0')
-  const d = String(date.getDate()).padStart(2, '0')
-  const h = String(date.getHours()).padStart(2, '0')
-  const min = String(date.getMinutes()).padStart(2, '0')
-  return `${y}-${m}-${d} ${h}:${min}`
 }
 
 // 출력 유형 한글 레이블

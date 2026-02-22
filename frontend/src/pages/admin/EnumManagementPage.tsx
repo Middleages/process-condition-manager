@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Pencil } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import SelectOptionsEditModal from '@/components/admin/SelectOptionsEditModal'
+import { SelectOptionsEditModal } from '@/components/admin/SelectOptionsEditModal'
 import { useSelectColumns } from '@/hooks/useAdminColumns'
 import type { ColumnSelectOptions } from '@/types/adminUser'
 

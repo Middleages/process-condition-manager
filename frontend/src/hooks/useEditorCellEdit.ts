@@ -56,7 +56,16 @@ export function useEditorCellEdit({
       if (layer && activeCategoryData) {
         const colDef = activeCategoryData.columns.find((c) => c.column_name === columnName)
         if (colDef) {
-          const cellErrors = validateCellValue(newValue, colDef, layer.conditions)
+          const dirtyCellsMap = useEditorStore.getState().dirtyCells
+          const mergedConditions: Record<string, unknown> = { ...layer.conditions }
+          for (const [key, cell] of dirtyCellsMap) {
+            const [plId] = key.split(':')
+            if (Number(plId) === layer.id) {
+              mergedConditions[cell.columnName] = cell.value
+            }
+          }
+          mergedConditions[columnName] = newValue
+          const cellErrors = validateCellValue(newValue, colDef, mergedConditions)
           const errorsState = useEditorStore.getState().validationErrors
 
           const otherErrors = errorsState.filter(
@@ -76,8 +85,8 @@ export function useEditorCellEdit({
           const dependentColumns = conditionDependencyMap.get(columnName)
           if (dependentColumns && dependentColumns.length > 0) {
             for (const depColumn of dependentColumns) {
-              const depValue = layer.conditions[depColumn.column_name]
-              const depErrors = validateCellValue(depValue, depColumn, layer.conditions)
+              const depValue = mergedConditions[depColumn.column_name]
+              const depErrors = validateCellValue(depValue, depColumn, mergedConditions)
 
               allNewErrors = allNewErrors.filter(
                 (e) => !(e.layer_id === layer.layer_id && e.column_name === depColumn.column_name)

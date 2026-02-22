@@ -1,5 +1,5 @@
 import { useStatusTransition, useComments } from '@/hooks/useComments'
-import { useUserStore } from '@/stores/useUserStore'
+import { useAuthStore } from '@/stores/useAuthStore'
 import { useToastStore } from '@/stores/useToastStore'
 import { Button } from '@/components/ui/button'
 import { Loader2, CheckCircle2, XCircle } from 'lucide-react'
@@ -12,7 +12,7 @@ interface Props {
 }
 
 export function ApprovalButtons({ projectId, projectStatus, currentUser }: Props) {
-  const currentUserId = useUserStore((s) => s.currentUserId)
+  const currentUserId = useAuthStore((s) => s.user?.id ?? null)
   const addToast = useToastStore((s) => s.addToast)
   const statusTransition = useStatusTransition(projectId)
   const { data: commentData } = useComments(projectId)

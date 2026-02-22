@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { ExportDataSourceForm } from '@/components/admin/ExportDataSourceForm'
 import type { ExportDataSource, JoinKeyMapping } from '@/types/export'
 import { Plus, Pencil, Trash2 } from 'lucide-react'
+import { useConfirm } from '@/hooks/useConfirm'
 
 function JoinKeysSummary({ mappings }: { mappings: JoinKeyMapping[] }) {
   if (mappings.length === 0) return <span className="text-muted-foreground">--</span>
@@ -23,6 +24,13 @@ export default function ExportDataSourcesPage() {
   const { data: sources = [], isLoading } = useExportDataSources()
   const deleteMutation = useDeleteDataSource()
 
+  const { confirm: confirmDelete, ConfirmDialogElement: DeleteDialog } = useConfirm({
+    title: '데이터 소스 삭제',
+    description: '데이터 소스를 삭제하시겠습니까? 참조 중인 매핑이 있는 경우 비활성 처리됩니다.',
+    confirmText: '삭제',
+    variant: 'destructive',
+  })
+
   const handleAdd = () => {
     setSelectedSource(null)
     setIsEditing(false)
@@ -35,12 +43,8 @@ export default function ExportDataSourcesPage() {
     setIsFormOpen(true)
   }
 
-  const handleDelete = (source: ExportDataSource) => {
-    const hasRelatedMappings = source.mapping_count > 0
-    const message = hasRelatedMappings
-      ? `데이터 소스 '${source.source_name}'은 ${source.mapping_count}개의 매핑에서 참조됩니다. 비활성 처리(Soft Delete)됩니다. 계속하시겠습니까?`
-      : `데이터 소스 '${source.source_name}'을 삭제하시겠습니까?`
-    if (window.confirm(message)) {
+  const handleDelete = async (source: ExportDataSource) => {
+    if (await confirmDelete()) {
       deleteMutation.mutate(source.id)
     }
   }
@@ -155,6 +159,8 @@ export default function ExportDataSourcesPage() {
         onClose={handleFormClose}
         dataSource={isEditing ? selectedSource : null}
       />
+
+      {DeleteDialog}
     </div>
   )
 }

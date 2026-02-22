@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { Plus, Pencil, Trash2, ArrowUp, ArrowDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import LayerFormModal from './LayerFormModal'
+import { LayerFormModal } from './LayerFormModal'
 import { useAdminLayers, useDeleteLayer, useReorderLayers } from '@/hooks/useAdminMaster'
 import type { LayerResponse } from '@/api/adminMaster'
 
-export default function LayerManagementPanel() {
+export function LayerManagementPanel() {
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [selectedLayer, setSelectedLayer] = useState<LayerResponse | null>(null)
 

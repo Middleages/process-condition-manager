@@ -9,7 +9,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { RecipeDiffTable } from './RecipeDiffTable'
 import { useUploadRecipe, useApplyRecipe } from '@/hooks/useProjects'
-import { useUserStore } from '@/stores/useUserStore'
+import { useAuthStore } from '@/stores/useAuthStore'
 import { useEditorStore } from '@/stores/useEditorStore'
 import { useToastStore } from '@/stores/useToastStore'
 import type { ProjectLayerData, RecipeDiffResult, RecipeApplyItem } from '@/types'
@@ -34,7 +34,7 @@ export function RecipeUploadModal({ open, onOpenChange, projectId, layers }: Pro
 
   const uploadMutation = useUploadRecipe(projectId)
   const applyMutation = useApplyRecipe(projectId)
-  const currentUserId = useUserStore((s) => s.currentUserId)
+  const currentUserId = useAuthStore((s) => s.user?.id ?? null)
   const addToast = useToastStore((s) => s.addToast)
   const addRecipeCells = useEditorStore((s) => s.addRecipeCells)
 

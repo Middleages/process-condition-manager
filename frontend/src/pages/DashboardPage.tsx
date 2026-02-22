@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { useDashboardOverview, useRefreshDashboard } from '@/hooks/useDashboard'
 import { useLines } from '@/hooks/useLines'
 import type { StatusCounts, MyRecentProject, ReviewPendingItem, ActivityItem } from '@/types'
+import { formatDate } from '@/lib/utils'
 
 const STATUS_LABELS: Record<string, string> = {
   draft: 'Draft',
@@ -27,16 +28,6 @@ const STATUS_CARD_CONFIG: {
   { key: 'rejected', label: 'Rejected', icon: XCircle, bg: 'bg-red-50', text: 'text-red-800' },
 ]
 
-function formatDate(iso: string | null): string {
-  if (!iso) return '-'
-  return new Date(iso).toLocaleDateString('ko-KR', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
 
 function StatusCards({
   counts,

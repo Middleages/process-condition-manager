@@ -1,16 +1,13 @@
 import { useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { useEditorStore } from '@/stores/useEditorStore'
-import type { ColumnCategory, ColumnDefinition, ProjectLayerData, ValidationError, ProjectDetail, VersionHistoryResponse } from '@/types'
+import type { ColumnCategory, ColumnDefinition, ProjectLayerData, ValidationError, ProjectDetail } from '@/types'
 
 interface UseEditorNavigationProps {
   project: ProjectDetail | undefined
   categories: ColumnCategory[]
-  versionData: VersionHistoryResponse | undefined
 }
 
-export function useEditorNavigation({ project, categories, versionData }: UseEditorNavigationProps) {
-  const navigate = useNavigate()
+export function useEditorNavigation({ project, categories }: UseEditorNavigationProps) {
   const setActiveLayerId = useEditorStore((s) => s.setActiveLayerId)
   const setActiveColumnName = useEditorStore((s) => s.setActiveColumnName)
 
@@ -30,7 +27,7 @@ export function useEditorNavigation({ project, categories, versionData }: UseEdi
         if (col) {
           useEditorStore.getState().setActiveCategory(cat.category_code)
           setActiveLayerId(error.layer_id)
-          setTimeout(() => setActiveColumnName(error.column_name), 0)
+          requestAnimationFrame(() => setActiveColumnName(error.column_name))
           break
         }
       }
@@ -51,24 +48,15 @@ export function useEditorNavigation({ project, categories, versionData }: UseEdi
           }
         }
         setActiveLayerId(layer.layer_id)
-        setTimeout(() => setActiveColumnName(columnName), 0)
+        requestAnimationFrame(() => setActiveColumnName(columnName))
       }
     },
     [project, categories, setActiveLayerId, setActiveColumnName]
   )
 
-  const handleBackToCurrent = useCallback(() => {
-    if (!versionData) return
-    const latestVersion = versionData.versions.find((v) => v.is_latest)
-    if (latestVersion) {
-      navigate(`/projects/${latestVersion.project_id}/edit`)
-    }
-  }, [versionData, navigate])
-
   return {
     handleLayerClick,
     handleErrorClick,
     handleNavigateToCell,
-    handleBackToCurrent,
   }
 }

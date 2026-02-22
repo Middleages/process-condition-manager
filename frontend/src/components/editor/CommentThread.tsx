@@ -2,10 +2,12 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { useUpdateComment, useDeleteComment } from '@/hooks/useComments'
-import { useUserStore } from '@/stores/useUserStore'
+import { useAuthStore } from '@/stores/useAuthStore'
 import { useToastStore } from '@/stores/useToastStore'
 import type { Comment } from '@/types'
 import { Check, Pencil, Trash2, MapPin, Loader2, X } from 'lucide-react'
+import { useConfirm } from '@/hooks/useConfirm'
+import { formatDate } from '@/lib/utils'
 
 interface Props {
   comment: Comment
@@ -13,21 +15,18 @@ interface Props {
   onNavigate?: (comment: Comment) => void
 }
 
-function formatDate(dateStr: string): string {
-  const d = new Date(dateStr)
-  return d.toLocaleString('ko-KR', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
-
 export function CommentThread({ comment, projectId, onNavigate }: Props) {
-  const currentUserId = useUserStore((s) => s.currentUserId)
+  const currentUserId = useAuthStore((s) => s.user?.id ?? null)
   const addToast = useToastStore((s) => s.addToast)
   const updateMutation = useUpdateComment(projectId)
   const deleteMutation = useDeleteComment(projectId)
+
+  const { confirm: confirmDelete, ConfirmDialogElement: DeleteDialog } = useConfirm({
+    title: '댓글 삭제',
+    description: '댓글을 삭제하시겠습니까?',
+    confirmText: '삭제',
+    variant: 'destructive',
+  })
 
   const [isEditing, setIsEditing] = useState(false)
   const [editContent, setEditContent] = useState(comment.content)
@@ -69,7 +68,7 @@ export function CommentThread({ comment, projectId, onNavigate }: Props) {
   }
 
   const handleDelete = async () => {
-    if (!window.confirm('댓글을 삭제하시겠습니까?')) return
+    if (!(await confirmDelete())) return
     try {
       await deleteMutation.mutateAsync(comment.id)
       addToast('댓글이 삭제되었습니다.', 'success')
@@ -192,6 +191,8 @@ export function CommentThread({ comment, projectId, onNavigate }: Props) {
           )}
         </div>
       )}
+
+      {DeleteDialog}
     </div>
   )
 }

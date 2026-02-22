@@ -7,6 +7,7 @@ import {
 } from '@/hooks/useEquipment'
 import { EquipmentForm } from './EquipmentForm'
 import type { Equipment } from '@/types/export'
+import { useConfirm } from '@/hooks/useConfirm'
 
 interface EquipmentPanelProps {
   projectId: number
@@ -23,6 +24,13 @@ export function EquipmentPanel({ projectId, layerId, isReadOnly }: EquipmentPane
   const deleteEquipment = useDeleteEquipment(projectId, layerId)
   const reorderEquipment = useReorderEquipment(projectId, layerId)
 
+  const { confirm: confirmDelete, ConfirmDialogElement: DeleteDialog } = useConfirm({
+    title: '설비 삭제',
+    description: '선택한 설비를 삭제하시겠습니까?',
+    confirmText: '삭제',
+    variant: 'destructive',
+  })
+
   const handleAdd = () => {
     setEditTarget(null)
     setFormOpen(true)
@@ -33,10 +41,10 @@ export function EquipmentPanel({ projectId, layerId, isReadOnly }: EquipmentPane
     setFormOpen(true)
   }
 
-  const handleDelete = (eq: Equipment) => {
-    const confirmed = window.confirm(`설비 '${eq.equipment_id}'를 삭제하시겠습니까?`)
-    if (!confirmed) return
-    deleteEquipment.mutate(eq.id)
+  const handleDelete = async (eq: Equipment) => {
+    if (await confirmDelete()) {
+      deleteEquipment.mutate(eq.id)
+    }
   }
 
   const handleMoveUp = (index: number) => {
@@ -195,6 +203,8 @@ export function EquipmentPanel({ projectId, layerId, isReadOnly }: EquipmentPane
         layerId={layerId}
         equipment={editTarget}
       />
+
+      {DeleteDialog}
     </>
   )
 }

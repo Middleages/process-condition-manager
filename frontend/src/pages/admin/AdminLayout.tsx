@@ -1,10 +1,10 @@
 import { Outlet, Link, useLocation, Navigate } from 'react-router-dom'
 import { useUsers } from '@/hooks/useUsers'
-import { useUserStore } from '@/stores/useUserStore'
+import { useAuthStore } from '@/stores/useAuthStore'
 
 export default function AdminLayout() {
   const { data: users = [] } = useUsers()
-  const currentUserId = useUserStore((s) => s.currentUserId)
+  const currentUserId = useAuthStore((s) => s.user?.id ?? null)
   const location = useLocation()
 
   // Find current user

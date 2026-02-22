@@ -17,7 +17,7 @@ interface ProductFormModalProps {
   product?: ProductResponse | null
 }
 
-export default function ProductFormModal({ isOpen, onClose, product }: ProductFormModalProps) {
+export function ProductFormModal({ isOpen, onClose, product }: ProductFormModalProps) {
   const isEdit = !!product
   const [productName, setProductName] = useState('')
   const [description, setDescription] = useState('')

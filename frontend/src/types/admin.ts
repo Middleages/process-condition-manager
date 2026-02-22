@@ -78,19 +78,3 @@ export interface RecipeUploadResponse {
   results: RecipeDiffResult[]
 }
 
-export interface RecipeApplyItem {
-  project_layer_id: number
-  column_name: string
-  new_value: unknown
-}
-
-export interface RecipeApplyRequest {
-  changes: RecipeApplyItem[]
-  applied_by: number
-}
-
-export interface RecipeApplyResponse {
-  applied_count: number
-  change_log_count: number
-  updated_at: string
-}

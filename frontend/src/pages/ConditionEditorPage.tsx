@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useParams, useBlocker } from 'react-router-dom'
-import { useProjectDetail, useDeleteLayer, useVersionHistory, useValidateProjectMutation } from '@/hooks/useProjects'
+import { useProjectDetail, useDeleteLayer, useValidateProjectMutation } from '@/hooks/useProjects'
 import { useColumns } from '@/hooks/useColumns'
 import { useAllLayers } from '@/hooks/useProducts'
 import { useUsers } from '@/hooks/useUsers'
 import { useComments } from '@/hooks/useComments'
 import { useEditorStore } from '@/stores/useEditorStore'
-import { useUserStore } from '@/stores/useUserStore'
+import { useAuthStore } from '@/stores/useAuthStore'
 import { useToastStore } from '@/stores/useToastStore'
 import { useEditorCellEdit } from '@/hooks/useEditorCellEdit'
 import { useEditorNavigation } from '@/hooks/useEditorNavigation'
 import { useEditorModals } from '@/hooks/useEditorModals'
+import { useConfirm } from '@/hooks/useConfirm'
 import { EditorHeader } from '@/components/editor/EditorHeader'
 import { StatusBanner } from '@/components/editor/StatusBanner'
 import { CategoryTabs } from '@/components/editor/CategoryTabs'
@@ -35,7 +36,7 @@ import { EquipmentPanel } from '@/components/editor/EquipmentPanel'
 export default function ConditionEditorPage() {
   const { projectId } = useParams()
   const pid = Number(projectId)
-  const currentUserId = useUserStore((s) => s.currentUserId)
+  const currentUserId = useAuthStore((s) => s.user?.id ?? null)
   const addToast = useToastStore((s) => s.addToast)
 
   const gridApiRef = useRef<GridApi | null>(null)
@@ -46,7 +47,6 @@ export default function ConditionEditorPage() {
   const { data: allLayers = [] } = useAllLayers()
   const { data: users = [] } = useUsers()
   const { data: commentData } = useComments(pid)
-  const { data: versionData } = useVersionHistory(pid)
 
   // --- Store selectors ---
   const activeCategory = useEditorStore((s) => s.activeCategory)
@@ -64,6 +64,20 @@ export default function ConditionEditorPage() {
   const closeCellHistory = useEditorStore((s) => s.closeCellHistory)
 
   const deleteLayer = useDeleteLayer(pid)
+
+  const { confirm: confirmLayerDelete, ConfirmDialogElement: LayerDeleteDialog } = useConfirm({
+    title: '레이어 삭제',
+    description: '선택한 레이어를 삭제하시겠습니까? 이 레이어의 모든 조건 데이터가 삭제됩니다.',
+    confirmText: '삭제',
+    variant: 'destructive',
+  })
+
+  const { confirm: confirmNavigation, ConfirmDialogElement: NavigationDialog } = useConfirm({
+    title: '페이지 이동',
+    description: '저장하지 않은 변경사항이 있습니다. 페이지를 떠나시겠습니까?',
+    confirmText: '떠나기',
+    variant: 'destructive',
+  })
 
   // --- Derived state ---
   const hasDirty = dirtyCells.size > 0
@@ -86,10 +100,9 @@ export default function ConditionEditorPage() {
     isArchived,
   })
 
-  const { handleLayerClick, handleErrorClick, handleNavigateToCell, handleBackToCurrent } = useEditorNavigation({
+  const { handleLayerClick, handleErrorClick, handleNavigateToCell } = useEditorNavigation({
     project,
     categories,
-    versionData,
   })
 
   const modals = useEditorModals()
@@ -134,13 +147,12 @@ export default function ConditionEditorPage() {
 
   useEffect(() => {
     if (blocker.state === 'blocked') {
-      const confirmed = window.confirm(
-        '저장하지 않은 변경사항이 있습니다. 페이지를 떠나시겠습니까?'
-      )
-      if (confirmed) blocker.proceed()
-      else blocker.reset()
+      confirmNavigation().then((confirmed) => {
+        if (confirmed) blocker.proceed()
+        else blocker.reset()
+      })
     }
-  }, [blocker])
+  }, [blocker, confirmNavigation])
 
   useEffect(() => {
     const timer = setTimeout(() => { gridApiRef.current?.sizeColumnsToFit() }, 300)
@@ -152,30 +164,30 @@ export default function ConditionEditorPage() {
   }, [pid])
 
   useEffect(() => {
-    if (project?.layers.length) {
-      setActiveLayerId(project.layers[0].layer_id)
+    if (project?.layers?.length) {
+      const currentExists = project.layers.some(l => l.layer_id === activeLayerId)
+      if (!currentExists) {
+        setActiveLayerId(project.layers[0].layer_id)
+      }
     }
-  }, [project, setActiveLayerId])
+  }, [project, setActiveLayerId, activeLayerId])
 
   // Auto-validate on project load to restore validation errors
   const validateMutation = useValidateProjectMutation()
   const setValidationErrors = useEditorStore((s) => s.setValidationErrors)
+  const validateRef = useRef(validateMutation.mutateAsync)
+  validateRef.current = validateMutation.mutateAsync
   useEffect(() => {
     if (!pid || !project) return
-    validateMutation.mutateAsync(pid).then((validation) => {
+    validateRef.current(pid).then((validation) => {
       setValidationErrors(validation.errors)
-    }).catch(() => {
-      // Silently ignore validation errors on initial load
-    })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pid])
+    }).catch(() => {})
+  }, [pid, project, setValidationErrors])
 
   // --- Handlers (page-specific) ---
   const handleLayerDelete = useCallback(
     async (layer: ProjectLayerData) => {
-      const confirmed = window.confirm(
-        `"${layer.layer_name}" 레이어를 삭제하시겠습니까?\n이 레이어의 모든 조건 데이터가 삭제됩니다.`
-      )
+      const confirmed = await confirmLayerDelete()
       if (!confirmed) return
       try {
         await deleteLayer.mutateAsync(layer.id)
@@ -184,7 +196,7 @@ export default function ConditionEditorPage() {
         // Error handled by interceptor
       }
     },
-    [deleteLayer, addToast]
+    [deleteLayer, addToast, confirmLayerDelete]
   )
 
   const handleViewHistory = useCallback(
@@ -234,7 +246,7 @@ export default function ConditionEditorPage() {
       <StatusBanner
         status={project.status}
         revision={project.revision}
-        onBackToCurrent={isArchived ? handleBackToCurrent : undefined}
+        projectId={isArchived ? pid : undefined}
       />
 
       {project.status === 'approved' && (
@@ -361,6 +373,9 @@ export default function ConditionEditorPage() {
           onClose={closeCellHistory}
         />
       )}
+
+      {LayerDeleteDialog}
+      {NavigationDialog}
     </div>
   )
 }
