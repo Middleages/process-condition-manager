@@ -202,7 +202,7 @@ describe('setValidationErrors', () => {
         layer_name: 'AA',
         column_name: 'x',
         display_name: 'X',
-        rule_type: 'required',
+        rule_type: 'required' as const,
         message: 'Required',
       },
     ]

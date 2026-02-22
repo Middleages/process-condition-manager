@@ -15,3 +15,12 @@ export function formatDate(dateStr: string | null): string {
     minute: '2-digit',
   })
 }
+
+export function isConditionValue(value: unknown): value is string | number | null {
+  return value === null || typeof value === 'string' || typeof value === 'number'
+}
+
+export function getConditionValue(conditions: Record<string, unknown>, key: string): string | number | null {
+  const value = conditions[key]
+  return isConditionValue(value) ? value : null
+}

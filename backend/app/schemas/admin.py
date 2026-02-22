@@ -91,7 +91,8 @@ class ValidationRulesReplace(BaseModel):
 class ValidationRulesReplaceResponse(BaseModel):
     """Response schema for replacing validation rules for a column."""
     column_id: int
-    rules_replaced: int
+    validation_count: int
+    message: str
 
 
 class ColumnValidationResponse(BaseModel):

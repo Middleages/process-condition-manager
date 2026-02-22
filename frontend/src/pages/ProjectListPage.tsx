@@ -74,6 +74,7 @@ export default function ProjectListPage() {
                 key={f.value}
                 variant={statusFilter === f.value ? 'default' : 'outline'}
                 size="sm"
+                aria-pressed={statusFilter === f.value}
                 onClick={() => updateParams({ status: f.value === 'all' ? undefined : f.value })}
               >
                 {f.label}

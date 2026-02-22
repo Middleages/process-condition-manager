@@ -1,14 +1,12 @@
 import { useState, useMemo } from 'react'
 import { useAdminColumns } from '@/hooks/useAdminValidations'
-import type { ColumnDefinition, ColumnValidation } from '@/types'
+import type { ColumnDefinition, ColumnValidation, CategoryCode } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { ValidationEditModal } from '@/components/admin/ValidationEditModal'
 import { BulkUploadModal } from '@/components/admin/BulkUploadModal'
 import { Pencil, Upload, Search } from 'lucide-react'
-
-type CategoryCode = 'SP' | 'SC' | 'OVL' | 'DEV'
 
 const CATEGORIES: { code: CategoryCode; label: string }[] = [
   { code: 'SP', label: 'SP' },

@@ -14,7 +14,7 @@ from app.models import Product, ProductLayer, Project, ProjectLayer
 
 # Re-exports for backward compatibility (used by tests and other modules)
 from app.services.project_status_service import update_project_status  # noqa: F401
-from app.services.project_analytics_service import get_change_summary, get_version_history  # noqa: F401
+from app.services.project_analytics_service import get_change_summary, list_version_history  # noqa: F401
 
 
 async def create_project(
@@ -125,7 +125,7 @@ async def get_project_detail(db: AsyncSession, project_id: int) -> Project:
     return project
 
 
-async def get_projects_list(
+async def list_projects(
     db: AsyncSession,
     status: str | None = None,
     product_id: int | None = None,
@@ -252,7 +252,7 @@ async def revise_project(
     return await get_project_detail(db, new_project.id)
 
 
-async def get_product_revisions(
+async def list_product_revisions(
     db: AsyncSession,
     product_id: int,
 ) -> list[Project]:

@@ -153,7 +153,7 @@ async def get_all_export_history(
     _admin: User = Depends(require_admin),
 ):
     """Return paginated export history across all projects (admin only)."""
-    items, total = await ExportHistoryService.get_all_history(
+    items, total = await ExportHistoryService.list_all_history(
         db, offset=offset, limit=limit
     )
     return ExportHistoryListResponse(items=items, total=total)

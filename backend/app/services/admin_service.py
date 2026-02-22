@@ -370,7 +370,8 @@ async def replace_validations(
 
     return {
         "column_id": column_id,
-        "rules_replaced": len(rules),
+        "validation_count": len(rules),
+        "message": f"Replaced {len(rules)} validation rule(s) for column {column_id}",
     }
 
 

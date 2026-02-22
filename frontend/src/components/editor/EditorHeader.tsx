@@ -75,19 +75,19 @@ export function EditorHeader({
       {/* Cell color legend */}
       <div className="flex items-center gap-3 text-xs text-muted-foreground">
         <span className="flex items-center gap-1">
-          <span className="w-3 h-3 rounded-sm inline-block" style={{ backgroundColor: '#fef9c3' }} />
+          <span className="w-3 h-3 rounded-sm inline-block bg-yellow-100" />
           편집됨
         </span>
         <span className="flex items-center gap-1">
-          <span className="w-3 h-3 rounded-sm inline-block" style={{ backgroundColor: '#fecaca' }} />
+          <span className="w-3 h-3 rounded-sm inline-block bg-red-200" />
           검증오류
         </span>
         <span className="flex items-center gap-1">
-          <span className="w-3 h-3 rounded-sm inline-block" style={{ backgroundColor: '#bbf7d0' }} />
+          <span className="w-3 h-3 rounded-sm inline-block bg-green-200" />
           Recipe
         </span>
         <span className="flex items-center gap-1">
-          <span className="w-3 h-3 rounded-sm inline-block" style={{ backgroundColor: '#fef2f2', border: '1px solid #fca5a5' }} />
+          <span className="w-3 h-3 rounded-sm inline-block bg-red-50 border border-red-300" />
           코멘트
         </span>
       </div>

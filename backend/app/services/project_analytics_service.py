@@ -64,7 +64,7 @@ async def get_change_summary(db: AsyncSession, project_id: int) -> dict:
     }
 
 
-async def get_version_history(
+async def list_version_history(
     db: AsyncSession,
     project_id: int,
 ):

@@ -52,7 +52,7 @@ async def get_product_revisions(
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
 
-    projects = await project_service.get_product_revisions(db, product_id)
+    projects = await project_service.list_product_revisions(db, product_id)
     revisions = [
         RevisionItem(
             id=p.id,

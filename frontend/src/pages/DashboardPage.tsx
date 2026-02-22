@@ -67,7 +67,10 @@ function MyRecentProjects({ projects }: { projects: MyRecentProject[] }) {
       {projects.map((p) => (
         <div
           key={p.id}
+          role="button"
+          tabIndex={0}
           onClick={() => navigate(`/projects/${p.id}/edit`)}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/projects/${p.id}/edit`) } }}
           className="flex items-center justify-between p-3 rounded-md hover:bg-muted/50 cursor-pointer transition-colors"
         >
           <div className="min-w-0 flex-1">
@@ -97,7 +100,10 @@ function ReviewPendingList({ items }: { items: ReviewPendingItem[] }) {
       {items.map((item) => (
         <div
           key={item.id}
+          role="button"
+          tabIndex={0}
           onClick={() => navigate(`/projects/${item.id}/edit`)}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/projects/${item.id}/edit`) } }}
           className="flex items-center justify-between p-3 rounded-md hover:bg-muted/50 cursor-pointer transition-colors"
         >
           <div className="min-w-0 flex-1">

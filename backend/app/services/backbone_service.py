@@ -65,8 +65,8 @@ async def replace_layer_backbone(
     source_pl = result.scalars().first()
     if not source_pl:
         raise HTTPException(
-            404,
-            f"Layer '{layer_name}' not found in source product '{source_product.product_name}'"
+            status_code=404,
+            detail=f"Layer '{layer_name}' not found in source product '{source_product.product_name}'"
         )
 
     # 5. Compute diff and create change_logs

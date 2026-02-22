@@ -99,7 +99,7 @@ async def list_projects(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    results = await project_service.get_projects_list(
+    results = await project_service.list_projects(
         db, status, product_id, is_latest=is_latest, line_id=line_id,
     )
     return [_build_project_response(p, layer_count=lc) for p, lc in results]

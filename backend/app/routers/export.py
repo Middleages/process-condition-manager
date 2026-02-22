@@ -22,21 +22,22 @@ from app.services.export_history_service import ExportHistoryService
 from app.services.export_service import ExportService
 from app.services.export_validation_service import ExportValidationService
 
-router = APIRouter(prefix="/api", tags=["export"])
+router = APIRouter(prefix="/api/export", tags=["export"])
+project_router = APIRouter(prefix="/api/projects", tags=["export"])
 
 _export_service = ExportService()
 
 
-@router.get("/export/systems", response_model=list[ExportSystemResponse])
+@router.get("/systems", response_model=list[ExportSystemResponse])
 async def list_export_systems(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_active_user),
 ):
     """REQ-050: List all active export systems with column mapping counts."""
-    return await _export_service.get_systems(db)
+    return await _export_service.list_systems(db)
 
 
-@router.post("/projects/{project_id}/export")
+@project_router.post("/{project_id}/export")
 async def export_project(
     project_id: int,
     body: ExportRequest,
@@ -128,8 +129,8 @@ async def export_project(
         )
 
 
-@router.get(
-    "/projects/{project_id}/export/preview/{system_id}",
+@project_router.get(
+    "/{project_id}/export/preview/{system_id}",
     response_model=ExportPreviewResponse,
 )
 async def preview_export(
@@ -165,8 +166,8 @@ async def preview_export(
     return ExportPreviewResponse(**preview_data)
 
 
-@router.post(
-    "/projects/{project_id}/export/validate",
+@project_router.post(
+    "/{project_id}/export/validate",
     response_model=ExportValidationResponse,
 )
 async def validate_export(
@@ -186,8 +187,8 @@ async def validate_export(
     return await ExportValidationService.validate(db, project_id, data.system_ids)
 
 
-@router.get(
-    "/projects/{project_id}/export/history",
+@project_router.get(
+    "/{project_id}/export/history",
     response_model=ExportHistoryListResponse,
 )
 async def get_export_history(
@@ -203,7 +204,7 @@ async def get_export_history(
     if not project:
         raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
 
-    items, total = await ExportHistoryService.get_project_history(
+    items, total = await ExportHistoryService.list_project_history(
         db, project_id, offset=offset, limit=limit
     )
     return ExportHistoryListResponse(items=items, total=total)
