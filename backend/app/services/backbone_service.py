@@ -9,6 +9,7 @@ from fastapi import HTTPException
 from app.models import (
     Product, ProductLayer, Project, ProjectLayer, Layer, ChangeLog,
 )
+from app.repositories.backbone_repository import BackboneRepository
 from app.utils.comparison import values_differ
 
 
@@ -45,20 +46,21 @@ async def replace_layer_backbone(
     if not target_pl:
         raise HTTPException(status_code=404, detail="Project layer not found")
 
-    # 3. Validate source product is backbone
+    # 3. Validate source product exists and has an Approved project (backbone source)
     source_product = await db.get(Product, source_product_id)
     if not source_product:
         raise HTTPException(status_code=404, detail="Source product not found")
-    if not source_product.is_backbone:
-        raise HTTPException(status_code=400, detail="Source product is not a backbone")
 
-    # 4. Find matching layer in source product
+    # validate_backbone_source raises 400 if no Approved project found
+    approved_project = await BackboneRepository.validate_backbone_source(db, source_product_id)
+
+    # 4. Find matching layer in source product's Approved project layers
     layer_name = source_layer_name or target_pl.layer.layer_name
     result = await db.execute(
-        select(ProductLayer)
-        .join(Layer, ProductLayer.layer_id == Layer.id)
+        select(ProjectLayer)
+        .join(Layer, ProjectLayer.layer_id == Layer.id)
         .where(
-            ProductLayer.product_id == source_product_id,
+            ProjectLayer.project_id == approved_project.id,
             Layer.layer_name == layer_name,
         )
     )
@@ -66,7 +68,7 @@ async def replace_layer_backbone(
     if not source_pl:
         raise HTTPException(
             status_code=404,
-            detail=f"Layer '{layer_name}' not found in source product '{source_product.product_name}'"
+            detail=f"Layer '{layer_name}' not found in approved project for '{source_product.product_name}'"
         )
 
     # 5. Compute diff and create change_logs
@@ -148,16 +150,17 @@ async def add_layer(
         source_product = await db.get(Product, source_product_id)
         if not source_product:
             raise HTTPException(status_code=404, detail="Source product not found")
-        if not source_product.is_backbone:
-            raise HTTPException(status_code=400, detail="Source product is not a backbone")
 
-        # Find the matching layer
+        # validate_backbone_source raises 400 if no Approved project found
+        approved_project = await BackboneRepository.validate_backbone_source(db, source_product_id)
+
+        # Find the matching layer in the Approved project
         match_name = source_layer_name or layer.layer_name
         result = await db.execute(
-            select(ProductLayer)
-            .join(Layer, ProductLayer.layer_id == Layer.id)
+            select(ProjectLayer)
+            .join(Layer, ProjectLayer.layer_id == Layer.id)
             .where(
-                ProductLayer.product_id == source_product_id,
+                ProjectLayer.project_id == approved_project.id,
                 Layer.layer_name == match_name,
             )
         )
