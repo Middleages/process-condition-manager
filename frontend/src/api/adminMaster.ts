@@ -19,7 +19,6 @@ export interface ProductResponse {
   id: number
   product_name: string
   description: string | null
-  is_backbone: boolean
   line_id: number | null
   line_name: string | null
   part_id: string | null
@@ -29,7 +28,6 @@ export interface ProductResponse {
 export interface ProductCreate {
   product_name: string
   description?: string | null
-  is_backbone?: boolean
   line_id?: number | null
   part_id?: string | null
 }

@@ -65,7 +65,7 @@ class TestTimeline:
         """Timeline with only cell changes returns cell_change entries."""
         project_id, data, layer_a_id = await self._create_project_with_cell_changes(db_session, seed_test_data)
 
-        result = await change_log_service.get_timeline(db_session, project_id)
+        result = await change_log_service.list_timeline(db_session, project_id)
         assert result.total > 0
         for group in result.groups:
             for entry in group.entries:
@@ -79,7 +79,7 @@ class TestTimeline:
         # Add status change directly (bypass validation)
         await self._add_status_change(db_session, project_id, data["user"].id)
 
-        result = await change_log_service.get_timeline(db_session, project_id)
+        result = await change_log_service.list_timeline(db_session, project_id)
         entry_types = {
             entry.entry_type
             for group in result.groups
@@ -92,7 +92,7 @@ class TestTimeline:
         """All entries in timeline are ordered newest first (DESC)."""
         project_id, data, layer_a_id = await self._create_project_with_cell_changes(db_session, seed_test_data)
 
-        result = await change_log_service.get_timeline(db_session, project_id)
+        result = await change_log_service.list_timeline(db_session, project_id)
         all_entries = [e for g in result.groups for e in g.entries]
         timestamps = [e.timestamp for e in all_entries]
         assert timestamps == sorted(timestamps, reverse=True)
@@ -101,7 +101,7 @@ class TestTimeline:
         """Entries are grouped by YYYY-MM-DD date."""
         project_id, data, layer_a_id = await self._create_project_with_cell_changes(db_session, seed_test_data)
 
-        result = await change_log_service.get_timeline(db_session, project_id)
+        result = await change_log_service.list_timeline(db_session, project_id)
         for group in result.groups:
             # date should be YYYY-MM-DD format
             assert len(group.date) == 10
@@ -116,7 +116,7 @@ class TestTimeline:
         """Timeline entries include the user display name."""
         project_id, data, layer_a_id = await self._create_project_with_cell_changes(db_session, seed_test_data)
 
-        result = await change_log_service.get_timeline(db_session, project_id)
+        result = await change_log_service.list_timeline(db_session, project_id)
         for group in result.groups:
             for entry in group.entries:
                 assert entry.user_name is not None
@@ -128,7 +128,7 @@ class TestTimeline:
         # Add status change directly (bypass validation)
         await self._add_status_change(db_session, project_id, data["user"].id)
 
-        result = await change_log_service.get_timeline(db_session, project_id)
+        result = await change_log_service.list_timeline(db_session, project_id)
         for group in result.groups:
             for entry in group.entries:
                 if entry.entry_type == "cell_change":
@@ -140,7 +140,7 @@ class TestTimeline:
         """Pagination: page=1 limit=1 returns at most 1 entry."""
         project_id, data, layer_a_id = await self._create_project_with_cell_changes(db_session, seed_test_data)
 
-        result = await change_log_service.get_timeline(db_session, project_id, page=1, limit=1)
+        result = await change_log_service.list_timeline(db_session, project_id, page=1, limit=1)
         assert result.page == 1
         assert result.limit == 1
         total_entries = sum(len(g.entries) for g in result.groups)
@@ -151,11 +151,11 @@ class TestTimeline:
         project_id, data, layer_a_id = await self._create_project_with_cell_changes(db_session, seed_test_data)
 
         # We have 2 cell changes from SP_SPIN1_SPEED_rpm and SC_EXPOSE_ENERGY_mJ
-        total_result = await change_log_service.get_timeline(db_session, project_id)
+        total_result = await change_log_service.list_timeline(db_session, project_id)
         total = total_result.total
 
-        result_p1 = await change_log_service.get_timeline(db_session, project_id, page=1, limit=1)
-        result_p2 = await change_log_service.get_timeline(db_session, project_id, page=2, limit=1)
+        result_p1 = await change_log_service.list_timeline(db_session, project_id, page=1, limit=1)
+        result_p2 = await change_log_service.list_timeline(db_session, project_id, page=2, limit=1)
 
         entries_p1 = sum(len(g.entries) for g in result_p1.groups)
         entries_p2 = sum(len(g.entries) for g in result_p2.groups)
@@ -168,21 +168,21 @@ class TestTimeline:
             db_session, data["target"].id, data["backbone"].id, data["user"].id,
         )
 
-        result = await change_log_service.get_timeline(db_session, project.id)
+        result = await change_log_service.list_timeline(db_session, project.id)
         assert result.total == 0
         assert result.groups == []
 
     async def test_project_not_found_raises_404(self, db_session, seed_test_data):
         """Non-existent project raises HTTPException 404."""
         with pytest.raises(HTTPException) as exc_info:
-            await change_log_service.get_timeline(db_session, 999999)
+            await change_log_service.list_timeline(db_session, 999999)
         assert exc_info.value.status_code == 404
 
     async def test_cell_change_details_populated(self, db_session, seed_test_data):
         """Cell change entries have layer_name, column_name, new_value in details."""
         project_id, data, layer_a_id = await self._create_project_with_cell_changes(db_session, seed_test_data)
 
-        result = await change_log_service.get_timeline(db_session, project_id)
+        result = await change_log_service.list_timeline(db_session, project_id)
         cell_entries = [
             e for g in result.groups for e in g.entries
             if e.entry_type == "cell_change"
@@ -197,7 +197,7 @@ class TestTimeline:
         project_id, data, layer_a_id = await self._create_project_with_cell_changes(db_session, seed_test_data)
         await self._add_status_change(db_session, project_id, data["user"].id)
 
-        result = await change_log_service.get_timeline(db_session, project_id)
+        result = await change_log_service.list_timeline(db_session, project_id)
         status_entries = [
             e for g in result.groups for e in g.entries
             if e.entry_type == "status_change"
@@ -215,7 +215,7 @@ class TestTimeline:
         project_id, data, layer_a_id = await self._create_project_with_cell_changes(db_session, seed_test_data)
 
         # bulk_save writes manual changes
-        result = await change_log_service.get_timeline(
+        result = await change_log_service.list_timeline(
             db_session, project_id, change_type="manual"
         )
         all_entries = [e for g in result.groups for e in g.entries]
@@ -232,7 +232,7 @@ class TestTimeline:
         await self._add_status_change(db_session, project_id, data["user"].id)
 
         user_id = data["user"].id
-        result = await change_log_service.get_timeline(
+        result = await change_log_service.list_timeline(
             db_session, project_id, changed_by=user_id
         )
         all_entries = [e for g in result.groups for e in g.entries]
@@ -244,7 +244,7 @@ class TestTimeline:
         """Filter by a user ID that has no entries returns empty result."""
         project_id, _, _ = await self._create_project_with_cell_changes(db_session, seed_test_data)
 
-        result = await change_log_service.get_timeline(
+        result = await change_log_service.list_timeline(
             db_session, project_id, changed_by=999999
         )
         assert result.total == 0
@@ -263,7 +263,7 @@ class TestTimeline:
         )).scalar_one()
         layer_id_value = pl_row.layer_id
 
-        result = await change_log_service.get_timeline(
+        result = await change_log_service.list_timeline(
             db_session, project_id, layer_id=layer_id_value
         )
         all_entries = [e for g in result.groups for e in g.entries]
@@ -278,7 +278,7 @@ class TestTimeline:
         """Filter by a layer_id that has no project layers returns empty result."""
         project_id, _, _ = await self._create_project_with_cell_changes(db_session, seed_test_data)
 
-        result = await change_log_service.get_timeline(
+        result = await change_log_service.list_timeline(
             db_session, project_id, layer_id=999999
         )
         assert result.total == 0
@@ -290,7 +290,7 @@ class TestTimeline:
         project_id, _, _ = await self._create_project_with_cell_changes(db_session, seed_test_data)
 
         user_id = data["user"].id
-        result = await change_log_service.get_timeline(
+        result = await change_log_service.list_timeline(
             db_session, project_id, change_type="manual", changed_by=user_id
         )
         all_entries = [e for g in result.groups for e in g.entries]
@@ -307,14 +307,14 @@ class TestTimeline:
         await self._add_status_change(db_session, project_id, data["user"].id)
 
         # Confirm status_change exists without filter
-        result_no_filter = await change_log_service.get_timeline(db_session, project_id)
+        result_no_filter = await change_log_service.list_timeline(db_session, project_id)
         all_types_no_filter = {
             e.entry_type for g in result_no_filter.groups for e in g.entries
         }
         assert "status_change" in all_types_no_filter
 
         # With change_type=manual, status_change entries must be absent
-        result_filtered = await change_log_service.get_timeline(
+        result_filtered = await change_log_service.list_timeline(
             db_session, project_id, change_type="manual"
         )
         all_types_filtered = {

@@ -24,7 +24,7 @@ async def test_draft_to_review_valid(db_session, seed_test_data):
 
     # Transition to review (should succeed with no validation errors)
     result = await project_service.update_project_status(
-        db_session, project.id, "review", user.id, "Ready for review"
+        db_session, project.id, "review", user, "Ready for review"
     )
 
     assert result["status"] == "review"
@@ -55,7 +55,7 @@ async def test_draft_to_review_with_validation_errors(db_session, seed_test_data
     # Attempt transition to review (should fail due to validation errors)
     with pytest.raises(HTTPException) as exc_info:
         await project_service.update_project_status(
-            db_session, project.id, "review", user.id
+            db_session, project.id, "review", user
         )
 
     assert exc_info.value.status_code == 400
@@ -75,12 +75,12 @@ async def test_review_to_approved_by_reviewer(db_session, seed_test_data):
         db_session, target.id, backbone.id, user.id
     )
     await project_service.update_project_status(
-        db_session, project.id, "review", user.id
+        db_session, project.id, "review", user
     )
 
     # Transition to approved by reviewer
     result = await project_service.update_project_status(
-        db_session, project.id, "approved", reviewer.id, "Looks good"
+        db_session, project.id, "approved", reviewer, "Looks good"
     )
 
     assert result["status"] == "approved"
@@ -99,13 +99,13 @@ async def test_review_to_approved_by_editor_forbidden(db_session, seed_test_data
         db_session, target.id, backbone.id, user.id
     )
     await project_service.update_project_status(
-        db_session, project.id, "review", user.id
+        db_session, project.id, "review", user
     )
 
     # Attempt to approve as editor (should fail)
     with pytest.raises(HTTPException) as exc_info:
         await project_service.update_project_status(
-            db_session, project.id, "approved", user.id
+            db_session, project.id, "approved", user
         )
 
     assert exc_info.value.status_code == 403
@@ -125,7 +125,7 @@ async def test_review_to_rejected_with_comments(db_session, seed_test_data):
         db_session, target.id, backbone.id, user.id
     )
     await project_service.update_project_status(
-        db_session, project.id, "review", user.id
+        db_session, project.id, "review", user
     )
 
     # Add a comment
@@ -138,7 +138,7 @@ async def test_review_to_rejected_with_comments(db_session, seed_test_data):
 
     # Transition to rejected
     result = await project_service.update_project_status(
-        db_session, project.id, "rejected", reviewer.id, "Issues found"
+        db_session, project.id, "rejected", reviewer, "Issues found"
     )
 
     # Should transition to draft, not stay as rejected
@@ -159,13 +159,13 @@ async def test_review_to_rejected_without_comments(db_session, seed_test_data):
         db_session, target.id, backbone.id, user.id
     )
     await project_service.update_project_status(
-        db_session, project.id, "review", user.id
+        db_session, project.id, "review", user
     )
 
     # Attempt to reject without comments (should fail)
     with pytest.raises(HTTPException) as exc_info:
         await project_service.update_project_status(
-            db_session, project.id, "rejected", reviewer.id
+            db_session, project.id, "rejected", reviewer
         )
 
     assert exc_info.value.status_code == 400
@@ -187,7 +187,7 @@ async def test_invalid_transition_draft_to_approved(db_session, seed_test_data):
     # Attempt invalid transition (should fail)
     with pytest.raises(HTTPException) as exc_info:
         await project_service.update_project_status(
-            db_session, project.id, "approved", user.id
+            db_session, project.id, "approved", user
         )
 
     assert exc_info.value.status_code == 400
@@ -207,19 +207,19 @@ async def test_archived_status_change_blocked(db_session, seed_test_data):
         db_session, target.id, backbone.id, user.id
     )
     await project_service.update_project_status(
-        db_session, project.id, "review", user.id
+        db_session, project.id, "review", user
     )
     await project_service.update_project_status(
-        db_session, project.id, "approved", reviewer.id
+        db_session, project.id, "approved", reviewer
     )
     await project_service.update_project_status(
-        db_session, project.id, "archived", user.id
+        db_session, project.id, "archived", user
     )
 
     # Attempt to change status (should fail)
     with pytest.raises(HTTPException) as exc_info:
         await project_service.update_project_status(
-            db_session, project.id, "draft", user.id
+            db_session, project.id, "draft", user
         )
 
     assert exc_info.value.status_code == 400
@@ -240,7 +240,7 @@ async def test_status_log_created_on_transition(db_session, seed_test_data):
 
     # Transition to review
     await project_service.update_project_status(
-        db_session, project.id, "review", user.id, "Test comment"
+        db_session, project.id, "review", user, "Test comment"
     )
 
     # Check status log was created
@@ -269,7 +269,7 @@ async def test_rejection_creates_dual_log(db_session, seed_test_data):
         db_session, target.id, backbone.id, user.id
     )
     await project_service.update_project_status(
-        db_session, project.id, "review", user.id
+        db_session, project.id, "review", user
     )
 
     # Add a comment
@@ -282,7 +282,7 @@ async def test_rejection_creates_dual_log(db_session, seed_test_data):
 
     # Reject
     await project_service.update_project_status(
-        db_session, project.id, "rejected", reviewer.id, "Needs work"
+        db_session, project.id, "rejected", reviewer, "Needs work"
     )
 
     # Check dual log entries

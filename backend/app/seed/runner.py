@@ -149,16 +149,15 @@ def seed():
             line_ids[line["line_code"]] = result.scalar()
         print(f"  Lines: {len(line_ids)}")
 
-        # --- Products (Backbone) + ProductLayers ---
+        # --- Products (with Approved projects) + ProductLayers ---
         product_ids = {}
         pl_count = 0
         for prod in PRODUCTS:
             session.execute(
-                text("INSERT INTO products (product_name, description, is_backbone, line_id, part_id) "
-                     "VALUES (:name, :desc, :bb, :lid, :pid)"),
+                text("INSERT INTO products (product_name, description, line_id, part_id) "
+                     "VALUES (:name, :desc, :lid, :pid)"),
                 {
                     "name": prod["product_name"], "desc": prod["description"],
-                    "bb": prod["is_backbone"],
                     "lid": line_ids[prod["line_code"]],
                     "pid": prod["part_id"],
                 },
@@ -180,19 +179,18 @@ def seed():
                     {"pid": pid, "lid": layer_ids[layer_name], "cond": json.dumps(conditions)},
                 )
                 pl_count += 1
-        print(f"  Products (backbone): {len(product_ids)}")
+        print(f"  Products (approved-backbone): {len(product_ids)}")
         print(f"  Product Layers: {pl_count} ({len(PRODUCTS)} products x {len(LAYER_NAMES)} layers)")
 
-        # --- Non-backbone Products ---
+        # --- Non-approved Products (no Approved project) ---
         nb_count = 0
         nb_pl_count = 0
         for prod in NON_BACKBONE_PRODUCTS:
             session.execute(
-                text("INSERT INTO products (product_name, description, is_backbone, line_id, part_id) "
-                     "VALUES (:name, :desc, :bb, :lid, :pid)"),
+                text("INSERT INTO products (product_name, description, line_id, part_id) "
+                     "VALUES (:name, :desc, :lid, :pid)"),
                 {
                     "name": prod["product_name"], "desc": prod["description"],
-                    "bb": prod["is_backbone"],
                     "lid": line_ids[prod["line_code"]],
                     "pid": prod["part_id"],
                 },
@@ -214,8 +212,8 @@ def seed():
                     {"pid": pid, "lid": layer_ids[layer_name], "cond": json.dumps({})},
                 )
                 nb_pl_count += 1
-        print(f"  Products (non-backbone): {nb_count}")
-        print(f"  Non-backbone Product Layers: {nb_pl_count}")
+        print(f"  Products (non-approved): {nb_count}")
+        print(f"  Non-approved Product Layers: {nb_pl_count}")
 
         # --- Export Systems ---
         EXPORT_SYSTEMS = [
@@ -369,49 +367,69 @@ def seed():
             ecm_count += 1
         print(f"  Export Column Mappings: {ecm_count}")
 
-        # --- Test Project (approved) for Export Testing ---
-        session.execute(
-            text(
-                "INSERT INTO projects (product_id, main_backbone_id, status, revision, is_latest, created_by) "
-                "VALUES (:pid, :bbid, 'approved', 1, TRUE, :uid)"
-            ),
-            {
-                "pid": product_ids["PROD-2024X"],
-                "bbid": product_ids["PROD-2024X"],
-                "uid": user_ids["engineer1"],
-            },
-        )
-        result = session.execute(
-            text("SELECT id FROM projects WHERE product_id = :pid AND status = 'approved'"),
-            {"pid": product_ids["PROD-2024X"]},
-        )
-        test_project_id = result.scalar()
-
+        # --- Approved Projects for products in PRODUCTS list (backbone source of truth) ---
+        # Each product in PRODUCTS gets an Approved project (status='approved', is_latest=True, revision=1)
+        # with project_layers copied from product_layers. This makes them eligible as backbone sources
+        # via BackboneRepository (backbone eligibility is determined dynamically by Approved project existence).
         random.seed(99)
-        project_layer_ids = {}
-        for layer_name, _, _, sort_order_val in LAYERS:
-            conditions = generate_conditions(layer_name, "PROD-2024X")
+        backbone_project_ids = {}
+        project_layer_ids = {}  # For the first backbone product (PROD-2024X), used for equipment assignments
+
+        for prod in PRODUCTS:
+            prod_name = prod["product_name"]
+            pid = product_ids[prod_name]
+
             session.execute(
                 text(
-                    "INSERT INTO project_layers "
-                    "(project_id, layer_id, backbone_product_id, conditions, backbone_conditions, sort_order) "
-                    "VALUES (:proj_id, :lid, :bbpid, CAST(:cond AS jsonb), CAST(:bcond AS jsonb), :sort)"
+                    "INSERT INTO projects (product_id, main_backbone_id, status, revision, is_latest, created_by) "
+                    "VALUES (:pid, :bbid, 'approved', 1, TRUE, :uid)"
                 ),
                 {
-                    "proj_id": test_project_id,
-                    "lid": layer_ids[layer_name],
-                    "bbpid": product_ids["PROD-2024X"],
-                    "cond": json.dumps(conditions),
-                    "bcond": json.dumps(conditions),
-                    "sort": sort_order_val,
+                    "pid": pid,
+                    "bbid": pid,
+                    "uid": user_ids["engineer1"],
                 },
             )
             result = session.execute(
-                text("SELECT id FROM project_layers WHERE project_id = :pid AND layer_id = :lid"),
-                {"pid": test_project_id, "lid": layer_ids[layer_name]},
+                text("SELECT id FROM projects WHERE product_id = :pid AND status = 'approved'"),
+                {"pid": pid},
             )
-            project_layer_ids[layer_name] = result.scalar()
-        print(f"  Test Project (approved): id={test_project_id}, layers={len(project_layer_ids)}")
+            proj_id = result.scalar()
+            backbone_project_ids[prod_name] = proj_id
+
+            # Copy all product_layers -> project_layers for this approved project
+            for layer_name in LAYER_NAMES:
+                conditions = generate_conditions(layer_name, prod_name)
+                session.execute(
+                    text(
+                        "INSERT INTO project_layers "
+                        "(project_id, layer_id, backbone_product_id, conditions, backbone_conditions, sort_order) "
+                        "VALUES (:proj_id, :lid, :bbpid, CAST(:cond AS jsonb), CAST(:bcond AS jsonb), :sort)"
+                    ),
+                    {
+                        "proj_id": proj_id,
+                        "lid": layer_ids[layer_name],
+                        "bbpid": pid,
+                        "cond": json.dumps(conditions),
+                        "bcond": json.dumps(conditions),
+                        "sort": next(
+                            sort_order_val
+                            for ln, _, _, sort_order_val in LAYERS
+                            if ln == layer_name
+                        ),
+                    },
+                )
+                # Track project_layer_ids for PROD-2024X (used for equipment assignments below)
+                if prod_name == "PROD-2024X":
+                    result = session.execute(
+                        text("SELECT id FROM project_layers WHERE project_id = :pid AND layer_id = :lid"),
+                        {"pid": proj_id, "lid": layer_ids[layer_name]},
+                    )
+                    project_layer_ids[layer_name] = result.scalar()
+
+        test_project_id = backbone_project_ids["PROD-2024X"]
+        print(f"  Approved Projects (backbone): {len(backbone_project_ids)}")
+        print(f"  Test Project (approved for PROD-2024X): id={test_project_id}, layers={len(project_layer_ids)}")
 
         # --- Equipment Assignments ---
         scanner_assignments = [

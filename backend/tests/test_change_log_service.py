@@ -1,5 +1,5 @@
 """
-Tests for app.services.change_log_service.get_change_logs.
+Tests for app.services.change_log_service.list_change_logs.
 
 Covers:
 - Returns logs ordered by changed_at descending
@@ -20,13 +20,13 @@ from sqlalchemy import select
 from app.models import ChangeLog
 from app.services.project_service import create_project
 from app.services.condition_service import bulk_save_conditions
-from app.services.change_log_service import get_change_logs
+from app.services.change_log_service import list_change_logs
 from app.schemas.project import BulkSaveRequest, LayerConditions
 
 
 @pytest.mark.asyncio
 class TestGetChangeLogs:
-    """Tests for get_change_logs service function."""
+    """Tests for list_change_logs service function."""
 
     async def _create_project_with_changes(self, db_session, seed_test_data):
         """
@@ -108,7 +108,7 @@ class TestGetChangeLogs:
             db_session, seed_test_data,
         )
 
-        result = await get_change_logs(db_session, project.id)
+        result = await list_change_logs(db_session, project.id)
 
         assert result.total > 0
         assert len(result.items) == result.total
@@ -123,7 +123,7 @@ class TestGetChangeLogs:
             db_session, seed_test_data,
         )
 
-        result = await get_change_logs(db_session, project.id)
+        result = await list_change_logs(db_session, project.id)
         assert result.total > 0
 
         item = result.items[0]
@@ -150,7 +150,7 @@ class TestGetChangeLogs:
         # Get layer_id for LAYER_A
         layer_a_layer_id = layer_a.layer_id
 
-        result = await get_change_logs(
+        result = await list_change_logs(
             db_session, project.id, layer_id=layer_a_layer_id,
         )
 
@@ -165,7 +165,7 @@ class TestGetChangeLogs:
         )
         layer_b = layers[1]
 
-        result = await get_change_logs(
+        result = await list_change_logs(
             db_session, project.id, layer_id=layer_b.layer_id,
         )
 
@@ -183,7 +183,7 @@ class TestGetChangeLogs:
             db_session, seed_test_data,
         )
 
-        result = await get_change_logs(
+        result = await list_change_logs(
             db_session, project.id, column_name="SP_SPIN1_SPEED_rpm",
         )
 
@@ -197,7 +197,7 @@ class TestGetChangeLogs:
             db_session, seed_test_data,
         )
 
-        result = await get_change_logs(
+        result = await list_change_logs(
             db_session, project.id, column_name="SC_EXPOSE_ENERGY_mJ",
         )
 
@@ -216,7 +216,7 @@ class TestGetChangeLogs:
         )
         layer_a = layers[0]
 
-        result = await get_change_logs(
+        result = await list_change_logs(
             db_session, project.id,
             layer_id=layer_a.layer_id,
             column_name="SP_SPIN1_SPEED_rpm",
@@ -237,7 +237,7 @@ class TestGetChangeLogs:
             db_session, seed_test_data,
         )
 
-        result = await get_change_logs(db_session, project.id, limit=2, offset=0)
+        result = await list_change_logs(db_session, project.id, limit=2, page=1)
 
         assert len(result.items) <= 2
         # total should still reflect the full count
@@ -249,14 +249,13 @@ class TestGetChangeLogs:
             db_session, seed_test_data,
         )
 
-        all_result = await get_change_logs(db_session, project.id, limit=50, offset=0)
-        offset_result = await get_change_logs(db_session, project.id, limit=50, offset=1)
+        page1_result = await list_change_logs(db_session, project.id, limit=1, page=1)
+        page2_result = await list_change_logs(db_session, project.id, limit=1, page=2)
 
-        # Offset by 1 should return one fewer item (if total > 1)
-        if all_result.total > 1:
-            assert len(offset_result.items) == len(all_result.items) - 1
-            # The first item of offset_result should be the second item of all_result
-            assert offset_result.items[0].id == all_result.items[1].id
+        # Page 2 should return a different item than page 1
+        if page1_result.total > 1:
+            assert len(page2_result.items) == 1
+            assert page2_result.items[0].id != page1_result.items[0].id
 
     # ------------------------------------------------------------------
     # Empty / edge cases
@@ -269,7 +268,7 @@ class TestGetChangeLogs:
             db_session, data["target"].id, data["backbone"].id, data["user"].id,
         )
 
-        result = await get_change_logs(db_session, project.id)
+        result = await list_change_logs(db_session, project.id)
 
         assert result.total == 0
         assert result.items == []
@@ -280,7 +279,7 @@ class TestGetChangeLogs:
             db_session, seed_test_data,
         )
 
-        result = await get_change_logs(
+        result = await list_change_logs(
             db_session, project.id, layer_id=99999,
         )
 
@@ -293,7 +292,7 @@ class TestGetChangeLogs:
             db_session, seed_test_data,
         )
 
-        result = await get_change_logs(
+        result = await list_change_logs(
             db_session, project.id, column_name="NONEXISTENT_COLUMN",
         )
 
@@ -303,5 +302,5 @@ class TestGetChangeLogs:
     async def test_nonexistent_project_raises_404(self, db_session, seed_test_data):
         """Querying change logs for a nonexistent project should raise HTTP 404."""
         with pytest.raises(HTTPException) as exc_info:
-            await get_change_logs(db_session, 99999)
+            await list_change_logs(db_session, 99999)
         assert exc_info.value.status_code == 404

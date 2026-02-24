@@ -20,7 +20,7 @@ from app.services.project_service import (
     create_project,
     get_project_detail,
     revise_project,
-    get_product_revisions,
+    list_product_revisions,
 )
 from app.services.condition_service import bulk_save_conditions
 from app.schemas.project import BulkSaveRequest, LayerConditions
@@ -253,7 +253,7 @@ class TestReviseProject:
 
     @pytest.mark.asyncio
     async def test_version_history_returns_all_revisions(self, db_session: AsyncSession, seed_test_data):
-        """get_product_revisions returns all versions ordered by revision DESC."""
+        """list_product_revisions returns all versions ordered by revision DESC."""
         # Create initial project (v1)
         project_v1 = await create_project(
             db_session,
@@ -273,7 +273,7 @@ class TestReviseProject:
         project_v3 = await revise_project(db_session, project_v2.id)
 
         # Get version history
-        history = await get_product_revisions(db_session, seed_test_data["target"].id)
+        history = await list_product_revisions(db_session, seed_test_data["target"].id)
 
         assert len(history) == 3
         # Should be ordered by revision DESC

@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -13,7 +13,6 @@ class Product(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     product_name: Mapped[str] = mapped_column(String(100), unique=True, index=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    is_backbone: Mapped[bool] = mapped_column(Boolean, default=False)
     line_id: Mapped[int | None] = mapped_column(ForeignKey("lines.id"), nullable=True, index=True)
     part_id: Mapped[str | None] = mapped_column(String(100), unique=True, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

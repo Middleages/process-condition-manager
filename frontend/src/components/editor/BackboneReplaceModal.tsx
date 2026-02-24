@@ -1,13 +1,12 @@
 import { useState, useEffect } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { useBackboneProducts } from '@/hooks/useProducts'
+import { useBackboneProducts, useBackboneLayers } from '@/hooks/useProducts'
 import { useReplaceBackbone } from '@/hooks/useProjects'
 import { useAuthStore } from '@/stores/useAuthStore'
 import { useToastStore } from '@/stores/useToastStore'
 import { Loader2 } from 'lucide-react'
-import { fetchProductLayers } from '@/api/products'
-import type { ProjectLayerData, ProductLayerInfo } from '@/types'
+import type { ProjectLayerData, BackboneProduct } from '@/types'
 
 interface Props {
   open: boolean
@@ -23,34 +22,29 @@ export function BackboneReplaceModal({ open, onOpenChange, projectId, layer }: P
   const replaceBackbone = useReplaceBackbone(projectId)
 
   const [sourceProductId, setSourceProductId] = useState('')
-  const [sourceLayers, setSourceLayers] = useState<ProductLayerInfo[]>([])
   const [sourceLayerName, setSourceLayerName] = useState('')
-  const [loadingLayers, setLoadingLayers] = useState(false)
 
-  // Load source product's layers when product selection changes
+  // Fetch layers from the Approved project of the selected backbone product
+  const { data: sourceLayers = [], isLoading: loadingLayers } = useBackboneLayers(
+    sourceProductId ? Number(sourceProductId) : undefined
+  )
+
+  // Auto-match layer by name when layers are loaded
   useEffect(() => {
-    if (!sourceProductId) {
-      setSourceLayers([])
-      setSourceLayerName('')
-      return
-    }
-    setLoadingLayers(true)
-    fetchProductLayers(Number(sourceProductId))
-      .then((layers) => {
-        setSourceLayers(layers)
-        // Auto-match: select layer with same name
-        const match = layers.find((l) => l.layer.layer_name === layer?.layer_name)
-        setSourceLayerName(match ? match.layer.layer_name : '')
-      })
-      .catch(() => setSourceLayers([]))
-      .finally(() => setLoadingLayers(false))
-  }, [sourceProductId, layer?.layer_name])
+    if (!sourceLayers.length || !layer?.layer_name) return
+    const match = sourceLayers.find((l) => l.layer_name === layer.layer_name)
+    setSourceLayerName(match ? match.layer_name : '')
+  }, [sourceLayers, layer?.layer_name])
+
+  // Reset source layer name when product selection changes
+  useEffect(() => {
+    setSourceLayerName('')
+  }, [sourceProductId])
 
   // Reset state when modal opens
   useEffect(() => {
     if (open) {
       setSourceProductId('')
-      setSourceLayers([])
       setSourceLayerName('')
     }
   }, [open])
@@ -76,6 +70,14 @@ export function BackboneReplaceModal({ open, onOpenChange, projectId, layer }: P
     } catch {
       // Error handled by interceptor
     }
+  }
+
+  // Build product option label with version info
+  const getProductLabel = (p: BackboneProduct) => {
+    const versionSuffix = p.revision
+      ? ` (v${p.revision}${p.approved_at ? ', ' + new Date(p.approved_at).toLocaleDateString('ko-KR') : ''})`
+      : ''
+    return `${p.product_name}${versionSuffix}`
   }
 
   return (
@@ -107,7 +109,7 @@ export function BackboneReplaceModal({ open, onOpenChange, projectId, layer }: P
                 <option value="">Backbone 제품을 선택하세요</option>
                 {backboneProducts.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.product_name}
+                    {getProductLabel(p)}
                   </option>
                 ))}
               </select>
@@ -134,16 +136,21 @@ export function BackboneReplaceModal({ open, onOpenChange, projectId, layer }: P
                     required
                   >
                     <option value="">레이어를 선택하세요</option>
-                    {sourceLayers.map((pl) => (
-                      <option key={pl.id} value={pl.layer.layer_name}>
-                        {pl.layer.layer_name}
+                    {sourceLayers.map((l) => (
+                      <option key={l.id} value={l.layer_name}>
+                        {l.layer_name}
                       </option>
                     ))}
                   </select>
                 )}
-                {sourceLayers.length > 0 && !sourceLayerName && (
+                {!loadingLayers && sourceLayers.length > 0 && !sourceLayerName && (
                   <p className="text-xs text-amber-600 mt-1">
                     매칭되는 레이어가 없습니다. 수동으로 선택해주세요.
+                  </p>
+                )}
+                {!loadingLayers && sourceLayers.length === 0 && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    이 제품의 Approved 프로젝트에 레이어가 없습니다.
                   </p>
                 )}
               </div>

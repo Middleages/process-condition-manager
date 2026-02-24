@@ -98,7 +98,7 @@ class TestMatchLayerToProject:
         db_session.add_all([user, line])
         await db_session.flush()
 
-        prod = Product(product_name="TEST", is_backbone=True, line_id=line.id)
+        prod = Product(product_name="TEST", line_id=line.id)
         db_session.add(prod)
         await db_session.flush()
 
@@ -166,7 +166,7 @@ class TestParseRecipeXml:
         db_session.add_all([user, line])
         await db_session.flush()
 
-        prod = Product(product_name="RCP-PROD", is_backbone=True, line_id=line.id)
+        prod = Product(product_name="RCP-PROD", line_id=line.id)
         db_session.add(prod)
         await db_session.flush()
 
@@ -328,7 +328,7 @@ class TestApplyRecipeChanges:
         db_session.add_all([user, line])
         await db_session.flush()
 
-        prod = Product(product_name="APPLY-PROD", is_backbone=True, line_id=line.id)
+        prod = Product(product_name="APPLY-PROD", line_id=line.id)
         db_session.add(prod)
         await db_session.flush()
 
