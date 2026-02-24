@@ -25,6 +25,8 @@ interface Props {
   isHistoryOpen?: boolean
   onToggleVersionHistory?: () => void
   isVersionHistoryOpen?: boolean
+  onToggleBackboneComparison?: () => void
+  isBackboneComparisonOpen?: boolean
 }
 
 export function EditorHeader({
@@ -43,6 +45,8 @@ export function EditorHeader({
   isHistoryOpen = false,
   onToggleVersionHistory,
   isVersionHistoryOpen = false,
+  onToggleBackboneComparison,
+  isBackboneComparisonOpen = false,
 }: Props) {
   const navigate = useNavigate()
   const hasDirty = useEditorStore((s) => s.hasDirtyCells())
@@ -94,13 +98,21 @@ export function EditorHeader({
 
       <div className="flex-1" />
 
-      {diffSummary.totalChangedCells > 0 && (
-        <div className="flex items-center gap-1.5 text-blue-500 text-xs">
-          <GitCompare className="h-3.5 w-3.5" />
-          <span>
-            {diffSummary.totalChangedLayers}개 레이어 / {diffSummary.totalChangedCells}셀 변경
-          </span>
-        </div>
+      {/* Backbone Comparison toggle */}
+      {onToggleBackboneComparison && (
+        <Button
+          variant={isBackboneComparisonOpen ? 'default' : 'outline'}
+          size="sm"
+          onClick={onToggleBackboneComparison}
+        >
+          <GitCompare className="mr-1.5 h-4 w-4" />
+          BB 비교
+          {diffSummary.totalChangedCells > 0 && (
+            <span className="ml-1.5 bg-blue-500 text-white text-xs rounded-full px-1.5 py-0.5 leading-none">
+              {diffSummary.totalChangedLayers}
+            </span>
+          )}
+        </Button>
       )}
 
       {errorCount > 0 && (

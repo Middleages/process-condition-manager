@@ -30,6 +30,9 @@ interface EditorState {
   // Version history panel state
   isVersionHistoryOpen: boolean
 
+  // Backbone comparison panel state
+  isBackboneComparisonOpen: boolean
+
   // Actions
   setActiveCategory: (code: CategoryCode) => void
   setActiveLayerId: (layerId: number | null) => void
@@ -48,6 +51,7 @@ interface EditorState {
   openCellHistory: (projectLayerId: number, columnName: string, layerName: string) => void
   closeCellHistory: () => void
   toggleVersionHistory: () => void
+  toggleBackboneComparison: () => void
 }
 
 export const useEditorStore = create<EditorState>((set, get) => ({
@@ -61,6 +65,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   isHistoryPanelOpen: false,
   cellHistoryTarget: null,
   isVersionHistoryOpen: false,
+  isBackboneComparisonOpen: false,
 
   setActiveCategory: (code: CategoryCode) => set({ activeCategory: code }),
 
@@ -133,6 +138,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       isHistoryPanelOpen: false,
       cellHistoryTarget: null,
       isVersionHistoryOpen: false,
+      isBackboneComparisonOpen: false,
     }),
 
   toggleHistoryPanel: () => set((state) => ({ isHistoryPanelOpen: !state.isHistoryPanelOpen })),
@@ -143,4 +149,6 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   closeCellHistory: () => set({ cellHistoryTarget: null }),
 
   toggleVersionHistory: () => set((state) => ({ isVersionHistoryOpen: !state.isVersionHistoryOpen })),
+
+  toggleBackboneComparison: () => set((state) => ({ isBackboneComparisonOpen: !state.isBackboneComparisonOpen })),
 }))
