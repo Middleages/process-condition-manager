@@ -25,6 +25,7 @@ import { LayerAddModal } from '@/components/editor/LayerAddModal'
 import { RecipeUploadModal } from '@/components/editor/RecipeUploadModal'
 import { RevisionCreateModal } from '@/components/editor/RevisionCreateModal'
 import { ReviewRequestModal } from '@/components/editor/ReviewRequestModal'
+import { BackboneComparisonPanel } from '@/components/editor/BackboneComparisonPanel'
 import { CommentDialog } from '@/components/editor/CommentDialog'
 import { CellHistoryModal } from '@/components/editor/CellHistoryModal'
 import type { ProjectLayerData } from '@/types'
@@ -60,6 +61,8 @@ export default function ConditionEditorPage() {
   const cellHistoryTarget = useEditorStore((s) => s.cellHistoryTarget)
   const isVersionHistoryOpen = useEditorStore((s) => s.isVersionHistoryOpen)
   const toggleVersionHistory = useEditorStore((s) => s.toggleVersionHistory)
+  const isBackboneComparisonOpen = useEditorStore((s) => s.isBackboneComparisonOpen)
+  const toggleBackboneComparison = useEditorStore((s) => s.toggleBackboneComparison)
   const openCellHistory = useEditorStore((s) => s.openCellHistory)
   const closeCellHistory = useEditorStore((s) => s.closeCellHistory)
 
@@ -157,7 +160,7 @@ export default function ConditionEditorPage() {
   useEffect(() => {
     const timer = setTimeout(() => { gridApiRef.current?.sizeColumnsToFit() }, 300)
     return () => clearTimeout(timer)
-  }, [isHistoryPanelOpen])
+  }, [isHistoryPanelOpen, isBackboneComparisonOpen])
 
   useEffect(() => {
     return () => { useEditorStore.getState().reset() }
@@ -241,6 +244,8 @@ export default function ConditionEditorPage() {
         isHistoryOpen={isHistoryPanelOpen}
         onToggleVersionHistory={toggleVersionHistory}
         isVersionHistoryOpen={isVersionHistoryOpen}
+        onToggleBackboneComparison={toggleBackboneComparison}
+        isBackboneComparisonOpen={isBackboneComparisonOpen}
       />
 
       <StatusBanner
@@ -315,6 +320,14 @@ export default function ConditionEditorPage() {
           onClose={toggleHistoryPanel}
           onNavigateToCell={handleNavigateToCell}
         />
+
+        <BackboneComparisonPanel
+          layers={project.layers}
+          categories={categories}
+          isOpen={isBackboneComparisonOpen}
+          onClose={toggleBackboneComparison}
+          onNavigateToCell={handleNavigateToCell}
+        />
       </div>
 
       <BackboneReplaceModal
@@ -350,6 +363,8 @@ export default function ConditionEditorPage() {
         onOpenChange={modals.setShowReviewModal}
         projectId={pid}
         validationErrorCount={validationErrors.length}
+        layers={project.layers}
+        categories={categories}
       />
 
       <CommentDialog

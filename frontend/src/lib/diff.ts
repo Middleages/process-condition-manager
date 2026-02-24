@@ -88,3 +88,80 @@ export function computeProjectDiff(layers: ProjectLayerData[]): ProjectDiffSumma
 export function getLayerChangeCount(layer: ProjectLayerData): number {
   return diffLayerConditions(layer.conditions, layer.backbone_conditions).length
 }
+
+// ========== Detailed Comparison (with values) ==========
+
+export interface CellChange {
+  columnName: string
+  backboneValue: string | null
+  currentValue: string | null
+}
+
+export interface LayerComparisonDetail {
+  layerId: number
+  layerName: string
+  stepSeq: string
+  backboneProductName: string | null
+  changes: CellChange[]
+}
+
+export interface ProjectComparisonDetail {
+  totalChangedCells: number
+  totalChangedLayers: number
+  totalLayers: number
+  layers: LayerComparisonDetail[]
+}
+
+/**
+ * Get detailed backbone comparison for a single layer, including old/new values.
+ */
+export function getLayerComparisonDetail(layer: ProjectLayerData): LayerComparisonDetail {
+  const changes: CellChange[] = []
+  const allKeys = new Set([
+    ...Object.keys(layer.conditions),
+    ...Object.keys(layer.backbone_conditions),
+  ])
+
+  for (const key of allKeys) {
+    const cur = layer.conditions[key]
+    const bb = layer.backbone_conditions[key]
+    if (!valuesEqual(cur, bb)) {
+      changes.push({
+        columnName: key,
+        backboneValue: bb === null || bb === undefined || bb === '' ? null : String(bb),
+        currentValue: cur === null || cur === undefined || cur === '' ? null : String(cur),
+      })
+    }
+  }
+
+  return {
+    layerId: layer.layer_id,
+    layerName: layer.layer_name,
+    stepSeq: layer.step_seq,
+    backboneProductName: layer.backbone_product_name,
+    changes,
+  }
+}
+
+/**
+ * Compute detailed backbone comparison for all layers in a project.
+ */
+export function computeProjectComparisonDetail(layers: ProjectLayerData[]): ProjectComparisonDetail {
+  const layerDetails: LayerComparisonDetail[] = []
+  let totalChangedCells = 0
+
+  for (const layer of layers) {
+    const detail = getLayerComparisonDetail(layer)
+    if (detail.changes.length > 0) {
+      layerDetails.push(detail)
+      totalChangedCells += detail.changes.length
+    }
+  }
+
+  return {
+    totalChangedCells,
+    totalChangedLayers: layerDetails.length,
+    totalLayers: layers.length,
+    layers: layerDetails,
+  }
+}

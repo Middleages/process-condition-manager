@@ -4,26 +4,32 @@ import { Button } from '@/components/ui/button'
 import { useChangeSummary, useStatusTransition } from '@/hooks/useComments'
 import { useAuthStore } from '@/stores/useAuthStore'
 import { useToastStore } from '@/stores/useToastStore'
-import { Loader2, CheckCircle2, AlertTriangle, FileText } from 'lucide-react'
+import { BackboneComparisonView } from './BackboneComparisonView'
+import { Loader2, CheckCircle2, AlertTriangle, FileText, ChevronDown, ChevronRight, GitCompare } from 'lucide-react'
+import type { ProjectLayerData, ColumnCategory } from '@/types'
 
 interface Props {
   open: boolean
   onOpenChange: (open: boolean) => void
   projectId: number
   validationErrorCount: number
+  layers?: ProjectLayerData[]
+  categories?: ColumnCategory[]
 }
 
-export function ReviewRequestModal({ open, onOpenChange, projectId, validationErrorCount }: Props) {
+export function ReviewRequestModal({ open, onOpenChange, projectId, validationErrorCount, layers, categories }: Props) {
   const currentUserId = useAuthStore((s) => s.user?.id ?? null)
   const addToast = useToastStore((s) => s.addToast)
   const { data: summary, isLoading: summaryLoading } = useChangeSummary(projectId)
   const statusTransition = useStatusTransition(projectId)
 
   const [memo, setMemo] = useState('')
+  const [showComparison, setShowComparison] = useState(false)
 
   useEffect(() => {
     if (open) {
       setMemo('')
+      setShowComparison(false)
     }
   }, [open])
 
@@ -102,6 +108,34 @@ export function ReviewRequestModal({ open, onOpenChange, projectId, validationEr
               </div>
             ) : null}
           </div>
+
+          {/* Backbone Comparison */}
+          {layers && layers.length > 0 && (
+            <div>
+              <button
+                type="button"
+                className="flex items-center gap-2 text-sm font-medium mb-2 hover:text-foreground text-muted-foreground"
+                onClick={() => setShowComparison((v) => !v)}
+              >
+                {showComparison ? (
+                  <ChevronDown className="h-3.5 w-3.5" />
+                ) : (
+                  <ChevronRight className="h-3.5 w-3.5" />
+                )}
+                <GitCompare className="h-4 w-4 text-blue-500" />
+                Backbone 대비 변경 상세
+              </button>
+              {showComparison && (
+                <div className="border border-border rounded-md overflow-hidden">
+                  <BackboneComparisonView
+                    layers={layers}
+                    categories={categories}
+                    compact
+                  />
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Memo */}
           <div>
