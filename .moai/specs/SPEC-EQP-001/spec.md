@@ -7,7 +7,7 @@
 | SPEC ID     | SPEC-EQP-001                                             |
 | Title       | Column-Based Equipment Management via Conditions JSONB   |
 | Created     | 2026-02-24                                               |
-| Status      | Planned                                                  |
+| Status      | Completed                                                |
 | Priority    | High                                                     |
 | Phase       | 5                                                        |
 | Assigned    | manager-ddd                                              |
