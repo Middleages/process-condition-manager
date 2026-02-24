@@ -230,8 +230,14 @@ def seed():
                 "description": "Scanner equipment parameter management (SC category)",
                 "additional_config": {
                     "categories": ["SC"],
-                    "equip_source": "equipment_assignments",
-                    "equip_vary_columns": ["SC_EXPOSE_ENERGY_mJ", "SC_EXPOSE_FOCUS_um"],
+                    # equip_source 변경: equipment_assignments 테이블 대신 conditions JSONB의 EQP 컬럼 사용
+                    "equip_source": "conditions_eqp_columns",
+                    # EQP 컬럼 접미사와 원래 SC 컬럼명의 매핑
+                    # EQP_01_ET -> SC_EXPOSE_ENERGY_mJ, EQP_01_FOCUS -> SC_EXPOSE_FOCUS_um
+                    "equip_vary_mapping": {
+                        "SC_EXPOSE_ENERGY_mJ": "_ET",
+                        "SC_EXPOSE_FOCUS_um": "_FOCUS",
+                    },
                 },
                 "is_active": True,
             },
@@ -373,7 +379,11 @@ def seed():
         # via BackboneRepository (backbone eligibility is determined dynamically by Approved project existence).
         random.seed(99)
         backbone_project_ids = {}
-        project_layer_ids = {}  # For the first backbone product (PROD-2024X), used for equipment assignments
+
+        # EQP 컬럼에 쓸 스캐너 목록 (slots 1~5 사용)
+        SCANNER_POOL = [
+            "NSR-S322F-01", "NSR-S322F-02", "NSR-S631E-01", "XT-1400E-01", "NXT-2000-01",
+        ]
 
         for prod in PRODUCTS:
             prod_name = prod["product_name"]
@@ -398,8 +408,22 @@ def seed():
             backbone_project_ids[prod_name] = proj_id
 
             # Copy all product_layers -> project_layers for this approved project
+            # EQP 컬럼(EQP_01~EQP_05, ET, FOCUS)을 conditions에 포함하여 삽입
             for layer_name in LAYER_NAMES:
                 conditions = generate_conditions(layer_name, prod_name)
+
+                # EQP 컬럼 추가: 레이어 프로파일의 기본 에너지/포커스를 기준으로 설비별 변동값 생성
+                num_equip = random.choice([3, 4, 5])
+                base_energy = LAYER_PROFILES[layer_name][4]
+                for i, scanner_id in enumerate(SCANNER_POOL[:num_equip], start=1):
+                    slot = f"{i:02d}"
+                    # 설비명 저장
+                    conditions[f"EQP_{slot}"] = scanner_id
+                    # 설비별 에너지 오프셋: 기준값 ± 0.5 * (slot-1)
+                    conditions[f"EQP_{slot}_ET"] = round(base_energy + (i - 1) * 0.5, 1)
+                    # 설비별 포커스: -0.03 ~ 0.03 um 범위 내 랜덤
+                    conditions[f"EQP_{slot}_FOCUS"] = round(random.uniform(-0.03, 0.03), 3)
+
                 session.execute(
                     text(
                         "INSERT INTO project_layers "
@@ -419,47 +443,10 @@ def seed():
                         ),
                     },
                 )
-                # Track project_layer_ids for PROD-2024X (used for equipment assignments below)
-                if prod_name == "PROD-2024X":
-                    result = session.execute(
-                        text("SELECT id FROM project_layers WHERE project_id = :pid AND layer_id = :lid"),
-                        {"pid": proj_id, "lid": layer_ids[layer_name]},
-                    )
-                    project_layer_ids[layer_name] = result.scalar()
 
         test_project_id = backbone_project_ids["PROD-2024X"]
         print(f"  Approved Projects (backbone): {len(backbone_project_ids)}")
-        print(f"  Test Project (approved for PROD-2024X): id={test_project_id}, layers={len(project_layer_ids)}")
-
-        # --- Equipment Assignments ---
-        scanner_assignments = [
-            "NSR-S322F-01", "NSR-S322F-02", "NSR-S631E-01", "XT-1400E-01", "NXT-2000-01",
-        ]
-        ea_count = 0
-        random.seed(77)
-        for layer_name, pl_id in project_layer_ids.items():
-            num_equip = random.choice([3, 4, 5])
-            for i, equip_id in enumerate(scanner_assignments[:num_equip]):
-                overrides = {}
-                if layer_name in LAYER_PROFILES:
-                    base_energy = LAYER_PROFILES[layer_name][4]
-                    overrides = {
-                        "SC_EXPOSE_ENERGY_mJ": str(round(base_energy + (i - 1) * 0.5, 1)),
-                        "SC_EXPOSE_FOCUS_um": str(round(random.uniform(-0.03, 0.03), 3)),
-                    }
-                session.execute(
-                    text(
-                        "INSERT INTO equipment_assignments "
-                        "(project_layer_id, equipment_id, equipment_params, sort_order) "
-                        "VALUES (:plid, :eid, CAST(:params AS jsonb), :sort)"
-                    ),
-                    {
-                        "plid": pl_id, "eid": equip_id,
-                        "params": json.dumps(overrides), "sort": i + 1,
-                    },
-                )
-                ea_count += 1
-        print(f"  Equipment Assignments: {ea_count}")
+        print(f"  Test Project (approved for PROD-2024X): id={test_project_id}")
 
         # --- Recipe XML Mappings ---
         RECIPE_XML_MAPPINGS = [

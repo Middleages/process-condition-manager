@@ -32,7 +32,6 @@ import type { ProjectLayerData } from '@/types'
 import type { GridApi } from 'ag-grid-community'
 import { Loader2 } from 'lucide-react'
 import { ExportPanel } from '@/components/export/ExportPanel'
-import { EquipmentPanel } from '@/components/editor/EquipmentPanel'
 
 export default function ConditionEditorPage() {
   const { projectId } = useParams()
@@ -256,14 +255,6 @@ export default function ConditionEditorPage() {
 
       {project.status === 'approved' && (
         <ExportPanel projectId={pid} />
-      )}
-
-      {activeLayerId && (
-        <EquipmentPanel
-          projectId={pid}
-          layerId={activeLayerId}
-          isReadOnly={isReadOnly}
-        />
       )}
 
       <CategoryTabs categories={categories} />

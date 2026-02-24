@@ -62,19 +62,3 @@ class RecipeXmlMapping(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
-class EquipmentAssignment(Base):
-    __tablename__ = "equipment_assignments"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    project_layer_id: Mapped[int] = mapped_column(
-        ForeignKey("project_layers.id", ondelete="CASCADE"), index=True
-    )
-    equipment_id: Mapped[str] = mapped_column(String(50))
-    equipment_params: Mapped[dict] = mapped_column(JSONB, default=dict)
-    sort_order: Mapped[int] = mapped_column(Integer, default=0)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
-    )

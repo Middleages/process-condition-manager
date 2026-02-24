@@ -10,7 +10,7 @@ from app.database import async_session
 from app.routers import (
     users, lines, columns, products,
     projects, project_conditions, project_layers, project_lifecycle,
-    admin, admin_users, admin_master, comments, export, export_admin, export_data_source, equipment, auth as auth_router,
+    admin, admin_users, admin_master, comments, export, export_admin, export_data_source, auth as auth_router,
     dashboard,
 )
 
@@ -64,5 +64,4 @@ app.include_router(export_admin.router)
 app.include_router(export_data_source.router)
 app.include_router(export.router)
 app.include_router(export.project_router)
-app.include_router(equipment.router)
 app.include_router(dashboard.router)

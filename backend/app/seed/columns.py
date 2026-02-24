@@ -17,6 +17,8 @@ CATEGORIES = [
     {"category_code": "SC", "category_name": "Scanner / Expose", "sort_order": 2},
     {"category_code": "OVL", "category_name": "Overlay", "sort_order": 3},
     {"category_code": "DEV", "category_name": "Develop", "sort_order": 4},
+    # EQP 카테고리: 레이어별 설비(스캐너) 할당 관리 (조건 JSONB 내에 컬럼으로 저장)
+    {"category_code": "EQP", "category_name": "Equipment", "sort_order": 5},
 ]
 
 # 스캐너(노광장비) 선택 옵션: SC_TOOL_ID 컬럼의 드롭다운에서 표시됨
@@ -469,6 +471,48 @@ COLUMN_DEFS: list[tuple] = [
     ("DEV_NECK_INSPECT_USE", "Neck Inspect Use", "DEV", "select", None, False, ["Y", "N"]),
     ("DEV_DEFECT_SCAN_SPEED", "Defect Scan Speed", "DEV", "select", None, False,
      ["HIGH", "MEDIUM", "LOW"]),
+
+    # -----------------------------------------------------------------------
+    # EQP 카테고리 (60개 컬럼): 레이어별 설비(스캐너) 할당 관리
+    # 기존 equipment_assignments 테이블 대신 conditions JSONB 컬럼으로 저장
+    # EQP_01 ~ EQP_20: 스캐너 장비명 (select)
+    # EQP_01_ET ~ EQP_20_ET: 해당 설비의 노광 에너지 (float, mJ)
+    # EQP_01_FOCUS ~ EQP_20_FOCUS: 해당 설비의 포커스 오프셋 (float, um)
+    # sort_order: (slot-1)*3 + 1 for name, +2 for ET, +3 for FOCUS
+    # -----------------------------------------------------------------------
+    *[
+        col_def
+        for slot in range(1, 21)
+        for col_def in [
+            (
+                f"EQP_{slot:02d}",
+                f"Scanner #{slot:02d}",
+                "EQP",
+                "select",
+                None,
+                False,
+                SCANNER_TOOL_OPTIONS,
+            ),
+            (
+                f"EQP_{slot:02d}_ET",
+                f"Scanner #{slot:02d} Energy",
+                "EQP",
+                "float",
+                "mJ",
+                False,
+                None,
+            ),
+            (
+                f"EQP_{slot:02d}_FOCUS",
+                f"Scanner #{slot:02d} Focus",
+                "EQP",
+                "float",
+                "um",
+                False,
+                None,
+            ),
+        ]
+    ],
 ]
 
 # ---------------------------------------------------------------------------

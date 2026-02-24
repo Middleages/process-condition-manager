@@ -49,7 +49,6 @@ process-condition-manager/
 │   │   │   ├── export_admin_service.py   # 전산 출력 시스템/매핑 관리
 │   │   │   ├── export_history_service.py # 출력 이력 기록/조회
 │   │   │   ├── export_validation_service.py # 출력 전 데이터 검증
-│   │   │   ├── equipment_service.py      # 설비 할당 CRUD
 │   │   │   ├── export_data_source_service.py # 외부 데이터 소스 관리
 │   │   │   ├── admin_service.py, diff_service.py
 │   │   │   └── auth_service.py
@@ -146,7 +145,7 @@ Draft → Review → Approved → (Revision 생성 시) Archived
 - **Phase 2**: 레이어별 backbone 교체, Recipe XML 반영, 관리자 설정, Revision 기능
 - **Phase 3**: 승인 프로세스, 코멘트, 변경 이력, 전산 출력 (Type A/B/C)
 - **Phase 4**: 인증/권한, Cross-layer 검증, 전산 출력 확장, 대시보드
-- **Phase 5**: 동적 Backbone(SPEC-BACKBONE-001), Excel 붙여넣기(SPEC-PASTE-001 예정)
+- **Phase 5**: 동적 Backbone(SPEC-BACKBONE-001), 컬럼 기반 설비 관리(SPEC-EQP-001), Excel 붙여넣기(SPEC-PASTE-001 예정)
 
 ## 현재 진행 상태
 
@@ -230,6 +229,12 @@ Draft → Review → Approved → (Revision 생성 시) Archived
   - M2: Frontend Backbone 드롭다운 동적 목록 + 버전 정보 표시
   - M2: BackboneReplaceModal 레이어 소스를 Approved project_layers로 변경
   - M3: is_backbone 플래그 전 계층 제거 (DB 컬럼, 스키마, 서비스, UI, 시드, 테스트)
+- SPEC-EQP-001 완료: 컬럼 기반 설비 관리 전환 (Phase 5)
+  - equipment_assignments 테이블 제거 → conditions JSONB 컬럼(EQP_01~EQP_20) 통합
+  - EQP 카테고리 + 60개 컬럼 정의 (설비명 select, ET/FOCUS float)
+  - Export Type B: conditions EQP 컬럼 기반 설비별 행 생성으로 전환
+  - 레거시 정리: equipment_service, EquipmentPanel 등 7개 파일 삭제 (~1,100줄 감소)
+  - 백본 복사/개정/변경 이력 추적: conditions JSONB 통합으로 자동 동작
 
 ## 개발 명령어
 

@@ -7,7 +7,7 @@ Uses SimpleNamespace to simulate ORM models.
 Coverage:
 - sanitize_filename: special char replacement, normal strings
 - build_type_a_data: headers, rows, required null handling, empty mappings
-- build_type_b_data: equipment split, no-equipment fallback, override precedence
+- build_type_b_data: EQP 컬럼 기반 설비 분할, no-equipment fallback, equip_vary_mapping 적용
 - build_type_c_data: key-value transpose, multi-layer columns, unit mappings
 """
 
@@ -58,18 +58,6 @@ def make_pl(
     return SimpleNamespace(
         id=pl_id, layer=make_layer(layer_name),
         conditions=conditions, sort_order=sort_order,
-    )
-
-
-def make_equip(
-    pl_id: int, equip_id: str,
-    params: dict | None = None, sort_order: int = 0,
-) -> SimpleNamespace:
-    return SimpleNamespace(
-        project_layer_id=pl_id,
-        equipment_id=equip_id,
-        equipment_params=params or {},
-        sort_order=sort_order,
     )
 
 
@@ -153,53 +141,70 @@ class TestBuildTypeAData:
 
 
 # ===========================================================================
-# build_type_b_data
+# build_type_b_data (EQP 컬럼 기반 설비 분할)
 # ===========================================================================
 
 class TestBuildTypeBData:
 
-    def test_equipment_split(self):
-        """Layer with 2 equipment assignments -> 2 rows."""
-        pl = make_pl("L1", {"COL_A": "base"}, pl_id=10)
+    def test_eqp_columns_split_into_rows(self):
+        """EQP_01, EQP_02가 있으면 레이어당 2개 행 생성."""
+        pl = make_pl("L1", {"COL_A": "base", "EQP_01": "EQ-001", "EQP_02": "EQ-002"}, pl_id=10)
         mappings = [make_mapping("TARGET_A", "COL_A")]
-        equipment = {
-            10: [
-                make_equip(10, "EQ-001"),
-                make_equip(10, "EQ-002"),
-            ]
-        }
-        headers, rows = build_type_b_data("PROD-1", [pl], mappings, equipment)
+        headers, rows = build_type_b_data("PROD-1", [pl], mappings)
         assert len(rows) == 2
         assert rows[0]["EQUIP_ID"] == "EQ-001"
         assert rows[1]["EQUIP_ID"] == "EQ-002"
         assert "EQUIP_ID" in headers
 
-    def test_no_equipment_fallback(self):
-        """Layer with no equipment -> single row with empty EQUIP_ID."""
+    def test_no_eqp_columns_fallback(self):
+        """EQP 컬럼이 없으면 빈 EQUIP_ID로 단일 행 생성."""
         pl = make_pl("L1", {"COL_A": "val"}, pl_id=10)
         mappings = [make_mapping("TARGET_A", "COL_A")]
-        headers, rows = build_type_b_data("PROD-1", [pl], mappings, {})
+        headers, rows = build_type_b_data("PROD-1", [pl], mappings)
         assert len(rows) == 1
         assert rows[0]["EQUIP_ID"] == ""
         assert rows[0]["TARGET_A"] == "val"
 
-    def test_equipment_override_precedence(self):
-        """Equipment params override base conditions."""
-        pl = make_pl("L1", {"COL_A": "base_val"}, pl_id=10)
-        mappings = [make_mapping("TARGET_A", "COL_A")]
-        equipment = {
-            10: [make_equip(10, "EQ-001", params={"COL_A": "override_val"})]
+    def test_equip_vary_mapping_reads_per_equipment_suffix(self):
+        """equip_vary_mapping이 있으면 EQP_{NN}{suffix} 컬럼에서 설비별 값 읽음."""
+        conditions = {
+            "COL_A": "shared",
+            "SC_EXPOSE_ENERGY_mJ": "38.0",
+            "EQP_01": "EQ-001",
+            "EQP_01_ET": "38.2",
+            "EQP_02": "EQ-002",
+            "EQP_02_ET": "37.7",
         }
-        headers, rows = build_type_b_data("PROD-1", [pl], mappings, equipment)
-        assert rows[0]["TARGET_A"] == "override_val"
+        pl = make_pl("L1", conditions, pl_id=10)
+        mappings = [
+            make_mapping("TARGET_ENERGY", "SC_EXPOSE_ENERGY_mJ"),
+            make_mapping("TARGET_A", "COL_A"),
+        ]
+        system_config = {"equip_vary_mapping": {"SC_EXPOSE_ENERGY_mJ": "_ET"}}
+        headers, rows = build_type_b_data("PROD-1", [pl], mappings, system_config)
+        assert len(rows) == 2
+        # 설비별로 다른 값: EQP_{NN}_ET에서 읽음
+        assert rows[0]["TARGET_ENERGY"] == "38.2"
+        assert rows[1]["TARGET_ENERGY"] == "37.7"
+        # 공통 값: 기본 conditions에서 읽음
+        assert rows[0]["TARGET_A"] == "shared"
+        assert rows[1]["TARGET_A"] == "shared"
 
-    def test_mixed_equipment_and_no_equipment(self):
-        """Two layers: one with equipment, one without."""
-        pl1 = make_pl("L1", {"COL_A": "10"}, pl_id=1)
+    def test_empty_eqp_slot_skipped(self):
+        """EQP_01이 비어있고 EQP_02만 있으면 EQP_02 행만 생성 (R7.4 준수)."""
+        conditions = {"COL_A": "val", "EQP_01": "", "EQP_02": "EQ-002"}
+        pl = make_pl("L1", conditions, pl_id=10)
+        mappings = [make_mapping("TARGET_A", "COL_A")]
+        headers, rows = build_type_b_data("PROD-1", [pl], mappings)
+        assert len(rows) == 1
+        assert rows[0]["EQUIP_ID"] == "EQ-002"
+
+    def test_mixed_eqp_and_no_eqp_layers(self):
+        """EQP 있는 레이어와 없는 레이어 혼합: 각각 올바른 행 수 생성."""
+        pl1 = make_pl("L1", {"COL_A": "10", "EQP_01": "EQ-001"}, pl_id=1)
         pl2 = make_pl("L2", {"COL_A": "20"}, pl_id=2)
         mappings = [make_mapping("TARGET_A", "COL_A")]
-        equipment = {1: [make_equip(1, "EQ-001")]}
-        headers, rows = build_type_b_data("PROD-1", [pl1, pl2], mappings, equipment)
+        headers, rows = build_type_b_data("PROD-1", [pl1, pl2], mappings)
         assert len(rows) == 2
         assert rows[0]["EQUIP_ID"] == "EQ-001"
         assert rows[1]["EQUIP_ID"] == ""

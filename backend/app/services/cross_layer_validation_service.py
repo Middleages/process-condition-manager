@@ -8,7 +8,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.column import ColumnDefinition, ColumnValidation
-from app.models.export import EquipmentAssignment
 
 
 # 허용되는 cross_layer check_type 목록
@@ -342,28 +341,18 @@ async def validate_cross_layer_rules(
     # equipment_groups: equipment_id -> [(project_layer, layer_name), ...]
     equipment_groups: dict[str, list] = {}
     if has_equipment_rules:
-        # EquipmentAssignment 데이터 로드
-        pl_ids = [pl.id for pl in project_layers]
-        if pl_ids:
-            eq_result = await db.execute(
-                select(EquipmentAssignment).where(
-                    EquipmentAssignment.project_layer_id.in_(pl_ids)
-                )
-            )
-            assignments = eq_result.scalars().all()
-
-            # project_layer_id -> project_layer 매핑
-            pl_by_id = {pl.id: pl for pl in project_layers}
-
-            for assignment in assignments:
-                pl = pl_by_id.get(assignment.project_layer_id)
-                if not pl:
+        # EQP 컬럼(EQP_01~EQP_20)에서 설비 정보를 읽어 그룹핑
+        # EquipmentAssignment 테이블 대신 conditions JSONB의 EQP 슬롯을 직접 사용
+        for pl in project_layers:
+            lname = pl.layer.layer_name if pl.layer else None
+            if not lname:
+                continue
+            conditions = pl.conditions or {}
+            for slot in range(1, 21):
+                nn = f"{slot:02d}"
+                eq_id = conditions.get(f"EQP_{nn}", "")
+                if not eq_id:
                     continue
-                lname = pl.layer.layer_name if pl.layer else None
-                if not lname:
-                    continue
-
-                eq_id = assignment.equipment_id
                 if eq_id not in equipment_groups:
                     equipment_groups[eq_id] = []
                 equipment_groups[eq_id].append((pl, lname))
