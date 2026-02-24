@@ -123,23 +123,6 @@ export interface ExportMappingCreate {
   is_required?: boolean
 }
 
-// ========== Equipment Types ==========
-
-export interface Equipment {
-  id: number
-  project_layer_id: number
-  equipment_id: string
-  equipment_params: Record<string, string>
-  sort_order: number
-  created_at: string
-  updated_at: string
-}
-
-export interface EquipmentCreate {
-  equipment_id: string
-  equipment_params?: Record<string, string>
-}
-
 // ========== Export Validation Types ==========
 
 export interface ExportValidationIssue {
