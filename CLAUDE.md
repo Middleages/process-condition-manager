@@ -255,6 +255,15 @@ Draft → Review → Approved → (Revision 생성 시) Archived
   - EQP 카테고리 탭 표시 수정 (CategoryCode 타입에 'EQP' 추가)
   - 전체 조건표 Excel 다운로드 (GET /api/projects/{id}/export/simple, 모든 상태에서 사용 가능)
   - Admin 컬럼/카테고리 CRUD 완성 (추가/삭제 API 4개 + Frontend UI)
+- SPEC-RBAC-001 완료: 다중 역할 RBAC + developer 역할 (Phase 5)
+  - M1: Backend - User.role→roles(ARRAY) 마이그레이션(017), has_role() 헬퍼
+  - M1: Auth dependencies 7개 (require_admin_or_developer, require_ops_write, require_system_write 신규)
+  - M1: 56개 admin 엔드포인트 RBAC 분리 (Operations:admin, System Config:developer)
+  - M1: JWT roles 배열 전환, 스키마/서비스/시드 업데이트
+  - M2: Frontend permissions.ts 유틸리티 (hasRole, canAccessAdmin, canWrite 등)
+  - M2: Header 다중 역할 배지, AdminLayout 역할별 탭 필터링
+  - M2: UserFormModal 체크박스 (editor/reviewer/admin/developer)
+  - M2: 관리 페이지 readOnly 모드 (역할별 쓰기 권한 분리)
 
 ## 개발 명령어
 
@@ -297,6 +306,7 @@ cd frontend && npm run dev
 - bcrypt 패스워드 해싱, FastAPI OAuth2PasswordBearer 의존성
 - RBAC: admin(전체), reviewer(승인/반려), editor(본인 프로젝트)
 - 프론트엔드: Zustand auth store, Bearer 토큰 자동 첨부, 401 자동 갱신
+- RBAC 확장 (SPEC-RBAC-001): 다중 역할(ARRAY), 4개 역할(editor/reviewer/admin/developer), Operations vs System Config 분리
 
 ### 테스트 전략
 - **Backend**: pytest — 핵심 비즈니스 로직(backbone 복사, 검증, 벌크 저장)에 집중

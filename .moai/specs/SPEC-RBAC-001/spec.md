@@ -3,7 +3,7 @@
 ---
 id: SPEC-RBAC-001
 title: Multi-Role RBAC with Developer Role
-status: Planned
+status: Completed
 priority: High
 created: 2026-02-25
 lifecycle: spec-anchored
@@ -596,3 +596,30 @@ if comment.created_by != user_id and "admin" not in user.roles:
 | REQ-RBAC-045~046 | M1-T1: Migration | AC-045 |
 | REQ-RBAC-050~052 | M1-T2: Backward compat | AC-050 |
 | REQ-RBAC-060~061 | M2-T6: User form | AC-060 |
+
+## 8. Implementation Notes
+
+**Completed**: 2026-02-26
+**Branch**: feature/SPEC-RBAC-001
+**Commit**: 40e3b85
+
+### Implementation Summary
+
+- 63 files changed (56 modified + 7 new), +3,047 / -563 lines
+- Backend: 20 files (Alembic migration, User model, 7 auth deps, 5 admin routers, 3 service files, schemas, seed)
+- Frontend: 18 files (types, permissions.ts, Header, AdminLayout, UserFormModal, 10+ admin/editor components)
+- Tests: 38 new backend RBAC tests + 41 new frontend permissions tests
+
+### Gap Fixes (Beyond Original SPEC)
+
+10 additional files identified during implementation that the SPEC did not cover:
+1. `routers/users.py` - User.role filter query fix (CRITICAL)
+2. `repositories/comment_repository.py` - SELECT projection fix
+3. `schemas/comment.py` - creator_role→creator_roles
+4. `routers/auth.py` UserInfo schema - role→roles
+5. `types/project.ts` - CommentResponse.creator_roles
+6. `CommentDialog.tsx` - currentUserRoles prop
+7. `GridContextMenu.tsx` - currentUserRoles prop
+8. `ConditionGrid.tsx` - currentUserRoles prop
+9. `ConditionEditorPage.tsx` - roles prop passing
+10. `CommentThread.tsx` - creator_roles badge display
