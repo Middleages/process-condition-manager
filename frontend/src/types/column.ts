@@ -1,5 +1,5 @@
 // ========== Column ==========
-export type CategoryCode = 'SP' | 'SC' | 'OVL' | 'DEV'
+export type CategoryCode = 'SP' | 'SC' | 'OVL' | 'DEV' | 'EQP'
 
 export interface ColumnValidation {
   id: number
@@ -24,7 +24,7 @@ export interface ColumnDefinition {
 
 export interface ColumnCategory {
   id: number
-  category_code: 'SP' | 'SC' | 'OVL' | 'DEV'
+  category_code: CategoryCode
   category_name: string
   sort_order: number
   columns: ColumnDefinition[]

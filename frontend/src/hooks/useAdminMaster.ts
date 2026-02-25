@@ -13,16 +13,22 @@ import {
   updateLayer,
   deleteLayer,
   reorderLayers,
+  createColumn,
   updateColumnMetadata,
+  deleteColumn,
   fetchCategories,
+  createCategory,
   updateCategory,
+  deleteCategory,
   reorderCategories,
 } from '@/api/adminMaster'
 import type {
   LineCreate,
   ProductCreate,
   LayerCreate,
+  ColumnCreateRequest,
   ColumnMetadataUpdate,
+  CategoryCreateRequest,
   CategoryUpdate,
 } from '@/api/adminMaster'
 
@@ -177,11 +183,33 @@ export function useReorderLayers() {
 
 // ========== Columns ==========
 
+export function useCreateColumn() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: ColumnCreateRequest) => createColumn(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: adminMasterKeys.columns() })
+      queryClient.invalidateQueries({ queryKey: ['columns'] })
+    },
+  })
+}
+
 export function useUpdateColumnMetadata() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: ({ id, payload }: { id: number; payload: ColumnMetadataUpdate }) =>
       updateColumnMetadata(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: adminMasterKeys.columns() })
+      queryClient.invalidateQueries({ queryKey: ['columns'] })
+    },
+  })
+}
+
+export function useDeleteColumn() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => deleteColumn(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: adminMasterKeys.columns() })
       queryClient.invalidateQueries({ queryKey: ['columns'] })
@@ -195,6 +223,28 @@ export function useAdminCategories() {
   return useQuery({
     queryKey: adminMasterKeys.categories(),
     queryFn: fetchCategories,
+  })
+}
+
+export function useCreateCategory() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: CategoryCreateRequest) => createCategory(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: adminMasterKeys.categories() })
+      queryClient.invalidateQueries({ queryKey: ['columns'] })
+    },
+  })
+}
+
+export function useDeleteCategory() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => deleteCategory(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: adminMasterKeys.categories() })
+      queryClient.invalidateQueries({ queryKey: ['columns'] })
+    },
   })
 }
 

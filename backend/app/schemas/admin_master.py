@@ -114,8 +114,27 @@ class ColumnMetadataResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Column create
+# ---------------------------------------------------------------------------
+
+class ColumnCreateRequest(BaseModel):
+    column_name: str = Field(..., max_length=100)
+    display_name: str = Field(..., max_length=200)
+    category_id: int
+    data_type: str = Field(..., max_length=20)  # integer / float / string / select
+    unit: str | None = None
+    is_required: bool = False
+    select_options: list[str] | None = None
+
+
+# ---------------------------------------------------------------------------
 # Category
 # ---------------------------------------------------------------------------
+
+class CategoryCreateRequest(BaseModel):
+    category_code: str = Field(..., max_length=10)
+    category_name: str = Field(..., max_length=50)
+
 
 class CategoryUpdate(BaseModel):
     category_name: str | None = Field(None, max_length=50)

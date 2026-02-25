@@ -110,7 +110,7 @@ process-condition-manager/
 
 ## 핵심 도메인 개념
 
-- **공정조건표**: 행=레이어(30~60개), 열=파라미터(~300개). 4개 카테고리(SP/SC/OVL/DEV)로 그룹핑
+- **공정조건표**: 행=레이어(30~60개), 열=파라미터(~300개). 5개 카테고리(SP/SC/OVL/DEV/EQP)로 그룹핑
 - **Backbone**: 기존 양산 제품의 조건표. 신규 제품 생성 시 backbone을 복사하여 초안 생성
 - **레이어별 backbone 교체**: 특정 레이어만 다른 제품의 조건으로 교체 가능
 - **Recipe XML**: 설비에서 추출한 XML. 매핑 테이블 기반으로 조건표에 반영 (diff → 선택 적용)
@@ -241,6 +241,11 @@ Draft → Review → Approved → (Revision 생성 시) Archived
   - ReviewRequestModal에 Backbone 비교 뷰 통합 (compact 모드)
   - diff.ts에 상세 비교 함수 추가 (getLayerComparisonDetail, computeProjectComparisonDetail)
   - useEditorStore에 isBackboneComparisonOpen 상태 + toggleBackboneComparison 액션
+- UI/기능 개선 (Ad-hoc)
+  - Backbone 비교 패널 텍스트 겹침 수정 (stepSeq/layerName 레이아웃 개선)
+  - EQP 카테고리 탭 표시 수정 (CategoryCode 타입에 'EQP' 추가)
+  - 전체 조건표 Excel 다운로드 (GET /api/projects/{id}/export/simple, 모든 상태에서 사용 가능)
+  - Admin 컬럼/카테고리 CRUD 완성 (추가/삭제 API 4개 + Frontend UI)
 
 ## 개발 명령어
 

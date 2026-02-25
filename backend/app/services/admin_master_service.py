@@ -9,8 +9,8 @@ from app.schemas.admin_master import (
     LineCreate, LineUpdate, LineResponse,
     ProductCreate, ProductUpdate, ProductResponse,
     LayerCreate, LayerUpdate, LayerResponse, LayerReorderRequest,
-    ColumnMetadataUpdate, ColumnMetadataResponse,
-    CategoryUpdate, CategoryResponse, CategoryReorderRequest,
+    ColumnMetadataUpdate, ColumnMetadataResponse, ColumnCreateRequest,
+    CategoryCreateRequest, CategoryUpdate, CategoryResponse, CategoryReorderRequest,
 )
 
 
@@ -387,9 +387,117 @@ async def update_column_metadata(
     )
 
 
+async def create_column(db: AsyncSession, data: ColumnCreateRequest) -> ColumnMetadataResponse:
+    """Create a new column definition. Raises 409 on duplicate column_name, 404 if category not found."""
+    # Validate category exists
+    cat = await db.get(ColumnCategory, data.category_id)
+    if not cat:
+        raise HTTPException(status_code=404, detail="Category not found")
+
+    # Check duplicate column_name
+    existing = await db.execute(
+        select(ColumnDefinition).where(ColumnDefinition.column_name == data.column_name)
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail=f"Column name '{data.column_name}' already exists")
+
+    # Auto-assign sort_order = max(existing in this category) + 1
+    max_order_result = await db.execute(
+        select(func.coalesce(func.max(ColumnDefinition.sort_order), -1))
+        .where(ColumnDefinition.category_id == data.category_id)
+    )
+    next_order = max_order_result.scalar_one() + 1
+
+    col = ColumnDefinition(
+        column_name=data.column_name,
+        display_name=data.display_name,
+        category_id=data.category_id,
+        data_type=data.data_type,
+        unit=data.unit,
+        is_required=data.is_required,
+        select_options=data.select_options,
+        sort_order=next_order,
+    )
+    db.add(col)
+    await db.commit()
+    await db.refresh(col)
+
+    return ColumnMetadataResponse(
+        id=col.id,
+        column_name=col.column_name,
+        display_name=col.display_name,
+        category_code=cat.category_code,
+        data_type=col.data_type,
+        unit=col.unit,
+        is_required=col.is_required,
+        sort_order=col.sort_order,
+    )
+
+
+async def delete_column(db: AsyncSession, column_id: int) -> None:
+    """Delete a column definition and its validations. Raises 404 if not found."""
+    col = await db.get(ColumnDefinition, column_id)
+    if not col:
+        raise HTTPException(status_code=404, detail="Column not found")
+
+    await db.delete(col)
+    await db.commit()
+
+
 # ---------------------------------------------------------------------------
 # Categories
 # ---------------------------------------------------------------------------
+
+async def create_category(db: AsyncSession, data: CategoryCreateRequest) -> CategoryResponse:
+    """Create a new category. Raises 409 on duplicate category_code."""
+    existing = await db.execute(
+        select(ColumnCategory).where(ColumnCategory.category_code == data.category_code)
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail=f"Category code '{data.category_code}' already exists")
+
+    # Auto-assign sort_order = max(existing) + 1
+    max_order_result = await db.execute(
+        select(func.coalesce(func.max(ColumnCategory.sort_order), -1))
+    )
+    next_order = max_order_result.scalar_one() + 1
+
+    cat = ColumnCategory(
+        category_code=data.category_code,
+        category_name=data.category_name,
+        sort_order=next_order,
+    )
+    db.add(cat)
+    await db.commit()
+    await db.refresh(cat)
+
+    return CategoryResponse(
+        id=cat.id,
+        category_code=cat.category_code,
+        category_name=cat.category_name,
+        sort_order=cat.sort_order,
+        column_count=0,
+    )
+
+
+async def delete_category(db: AsyncSession, category_id: int) -> None:
+    """Delete a category. Raises 404 if not found, 400 if columns reference it."""
+    cat = await db.get(ColumnCategory, category_id)
+    if not cat:
+        raise HTTPException(status_code=404, detail="Category not found")
+
+    col_count_result = await db.execute(
+        select(func.count(ColumnDefinition.id)).where(ColumnDefinition.category_id == category_id)
+    )
+    if col_count_result.scalar_one() > 0:
+        raise HTTPException(
+            status_code=400,
+            detail="컬럼이 있는 카테고리는 삭제할 수 없습니다",
+        )
+
+    await db.delete(cat)
+    await db.commit()
+
 
 async def list_categories(db: AsyncSession) -> list[CategoryResponse]:
     """List all categories ordered by sort_order with column counts."""

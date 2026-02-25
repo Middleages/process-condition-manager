@@ -91,11 +91,11 @@ function LayerSection({ detail, categories, onCellClick, defaultExpanded = false
           <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground" />
         )}
 
-        <span className="text-muted-foreground text-[10px] font-mono w-8">
+        <span className="text-muted-foreground text-[10px] font-mono shrink-0 min-w-[2rem]">
           {detail.stepSeq}
         </span>
 
-        <span className="flex-1 text-foreground">{detail.layerName}</span>
+        <span className="flex-1 truncate text-foreground">{detail.layerName}</span>
 
         {detail.backboneProductName && (
           <span className="text-[10px] text-muted-foreground truncate max-w-[120px]">

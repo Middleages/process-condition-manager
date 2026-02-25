@@ -65,12 +65,27 @@ export interface ColumnMetadataUpdate {
   is_required?: boolean
 }
 
+export interface ColumnCreateRequest {
+  column_name: string
+  display_name: string
+  category_id: number
+  data_type: string
+  unit?: string | null
+  is_required?: boolean
+  select_options?: string[] | null
+}
+
 export interface CategoryResponse {
   id: number
   category_code: string
   category_name: string
   sort_order: number
   column_count: number
+}
+
+export interface CategoryCreateRequest {
+  category_code: string
+  category_name: string
 }
 
 export interface CategoryUpdate {
@@ -158,6 +173,11 @@ export async function reorderLayers(orderedIds: number[]): Promise<LayerResponse
 
 // ========== Columns ==========
 
+export async function createColumn(payload: ColumnCreateRequest): Promise<ColumnMetadataResponse> {
+  const { data } = await client.post<ColumnMetadataResponse>('/admin/columns', payload)
+  return data
+}
+
 export async function updateColumnMetadata(
   id: number,
   payload: ColumnMetadataUpdate
@@ -169,10 +189,19 @@ export async function updateColumnMetadata(
   return data
 }
 
+export async function deleteColumn(id: number): Promise<void> {
+  await client.delete(`/admin/columns/${id}`)
+}
+
 // ========== Categories ==========
 
 export async function fetchCategories(): Promise<CategoryResponse[]> {
   const { data } = await client.get<CategoryResponse[]>('/admin/categories')
+  return data
+}
+
+export async function createCategory(payload: CategoryCreateRequest): Promise<CategoryResponse> {
+  const { data } = await client.post<CategoryResponse>('/admin/categories', payload)
   return data
 }
 
@@ -182,6 +211,10 @@ export async function updateCategory(
 ): Promise<CategoryResponse> {
   const { data } = await client.put<CategoryResponse>(`/admin/categories/${id}`, payload)
   return data
+}
+
+export async function deleteCategory(id: number): Promise<void> {
+  await client.delete(`/admin/categories/${id}`)
 }
 
 export async function reorderCategories(orderedIds: number[]): Promise<CategoryResponse[]> {

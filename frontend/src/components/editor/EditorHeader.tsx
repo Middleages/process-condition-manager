@@ -1,13 +1,14 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { StatusBadge } from '@/components/projects/StatusBadge'
 import { computeProjectDiff } from '@/lib/diff'
 import { useEditorStore } from '@/stores/useEditorStore'
+import { downloadSimpleExport } from '@/api/export'
 import { ApprovalButtons } from './ApprovalButtons'
 import { VersionHistoryPanel } from './VersionHistoryPanel'
 import type { ProjectDetail, User } from '@/types'
-import { ArrowLeft, Save, Loader2, AlertTriangle, GitCompare, FileUp, GitBranch, MessageSquare, Send, History } from 'lucide-react'
+import { ArrowLeft, Save, Loader2, AlertTriangle, GitCompare, FileUp, GitBranch, MessageSquare, Send, History, Download } from 'lucide-react'
 
 interface Props {
   project: ProjectDetail
@@ -58,6 +59,18 @@ export function EditorHeader({
     [project.layers]
   )
 
+  const [isExporting, setIsExporting] = useState(false)
+  const handleSimpleExport = async () => {
+    setIsExporting(true)
+    try {
+      await downloadSimpleExport(projectId)
+    } catch {
+      // Silently handle; could add toast notification
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
   return (
     <div className="h-12 border-b bg-background flex items-center px-4 gap-4 shrink-0">
       <Button
@@ -97,6 +110,21 @@ export function EditorHeader({
       </div>
 
       <div className="flex-1" />
+
+      {/* Simple Excel Export */}
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={handleSimpleExport}
+        disabled={isExporting}
+      >
+        {isExporting ? (
+          <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+        ) : (
+          <Download className="mr-1.5 h-4 w-4" />
+        )}
+        Excel
+      </Button>
 
       {/* Backbone Comparison toggle */}
       {onToggleBackboneComparison && (

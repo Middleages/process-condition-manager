@@ -1,13 +1,16 @@
 import io
+from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
+from openpyxl import Workbook
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.dependencies.auth import require_active_user
-from app.models import Project, ExportSystem
+from app.models import Project, ExportSystem, ColumnCategory, ColumnDefinition
 from app.models.project import ProjectLayer
 from app.models.user import User
 from app.schemas.export import (
@@ -26,6 +29,80 @@ router = APIRouter(prefix="/api/export", tags=["export"])
 project_router = APIRouter(prefix="/api/projects", tags=["export"])
 
 _export_service = ExportService()
+
+
+@project_router.get("/{project_id}/export/simple")
+async def export_simple(
+    project_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_active_user),
+) -> StreamingResponse:
+    """Simple Excel export of the full condition table.
+
+    Available for ALL project statuses (draft, review, approved, rejected, archived).
+    Exports step_seq, layer_name, and all condition columns grouped by category.
+    """
+    # Load project with product and layers (eagerly load relationships)
+    result = await db.execute(
+        select(Project)
+        .options(
+            selectinload(Project.product),
+            selectinload(Project.layers).selectinload(ProjectLayer.layer),
+        )
+        .where(Project.id == project_id)
+    )
+    project = result.scalar_one_or_none()
+    if not project:
+        raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+
+    # Load column definitions grouped by category, sorted
+    col_result = await db.execute(
+        select(ColumnDefinition)
+        .join(ColumnCategory, ColumnDefinition.category_id == ColumnCategory.id)
+        .order_by(ColumnCategory.sort_order, ColumnDefinition.sort_order)
+    )
+    columns = col_result.scalars().all()
+
+    # Sort project layers by layer sort_order
+    sorted_layers = sorted(project.layers, key=lambda pl: pl.layer.sort_order)
+
+    # Build Excel workbook
+    wb = Workbook()
+    ws = wb.active or wb.create_sheet("Conditions")
+    ws.title = "Conditions"
+
+    # Header row: step_seq | layer_name | column display names
+    headers = ["step_seq", "layer_name"] + [col.display_name for col in columns]
+    ws.append(headers)
+
+    # Data rows
+    col_names = [col.column_name for col in columns]
+    for pl in sorted_layers:
+        row = [pl.layer.step_seq, pl.layer.layer_name]
+        conditions = pl.conditions or {}
+        for cn in col_names:
+            val = conditions.get(cn, "")
+            # Convert non-string values to string for Excel compatibility
+            if val is None:
+                val = ""
+            row.append(val)
+        ws.append(row)
+
+    # Save to bytes
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    # Build filename
+    product_name = project.product.product_name if project.product else f"project_{project_id}"
+    today = date.today().strftime("%Y%m%d")
+    filename = f"{product_name}_conditions_{today}.xlsx"
+
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/systems", response_model=list[ExportSystemResponse])

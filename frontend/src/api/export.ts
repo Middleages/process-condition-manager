@@ -50,6 +50,31 @@ export async function downloadExport(
   return { blob: response.data, filename }
 }
 
+// Simple Excel export (full condition table, all statuses)
+export async function downloadSimpleExport(projectId: number): Promise<void> {
+  const response = await client.get(`/projects/${projectId}/export/simple`, {
+    responseType: 'blob',
+  })
+
+  // Create download link from blob
+  const url = window.URL.createObjectURL(new Blob([response.data]))
+  const link = document.createElement('a')
+  link.href = url
+
+  // Extract filename from Content-Disposition header or use default
+  const contentDisposition = response.headers['content-disposition'] || ''
+  const filenameMatch = contentDisposition.match(/filename="?(.+?)"?$/i)
+  const filename = filenameMatch
+    ? filenameMatch[1]
+    : `conditions_${new Date().toISOString().slice(0, 10)}.xlsx`
+
+  link.setAttribute('download', filename)
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  window.URL.revokeObjectURL(url)
+}
+
 // 전산 출력 검증
 export async function validateExport(
   projectId: number,

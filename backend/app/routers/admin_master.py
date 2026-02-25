@@ -10,8 +10,8 @@ from app.schemas.admin_master import (
     LineCreate, LineUpdate, LineResponse,
     ProductCreate, ProductUpdate, ProductResponse,
     LayerCreate, LayerUpdate, LayerResponse, LayerReorderRequest,
-    ColumnMetadataUpdate, ColumnMetadataResponse,
-    CategoryUpdate, CategoryResponse, CategoryReorderRequest,
+    ColumnMetadataUpdate, ColumnMetadataResponse, ColumnCreateRequest,
+    CategoryCreateRequest, CategoryUpdate, CategoryResponse, CategoryReorderRequest,
 )
 from app.services import admin_master_service
 
@@ -166,8 +166,18 @@ async def delete_layer(
 
 
 # ---------------------------------------------------------------------------
-# Columns (metadata only)
+# Columns
 # ---------------------------------------------------------------------------
+
+@router.post("/columns", response_model=ColumnMetadataResponse, status_code=201)
+async def create_column(
+    data: ColumnCreateRequest,
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    """Create a new column definition (admin only)."""
+    return await admin_master_service.create_column(db, data)
+
 
 @router.put("/columns/{column_id}/metadata", response_model=ColumnMetadataResponse)
 async def update_column_metadata(
@@ -178,6 +188,17 @@ async def update_column_metadata(
 ):
     """Update column metadata (display_name, unit, is_required) (admin only)."""
     return await admin_master_service.update_column_metadata(db, column_id, data)
+
+
+@router.delete("/columns/{column_id}", status_code=204)
+async def delete_column(
+    column_id: int,
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    """Delete a column definition (admin only)."""
+    await admin_master_service.delete_column(db, column_id)
+    return Response(status_code=204)
 
 
 # ---------------------------------------------------------------------------
@@ -192,6 +213,16 @@ async def list_categories(
 ):
     """List all categories ordered by sort_order with column counts (admin only)."""
     return await admin_master_service.list_categories(db)
+
+
+@router.post("/categories", response_model=CategoryResponse, status_code=201)
+async def create_category(
+    data: CategoryCreateRequest,
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    """Create a new category (admin only)."""
+    return await admin_master_service.create_category(db, data)
 
 
 @router.put("/categories/reorder", response_model=list[CategoryResponse])
@@ -213,3 +244,14 @@ async def update_category(
 ):
     """Update a category name (admin only)."""
     return await admin_master_service.update_category(db, category_id, data)
+
+
+@router.delete("/categories/{category_id}", status_code=204)
+async def delete_category(
+    category_id: int,
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    """Delete a category (admin only). Rejects if category has columns."""
+    await admin_master_service.delete_category(db, category_id)
+    return Response(status_code=204)
