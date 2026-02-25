@@ -7,16 +7,20 @@ import { PasswordResetModal } from '@/components/admin/PasswordResetModal'
 import { useAdminUsers, useDeactivateAdminUser } from '@/hooks/useAdminUsers'
 import type { AdminUser } from '@/types/adminUser'
 
-function roleBadge(role: string) {
-  if (role === 'admin') return 'bg-red-100 text-red-800'
-  if (role === 'reviewer') return 'bg-blue-100 text-blue-800'
-  return 'bg-green-100 text-green-800'
+// 역할별 배지 스타일 매핑
+const ROLE_BADGE_STYLES: Record<string, string> = {
+  admin: 'bg-red-100 text-red-800',
+  reviewer: 'bg-blue-100 text-blue-800',
+  developer: 'bg-indigo-100 text-indigo-800',
+  editor: 'bg-green-100 text-green-800',
 }
 
-function roleLabel(role: string) {
-  if (role === 'admin') return '관리자'
-  if (role === 'reviewer') return '검토자'
-  return '편집자'
+// 역할별 한국어 레이블
+const ROLE_LABELS: Record<string, string> = {
+  admin: '관리자',
+  reviewer: '검토자',
+  developer: '개발자',
+  editor: '편집자',
 }
 
 export default function UserManagementPage() {
@@ -111,11 +115,19 @@ export default function UserManagementPage() {
                 <td className="px-4 py-3">{user.display_name}</td>
                 <td className="px-4 py-3 text-muted-foreground">{user.email ?? '-'}</td>
                 <td className="px-4 py-3">
-                  <span
-                    className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${roleBadge(user.role)}`}
-                  >
-                    {roleLabel(user.role)}
-                  </span>
+                  {/* 다중 역할 배지 표시 */}
+                  <div className="flex flex-wrap gap-1">
+                    {user.roles.map((role) => (
+                      <span
+                        key={role}
+                        className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                          ROLE_BADGE_STYLES[role] ?? 'bg-gray-100 text-gray-800'
+                        }`}
+                      >
+                        {ROLE_LABELS[role] ?? role}
+                      </span>
+                    ))}
+                  </div>
                 </td>
                 <td className="px-4 py-3">
                   {user.is_active ? (

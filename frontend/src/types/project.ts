@@ -227,7 +227,7 @@ export interface Comment {
   is_resolved: boolean
   created_by: number
   creator_name: string
-  creator_role: 'editor' | 'reviewer' | 'admin'
+  creator_roles: string[]
   created_at: string
   resolved_at: string | null
   resolved_by: number | null

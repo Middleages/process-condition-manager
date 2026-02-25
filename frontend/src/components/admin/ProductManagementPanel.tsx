@@ -5,7 +5,11 @@ import { ProductFormModal } from './ProductFormModal'
 import { useAdminProducts, useDeleteProduct, useAdminLines } from '@/hooks/useAdminMaster'
 import type { ProductResponse } from '@/api/adminMaster'
 
-export function ProductManagementPanel() {
+interface ProductManagementPanelProps {
+  readOnly?: boolean
+}
+
+export function ProductManagementPanel({ readOnly = false }: ProductManagementPanelProps) {
   const [selectedLineId, setSelectedLineId] = useState<string>('')
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [selectedProduct, setSelectedProduct] = useState<ProductResponse | null>(null)
@@ -52,10 +56,13 @@ export function ProductManagementPanel() {
             ))}
           </select>
         </div>
-        <Button size="sm" onClick={handleAdd}>
-          <Plus className="h-4 w-4 mr-1" />
-          제품 추가
-        </Button>
+        {!readOnly && (
+          <Button size="sm" onClick={handleAdd}>
+            <Plus className="h-4 w-4 mr-1" />
+            제품 추가
+          </Button>
+        )}
+        {readOnly && <span className="text-xs text-muted-foreground">읽기 전용</span>}
       </div>
       <div className="border rounded-lg overflow-hidden">
         <table className="w-full text-sm">
@@ -86,14 +93,16 @@ export function ProductManagementPanel() {
                   {new Date(product.created_at).toLocaleDateString('ko-KR')}
                 </td>
                 <td className="px-4 py-3">
-                  <div className="flex items-center justify-end gap-1">
-                    <Button variant="ghost" size="sm" onClick={() => handleEdit(product)}>
-                      <Pencil className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700" onClick={() => handleDelete(product)}>
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
+                  {!readOnly && (
+                    <div className="flex items-center justify-end gap-1">
+                      <Button variant="ghost" size="sm" onClick={() => handleEdit(product)}>
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700" onClick={() => handleDelete(product)}>
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  )}
                 </td>
               </tr>
             ))}

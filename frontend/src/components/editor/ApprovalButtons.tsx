@@ -1,6 +1,7 @@
 import { useStatusTransition, useComments } from '@/hooks/useComments'
 import { useAuthStore } from '@/stores/useAuthStore'
 import { useToastStore } from '@/stores/useToastStore'
+import { hasAnyRole } from '@/lib/permissions'
 import { Button } from '@/components/ui/button'
 import { Loader2, CheckCircle2, XCircle } from 'lucide-react'
 import type { ProjectStatus, User } from '@/types'
@@ -17,9 +18,9 @@ export function ApprovalButtons({ projectId, projectStatus, currentUser }: Props
   const statusTransition = useStatusTransition(projectId)
   const { data: commentData } = useComments(projectId)
 
-  // Only show for reviewer/admin in review status
+  // review 상태일 때 reviewer/admin 역할만 승인/반려 가능
   if (projectStatus !== 'review') return null
-  if (!currentUser || (currentUser.role !== 'reviewer' && currentUser.role !== 'admin')) return null
+  if (!currentUser || !hasAnyRole(currentUser.roles, ['reviewer', 'admin'])) return null
 
   const handleApprove = async () => {
     if (!currentUserId) return

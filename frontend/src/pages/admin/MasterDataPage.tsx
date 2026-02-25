@@ -1,4 +1,7 @@
 import { useState } from 'react'
+import { useAuthStore } from '@/stores/useAuthStore'
+import { canWrite } from '@/lib/permissions'
+import type { UserRole } from '@/types/user'
 import { LineManagementPanel } from '@/components/admin/LineManagementPanel'
 import { ProductManagementPanel } from '@/components/admin/ProductManagementPanel'
 import { ColumnMetadataPanel } from '@/components/admin/ColumnMetadataPanel'
@@ -17,6 +20,10 @@ const tabList: { id: Tab; label: string }[] = [
 
 export default function MasterDataPage() {
   const [activeTab, setActiveTab] = useState<Tab>('lines')
+  const userRoles = useAuthStore((s) => s.user?.roles) as UserRole[] | undefined
+
+  // 마스터 데이터는 operations 카테고리 -> admin 역할만 쓰기 가능
+  const readOnly = !canWrite(userRoles, 'operations')
 
   return (
     <div className="p-6">
@@ -40,11 +47,11 @@ export default function MasterDataPage() {
       </div>
 
       {/* Tab Content */}
-      {activeTab === 'lines' && <LineManagementPanel />}
-      {activeTab === 'products' && <ProductManagementPanel />}
-      {activeTab === 'columns' && <ColumnMetadataPanel />}
-      {activeTab === 'categories' && <CategoryManagementPanel />}
-      {activeTab === 'equipments' && <EquipmentManagementPanel />}
+      {activeTab === 'lines' && <LineManagementPanel readOnly={readOnly} />}
+      {activeTab === 'products' && <ProductManagementPanel readOnly={readOnly} />}
+      {activeTab === 'columns' && <ColumnMetadataPanel readOnly={readOnly} />}
+      {activeTab === 'categories' && <CategoryManagementPanel readOnly={readOnly} />}
+      {activeTab === 'equipments' && <EquipmentManagementPanel readOnly={readOnly} />}
     </div>
   )
 }

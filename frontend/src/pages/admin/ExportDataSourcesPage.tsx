@@ -1,5 +1,8 @@
 import { useState } from 'react'
 import { useExportDataSources, useDeleteDataSource } from '@/hooks/useExportDataSources'
+import { useAuthStore } from '@/stores/useAuthStore'
+import { canWrite } from '@/lib/permissions'
+import type { UserRole } from '@/types/user'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ExportDataSourceForm } from '@/components/admin/ExportDataSourceForm'
@@ -23,6 +26,9 @@ export default function ExportDataSourcesPage() {
 
   const { data: sources = [], isLoading } = useExportDataSources()
   const deleteMutation = useDeleteDataSource()
+  const userRoles = useAuthStore((s) => s.user?.roles) as UserRole[] | undefined
+  // 데이터 소스는 system_config 카테고리 -> developer 역할만 쓰기 가능
+  const readOnly = !canWrite(userRoles, 'system_config')
 
   const { confirm: confirmDelete, ConfirmDialogElement: DeleteDialog } = useConfirm({
     title: '데이터 소스 삭제',
@@ -61,10 +67,14 @@ export default function ExportDataSourcesPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">외부 데이터 소스 관리</h1>
-        <Button onClick={handleAdd}>
-          <Plus className="h-4 w-4 mr-2" />
-          데이터 소스 추가
-        </Button>
+        {!readOnly ? (
+          <Button onClick={handleAdd}>
+            <Plus className="h-4 w-4 mr-2" />
+            데이터 소스 추가
+          </Button>
+        ) : (
+          <span className="text-xs text-muted-foreground">읽기 전용</span>
+        )}
       </div>
 
       <p className="text-sm text-muted-foreground">
@@ -125,23 +135,27 @@ export default function ExportDataSourcesPage() {
                     <Badge variant="outline">{source.mapping_count}</Badge>
                   </td>
                   <td className="px-4 py-3 text-sm text-right space-x-1">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      title="수정"
-                      onClick={() => handleEdit(source)}
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      title="삭제"
-                      onClick={() => handleDelete(source)}
-                      disabled={deleteMutation.isPending}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    {!readOnly && (
+                      <>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          title="수정"
+                          onClick={() => handleEdit(source)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          title="삭제"
+                          onClick={() => handleDelete(source)}
+                          disabled={deleteMutation.isPending}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </>
+                    )}
                   </td>
                 </tr>
               ))}

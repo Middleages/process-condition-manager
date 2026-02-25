@@ -93,7 +93,7 @@ class TestMatchLayerToProject:
         """Create simple project layers for matching tests."""
         from app.models import User, Line, Product, Layer
 
-        user = User(username="test_user", display_name="Test", role="editor")
+        user = User(username="test_user", display_name="Test", roles=["editor"])
         line = Line(line_code="L1", line_name="Line 1")
         db_session.add_all([user, line])
         await db_session.flush()
@@ -161,7 +161,7 @@ class TestParseRecipeXml:
         """Set up project, layers, column defs, and xml mappings."""
         from app.models import User, Line, Product, Layer
 
-        user = User(username="recipe_tester", display_name="Recipe Tester", role="editor")
+        user = User(username="recipe_tester", display_name="Recipe Tester", roles=["editor"])
         line = Line(line_code="RL1", line_name="Recipe Line")
         db_session.add_all([user, line])
         await db_session.flush()
@@ -323,7 +323,7 @@ class TestApplyRecipeChanges:
         """Same setup as parse tests."""
         from app.models import User, Line, Product, Layer
 
-        user = User(username="apply_tester", display_name="Apply Tester", role="editor")
+        user = User(username="apply_tester", display_name="Apply Tester", roles=["editor"])
         line = Line(line_code="AL1", line_name="Apply Line")
         db_session.add_all([user, line])
         await db_session.flush()

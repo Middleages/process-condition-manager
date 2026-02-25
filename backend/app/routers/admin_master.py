@@ -1,11 +1,17 @@
-"""Admin router for master data management (Lines, Products, Layers, Columns, Categories, Equipments)."""
+"""Admin 마스터 데이터 관리 라우터 (Lines, Products, Layers, Columns, Categories, Equipments).
+
+RBAC 분리:
+- GET 엔드포인트: admin 또는 developer 역할 (require_admin_or_developer)
+- Lines/Products/Layers/Equipment 쓰기: admin 역할 (require_ops_write)
+- Columns/Categories 쓰기: developer 역할 (require_system_write)
+"""
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models import User
-from app.dependencies.auth import require_admin
+from app.dependencies.auth import require_admin_or_developer, require_ops_write, require_system_write
 from app.schemas.admin_master import (
     LineCreate, LineUpdate, LineResponse,
     ProductCreate, ProductUpdate, ProductResponse,
@@ -26,9 +32,9 @@ router = APIRouter(prefix="/api/admin", tags=["admin-master"])
 @router.get("/lines", response_model=list[LineResponse])
 async def list_lines(
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _user: User = Depends(require_admin_or_developer),
 ):
-    """List all lines with product counts (admin only)."""
+    """라인 목록 조회 (admin/developer)."""
     return await admin_master_service.list_lines(db)
 
 
@@ -36,9 +42,9 @@ async def list_lines(
 async def create_line(
     data: LineCreate,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _user: User = Depends(require_ops_write),
 ):
-    """Create a new line (admin only)."""
+    """라인 생성 (admin only)."""
     return await admin_master_service.create_line(db, data)
 
 
@@ -47,9 +53,9 @@ async def update_line(
     line_id: int,
     data: LineUpdate,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _user: User = Depends(require_ops_write),
 ):
-    """Update a line (admin only)."""
+    """라인 수정 (admin only)."""
     return await admin_master_service.update_line(db, line_id, data)
 
 
@@ -57,9 +63,9 @@ async def update_line(
 async def delete_line(
     line_id: int,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _user: User = Depends(require_ops_write),
 ):
-    """Delete a line (admin only)."""
+    """라인 삭제 (admin only)."""
     await admin_master_service.delete_line(db, line_id)
     return Response(status_code=204)
 
@@ -72,9 +78,9 @@ async def delete_line(
 async def list_products(
     line_id: int | None = Query(None, description="Filter by line ID"),
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _user: User = Depends(require_admin_or_developer),
 ):
-    """List all products with line info (admin only)."""
+    """제품 목록 조회 (admin/developer)."""
     return await admin_master_service.list_products(db, line_id=line_id)
 
 
@@ -82,9 +88,9 @@ async def list_products(
 async def create_product(
     data: ProductCreate,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _user: User = Depends(require_ops_write),
 ):
-    """Create a new product (admin only)."""
+    """제품 생성 (admin only)."""
     return await admin_master_service.create_product(db, data)
 
 
@@ -93,9 +99,9 @@ async def update_product(
     product_id: int,
     data: ProductUpdate,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _user: User = Depends(require_ops_write),
 ):
-    """Update a product (admin only)."""
+    """제품 수정 (admin only)."""
     return await admin_master_service.update_product(db, product_id, data)
 
 
@@ -103,24 +109,24 @@ async def update_product(
 async def delete_product(
     product_id: int,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _user: User = Depends(require_ops_write),
 ):
-    """Delete a product (admin only)."""
+    """제품 삭제 (admin only)."""
     await admin_master_service.delete_product(db, product_id)
     return Response(status_code=204)
 
 
 # ---------------------------------------------------------------------------
 # Layers
-# (reorder endpoint MUST be before /{layer_id} to avoid path conflict)
+# (reorder 엔드포인트는 /{layer_id} 앞에 위치해야 경로 충돌 방지)
 # ---------------------------------------------------------------------------
 
 @router.get("/layers", response_model=list[LayerResponse])
 async def list_layers(
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _user: User = Depends(require_admin_or_developer),
 ):
-    """List all layers ordered by sort_order (admin only)."""
+    """레이어 목록 조회 (admin/developer)."""
     return await admin_master_service.list_layers(db)
 
 
@@ -128,9 +134,9 @@ async def list_layers(
 async def create_layer(
     data: LayerCreate,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _user: User = Depends(require_ops_write),
 ):
-    """Create a new layer (admin only)."""
+    """레이어 생성 (admin only)."""
     return await admin_master_service.create_layer(db, data)
 
 
@@ -138,9 +144,9 @@ async def create_layer(
 async def reorder_layers(
     data: LayerReorderRequest,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _user: User = Depends(require_ops_write),
 ):
-    """Reorder layers by providing ordered list of IDs (admin only)."""
+    """레이어 순서 변경 (admin only)."""
     return await admin_master_service.reorder_layers(db, data)
 
 
@@ -149,9 +155,9 @@ async def update_layer(
     layer_id: int,
     data: LayerUpdate,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _user: User = Depends(require_ops_write),
 ):
-    """Update a layer (admin only)."""
+    """레이어 수정 (admin only)."""
     return await admin_master_service.update_layer(db, layer_id, data)
 
 
@@ -159,24 +165,24 @@ async def update_layer(
 async def delete_layer(
     layer_id: int,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _user: User = Depends(require_ops_write),
 ):
-    """Delete a layer (admin only)."""
+    """레이어 삭제 (admin only)."""
     await admin_master_service.delete_layer(db, layer_id)
     return Response(status_code=204)
 
 
 # ---------------------------------------------------------------------------
-# Columns
+# Columns (시스템 설정 → developer 쓰기)
 # ---------------------------------------------------------------------------
 
 @router.post("/columns", response_model=ColumnMetadataResponse, status_code=201)
 async def create_column(
     data: ColumnCreateRequest,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _user: User = Depends(require_system_write),
 ):
-    """Create a new column definition (admin only)."""
+    """컬럼 정의 생성 (developer only)."""
     return await admin_master_service.create_column(db, data)
 
 
@@ -185,9 +191,9 @@ async def update_column_metadata(
     column_id: int,
     data: ColumnMetadataUpdate,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _user: User = Depends(require_system_write),
 ):
-    """Update column metadata (display_name, unit, is_required) (admin only)."""
+    """컬럼 메타데이터 수정 (developer only)."""
     return await admin_master_service.update_column_metadata(db, column_id, data)
 
 
@@ -195,24 +201,24 @@ async def update_column_metadata(
 async def delete_column(
     column_id: int,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _user: User = Depends(require_system_write),
 ):
-    """Delete a column definition (admin only)."""
+    """컬럼 정의 삭제 (developer only)."""
     await admin_master_service.delete_column(db, column_id)
     return Response(status_code=204)
 
 
 # ---------------------------------------------------------------------------
-# Categories
-# (reorder endpoint MUST be before /{category_id} to avoid path conflict)
+# Categories (시스템 설정 → developer 쓰기)
+# (reorder 엔드포인트는 /{category_id} 앞에 위치해야 경로 충돌 방지)
 # ---------------------------------------------------------------------------
 
 @router.get("/categories", response_model=list[CategoryResponse])
 async def list_categories(
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _user: User = Depends(require_admin_or_developer),
 ):
-    """List all categories ordered by sort_order with column counts (admin only)."""
+    """카테고리 목록 조회 (admin/developer)."""
     return await admin_master_service.list_categories(db)
 
 
@@ -220,9 +226,9 @@ async def list_categories(
 async def create_category(
     data: CategoryCreateRequest,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _user: User = Depends(require_system_write),
 ):
-    """Create a new category (admin only)."""
+    """카테고리 생성 (developer only)."""
     return await admin_master_service.create_category(db, data)
 
 
@@ -230,9 +236,9 @@ async def create_category(
 async def reorder_categories(
     data: CategoryReorderRequest,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _user: User = Depends(require_system_write),
 ):
-    """Reorder categories by providing ordered list of IDs (admin only)."""
+    """카테고리 순서 변경 (developer only)."""
     return await admin_master_service.reorder_categories(db, data)
 
 
@@ -241,9 +247,9 @@ async def update_category(
     category_id: int,
     data: CategoryUpdate,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _user: User = Depends(require_system_write),
 ):
-    """Update a category name (admin only)."""
+    """카테고리 수정 (developer only)."""
     return await admin_master_service.update_category(db, category_id, data)
 
 
@@ -251,25 +257,25 @@ async def update_category(
 async def delete_category(
     category_id: int,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _user: User = Depends(require_system_write),
 ):
-    """Delete a category (admin only). Rejects if category has columns."""
+    """카테고리 삭제 (developer only)."""
     await admin_master_service.delete_category(db, category_id)
     return Response(status_code=204)
 
 
 # ---------------------------------------------------------------------------
-# Equipments
-# (reorder endpoint MUST be before /{equipment_id} to avoid path conflict)
+# Equipments (운영 데이터 → admin 쓰기)
+# (reorder 엔드포인트는 /{equipment_id} 앞에 위치해야 경로 충돌 방지)
 # ---------------------------------------------------------------------------
 
 @router.get("/equipments", response_model=list[EquipmentResponse])
 async def list_equipments(
     line_id: int | None = Query(None, description="Filter by line ID"),
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _user: User = Depends(require_admin_or_developer),
 ):
-    """List all equipments with line info (admin only)."""
+    """설비 목록 조회 (admin/developer)."""
     return await admin_master_service.list_equipments(db, line_id=line_id)
 
 
@@ -277,9 +283,9 @@ async def list_equipments(
 async def create_equipment(
     data: EquipmentCreate,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _user: User = Depends(require_ops_write),
 ):
-    """Create a new equipment (admin only)."""
+    """설비 생성 (admin only)."""
     return await admin_master_service.create_equipment(db, data)
 
 
@@ -287,9 +293,9 @@ async def create_equipment(
 async def reorder_equipments(
     data: EquipmentReorderRequest,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _user: User = Depends(require_ops_write),
 ):
-    """Reorder equipments by providing ordered list of IDs (admin only)."""
+    """설비 순서 변경 (admin only)."""
     return await admin_master_service.reorder_equipments(db, data)
 
 
@@ -298,9 +304,9 @@ async def update_equipment(
     equipment_id: int,
     data: EquipmentUpdate,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _user: User = Depends(require_ops_write),
 ):
-    """Update an equipment (admin only)."""
+    """설비 수정 (admin only)."""
     return await admin_master_service.update_equipment(db, equipment_id, data)
 
 
@@ -308,8 +314,8 @@ async def update_equipment(
 async def delete_equipment(
     equipment_id: int,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _user: User = Depends(require_ops_write),
 ):
-    """Soft-delete an equipment (admin only). Sets is_active = false."""
+    """설비 비활성화 (admin only)."""
     await admin_master_service.delete_equipment(db, equipment_id)
     return Response(status_code=204)

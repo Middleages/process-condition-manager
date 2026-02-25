@@ -1,5 +1,8 @@
 import { useState, useMemo } from 'react'
 import { useAdminMappings, useDeleteMapping } from '@/hooks/useAdminMappings'
+import { useAuthStore } from '@/stores/useAuthStore'
+import { canWrite } from '@/lib/permissions'
+import type { UserRole } from '@/types/user'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -20,6 +23,9 @@ export default function XmlMappingsPage() {
 
   const { data: mappings = [], isLoading } = useAdminMappings(search, activeFilter)
   const deleteMutation = useDeleteMapping()
+  const userRoles = useAuthStore((s) => s.user?.roles) as UserRole[] | undefined
+  // XML 매핑은 system_config 카테고리 -> developer 역할만 쓰기 가능
+  const readOnly = !canWrite(userRoles, 'system_config')
 
   // Client-side sorting
   const sortedMappings = useMemo(() => {
@@ -63,10 +69,14 @@ export default function XmlMappingsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">XML 매핑 관리</h1>
-        <Button onClick={handleAdd}>
-          <Plus className="h-4 w-4 mr-2" />
-          신규 추가
-        </Button>
+        {!readOnly ? (
+          <Button onClick={handleAdd}>
+            <Plus className="h-4 w-4 mr-2" />
+            신규 추가
+          </Button>
+        ) : (
+          <span className="text-xs text-muted-foreground">읽기 전용</span>
+        )}
       </div>
 
       {/* Filters */}
@@ -162,20 +172,24 @@ export default function XmlMappingsPage() {
                     </Badge>
                   </td>
                   <td className="px-4 py-3 text-sm text-right space-x-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleEdit(mapping)}
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleDelete(mapping.id)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    {!readOnly && (
+                      <>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleEdit(mapping)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDelete(mapping.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </>
+                    )}
                   </td>
                 </tr>
               ))}

@@ -47,7 +47,7 @@ class CommentRepository:
                 Layer.layer_name,
                 ColumnDefinition.display_name,
                 creator_user.display_name.label("creator_name"),
-                creator_user.role.label("creator_role"),
+                creator_user.roles.label("creator_roles"),
                 resolver_user.display_name.label("resolver_name"),
             )
             .where(ReviewComment.project_id == project_id)
@@ -79,7 +79,7 @@ class CommentRepository:
                 row.layer_name,
                 row.display_name,
                 row.creator_name,
-                row.creator_role,
+                row.creator_roles,
                 row.resolver_name,
             )
             for row in rows
@@ -110,7 +110,7 @@ class CommentRepository:
                 Layer.layer_name,
                 ColumnDefinition.display_name,
                 creator_user.display_name.label("creator_name"),
-                creator_user.role.label("creator_role"),
+                creator_user.roles.label("creator_roles"),
                 resolver_user.display_name.label("resolver_name"),
             )
             .where(
@@ -139,7 +139,7 @@ class CommentRepository:
             row.layer_name,
             row.display_name,
             row.creator_name,
-            row.creator_role,
+            row.creator_roles,
             row.resolver_name,
         )
 
@@ -171,22 +171,22 @@ def _row_to_dict(
     layer_name: str | None,
     column_display_name: str | None,
     creator_name: str | None,
-    creator_role: str | None,
+    creator_roles: list[str] | None,
     resolver_name: str | None,
 ) -> dict:
-    """Convert a query row into the standard comment response dict.
+    """쿼리 결과 행을 표준 코멘트 응답 딕셔너리로 변환한다.
 
     Args:
-        comment: ReviewComment ORM instance
-        project_id: Project ID to include in the dict
-        layer_name: Layer name from LEFT JOIN on layers table
-        column_display_name: Display name from LEFT JOIN on column_definitions
-        creator_name: Creator display_name from aliased User join
-        creator_role: Creator role from aliased User join
-        resolver_name: Resolver display_name from aliased User join (may be None)
+        comment: ReviewComment ORM 인스턴스
+        project_id: 딕셔너리에 포함할 프로젝트 ID
+        layer_name: layers 테이블 LEFT JOIN으로 가져온 레이어명
+        column_display_name: column_definitions LEFT JOIN으로 가져온 표시명
+        creator_name: aliased User JOIN으로 가져온 작성자 이름
+        creator_roles: aliased User JOIN으로 가져온 작성자 역할 목록
+        resolver_name: aliased User JOIN으로 가져온 해결자 이름 (None 가능)
 
     Returns:
-        Dict matching the API contract expected by callers
+        API 응답 계약에 맞는 딕셔너리
     """
     return {
         "id": comment.id,
@@ -200,7 +200,7 @@ def _row_to_dict(
         "is_resolved": comment.is_resolved,
         "created_by": comment.created_by,
         "creator_name": creator_name,
-        "creator_role": creator_role,
+        "creator_roles": creator_roles or [],
         "created_at": comment.created_at,
         "resolved_at": comment.resolved_at,
         "resolved_by": comment.resolved_by,

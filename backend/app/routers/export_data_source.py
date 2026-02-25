@@ -1,4 +1,9 @@
-"""Admin router for ExportDataSource CRUD and column discovery endpoints."""
+"""Admin 외부 데이터 소스 CRUD 및 컬럼 탐색 라우터.
+
+RBAC 분리:
+- GET + 컬럼 탐색: admin 또는 developer (require_admin_or_developer)
+- POST/PUT/DELETE: developer (require_system_write)
+"""
 
 from __future__ import annotations
 
@@ -6,7 +11,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.dependencies.auth import require_admin
+from app.dependencies.auth import require_admin_or_developer, require_system_write
 from app.models.user import User
 from app.schemas.export_data_source import (
     ColumnInfo,
@@ -22,9 +27,9 @@ router = APIRouter(prefix="/api/admin", tags=["export-data-sources"])
 @router.get("/data-sources", response_model=list[ExportDataSourceResponse])
 async def list_data_sources(
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _user: User = Depends(require_admin_or_developer),
 ):
-    """List all registered external data sources."""
+    """등록된 외부 데이터 소스 목록 조회 (admin/developer)."""
     return await ExportDataSourceService.list_sources(db)
 
 
@@ -32,12 +37,11 @@ async def list_data_sources(
 async def create_data_source(
     data: ExportDataSourceCreate,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _user: User = Depends(require_system_write),
 ):
-    """Register a new external data source.
+    """외부 데이터 소스 등록 (developer only).
 
-    Returns 409 if source_name already exists.
-    Returns 400 if the referenced table does not exist in the database.
+    409: source_name 중복, 400: 테이블 미존재.
     """
     return await ExportDataSourceService.create_source(db, data)
 
@@ -47,11 +51,11 @@ async def update_data_source(
     source_id: int,
     data: ExportDataSourceUpdate,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _user: User = Depends(require_system_write),
 ):
-    """Update an existing external data source registration.
+    """외부 데이터 소스 수정 (developer only).
 
-    Returns 404 if not found, 409 on name conflict, 400 on missing table.
+    404: 미발견, 409: 이름 충돌, 400: 테이블 미존재.
     """
     return await ExportDataSourceService.update_source(db, source_id, data)
 
@@ -60,13 +64,12 @@ async def update_data_source(
 async def delete_data_source(
     source_id: int,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _user: User = Depends(require_system_write),
 ):
-    """Delete or soft-delete an external data source.
+    """외부 데이터 소스 삭제 (developer only).
 
-    Performs a hard delete when no export mappings reference this source.
-    Falls back to soft delete (is_active=False) when mappings exist.
-    Returns 404 if not found.
+    매핑 참조 없으면 하드 삭제, 있으면 소프트 삭제(is_active=False).
+    404: 미발견.
     """
     return await ExportDataSourceService.delete_source(db, source_id)
 
@@ -75,11 +78,10 @@ async def delete_data_source(
 async def discover_data_source_columns(
     source_id: int,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _user: User = Depends(require_admin_or_developer),
 ):
-    """Discover columns from the registered external table via information_schema.
+    """외부 테이블 컬럼 탐색 (admin/developer).
 
-    Returns 404 if the data source record is not found.
-    Returns 400 if the table no longer exists in the database.
+    404: 데이터 소스 미발견, 400: 테이블 미존재.
     """
     return await ExportDataSourceService.discover_columns(db, source_id)

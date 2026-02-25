@@ -292,7 +292,7 @@ export default function ConditionEditorPage() {
             commentMap={commentMap}
             rejectionCommentMap={rejectionCommentMap}
             projectStatus={project.status}
-            currentUserRole={currentUser?.role}
+            currentUserRoles={currentUser?.roles}
             equipments={equipments}
             onGridReady={(api) => { gridApiRef.current = api }}
             onCellChanged={handleCellChanged}
@@ -379,7 +379,7 @@ export default function ConditionEditorPage() {
         columnName={modals.commentTarget?.columnName ?? null}
         columnDisplayName={modals.commentTarget?.columnDisplayName ?? null}
         currentUserId={currentUserId ?? 0}
-        currentUserRole={currentUser?.role ?? 'editor'}
+        currentUserRoles={currentUser?.roles ?? ['editor']}
       />
 
       {cellHistoryTarget && (

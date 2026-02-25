@@ -32,7 +32,8 @@ interface Props {
   commentMap?: Map<string, number>
   rejectionCommentMap?: Map<string, boolean>
   projectStatus?: string
-  currentUserRole?: string
+  // 다중 역할 배열로 전환
+  currentUserRoles?: string[]
   equipments?: EquipmentOption[]
   onGridReady?: (api: GridApi) => void
   onCellChanged: (
@@ -73,7 +74,7 @@ export function ConditionGrid({
   commentMap = new Map(),
   rejectionCommentMap = new Map(),
   projectStatus,
-  currentUserRole,
+  currentUserRoles,
   equipments,
   onGridReady: onGridReadyProp,
   onCellChanged,
@@ -321,7 +322,7 @@ export function ConditionGrid({
           columnName={contextMenu.columnName}
           columnDisplayName={contextMenu.columnDisplayName}
           projectStatus={projectStatus}
-          currentUserRole={currentUserRole}
+          currentUserRoles={currentUserRoles}
           onViewHistory={onViewHistory}
           onAddComment={onCellRightClick}
           onClose={() => setContextMenu(null)}

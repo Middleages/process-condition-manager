@@ -43,11 +43,11 @@ async def dashboard_data(db_session: AsyncSession):
 
     editor = User(
         username="editor1", display_name="Editor One",
-        role="editor", password_hash=_hash, email="editor1@test.local",
+        roles=["editor"], password_hash=_hash, email="editor1@test.local",
     )
     reviewer = User(
         username="reviewer1", display_name="Reviewer One",
-        role="reviewer", password_hash=_hash, email="reviewer1@test.local",
+        roles=["reviewer"], password_hash=_hash, email="reviewer1@test.local",
     )
     db_session.add_all([editor, reviewer])
     await db_session.flush()

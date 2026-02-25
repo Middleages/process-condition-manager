@@ -52,7 +52,11 @@ const INITIAL_FORM: NewColumnForm = {
   select_options: '',
 }
 
-export function ColumnMetadataPanel() {
+interface ColumnMetadataPanelProps {
+  readOnly?: boolean
+}
+
+export function ColumnMetadataPanel({ readOnly = false }: ColumnMetadataPanelProps) {
   const { data: categories = [], isLoading } = useColumns()
   const { data: adminCategories = [] } = useAdminCategories()
   const createMutation = useCreateColumn()
@@ -142,10 +146,13 @@ export function ColumnMetadataPanel() {
     <div>
       <div className="flex items-center justify-between mb-4">
         <h2 className="font-medium">컬럼 메타데이터 관리</h2>
-        <Button size="sm" onClick={handleOpenAdd}>
-          <Plus className="h-4 w-4 mr-1" />
-          컬럼 추가
-        </Button>
+        {!readOnly && (
+          <Button size="sm" onClick={handleOpenAdd}>
+            <Plus className="h-4 w-4 mr-1" />
+            컬럼 추가
+          </Button>
+        )}
+        {readOnly && <span className="text-xs text-muted-foreground">읽기 전용</span>}
       </div>
       <div className="border rounded-lg overflow-hidden">
         <table className="w-full text-sm">
@@ -217,29 +224,31 @@ export function ColumnMetadataPanel() {
                   <td className="px-4 py-2 text-muted-foreground">{col.data_type}</td>
                   <td className="px-4 py-2">
                     <div className="flex items-center justify-end gap-1">
-                      {isEditing ? (
-                        <>
-                          <Button variant="ghost" size="sm" onClick={handleSave} disabled={updateMutation.isPending}>
-                            <Check className="h-3.5 w-3.5 text-green-600" />
-                          </Button>
-                          <Button variant="ghost" size="sm" onClick={handleCancel}>
-                            <X className="h-3.5 w-3.5 text-red-600" />
-                          </Button>
-                        </>
-                      ) : (
-                        <>
-                          <Button variant="ghost" size="sm" onClick={() => handleEdit(col)}>
-                            <Pencil className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-red-600 hover:text-red-700"
-                            onClick={() => handleDelete(col)}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        </>
+                      {!readOnly && (
+                        isEditing ? (
+                          <>
+                            <Button variant="ghost" size="sm" onClick={handleSave} disabled={updateMutation.isPending}>
+                              <Check className="h-3.5 w-3.5 text-green-600" />
+                            </Button>
+                            <Button variant="ghost" size="sm" onClick={handleCancel}>
+                              <X className="h-3.5 w-3.5 text-red-600" />
+                            </Button>
+                          </>
+                        ) : (
+                          <>
+                            <Button variant="ghost" size="sm" onClick={() => handleEdit(col)}>
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-red-600 hover:text-red-700"
+                              onClick={() => handleDelete(col)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </>
+                        )
                       )}
                     </div>
                   </td>

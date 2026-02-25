@@ -8,6 +8,11 @@ PCM 애플리케이션의 도메인 상수 모음.
 새로운 상수를 추가하거나 기존 값을 변경할 때 이 파일만 수정하면 된다.
 """
 
+# --- 사용자 역할 ---
+# editor: 공정조건표 편집 (본인 프로젝트), reviewer: 검토/승인/반려,
+# admin: 전체 시스템 관리, developer: 시스템 설정(컬럼/매핑/출력) 관리
+VALID_ROLES = frozenset({"editor", "reviewer", "admin", "developer"})
+
 # --- 검증 규칙 타입 ---
 # range: 숫자 범위 검증 (min/max), required: 필수 입력,
 # conditional_required: 조건부 필수 (다른 컬럼 값에 따라 필수 여부 결정),

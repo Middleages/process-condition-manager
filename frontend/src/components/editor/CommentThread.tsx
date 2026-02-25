@@ -89,9 +89,12 @@ export function CommentThread({ comment, projectId, onNavigate }: Props) {
       <div className="flex items-center justify-between gap-2 mb-1">
         <div className="flex items-center gap-1.5 min-w-0">
           <span className="font-medium truncate">{comment.creator_name}</span>
-          <Badge variant="outline" className="text-[10px] px-1 py-0 shrink-0">
-            {comment.creator_role}
-          </Badge>
+          {/* 다중 역할 배지 표시 */}
+          {comment.creator_roles.map((r) => (
+            <Badge key={r} variant="outline" className="text-[10px] px-1 py-0 shrink-0">
+              {r}
+            </Badge>
+          ))}
           {comment.comment_type === 'rejection' && (
             <Badge variant="destructive" className="text-[10px] px-1 py-0 shrink-0">
               반려

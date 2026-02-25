@@ -1,17 +1,14 @@
 import { Outlet, Link, useLocation, Navigate } from 'react-router-dom'
-import { useUsers } from '@/hooks/useUsers'
 import { useAuthStore } from '@/stores/useAuthStore'
+import { canAccessAdmin, canAccessTab, hasRole } from '@/lib/permissions'
+import type { UserRole } from '@/types/user'
 
 export default function AdminLayout() {
-  const { data: users = [] } = useUsers()
-  const currentUserId = useAuthStore((s) => s.user?.id ?? null)
+  const currentUser = useAuthStore((s) => s.user)
   const location = useLocation()
 
-  // Find current user
-  const currentUser = users.find((u) => u.id === currentUserId)
-
-  // Redirect to projects if not admin
-  if (currentUserId && currentUser && currentUser.role !== 'admin') {
+  // 인증 사용자가 admin/developer 역할이 아니면 프로젝트 목록으로 리다이렉트
+  if (currentUser && !canAccessAdmin(currentUser.roles)) {
     return <Navigate to="/projects" replace />
   }
 
@@ -26,12 +23,29 @@ export default function AdminLayout() {
     { path: '/admin/audit-logs', label: '변경 이력 조회' },
   ]
 
+  const userRoles = currentUser?.roles as UserRole[] | undefined
+
+  // 현재 사용자가 접근 가능한 탭만 필터링
+  const visibleTabs = tabs.filter((tab) => canAccessTab(userRoles, tab.path))
+
+  // /admin 인덱스 라우트 기본 리다이렉트: admin -> /admin/users, developer(no admin) -> 첫 번째 가용 탭
+  if (location.pathname === '/admin') {
+    if (hasRole(userRoles, 'admin')) {
+      return <Navigate to="/admin/users" replace />
+    }
+    // developer(admin 아님)인 경우 사용자 관리 탭 제외 첫 번째 가용 탭으로
+    const firstTab = visibleTabs.find((t) => t.path !== '/admin/users')
+    if (firstTab) {
+      return <Navigate to={firstTab.path} replace />
+    }
+  }
+
   return (
     <div className="h-full flex flex-col">
       {/* Tab Navigation */}
       <div className="border-b border-border shrink-0">
         <div className="flex gap-1 px-6 overflow-x-auto">
-          {tabs.map((tab) => {
+          {visibleTabs.map((tab) => {
             const isActive = location.pathname === tab.path
             return (
               <Link

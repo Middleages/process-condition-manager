@@ -1,4 +1,11 @@
-"""Admin router for XML mappings and validation rules management."""
+"""Admin 라우터: XML 매핑, 검증 규칙, 선택 옵션, 감사 로그, 출력 이력 관리.
+
+RBAC 분리:
+- GET 엔드포인트: admin 또는 developer (require_admin_or_developer)
+- Recipe mappings 쓰기: developer (require_system_write)
+- Validation rules 쓰기: developer (require_system_write)
+- Select options 쓰기: admin (require_ops_write)
+"""
 
 from datetime import datetime
 from fastapi import APIRouter, Depends, Query, UploadFile, File
@@ -6,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models import User
-from app.dependencies.auth import require_admin
+from app.dependencies.auth import require_admin_or_developer, require_ops_write, require_system_write
 from app.schemas.admin import (
     RecipeMappingResponse,
     RecipeMappingCreate,
@@ -27,7 +34,7 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 
 # ---------------------------------------------------------------------------
-# Recipe XML Mapping endpoints
+# Recipe XML Mapping 엔드포인트
 # ---------------------------------------------------------------------------
 
 @router.get("/recipe-mappings", response_model=list[RecipeMappingResponse])
@@ -35,9 +42,9 @@ async def list_recipe_mappings(
     is_active: bool | None = Query(None, description="Filter by active status"),
     search: str | None = Query(None, description="Search in xpath, column name, or display name"),
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _user: User = Depends(require_admin_or_developer),
 ):
-    """List recipe XML mappings with optional filters."""
+    """Recipe XML 매핑 목록 조회 (admin/developer)."""
     return await admin_service.list_mappings(db, is_active=is_active, search=search)
 
 
@@ -45,9 +52,9 @@ async def list_recipe_mappings(
 async def create_recipe_mapping(
     data: RecipeMappingCreate,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _user: User = Depends(require_system_write),
 ):
-    """Create a new recipe XML mapping."""
+    """Recipe XML 매핑 생성 (developer only)."""
     return await admin_service.create_mapping(db, data)
 
 
@@ -56,9 +63,9 @@ async def update_recipe_mapping(
     mapping_id: int,
     data: RecipeMappingUpdate,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _user: User = Depends(require_system_write),
 ):
-    """Update an existing recipe XML mapping."""
+    """Recipe XML 매핑 수정 (developer only)."""
     return await admin_service.update_mapping(db, mapping_id, data)
 
 
@@ -66,37 +73,37 @@ async def update_recipe_mapping(
 async def delete_recipe_mapping(
     mapping_id: int,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _user: User = Depends(require_system_write),
 ):
-    """Delete a recipe XML mapping."""
+    """Recipe XML 매핑 삭제 (developer only)."""
     await admin_service.delete_mapping(db, mapping_id)
 
 
 # ---------------------------------------------------------------------------
-# Validation Rule endpoints
+# Validation Rule 엔드포인트
 # ---------------------------------------------------------------------------
 
 @router.get("/columns", response_model=list[ColumnCategoryResponse])
 async def list_columns_with_validations(
     category_code: str | None = Query(None, description="Filter by category code (SP, SC, OVL, DEV)"),
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _user: User = Depends(require_admin_or_developer),
 ):
-    """List columns grouped by category with their validation rules."""
+    """카테고리별 컬럼 + 검증 규칙 목록 조회 (admin/developer)."""
     return await admin_service.list_columns_with_validations(db, category_code=category_code)
 
 
 # ---------------------------------------------------------------------------
-# Select Options endpoints
-# (Must appear before /columns/{column_id}/validations to avoid path conflict)
+# Select Options 엔드포인트
+# (/{column_id}/validations 앞에 위치해야 경로 충돌 방지)
 # ---------------------------------------------------------------------------
 
 @router.get("/columns/select-options", response_model=list[ColumnSelectOptionsResponse])
 async def list_select_columns(
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _user: User = Depends(require_admin_or_developer),
 ):
-    """List columns with data_type='select' and their options."""
+    """select 타입 컬럼 + 선택 옵션 목록 조회 (admin/developer)."""
     return await admin_service.list_select_columns(db)
 
 
@@ -105,9 +112,9 @@ async def update_select_options(
     column_id: int,
     data: SelectOptionsUpdate,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _user: User = Depends(require_ops_write),
 ):
-    """Update select_options for a specific column."""
+    """select 옵션 수정 (admin only)."""
     return await admin_service.update_select_options(db, column_id, data)
 
 
@@ -116,9 +123,9 @@ async def replace_column_validations(
     column_id: int,
     data: ValidationRulesReplace,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _user: User = Depends(require_system_write),
 ):
-    """Replace all validation rules for a column."""
+    """컬럼 검증 규칙 전체 교체 (developer only)."""
     return await admin_service.replace_validations(db, column_id, data.validations)
 
 
@@ -126,9 +133,9 @@ async def replace_column_validations(
 async def bulk_upload_validations(
     file: UploadFile = File(..., description="Excel file with validation rules"),
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _user: User = Depends(require_system_write),
 ):
-    """Bulk upload validation rules from Excel file.
+    """검증 규칙 벌크 업로드 (developer only).
 
     Excel format:
     - Headers: column_name, rule_type, rule_config, error_message, is_active
@@ -142,7 +149,7 @@ async def bulk_upload_validations(
 
 
 # ---------------------------------------------------------------------------
-# Export History endpoints
+# Export History 엔드포인트
 # ---------------------------------------------------------------------------
 
 @router.get("/export-history", response_model=ExportHistoryListResponse)
@@ -150,9 +157,9 @@ async def get_all_export_history(
     offset: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _user: User = Depends(require_admin_or_developer),
 ):
-    """Return paginated export history across all projects (admin only)."""
+    """전체 프로젝트 출력 이력 조회 (admin/developer)."""
     items, total = await ExportHistoryService.list_all_history(
         db, offset=offset, limit=limit
     )
@@ -160,7 +167,7 @@ async def get_all_export_history(
 
 
 # ---------------------------------------------------------------------------
-# Audit Log endpoints
+# Audit Log 엔드포인트
 # ---------------------------------------------------------------------------
 
 @router.get("/audit-logs", response_model=AuditLogListResponse)
@@ -174,9 +181,9 @@ async def list_audit_logs(
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _user: User = Depends(require_admin_or_developer),
 ):
-    """List change audit logs with optional filters (admin only)."""
+    """변경 감사 로그 목록 조회 (admin/developer)."""
     items, total = await admin_service.list_audit_logs(
         db,
         project_id=project_id,

@@ -58,7 +58,7 @@ async def test_create_user(client: AsyncClient, seed_test_data, auth_headers):
             "username": "newuser",
             "display_name": "New User",
             "email": "new@test.local",
-            "role": "editor",
+            "roles": ["editor"],
             "password": "password123",
         },
         headers=headers,
@@ -66,7 +66,7 @@ async def test_create_user(client: AsyncClient, seed_test_data, auth_headers):
     assert resp.status_code == 201
     data = resp.json()
     assert data["username"] == "newuser"
-    assert data["role"] == "editor"
+    assert data["roles"] == ["editor"]
     assert data["is_active"] is True
     assert "password_hash" not in data
 
@@ -80,7 +80,7 @@ async def test_create_user_duplicate_username(client: AsyncClient, seed_test_dat
         json={
             "username": "tester1",
             "display_name": "Dup User",
-            "role": "editor",
+            "roles": ["editor"],
             "password": "pass",
         },
         headers=headers,
@@ -95,12 +95,12 @@ async def test_update_user(client: AsyncClient, seed_test_data, auth_headers):
     user_id = seed_test_data["user"].id
     resp = await client.put(
         f"/api/admin/users/{user_id}",
-        json={"display_name": "Updated Name", "role": "reviewer"},
+        json={"display_name": "Updated Name", "roles": ["reviewer"]},
         headers=headers,
     )
     assert resp.status_code == 200
     assert resp.json()["display_name"] == "Updated Name"
-    assert resp.json()["role"] == "reviewer"
+    assert resp.json()["roles"] == ["reviewer"]
 
 
 @pytest.mark.asyncio
@@ -152,7 +152,7 @@ async def test_last_admin_role_change_rejected(
     headers = auth_headers(admin)
     resp = await client.put(
         f"/api/admin/users/{admin.id}",
-        json={"role": "editor"},
+        json={"roles": ["editor"]},
         headers=headers,
     )
     assert resp.status_code == 400
@@ -169,7 +169,7 @@ async def test_last_admin_deactivate_rejected(
     admin = seed_test_data["admin_user"]
     # Create a second admin to perform the action
     second_admin = User(
-        username="admin2", display_name="Admin 2", role="admin",
+        username="admin2", display_name="Admin 2", roles=["admin"],
         password_hash="fakehash", email="admin2@test.local",
     )
     db_session.add(second_admin)

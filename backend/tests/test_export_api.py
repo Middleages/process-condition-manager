@@ -49,7 +49,7 @@ async def export_seed(db_session: AsyncSession):
     # Users
     _hash = get_password_hash("changeme123!")
     user = User(
-        username="exp_tester", display_name="Export Tester", role="editor",
+        username="exp_tester", display_name="Export Tester", roles=["editor"],
         password_hash=_hash, email="exp_tester@test.local",
     )
     db_session.add(user)

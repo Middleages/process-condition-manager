@@ -21,7 +21,11 @@ interface NewCategoryForm {
   category_name: string
 }
 
-export function CategoryManagementPanel() {
+interface CategoryManagementPanelProps {
+  readOnly?: boolean
+}
+
+export function CategoryManagementPanel({ readOnly = false }: CategoryManagementPanelProps) {
   const { data: categories = [], isLoading } = useAdminCategories()
   const createMutation = useCreateCategory()
   const updateMutation = useUpdateCategory()
@@ -106,10 +110,13 @@ export function CategoryManagementPanel() {
     <div>
       <div className="flex items-center justify-between mb-4">
         <h2 className="font-medium">카테고리 관리</h2>
-        <Button size="sm" onClick={handleAdd} disabled={isAdding}>
-          <Plus className="h-4 w-4 mr-1" />
-          카테고리 추가
-        </Button>
+        {!readOnly && (
+          <Button size="sm" onClick={handleAdd} disabled={isAdding}>
+            <Plus className="h-4 w-4 mr-1" />
+            카테고리 추가
+          </Button>
+        )}
+        {readOnly && <span className="text-xs text-muted-foreground">읽기 전용</span>}
       </div>
       <div className="border rounded-lg overflow-hidden">
         <table className="w-full text-sm">
@@ -126,7 +133,7 @@ export function CategoryManagementPanel() {
             {isLoading && (
               <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">로딩 중...</td></tr>
             )}
-            {isAdding && (
+            {isAdding && !readOnly && (
               <tr className="border-t bg-blue-50/50">
                 <td className="px-4 py-3 text-muted-foreground">-</td>
                 <td className="px-4 py-3">
@@ -165,14 +172,16 @@ export function CategoryManagementPanel() {
               return (
                 <tr key={cat.id} className="border-t hover:bg-muted/50">
                   <td className="px-4 py-3 text-muted-foreground">
-                    <div className="flex gap-0.5">
-                      <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => handleMoveUp(index)} disabled={index === 0}>
-                        <ArrowUp className="h-3 w-3" />
-                      </Button>
-                      <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => handleMoveDown(index)} disabled={index === categories.length - 1}>
-                        <ArrowDown className="h-3 w-3" />
-                      </Button>
-                    </div>
+                    {!readOnly && (
+                      <div className="flex gap-0.5">
+                        <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => handleMoveUp(index)} disabled={index === 0}>
+                          <ArrowUp className="h-3 w-3" />
+                        </Button>
+                        <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => handleMoveDown(index)} disabled={index === categories.length - 1}>
+                          <ArrowDown className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    )}
                   </td>
                   <td className="px-4 py-3 font-mono font-medium">{cat.category_code}</td>
                   <td className="px-4 py-3">
@@ -189,31 +198,33 @@ export function CategoryManagementPanel() {
                   <td className="px-4 py-3 text-muted-foreground">{cat.column_count}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1">
-                      {isEditing ? (
-                        <>
-                          <Button variant="ghost" size="sm" onClick={handleSave} disabled={updateMutation.isPending}>
-                            <Check className="h-3.5 w-3.5 text-green-600" />
-                          </Button>
-                          <Button variant="ghost" size="sm" onClick={handleCancel}>
-                            <X className="h-3.5 w-3.5 text-red-600" />
-                          </Button>
-                        </>
-                      ) : (
-                        <>
-                          <Button variant="ghost" size="sm" onClick={() => handleEdit(cat)}>
-                            <Pencil className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-red-600 hover:text-red-700"
-                            onClick={() => handleDelete(cat)}
-                            disabled={cat.column_count > 0}
-                            title={cat.column_count > 0 ? '컬럼이 있는 카테고리는 삭제할 수 없습니다' : '삭제'}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        </>
+                      {!readOnly && (
+                        isEditing ? (
+                          <>
+                            <Button variant="ghost" size="sm" onClick={handleSave} disabled={updateMutation.isPending}>
+                              <Check className="h-3.5 w-3.5 text-green-600" />
+                            </Button>
+                            <Button variant="ghost" size="sm" onClick={handleCancel}>
+                              <X className="h-3.5 w-3.5 text-red-600" />
+                            </Button>
+                          </>
+                        ) : (
+                          <>
+                            <Button variant="ghost" size="sm" onClick={() => handleEdit(cat)}>
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-red-600 hover:text-red-700"
+                              onClick={() => handleDelete(cat)}
+                              disabled={cat.column_count > 0}
+                              title={cat.column_count > 0 ? '컬럼이 있는 카테고리는 삭제할 수 없습니다' : '삭제'}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </>
+                        )
                       )}
                     </div>
                   </td>

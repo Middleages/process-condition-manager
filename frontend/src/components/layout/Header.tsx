@@ -1,5 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/useAuthStore'
+import { canAccessAdmin } from '@/lib/permissions'
 import { LogOut, Settings, User, FolderOpen } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
@@ -7,7 +8,8 @@ export default function Header() {
   const { user, logout } = useAuthStore()
   const navigate = useNavigate()
 
-  const isAdmin = user?.role === 'admin'
+  // admin 또는 developer 역할이면 관리자 메뉴 노출
+  const showAdmin = canAccessAdmin(user?.roles)
 
   const handleLogout = async () => {
     await logout()
@@ -28,7 +30,7 @@ export default function Header() {
         프로젝트
       </Link>
 
-      {isAdmin && (
+      {showAdmin && (
         <Link
           to="/admin"
           className="flex items-center gap-2 text-sm no-underline text-primary-foreground hover:text-primary-foreground/80"
@@ -45,9 +47,17 @@ export default function Header() {
           <div className="flex items-center gap-2 text-sm">
             <User className="h-4 w-4" />
             <span>{user.display_name}</span>
-            <span className="px-1.5 py-0.5 rounded text-xs bg-primary-foreground/20 font-medium">
-              {user.role}
-            </span>
+            {/* 다중 역할 배지 표시 */}
+            <div className="flex gap-1">
+              {user.roles.map((r) => (
+                <span
+                  key={r}
+                  className="px-1.5 py-0.5 rounded text-xs bg-primary-foreground/20 font-medium"
+                >
+                  {r}
+                </span>
+              ))}
+            </div>
           </div>
           <Button
             variant="ghost"
