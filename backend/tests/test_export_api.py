@@ -66,10 +66,10 @@ async def export_seed(db_session: AsyncSession):
     db_session.add_all([layer_a, layer_b])
     await db_session.flush()
 
-    # Backbone product
+    # Backbone product (has Approved project)
     backbone = Product(
         product_name="EXP-BB", description="Export backbone",
-        is_backbone=True, line_id=line.id, part_id="EXP-BB",
+        line_id=line.id, part_id="EXP-BB",
     )
     db_session.add(backbone)
     await db_session.flush()
@@ -126,7 +126,7 @@ async def export_seed(db_session: AsyncSession):
     # Target product
     target = Product(
         product_name="EXP-TARGET", description="Export target",
-        is_backbone=False, line_id=line.id, part_id="EXP-TARGET",
+        line_id=line.id, part_id="EXP-TARGET",
     )
     db_session.add(target)
     await db_session.flush()

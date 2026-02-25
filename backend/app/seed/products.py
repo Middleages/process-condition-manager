@@ -24,46 +24,47 @@ LINES = [
 
 
 # ---------------------------------------------------------------------------
-# 8. 제품 (Backbone 8개 + 비-Backbone 4개 = 총 12개)
+# 8. 제품 (Approved 프로젝트 보유 8개 + 일반 4개 = 총 12개)
 # ---------------------------------------------------------------------------
-# Backbone 제품 (is_backbone=True): 양산 제품의 확정된 조건표
-# 신규 프로젝트 생성 시 이 제품의 조건을 복사하여 초안을 만듦
+# Approved 프로젝트 보유 제품: 양산 제품의 확정된 조건표
+# 신규 프로젝트 생성 시 이 제품의 Approved 프로젝트 조건을 복사하여 초안을 만듦
+# (backbone 여부는 Approved 프로젝트 존재 여부로 동적 결정)
 # product_name: 제품명, description: 설명, line_code: 소속 라인
 # part_id: 제품 고유 ID (전산 출력 시 사용)
 
 PRODUCTS = [
-    {"product_name": "PROD-2024X", "description": "\uc8fc\ub825 \uc591\uc0b0\uc81c\ud488 (KrF/ArF \ud63c\ud569)", "is_backbone": True,
+    {"product_name": "PROD-2024X", "description": "\uc8fc\ub825 \uc591\uc0b0\uc81c\ud488 (KrF/ArF \ud63c\ud569)",
      "line_code": "LINE-A", "part_id": "PROD-2024X"},
-    {"product_name": "PROD-2024Y", "description": "\ucc28\uc138\ub300 \ud30c\uc77c\ub7ff (ArF \uc911\uc2ec)", "is_backbone": True,
+    {"product_name": "PROD-2024Y", "description": "\ucc28\uc138\ub300 \ud30c\uc77c\ub7ff (ArF \uc911\uc2ec)",
      "line_code": "LINE-B", "part_id": "PROD-2024Y"},
-    {"product_name": "PROD-2024Z", "description": "\uc800\uc804\ub825 \ubcc0\ud615 \uc81c\ud488", "is_backbone": True,
+    {"product_name": "PROD-2024Z", "description": "\uc800\uc804\ub825 \ubcc0\ud615 \uc81c\ud488",
      "line_code": "LINE-A", "part_id": "PROD-2024Z"},
-    {"product_name": "HBM-3E-MEM", "description": "HBM3E \uace0\ub300\uc5ed\ud3ed \uba54\ubaa8\ub9ac", "is_backbone": True,
+    {"product_name": "HBM-3E-MEM", "description": "HBM3E \uace0\ub300\uc5ed\ud3ed \uba54\ubaa8\ub9ac",
      "line_code": "LINE-B", "part_id": "HBM-3E-MEM"},
-    {"product_name": "AP-5G-MOB", "description": "5G \ubaa8\ubc14\uc77c AP (EUV+ArF)", "is_backbone": True,
+    {"product_name": "AP-5G-MOB", "description": "5G \ubaa8\ubc14\uc77c AP (EUV+ArF)",
      "line_code": "LINE-C", "part_id": "AP-5G-MOB"},
-    {"product_name": "MCU-AUTO-V2", "description": "\uc790\ub3d9\ucc28 MCU (28nm KrF)", "is_backbone": True,
+    {"product_name": "MCU-AUTO-V2", "description": "\uc790\ub3d9\ucc28 MCU (28nm KrF)",
      "line_code": "LINE-A", "part_id": "MCU-AUTO-V2"},
-    {"product_name": "HPC-SERVER-X", "description": "\uc11c\ubc84 HPC \ud504\ub85c\uc138\uc11c (7nm EUV)", "is_backbone": True,
+    {"product_name": "HPC-SERVER-X", "description": "\uc11c\ubc84 HPC \ud504\ub85c\uc138\uc11c (7nm EUV)",
      "line_code": "LINE-C", "part_id": "HPC-SERVER-X"},
-    {"product_name": "IOT-LP-V1", "description": "IoT \uc800\uc804\ub825 \uce69 (40nm)", "is_backbone": True,
+    {"product_name": "IOT-LP-V1", "description": "IoT \uc800\uc804\ub825 \uce69 (40nm)",
      "line_code": "LINE-A", "part_id": "IOT-LP-V1"},
 ]
 
-# 비-Backbone 제품 (is_backbone=False): 개발 중인 제품 (조건 미설정)
+# 일반 제품: 개발 중인 제품 (조건 미설정, Approved 프로젝트 없음)
 # layer_names: 이 제품이 사용하는 레이어 목록 (전체 또는 일부)
 NON_BACKBONE_PRODUCTS = [
     {"product_name": "DEV-2025A", "description": "\uac1c\ubc1c \uc81c\ud488 A (\uc870\uac74 \ubbf8\uc124\uc815)",
-     "is_backbone": False, "line_code": "LINE-A", "part_id": "DEV-2025A",
+     "line_code": "LINE-A", "part_id": "DEV-2025A",
      "layer_names": LAYER_NAMES},
     {"product_name": "DEV-2025B", "description": "\uac1c\ubc1c \uc81c\ud488 B (\uc77c\ubd80 \ub808\uc774\uc5b4)",
-     "is_backbone": False, "line_code": "LINE-B", "part_id": "DEV-2025B",
+     "line_code": "LINE-B", "part_id": "DEV-2025B",
      "layer_names": LAYER_NAMES[:80]},
     {"product_name": "DEV-2025C", "description": "\uac1c\ubc1c \uc81c\ud488 C (\ud480\uc2a4\ud0dd \ud14c\uc2a4\ud2b8)",
-     "is_backbone": False, "line_code": "LINE-A", "part_id": "DEV-2025C",
+     "line_code": "LINE-A", "part_id": "DEV-2025C",
      "layer_names": LAYER_NAMES},
     {"product_name": "DEV-2025D", "description": "\uac1c\ubc1c \uc81c\ud488 D (BEOL \ucd95\uc18c)",
-     "is_backbone": False, "line_code": "LINE-B", "part_id": "DEV-2025D",
+     "line_code": "LINE-B", "part_id": "DEV-2025D",
      "layer_names": LAYER_NAMES[:80]},
 ]
 

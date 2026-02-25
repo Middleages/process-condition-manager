@@ -34,7 +34,6 @@ class LineResponse(BaseModel):
 class ProductCreate(BaseModel):
     product_name: str = Field(..., max_length=100)
     description: str | None = None
-    is_backbone: bool = False
     line_id: int | None = None
     part_id: str | None = Field(None, max_length=100)
 
@@ -42,7 +41,6 @@ class ProductCreate(BaseModel):
 class ProductUpdate(BaseModel):
     product_name: str | None = Field(None, max_length=100)
     description: str | None = None
-    is_backbone: bool | None = None
     line_id: int | None = None
     part_id: str | None = None
 
@@ -51,7 +49,6 @@ class ProductResponse(BaseModel):
     id: int
     product_name: str
     description: str | None = None
-    is_backbone: bool
     line_id: int | None = None
     line_name: str | None = None
     part_id: str | None = None

@@ -48,6 +48,9 @@ def make_mapping(
         column_definition=make_col_def(column_name),
         sort_order=sort_order,
         is_required=is_required,
+        source_type="condition",
+        data_source_id=None,
+        source_column_name=None,
     )
 
 
@@ -62,21 +65,6 @@ def make_project_layer(
         id=pl_id,
         layer=make_layer(layer_name),
         conditions=conditions,
-        sort_order=sort_order,
-    )
-
-
-def make_equipment_assignment(
-    project_layer_id: int,
-    equipment_id: str,
-    equipment_params: dict,
-    sort_order: int = 0,
-) -> SimpleNamespace:
-    """Create a mock EquipmentAssignment."""
-    return SimpleNamespace(
-        project_layer_id=project_layer_id,
-        equipment_id=equipment_id,
-        equipment_params=equipment_params,
         sort_order=sort_order,
     )
 
@@ -283,7 +271,7 @@ class TestBuildTypeAData:
 
 
 # ---------------------------------------------------------------------------
-# _build_type_b_data
+# _build_type_b_data (EQP 컬럼 기반 설비 분할)
 # ---------------------------------------------------------------------------
 
 
@@ -292,84 +280,60 @@ class TestBuildTypeBData:
         self.service = ExportService()
 
     def test_headers_include_equip_id(self):
+        """EQUIP_ID 헤더가 세 번째 컬럼으로 포함되어야 함."""
         layers = [make_project_layer("LAYER_A", {"speed": 2000}, pl_id=1)]
         mappings = [make_mapping("SPEED", "speed")]
-        equipment = {}
-        headers, _ = self.service._build_type_b_data("PROD-A", layers, mappings, equipment)
+        headers, _ = self.service._build_type_b_data("PROD-A", layers, mappings)
         assert "EQUIP_ID" in headers
-        assert headers.index("EQUIP_ID") == 2  # Third column after LAYER_ID, PRODUCT_ID
+        assert headers.index("EQUIP_ID") == 2  # LAYER_ID, PRODUCT_ID 다음 세 번째
 
-    def test_no_equipment_produces_single_row_with_empty_equip_id(self):
+    def test_no_eqp_columns_produces_single_row_with_empty_equip_id(self):
+        """EQP 컬럼이 없으면 빈 EQUIP_ID로 단일 행 생성."""
         layers = [make_project_layer("LAYER_A", {"speed": 1500}, pl_id=1)]
         mappings = [make_mapping("SPEED", "speed")]
-        equipment = {}
-        _, rows = self.service._build_type_b_data("PROD-A", layers, mappings, equipment)
+        _, rows = self.service._build_type_b_data("PROD-A", layers, mappings)
         assert len(rows) == 1
         assert rows[0]["EQUIP_ID"] == ""
 
-    def test_two_equipment_produces_two_rows(self):
-        layers = [make_project_layer("LAYER_A", {"speed": 2000}, pl_id=1)]
+    def test_two_eqp_columns_produce_two_rows(self):
+        """EQP_01, EQP_02가 있으면 2개 행 생성."""
+        conditions = {"speed": 2000, "EQP_01": "EQ-01", "EQP_02": "EQ-02"}
+        layers = [make_project_layer("LAYER_A", conditions, pl_id=1)]
         mappings = [make_mapping("SPEED", "speed")]
-        equipment = {
-            1: [
-                make_equipment_assignment(1, "EQ-01", {}, sort_order=0),
-                make_equipment_assignment(1, "EQ-02", {}, sort_order=1),
-            ]
-        }
-        _, rows = self.service._build_type_b_data("PROD-A", layers, mappings, equipment)
+        _, rows = self.service._build_type_b_data("PROD-A", layers, mappings)
         assert len(rows) == 2
         assert rows[0]["EQUIP_ID"] == "EQ-01"
         assert rows[1]["EQUIP_ID"] == "EQ-02"
 
-    def test_equipment_param_overrides_base_condition(self):
-        layers = [make_project_layer("LAYER_A", {"speed": 2000}, pl_id=1)]
+    def test_equip_vary_mapping_reads_per_equipment_values(self):
+        """equip_vary_mapping이 있으면 EQP_{NN}{suffix}에서 설비별 값 읽음."""
+        conditions = {
+            "SC_EXPOSE_ENERGY_mJ": "38.0",
+            "EQP_01": "EQ-01",
+            "EQP_01_ET": "38.2",
+        }
+        layers = [make_project_layer("LAYER_A", conditions, pl_id=1)]
+        mappings = [make_mapping("ENERGY", "SC_EXPOSE_ENERGY_mJ")]
+        system_config = {"equip_vary_mapping": {"SC_EXPOSE_ENERGY_mJ": "_ET"}}
+        _, rows = self.service._build_type_b_data("PROD-A", layers, mappings, system_config)
+        assert rows[0]["ENERGY"] == "38.2"
+
+    def test_shared_column_uses_base_conditions(self):
+        """equip_vary_mapping에 없는 컬럼은 기본 conditions에서 읽음."""
+        conditions = {"speed": 1800, "EQP_01": "EQ-01"}
+        layers = [make_project_layer("LAYER_A", conditions, pl_id=1)]
         mappings = [make_mapping("SPEED", "speed")]
-        equipment = {
-            1: [
-                make_equipment_assignment(1, "EQ-01", {"speed": 3000}, sort_order=0),
-            ]
-        }
-        _, rows = self.service._build_type_b_data("PROD-A", layers, mappings, equipment)
-        assert rows[0]["SPEED"] == 3000  # override applied
+        _, rows = self.service._build_type_b_data("PROD-A", layers, mappings)
+        assert rows[0]["SPEED"] == 1800
 
-    def test_equipment_param_only_overrides_specified_keys(self):
-        layers = [make_project_layer("LAYER_A", {"speed": 2000, "energy": 35.0}, pl_id=1)]
-        mappings = [
-            make_mapping("SPEED", "speed"),
-            make_mapping("ENERGY", "energy"),
-        ]
-        equipment = {
-            1: [
-                make_equipment_assignment(1, "EQ-01", {"speed": 2500}, sort_order=0),
-            ]
-        }
-        _, rows = self.service._build_type_b_data("PROD-A", layers, mappings, equipment)
-        assert rows[0]["SPEED"] == 2500   # overridden
-        assert rows[0]["ENERGY"] == 35.0  # from base conditions
-
-    def test_base_condition_used_when_no_equipment_override(self):
-        layers = [make_project_layer("LAYER_A", {"speed": 1800}, pl_id=1)]
-        mappings = [make_mapping("SPEED", "speed")]
-        equipment = {
-            1: [
-                make_equipment_assignment(1, "EQ-01", {}, sort_order=0),  # no overrides
-            ]
-        }
-        _, rows = self.service._build_type_b_data("PROD-A", layers, mappings, equipment)
-        assert rows[0]["SPEED"] == 1800  # base condition used
-
-    def test_multiple_layers_with_mixed_equipment(self):
+    def test_multiple_layers_with_mixed_eqp(self):
+        """EQP 있는 레이어와 없는 레이어 혼합."""
         layers = [
-            make_project_layer("LAYER_A", {"speed": 2000}, pl_id=1),
+            make_project_layer("LAYER_A", {"speed": 2000, "EQP_01": "EQ-01"}, pl_id=1),
             make_project_layer("LAYER_B", {"speed": 2500}, pl_id=2),
         ]
         mappings = [make_mapping("SPEED", "speed")]
-        equipment = {
-            1: [make_equipment_assignment(1, "EQ-01", {}, sort_order=0)],
-            # pl_id=2 has no equipment
-        }
-        _, rows = self.service._build_type_b_data("PROD-A", layers, mappings, equipment)
-        # LAYER_A: 1 equipment row; LAYER_B: 1 no-equipment row
+        _, rows = self.service._build_type_b_data("PROD-A", layers, mappings)
         assert len(rows) == 2
         assert rows[0]["LAYER_ID"] == "LAYER_A"
         assert rows[0]["EQUIP_ID"] == "EQ-01"
@@ -377,10 +341,10 @@ class TestBuildTypeBData:
         assert rows[1]["EQUIP_ID"] == ""
 
     def test_none_conditions_handled(self):
+        """conditions=None인 레이어도 빈 EQUIP_ID 단일 행으로 처리."""
         layers = [make_project_layer("LAYER_A", None, pl_id=1)]
         mappings = [make_mapping("SPEED", "speed")]
-        equipment = {}
-        _, rows = self.service._build_type_b_data("PROD-A", layers, mappings, equipment)
+        _, rows = self.service._build_type_b_data("PROD-A", layers, mappings)
         assert rows[0]["SPEED"] == ""
 
 
@@ -481,13 +445,14 @@ class TestGenerateTypes:
         assert ws.cell(row=2, column=1).value == "LAYER_A"
 
     def test_generate_type_b_produces_xlsx(self):
-        layers = [make_project_layer("LAYER_A", {"speed": 2000}, pl_id=1)]
+        """EQP 컬럼 기반 Type B Excel 출력이 유효한 xlsx를 생성함."""
+        conditions = {"speed": 2000, "EQP_01": "EQ-01"}
+        layers = [make_project_layer("LAYER_A", conditions, pl_id=1)]
         mappings = [make_mapping("SPEED", "speed")]
-        equipment = {1: [make_equipment_assignment(1, "EQ-01", {})]}
-        result = self.service._generate_type_b("PROD-A", layers, mappings, equipment)
+        result = self.service._generate_type_b("PROD-A", layers, mappings)
         wb = load_workbook(io.BytesIO(result))
         ws = wb.active
-        # Check EQUIP_ID header is present
+        # EQUIP_ID 헤더 존재 확인
         header_row = [ws.cell(row=1, column=i).value for i in range(1, 5)]
         assert "EQUIP_ID" in header_row
 

@@ -25,6 +25,7 @@ process-condition-manager/
 │   │   ├── models/           # SQLAlchemy ORM 모델
 │   │   ├── dependencies/     # FastAPI 인증 의존성 (auth.py)
 │   │   ├── repositories/     # 데이터 접근 계층 (N+1 최적화)
+│   │   │   ├── backbone_repository.py   # Backbone 자격 판정 + 조건 조회
 │   │   │   ├── comment_repository.py    # ReviewComment 조회 (JOIN 최적화)
 │   │   │   ├── change_log_repository.py # ChangeLog/StatusLog 조회 + 통계
 │   │   │   └── dashboard_repository.py  # 대시보드 집계 쿼리 (4종)
@@ -48,15 +49,16 @@ process-condition-manager/
 │   │   │   ├── export_admin_service.py   # 전산 출력 시스템/매핑 관리
 │   │   │   ├── export_history_service.py # 출력 이력 기록/조회
 │   │   │   ├── export_validation_service.py # 출력 전 데이터 검증
-│   │   │   ├── equipment_service.py      # 설비 할당 CRUD
+│   │   │   ├── export_data_source_service.py # 외부 데이터 소스 관리
 │   │   │   ├── admin_service.py, diff_service.py
 │   │   │   └── auth_service.py
+│   │   ├── utils/            # 유틸리티
+│   │   │   └── comparison.py # values_differ() 통합 비교 함수
 │   │   ├── schemas/          # Pydantic 스키마
 │   │   ├── seed/             # 시드 데이터 패키지 (모듈별 분리)
 │   │   │   ├── columns.py, layers.py, products.py
 │   │   │   ├── exports.py, users.py, runner.py
 │   │   │   └── __init__.py, __main__.py
-│   │   └── utils/            # 유틸리티
 │   ├── alembic/              # DB 마이그레이션
 │   ├── requirements.txt
 │   └── Dockerfile
@@ -120,7 +122,8 @@ process-condition-manager/
 - `projects` / `project_layers` — 신규 조건표 작업 단위. conditions(JSONB), backbone_conditions(JSONB)
 - `column_definitions` / `column_categories` / `column_validations` — 컬럼 메타데이터·검증 규칙
 - `change_logs` — 셀 단위 변경 이력 (manual/backbone/recipe)
-- `export_systems` / `export_column_mappings` — 전산 출력 설정
+- `export_systems` / `export_column_mappings` — 전산 출력 설정 (source_type으로 내부/외부 구분)
+- `export_data_sources` — 외부 데이터 소스 정의 (테이블명, JOIN 키, 컬럼 탐색)
 - `export_histories` — 전산 출력 이력 (감사 추적)
 - `recipe_xml_mappings` — XML XPath ↔ 조건표 컬럼 매핑
 
@@ -142,6 +145,7 @@ Draft → Review → Approved → (Revision 생성 시) Archived
 - **Phase 2**: 레이어별 backbone 교체, Recipe XML 반영, 관리자 설정, Revision 기능
 - **Phase 3**: 승인 프로세스, 코멘트, 변경 이력, 전산 출력 (Type A/B/C)
 - **Phase 4**: 인증/권한, Cross-layer 검증, 전산 출력 확장, 대시보드
+- **Phase 5**: 동적 Backbone(SPEC-BACKBONE-001), 컬럼 기반 설비 관리(SPEC-EQP-001), Excel 붙여넣기(SPEC-PASTE-001 예정)
 
 ## 현재 진행 상태
 
@@ -208,8 +212,29 @@ Draft → Review → Approved → (Revision 생성 시) Archived
   - M3: Audit Log 조회 + Category 관리
     - Backend: admin_service에 audit_logs 조회 추가 (JOIN 5 tables, 필터 + 페이지네이션)
     - Frontend: AuditLogPage (필터 바 + 페이지네이션 테이블), CategoryManagementPanel
-  - Admin 탭 순서: 사용자 관리 | 마스터 데이터 | 선택 옵션 | XML 매핑 | 검증 규칙 | 전산 출력 | 변경 이력
+  - Admin 탭 순서: 사용자 관리 | 마스터 데이터 | 선택 옵션 | XML 매핑 | 검증 규칙 | 전산 출력 | 외부 데이터 | 변경 이력
   - Default: `/admin/users`
+- SPEC-006 완료: 버전 히스토리 개선 + Change Log 정확성
+  - M1: values_differ() 통합 (utils/comparison.py), 숫자 타입 정규화, false-positive 정리 마이그레이션
+  - M2: revision_reason 컬럼 추가, 개정 생성 시 사유 저장/표시
+  - M3: 버전 간 JSONB diff API (diff_service.py) + VersionDiffView 프론트엔드
+- SPEC-EXPORT-002 완료: Export Data Pipeline (외부 데이터 소스 연동)
+  - M1: ExportDataSource 모델 + CRUD API + Admin UI (ExportDataSourcesPage)
+  - M2: export_column_mappings에 source_type/data_source_id/source_column_name 추가 (마이그레이션)
+  - M3: ExportBuilders에서 source_type='external' 경로 처리, 외부 테이블 JOIN 출력
+- SPEC-BACKBONE-001 완료: 동적 Backbone 자격 판정 (Phase 5)
+  - M1: BackboneRepository (Approved 프로젝트 기반 동적 판정, Partial Index)
+  - M1: 조건 복사 소스 변경 (product_layers → Approved project_layers)
+  - M1: 신규 API 2개 (GET /backbones, GET /backbone-layers)
+  - M2: Frontend Backbone 드롭다운 동적 목록 + 버전 정보 표시
+  - M2: BackboneReplaceModal 레이어 소스를 Approved project_layers로 변경
+  - M3: is_backbone 플래그 전 계층 제거 (DB 컬럼, 스키마, 서비스, UI, 시드, 테스트)
+- SPEC-EQP-001 완료: 컬럼 기반 설비 관리 전환 (Phase 5)
+  - equipment_assignments 테이블 제거 → conditions JSONB 컬럼(EQP_01~EQP_20) 통합
+  - EQP 카테고리 + 60개 컬럼 정의 (설비명 select, ET/FOCUS float)
+  - Export Type B: conditions EQP 컬럼 기반 설비별 행 생성으로 전환
+  - 레거시 정리: equipment_service, EquipmentPanel 등 7개 파일 삭제 (~1,100줄 감소)
+  - 백본 복사/개정/변경 이력 추적: conditions JSONB 통합으로 자동 동작
 - Backbone 레이어 비교 기능 완료: 조건표 편집기에서 Backbone 대비 변경사항 비교
   - Frontend: BackboneComparisonPanel + BackboneComparisonView 신규 컴포넌트
   - EditorHeader에 "BB 비교" 토글 버튼 + 변경 레이어 수 배지

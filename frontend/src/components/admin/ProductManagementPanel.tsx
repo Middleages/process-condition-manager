@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { Plus, Pencil, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { ProductFormModal } from './ProductFormModal'
 import { useAdminProducts, useDeleteProduct, useAdminLines } from '@/hooks/useAdminMaster'
 import type { ProductResponse } from '@/api/adminMaster'
@@ -64,7 +63,6 @@ export function ProductManagementPanel() {
             <tr className="bg-muted text-muted-foreground">
               <th className="px-4 py-3 text-left font-medium">제품명</th>
               <th className="px-4 py-3 text-left font-medium">설명</th>
-              <th className="px-4 py-3 text-left font-medium">유형</th>
               <th className="px-4 py-3 text-left font-medium">라인</th>
               <th className="px-4 py-3 text-left font-medium">Part ID</th>
               <th className="px-4 py-3 text-left font-medium">생성일</th>
@@ -73,22 +71,15 @@ export function ProductManagementPanel() {
           </thead>
           <tbody>
             {isLoading && (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">로딩 중...</td></tr>
+              <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">로딩 중...</td></tr>
             )}
             {!isLoading && products.length === 0 && (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">제품이 없습니다.</td></tr>
+              <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">제품이 없습니다.</td></tr>
             )}
             {products.map((product) => (
               <tr key={product.id} className="border-t hover:bg-muted/50">
                 <td className="px-4 py-3 font-medium">{product.product_name}</td>
                 <td className="px-4 py-3 text-muted-foreground">{product.description ?? '-'}</td>
-                <td className="px-4 py-3">
-                  {product.is_backbone ? (
-                    <Badge variant="outline" className="text-orange-700 border-orange-300">Backbone</Badge>
-                  ) : (
-                    <Badge variant="outline" className="text-blue-700 border-blue-300">일반</Badge>
-                  )}
-                </td>
                 <td className="px-4 py-3 text-muted-foreground">{product.line_name ?? '-'}</td>
                 <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{product.part_id ?? '-'}</td>
                 <td className="px-4 py-3 text-muted-foreground">

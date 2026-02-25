@@ -149,16 +149,15 @@ def seed():
             line_ids[line["line_code"]] = result.scalar()
         print(f"  Lines: {len(line_ids)}")
 
-        # --- Products (Backbone) + ProductLayers ---
+        # --- Products (with Approved projects) + ProductLayers ---
         product_ids = {}
         pl_count = 0
         for prod in PRODUCTS:
             session.execute(
-                text("INSERT INTO products (product_name, description, is_backbone, line_id, part_id) "
-                     "VALUES (:name, :desc, :bb, :lid, :pid)"),
+                text("INSERT INTO products (product_name, description, line_id, part_id) "
+                     "VALUES (:name, :desc, :lid, :pid)"),
                 {
                     "name": prod["product_name"], "desc": prod["description"],
-                    "bb": prod["is_backbone"],
                     "lid": line_ids[prod["line_code"]],
                     "pid": prod["part_id"],
                 },
@@ -180,19 +179,18 @@ def seed():
                     {"pid": pid, "lid": layer_ids[layer_name], "cond": json.dumps(conditions)},
                 )
                 pl_count += 1
-        print(f"  Products (backbone): {len(product_ids)}")
+        print(f"  Products (approved-backbone): {len(product_ids)}")
         print(f"  Product Layers: {pl_count} ({len(PRODUCTS)} products x {len(LAYER_NAMES)} layers)")
 
-        # --- Non-backbone Products ---
+        # --- Non-approved Products (no Approved project) ---
         nb_count = 0
         nb_pl_count = 0
         for prod in NON_BACKBONE_PRODUCTS:
             session.execute(
-                text("INSERT INTO products (product_name, description, is_backbone, line_id, part_id) "
-                     "VALUES (:name, :desc, :bb, :lid, :pid)"),
+                text("INSERT INTO products (product_name, description, line_id, part_id) "
+                     "VALUES (:name, :desc, :lid, :pid)"),
                 {
                     "name": prod["product_name"], "desc": prod["description"],
-                    "bb": prod["is_backbone"],
                     "lid": line_ids[prod["line_code"]],
                     "pid": prod["part_id"],
                 },
@@ -214,8 +212,8 @@ def seed():
                     {"pid": pid, "lid": layer_ids[layer_name], "cond": json.dumps({})},
                 )
                 nb_pl_count += 1
-        print(f"  Products (non-backbone): {nb_count}")
-        print(f"  Non-backbone Product Layers: {nb_pl_count}")
+        print(f"  Products (non-approved): {nb_count}")
+        print(f"  Non-approved Product Layers: {nb_pl_count}")
 
         # --- Export Systems ---
         EXPORT_SYSTEMS = [
@@ -232,8 +230,14 @@ def seed():
                 "description": "Scanner equipment parameter management (SC category)",
                 "additional_config": {
                     "categories": ["SC"],
-                    "equip_source": "equipment_assignments",
-                    "equip_vary_columns": ["SC_EXPOSE_ENERGY_mJ", "SC_EXPOSE_FOCUS_um"],
+                    # equip_source 변경: equipment_assignments 테이블 대신 conditions JSONB의 EQP 컬럼 사용
+                    "equip_source": "conditions_eqp_columns",
+                    # EQP 컬럼 접미사와 원래 SC 컬럼명의 매핑
+                    # EQP_01_ET -> SC_EXPOSE_ENERGY_mJ, EQP_01_FOCUS -> SC_EXPOSE_FOCUS_um
+                    "equip_vary_mapping": {
+                        "SC_EXPOSE_ENERGY_mJ": "_ET",
+                        "SC_EXPOSE_FOCUS_um": "_FOCUS",
+                    },
                 },
                 "is_active": True,
             },
@@ -369,79 +373,80 @@ def seed():
             ecm_count += 1
         print(f"  Export Column Mappings: {ecm_count}")
 
-        # --- Test Project (approved) for Export Testing ---
-        session.execute(
-            text(
-                "INSERT INTO projects (product_id, main_backbone_id, status, revision, is_latest, created_by) "
-                "VALUES (:pid, :bbid, 'approved', 1, TRUE, :uid)"
-            ),
-            {
-                "pid": product_ids["PROD-2024X"],
-                "bbid": product_ids["PROD-2024X"],
-                "uid": user_ids["engineer1"],
-            },
-        )
-        result = session.execute(
-            text("SELECT id FROM projects WHERE product_id = :pid AND status = 'approved'"),
-            {"pid": product_ids["PROD-2024X"]},
-        )
-        test_project_id = result.scalar()
-
+        # --- Approved Projects for products in PRODUCTS list (backbone source of truth) ---
+        # Each product in PRODUCTS gets an Approved project (status='approved', is_latest=True, revision=1)
+        # with project_layers copied from product_layers. This makes them eligible as backbone sources
+        # via BackboneRepository (backbone eligibility is determined dynamically by Approved project existence).
         random.seed(99)
-        project_layer_ids = {}
-        for layer_name, _, _, sort_order_val in LAYERS:
-            conditions = generate_conditions(layer_name, "PROD-2024X")
+        backbone_project_ids = {}
+
+        # EQP 컬럼에 쓸 스캐너 목록 (slots 1~5 사용)
+        SCANNER_POOL = [
+            "NSR-S322F-01", "NSR-S322F-02", "NSR-S631E-01", "XT-1400E-01", "NXT-2000-01",
+        ]
+
+        for prod in PRODUCTS:
+            prod_name = prod["product_name"]
+            pid = product_ids[prod_name]
+
             session.execute(
                 text(
-                    "INSERT INTO project_layers "
-                    "(project_id, layer_id, backbone_product_id, conditions, backbone_conditions, sort_order) "
-                    "VALUES (:proj_id, :lid, :bbpid, CAST(:cond AS jsonb), CAST(:bcond AS jsonb), :sort)"
+                    "INSERT INTO projects (product_id, main_backbone_id, status, revision, is_latest, created_by) "
+                    "VALUES (:pid, :bbid, 'approved', 1, TRUE, :uid)"
                 ),
                 {
-                    "proj_id": test_project_id,
-                    "lid": layer_ids[layer_name],
-                    "bbpid": product_ids["PROD-2024X"],
-                    "cond": json.dumps(conditions),
-                    "bcond": json.dumps(conditions),
-                    "sort": sort_order_val,
+                    "pid": pid,
+                    "bbid": pid,
+                    "uid": user_ids["engineer1"],
                 },
             )
             result = session.execute(
-                text("SELECT id FROM project_layers WHERE project_id = :pid AND layer_id = :lid"),
-                {"pid": test_project_id, "lid": layer_ids[layer_name]},
+                text("SELECT id FROM projects WHERE product_id = :pid AND status = 'approved'"),
+                {"pid": pid},
             )
-            project_layer_ids[layer_name] = result.scalar()
-        print(f"  Test Project (approved): id={test_project_id}, layers={len(project_layer_ids)}")
+            proj_id = result.scalar()
+            backbone_project_ids[prod_name] = proj_id
 
-        # --- Equipment Assignments ---
-        scanner_assignments = [
-            "NSR-S322F-01", "NSR-S322F-02", "NSR-S631E-01", "XT-1400E-01", "NXT-2000-01",
-        ]
-        ea_count = 0
-        random.seed(77)
-        for layer_name, pl_id in project_layer_ids.items():
-            num_equip = random.choice([3, 4, 5])
-            for i, equip_id in enumerate(scanner_assignments[:num_equip]):
-                overrides = {}
-                if layer_name in LAYER_PROFILES:
-                    base_energy = LAYER_PROFILES[layer_name][4]
-                    overrides = {
-                        "SC_EXPOSE_ENERGY_mJ": str(round(base_energy + (i - 1) * 0.5, 1)),
-                        "SC_EXPOSE_FOCUS_um": str(round(random.uniform(-0.03, 0.03), 3)),
-                    }
+            # Copy all product_layers -> project_layers for this approved project
+            # EQP 컬럼(EQP_01~EQP_05, ET, FOCUS)을 conditions에 포함하여 삽입
+            for layer_name in LAYER_NAMES:
+                conditions = generate_conditions(layer_name, prod_name)
+
+                # EQP 컬럼 추가: 레이어 프로파일의 기본 에너지/포커스를 기준으로 설비별 변동값 생성
+                num_equip = random.choice([3, 4, 5])
+                base_energy = LAYER_PROFILES[layer_name][4]
+                for i, scanner_id in enumerate(SCANNER_POOL[:num_equip], start=1):
+                    slot = f"{i:02d}"
+                    # 설비명 저장
+                    conditions[f"EQP_{slot}"] = scanner_id
+                    # 설비별 에너지 오프셋: 기준값 ± 0.5 * (slot-1)
+                    conditions[f"EQP_{slot}_ET"] = round(base_energy + (i - 1) * 0.5, 1)
+                    # 설비별 포커스: -0.03 ~ 0.03 um 범위 내 랜덤
+                    conditions[f"EQP_{slot}_FOCUS"] = round(random.uniform(-0.03, 0.03), 3)
+
                 session.execute(
                     text(
-                        "INSERT INTO equipment_assignments "
-                        "(project_layer_id, equipment_id, equipment_params, sort_order) "
-                        "VALUES (:plid, :eid, CAST(:params AS jsonb), :sort)"
+                        "INSERT INTO project_layers "
+                        "(project_id, layer_id, backbone_product_id, conditions, backbone_conditions, sort_order) "
+                        "VALUES (:proj_id, :lid, :bbpid, CAST(:cond AS jsonb), CAST(:bcond AS jsonb), :sort)"
                     ),
                     {
-                        "plid": pl_id, "eid": equip_id,
-                        "params": json.dumps(overrides), "sort": i + 1,
+                        "proj_id": proj_id,
+                        "lid": layer_ids[layer_name],
+                        "bbpid": pid,
+                        "cond": json.dumps(conditions),
+                        "bcond": json.dumps(conditions),
+                        "sort": next(
+                            sort_order_val
+                            for ln, _, _, sort_order_val in LAYERS
+                            if ln == layer_name
+                        ),
                     },
                 )
-                ea_count += 1
-        print(f"  Equipment Assignments: {ea_count}")
+
+        test_project_id = backbone_project_ids["PROD-2024X"]
+        print(f"  Approved Projects (backbone): {len(backbone_project_ids)}")
+        print(f"  Test Project (approved for PROD-2024X): id={test_project_id}")
 
         # --- Recipe XML Mappings ---
         RECIPE_XML_MAPPINGS = [

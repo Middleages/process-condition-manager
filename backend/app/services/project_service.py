@@ -11,6 +11,7 @@ from sqlalchemy.orm import selectinload
 from fastapi import HTTPException
 
 from app.models import Product, ProductLayer, Project, ProjectLayer
+from app.repositories.backbone_repository import BackboneRepository
 
 # Re-exports for backward compatibility (used by tests and other modules)
 from app.services.project_status_service import update_project_status  # noqa: F401
@@ -23,7 +24,12 @@ async def create_project(
     backbone_product_id: int,
     created_by: int,
 ) -> Project:
-    """Create a project by copying backbone conditions to the target product's layers."""
+    """Create a project by copying backbone conditions from the source Approved project.
+
+    The backbone source is now the Approved project for backbone_product_id
+    (instead of product_layers). This allows dynamic backbone updates as
+    backbone products get revised and re-approved.
+    """
 
     # 1. Validate target product exists and load its product_layers
     product = await db.get(Product, product_id)
@@ -39,20 +45,18 @@ async def create_project(
     if not target_product_layers:
         raise HTTPException(status_code=400, detail="Product has no layers assigned")
 
-    # 2. Validate backbone exists and is_backbone=True
-    backbone = await db.get(Product, backbone_product_id)
-    if not backbone:
+    # 2. Validate backbone source: must have an Approved project (raises 400 if not)
+    backbone_product = await db.get(Product, backbone_product_id)
+    if not backbone_product:
         raise HTTPException(status_code=404, detail="Backbone product not found")
-    if not backbone.is_backbone:
-        raise HTTPException(status_code=400, detail="Selected product is not a backbone")
 
-    # 3. Build backbone lookup: {layer_id: conditions}
-    result = await db.execute(
-        select(ProductLayer)
-        .where(ProductLayer.product_id == backbone_product_id)
+    # validate_backbone_source raises 400 if no Approved project found
+    await BackboneRepository.validate_backbone_source(db, backbone_product_id)
+
+    # 3. Build backbone lookup: {layer_id: conditions} from Approved project's layers
+    backbone_map: dict[int, dict] = await BackboneRepository.get_backbone_layer_map(
+        db, backbone_product_id
     )
-    backbone_layers = result.scalars().all()
-    backbone_map: dict[int, dict] = {bl.layer_id: bl.conditions for bl in backbone_layers}
 
     # 4. Check no active (draft/review) project for same product
     result = await db.execute(

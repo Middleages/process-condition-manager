@@ -118,13 +118,13 @@ async def test_create_comment_on_archived_project(db_session, seed_test_data):
         db_session, target.id, backbone.id, user.id
     )
     await project_service.update_project_status(
-        db_session, project.id, "review", user.id
+        db_session, project.id, "review", user
     )
     await project_service.update_project_status(
-        db_session, project.id, "approved", reviewer.id
+        db_session, project.id, "approved", reviewer
     )
     await project_service.update_project_status(
-        db_session, project.id, "archived", user.id
+        db_session, project.id, "archived", user
     )
 
     # Attempt to add comment (should fail)

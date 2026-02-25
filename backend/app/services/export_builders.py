@@ -5,7 +5,7 @@ from typing import Any
 from openpyxl import Workbook
 from openpyxl.styles import Font
 
-from app.models import ProjectLayer, ExportColumnMapping, EquipmentAssignment
+from app.models import ProjectLayer, ExportColumnMapping
 
 logger = logging.getLogger(__name__)
 
@@ -87,20 +87,57 @@ def generate_type_a(
 def build_type_b_data(
     product_name: str, layers: list[ProjectLayer],
     mappings: list[ExportColumnMapping],
-    equipment: dict[int, list[EquipmentAssignment]],
+    system_config: dict | None = None,
     external_data: dict[int, dict[str, dict[str, Any]]] | None = None,
 ) -> tuple[list[str], list[dict]]:
+    """conditions JSONB의 EQP 컬럼(EQP_01..EQP_20)을 읽어 레이어당 설비별 행을 생성한다.
+
+    system_config.equip_vary_mapping: 설비별로 값이 다른 컬럼과 EQP 파라미터 접미사 매핑.
+    예) {"SC_EXPOSE_ENERGY_mJ": "_ET", "SC_EXPOSE_FOCUS_um": "_FOCUS"}
+    """
     ext_data = external_data or {}
+    # equip_vary_mapping: {조건 컬럼명 -> EQP 파라미터 접미사} 형식
+    equip_vary_mapping: dict[str, str] = (system_config or {}).get("equip_vary_mapping", {})
+
     headers = ["LAYER_ID", "PRODUCT_ID", "EQUIP_ID"]
     for m in mappings:
         headers.append(m.target_column_name)
 
     rows = []
     for pl in layers:
-        equip_list = equipment.get(pl.id, [])
         conditions = pl.conditions or {}
+        found_equipment = False
 
-        if not equip_list:
+        # EQP_01 부터 EQP_20까지 슬롯을 순회하여 설비별 행 생성
+        for slot in range(1, 21):
+            nn = f"{slot:02d}"
+            eqp_name = conditions.get(f"EQP_{nn}", "")
+            if not eqp_name:
+                # 빈 슬롯은 건너뜀 (R7.4: 이름 없이 파라미터만 있으면 무시)
+                continue
+
+            found_equipment = True
+            row = {
+                "LAYER_ID": pl.layer.layer_name,
+                "PRODUCT_ID": product_name,
+                "EQUIP_ID": eqp_name,
+            }
+
+            for m in mappings:
+                col_name = m.column_definition.column_name if m.column_definition else None
+                if col_name and col_name in equip_vary_mapping:
+                    # 설비별로 값이 다른 컬럼: EQP_{NN}{접미사} 컬럼에서 읽음
+                    suffix = equip_vary_mapping[col_name]
+                    row[m.target_column_name] = conditions.get(f"EQP_{nn}{suffix}", "")
+                else:
+                    # 공통 컬럼: 기본 conditions에서 읽음
+                    row[m.target_column_name] = _get_mapping_value(
+                        m, conditions, ext_data, pl.id
+                    )
+            rows.append(row)
+
+        if not found_equipment:
+            # 설비가 없는 레이어는 빈 EQUIP_ID로 단일 행 생성 (기존 fallback 동작 유지)
             row = {
                 "LAYER_ID": pl.layer.layer_name,
                 "PRODUCT_ID": product_name,
@@ -109,37 +146,18 @@ def build_type_b_data(
             for m in mappings:
                 row[m.target_column_name] = _get_mapping_value(m, conditions, ext_data, pl.id)
             rows.append(row)
-        else:
-            for ea in equip_list:
-                row = {
-                    "LAYER_ID": pl.layer.layer_name,
-                    "PRODUCT_ID": product_name,
-                    "EQUIP_ID": ea.equipment_id,
-                }
-                overrides = ea.equipment_params or {}
-                for m in mappings:
-                    # Equipment overrides only apply to condition-type mappings
-                    if m.source_type == "condition" and m.column_definition:
-                        col_name = m.column_definition.column_name
-                        if col_name in overrides:
-                            row[m.target_column_name] = overrides[col_name]
-                        else:
-                            row[m.target_column_name] = conditions.get(col_name, "")
-                    else:
-                        row[m.target_column_name] = _get_mapping_value(
-                            m, conditions, ext_data, pl.id
-                        )
-                rows.append(row)
+
     return headers, rows
 
 
 def generate_type_b(
     product_name: str, layers: list[ProjectLayer],
     mappings: list[ExportColumnMapping],
-    equipment: dict[int, list[EquipmentAssignment]],
+    system_config: dict | None = None,
     external_data: dict[int, dict[str, dict[str, Any]]] | None = None,
 ) -> bytes:
-    headers, rows = build_type_b_data(product_name, layers, mappings, equipment, external_data)
+    """Type B Excel 파일을 생성한다. EQP 컬럼 기반 설비 분할 방식 사용."""
+    headers, rows = build_type_b_data(product_name, layers, mappings, system_config, external_data)
     return write_excel(headers, rows)
 
 

@@ -10,7 +10,6 @@ from sqlalchemy.orm import selectinload
 
 from app.models import (
     ExportSystem, ExportColumnMapping, Project, ProjectLayer,
-    EquipmentAssignment,
 )
 from app.services import export_builders
 from app.services.export_builders import sanitize_filename
@@ -67,9 +66,9 @@ class ExportService:
                 product_name, layers_data, mappings, external_data
             )
         elif system.format_type == "TYPE_B":
-            equipment = await self._get_equipment_assignments(db, [pl.id for pl in layers_data])
+            # EQP 컬럼 기반 설비 분할: additional_config에서 equip_vary_mapping 읽음
             excel_bytes = export_builders.generate_type_b(
-                product_name, layers_data, mappings, equipment, external_data
+                product_name, layers_data, mappings, system.additional_config, external_data
             )
         elif system.format_type == "TYPE_C":
             unit_mappings = (system.additional_config or {}).get("unit_mappings", {})
@@ -102,9 +101,9 @@ class ExportService:
                 product_name, layers_data, mappings, external_data
             )
         elif system.format_type == "TYPE_B":
-            equipment = await self._get_equipment_assignments(db, [pl.id for pl in layers_data])
+            # EQP 컬럼 기반 설비 분할: additional_config에서 equip_vary_mapping 읽음
             headers, all_rows = export_builders.build_type_b_data(
-                product_name, layers_data, mappings, equipment, external_data
+                product_name, layers_data, mappings, system.additional_config, external_data
             )
         elif system.format_type == "TYPE_C":
             unit_mappings = (system.additional_config or {}).get("unit_mappings", {})
@@ -194,25 +193,6 @@ class ExportService:
         )
         result = await db.execute(query)
         return list(result.scalars().all())
-
-    async def _get_equipment_assignments(
-        self, db: AsyncSession, project_layer_ids: list[int]
-    ) -> dict[int, list[EquipmentAssignment]]:
-        """Fetch equipment assignments grouped by project_layer_id."""
-        if not project_layer_ids:
-            return {}
-        query = (
-            select(EquipmentAssignment)
-            .where(EquipmentAssignment.project_layer_id.in_(project_layer_ids))
-            .order_by(EquipmentAssignment.project_layer_id, EquipmentAssignment.sort_order)
-        )
-        result = await db.execute(query)
-        assignments = result.scalars().all()
-
-        grouped: dict[int, list[EquipmentAssignment]] = {}
-        for a in assignments:
-            grouped.setdefault(a.project_layer_id, []).append(a)
-        return grouped
 
     async def _get_external_data(
         self,
@@ -420,18 +400,20 @@ class ExportService:
     def _build_type_b_data(
         self, product_name: str, layers: list[ProjectLayer],
         mappings: list[ExportColumnMapping],
-        equipment: dict[int, list[EquipmentAssignment]],
+        system_config: dict | None = None,
         external_data: dict[int, dict[str, dict[str, Any]]] | None = None,
     ) -> tuple[list[str], list[dict]]:
-        return export_builders.build_type_b_data(product_name, layers, mappings, equipment, external_data)
+        """Type B 출력 데이터 생성. EQP 컬럼 기반 설비 분할 방식 사용."""
+        return export_builders.build_type_b_data(product_name, layers, mappings, system_config, external_data)
 
     def _generate_type_b(
         self, product_name: str, layers: list[ProjectLayer],
         mappings: list[ExportColumnMapping],
-        equipment: dict[int, list[EquipmentAssignment]],
+        system_config: dict | None = None,
         external_data: dict[int, dict[str, dict[str, Any]]] | None = None,
     ) -> bytes:
-        return export_builders.generate_type_b(product_name, layers, mappings, equipment, external_data)
+        """Type B Excel 파일 생성. EQP 컬럼 기반 설비 분할 방식 사용."""
+        return export_builders.generate_type_b(product_name, layers, mappings, system_config, external_data)
 
     def _build_type_c_data(
         self, product_name: str, layers: list[ProjectLayer],
