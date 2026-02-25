@@ -1,4 +1,4 @@
-"""Authentication router providing login, logout, token refresh, and user info endpoints."""
+"""인증 라우터: 로그인, 로그아웃, 토큰 갱신, 사용자 정보 엔드포인트."""
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
@@ -20,7 +20,7 @@ from jose import JWTError
 router = APIRouter()
 
 # ---------------------------------------------------------------------------
-# Response / Request schemas
+# Response / Request 스키마
 # ---------------------------------------------------------------------------
 
 REFRESH_COOKIE_NAME = "refresh_token"
@@ -31,7 +31,7 @@ class UserInfo(BaseModel):
     id: int
     username: str
     display_name: str
-    role: str
+    roles: list[str]
 
     model_config = {"from_attributes": True}
 
@@ -48,11 +48,12 @@ class TokenResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Helper: build token payload
+# 헬퍼: 토큰 페이로드 구성
 # ---------------------------------------------------------------------------
 
 def _build_token_payload(user: User) -> dict:
-    return {"sub": str(user.id), "username": user.username, "role": user.role}
+    """JWT 페이로드에 사용자 정보를 포함한다. roles 배열로 다중 역할 전달."""
+    return {"sub": str(user.id), "username": user.username, "roles": user.roles}
 
 
 def _set_refresh_cookie(response: Response, refresh_token: str) -> None:
@@ -66,7 +67,7 @@ def _set_refresh_cookie(response: Response, refresh_token: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Endpoints
+# 엔드포인트
 # ---------------------------------------------------------------------------
 
 @router.post("/login", response_model=LoginResponse)
@@ -75,9 +76,9 @@ async def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: AsyncSession = Depends(get_db),
 ) -> LoginResponse:
-    """Authenticate a user and return an access token + set refresh cookie.
+    """사용자 인증 후 access token 발급 + refresh cookie 설정.
 
-    Accepts OAuth2 form fields (username, password).
+    OAuth2 form fields (username, password)를 받는다.
     """
     result = await db.execute(select(User).where(User.username == form_data.username))
     user: User | None = result.scalar_one_or_none()
@@ -101,13 +102,18 @@ async def login(
     return LoginResponse(
         access_token=access_token,
         token_type="bearer",
-        user=UserInfo.model_validate(user),
+        user=UserInfo(
+            id=user.id,
+            username=user.username,
+            display_name=user.display_name,
+            roles=user.roles,
+        ),
     )
 
 
 @router.post("/logout", status_code=200)
 async def logout(response: Response) -> dict:
-    """Clear the refresh token cookie and log the user out."""
+    """Refresh token 쿠키를 삭제하여 로그아웃 처리."""
     response.delete_cookie(key=REFRESH_COOKIE_NAME, path=REFRESH_COOKIE_PATH)
     return {"message": "Logged out successfully"}
 
@@ -117,7 +123,7 @@ async def refresh_token(
     db: AsyncSession = Depends(get_db),
     refresh_token: str | None = Cookie(default=None, alias=REFRESH_COOKIE_NAME),
 ) -> TokenResponse:
-    """Issue a new access token using a valid refresh token from the HTTP-only cookie."""
+    """HTTP-only 쿠키의 refresh token으로 새 access token 발급."""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Invalid or expired refresh token",
@@ -146,5 +152,10 @@ async def refresh_token(
 async def get_me(
     current_user: User = Depends(get_current_user),
 ) -> UserInfo:
-    """Return the currently authenticated user's information."""
-    return UserInfo.model_validate(current_user)
+    """현재 인증된 사용자의 정보를 반환."""
+    return UserInfo(
+        id=current_user.id,
+        username=current_user.username,
+        display_name=current_user.display_name,
+        roles=current_user.roles,
+    )

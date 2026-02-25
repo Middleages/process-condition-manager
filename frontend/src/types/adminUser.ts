@@ -1,9 +1,11 @@
+import type { UserRole } from './user'
+
 export interface AdminUser {
   id: number
   username: string
   display_name: string
   email: string | null
-  role: 'editor' | 'reviewer' | 'admin'
+  roles: UserRole[]
   is_active: boolean
   created_at: string
   updated_at: string
@@ -13,14 +15,14 @@ export interface AdminUserCreate {
   username: string
   display_name: string
   email?: string | null
-  role: string
+  roles: string[]
   password: string
 }
 
 export interface AdminUserUpdate {
   display_name?: string
   email?: string | null
-  role?: string
+  roles?: string[]
   is_active?: boolean
 }
 

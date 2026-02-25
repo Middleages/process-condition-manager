@@ -64,7 +64,8 @@ const router = createBrowserRouter([
             path: '/admin',
             element: <AdminLayout />,
             children: [
-              { index: true, element: <Navigate to="/admin/users" replace /> },
+              // 기본 리다이렉트는 AdminLayout에서 역할 기반으로 처리
+              { index: true, element: <Navigate to="/admin/master-data" replace /> },
               { path: 'users', element: <UserManagementPage /> },
               { path: 'master-data', element: <MasterDataPage /> },
               { path: 'enum-options', element: <EnumManagementPage /> },

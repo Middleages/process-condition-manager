@@ -1,3 +1,6 @@
+import { hasAnyRole } from '@/lib/permissions'
+import type { UserRole } from '@/types/user'
+
 interface GridContextMenuProps {
   x: number
   y: number
@@ -6,7 +9,8 @@ interface GridContextMenuProps {
   columnName: string
   columnDisplayName: string
   projectStatus?: string
-  currentUserRole?: string
+  // 다중 역할 배열로 전환
+  currentUserRoles?: string[]
   onViewHistory?: (projectLayerId: number, layerName: string, columnName: string) => void
   onAddComment?: (projectLayerId: number, layerName: string, columnName: string, columnDisplayName: string) => void
   onClose: () => void
@@ -20,11 +24,16 @@ export function GridContextMenu({
   columnName,
   columnDisplayName,
   projectStatus,
-  currentUserRole,
+  currentUserRoles,
   onViewHistory,
   onAddComment,
   onClose,
 }: GridContextMenuProps) {
+  // review 상태에서 reviewer 또는 admin 역할이면 댓글 추가 메뉴 노출
+  const canAddComment =
+    projectStatus === 'review' &&
+    hasAnyRole(currentUserRoles as UserRole[], ['reviewer', 'admin'])
+
   return (
     <div
       role="menu"
@@ -42,7 +51,7 @@ export function GridContextMenu({
         <span className="text-gray-500">&#128203;</span>
         View History
       </button>
-      {projectStatus === 'review' && (currentUserRole === 'reviewer' || currentUserRole === 'admin') && (
+      {canAddComment && (
         <button
           role="menuitem"
           className="w-full text-left px-3 py-1.5 text-sm hover:bg-gray-100 flex items-center gap-2"

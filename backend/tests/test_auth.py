@@ -28,7 +28,7 @@ async def inactive_user(db_session):
     user = User(
         username="inactive_user",
         display_name="Inactive User",
-        role="editor",
+        roles=["editor"],
         is_active=False,
         password_hash=get_password_hash("changeme123!"),
         email="inactive@test.local",
@@ -55,7 +55,7 @@ async def test_login_success(client, seed_test_data):
     assert "access_token" in body
     assert body["token_type"] == "bearer"
     assert body["user"]["username"] == "tester1"
-    assert body["user"]["role"] == "editor"
+    assert body["user"]["roles"] == ["editor"]
     assert "refresh_token" in response.cookies
 
 
@@ -158,7 +158,7 @@ async def test_me_endpoint(client, seed_test_data, auth_headers):
     body = response.json()
     assert body["id"] == user.id
     assert body["username"] == user.username
-    assert body["role"] == user.role
+    assert body["roles"] == user.roles
 
 
 # ---------------------------------------------------------------------------
@@ -178,7 +178,7 @@ async def test_expired_token(client, seed_test_data):
     user = seed_test_data["user"]
     # Create a token that has already expired
     expired_token = create_access_token(
-        {"sub": str(user.id), "username": user.username, "role": user.role},
+        {"sub": str(user.id), "username": user.username, "roles": user.roles},
         expires_delta=timedelta(seconds=-1),
     )
     headers = {"Authorization": f"Bearer {expired_token}"}

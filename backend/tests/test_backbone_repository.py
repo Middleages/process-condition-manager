@@ -44,7 +44,7 @@ async def backbone_repo_data(db_session: AsyncSession):
 
     user = User(
         username="repo_tester", display_name="Repo Tester",
-        role="editor", password_hash=_hash, email="repo_tester@test.local",
+        roles=["editor"], password_hash=_hash, email="repo_tester@test.local",
     )
     db_session.add(user)
     await db_session.flush()

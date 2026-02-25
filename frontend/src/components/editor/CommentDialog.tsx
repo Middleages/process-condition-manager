@@ -3,6 +3,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Button } from '@/components/ui/button'
 import { useCreateComment } from '@/hooks/useComments'
 import { useToastStore } from '@/stores/useToastStore'
+import { hasAnyRole } from '@/lib/permissions'
+import type { UserRole } from '@/types/user'
 
 interface Props {
   open: boolean
@@ -13,7 +15,8 @@ interface Props {
   columnName: string | null
   columnDisplayName: string | null
   currentUserId: number
-  currentUserRole: 'editor' | 'reviewer' | 'admin'
+  // 다중 역할 배열로 전환
+  currentUserRoles: string[]
 }
 
 export function CommentDialog({
@@ -25,11 +28,16 @@ export function CommentDialog({
   columnName,
   columnDisplayName,
   currentUserId,
-  currentUserRole,
+  currentUserRoles,
 }: Props) {
+  // reviewer 또는 admin 역할 보유 여부
+  const isReviewerOrAdmin = hasAnyRole(currentUserRoles as UserRole[], ['reviewer', 'admin'])
+  // editor 전용 여부 (reviewer/admin 아님)
+  const isEditorOnly = !isReviewerOrAdmin
+
   const [content, setContent] = useState('')
   const [commentType, setCommentType] = useState<'rejection' | 'general'>(
-    currentUserRole === 'reviewer' || currentUserRole === 'admin' ? 'rejection' : 'general'
+    isReviewerOrAdmin ? 'rejection' : 'general'
   )
 
   const createComment = useCreateComment(projectId)
@@ -71,7 +79,7 @@ export function CommentDialog({
         </DialogHeader>
 
         <div className="space-y-4">
-          {/* Target cell info */}
+          {/* 대상 셀 정보 */}
           <div className="text-sm text-muted-foreground">
             <div className="font-medium">위치:</div>
             <div className="ml-2">
@@ -79,7 +87,7 @@ export function CommentDialog({
             </div>
           </div>
 
-          {/* Comment type selection */}
+          {/* 댓글 유형 선택 */}
           <div className="space-y-2">
             <label className="text-sm font-medium">댓글 유형</label>
             <div className="flex gap-4">
@@ -90,10 +98,10 @@ export function CommentDialog({
                   value="rejection"
                   checked={commentType === 'rejection'}
                   onChange={(e) => setCommentType(e.target.value as 'rejection' | 'general')}
-                  disabled={currentUserRole === 'editor'}
+                  disabled={isEditorOnly}
                 />
                 <span className="text-sm">
-                  반려 사유 {currentUserRole === 'editor' && '(검토자만 가능)'}
+                  반려 사유 {isEditorOnly && '(검토자만 가능)'}
                 </span>
               </label>
               <label className="flex items-center gap-2">
@@ -109,7 +117,7 @@ export function CommentDialog({
             </div>
           </div>
 
-          {/* Comment content */}
+          {/* 댓글 내용 */}
           <div className="space-y-2">
             <label className="text-sm font-medium">내용</label>
             <textarea

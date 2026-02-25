@@ -11,6 +11,14 @@ import {
 import { useCreateAdminUser, useUpdateAdminUser } from '@/hooks/useAdminUsers'
 import type { AdminUser } from '@/types/adminUser'
 
+// 지원 역할 목록 및 한국어 레이블
+const ROLE_OPTIONS = [
+  { value: 'editor', label: '편집자 (editor)' },
+  { value: 'reviewer', label: '검토자 (reviewer)' },
+  { value: 'admin', label: '관리자 (admin)' },
+  { value: 'developer', label: '개발자 (developer)' },
+] as const
+
 interface UserFormModalProps {
   isOpen: boolean
   onClose: () => void
@@ -23,7 +31,7 @@ export function UserFormModal({ isOpen, onClose, user }: UserFormModalProps) {
   const [username, setUsername] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [email, setEmail] = useState('')
-  const [role, setRole] = useState('editor')
+  const [selectedRoles, setSelectedRoles] = useState<string[]>(['editor'])
   const [password, setPassword] = useState('')
   const [isActive, setIsActive] = useState(true)
   const [serverError, setServerError] = useState('')
@@ -36,22 +44,35 @@ export function UserFormModal({ isOpen, onClose, user }: UserFormModalProps) {
       setUsername(user.username)
       setDisplayName(user.display_name)
       setEmail(user.email ?? '')
-      setRole(user.role)
+      setSelectedRoles([...user.roles])
       setIsActive(user.is_active)
     } else {
       setUsername('')
       setDisplayName('')
       setEmail('')
-      setRole('editor')
+      setSelectedRoles(['editor'])
       setPassword('')
       setIsActive(true)
     }
     setServerError('')
   }, [user, isOpen])
 
+  // 역할 체크박스 토글
+  const toggleRole = (role: string) => {
+    setSelectedRoles((prev) =>
+      prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role]
+    )
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setServerError('')
+
+    // 최소 1개 역할 필수
+    if (selectedRoles.length === 0) {
+      setServerError('최소 1개의 역할을 선택해야 합니다.')
+      return
+    }
 
     try {
       if (isEdit && user) {
@@ -60,7 +81,7 @@ export function UserFormModal({ isOpen, onClose, user }: UserFormModalProps) {
           payload: {
             display_name: displayName,
             email: email || null,
-            role,
+            roles: selectedRoles,
             is_active: isActive,
           },
         })
@@ -69,7 +90,7 @@ export function UserFormModal({ isOpen, onClose, user }: UserFormModalProps) {
           username,
           display_name: displayName,
           email: email || null,
-          role,
+          roles: selectedRoles,
           password,
         })
       }
@@ -121,17 +142,25 @@ export function UserFormModal({ isOpen, onClose, user }: UserFormModalProps) {
               placeholder="user@example.com"
             />
           </div>
+          {/* 역할 선택: 다중 체크박스 */}
           <div>
-            <label className="block text-sm font-medium mb-1">역할 *</label>
-            <select
-              className="w-full border border-input rounded-md px-3 py-2 text-sm bg-background"
-              value={role}
-              onChange={(e) => setRole(e.target.value)}
-            >
-              <option value="editor">편집자 (editor)</option>
-              <option value="reviewer">검토자 (reviewer)</option>
-              <option value="admin">관리자 (admin)</option>
-            </select>
+            <label className="block text-sm font-medium mb-2">역할 *</label>
+            <div className="flex flex-wrap gap-4">
+              {ROLE_OPTIONS.map((opt) => (
+                <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedRoles.includes(opt.value)}
+                    onChange={() => toggleRole(opt.value)}
+                    className="h-4 w-4"
+                  />
+                  <span className="text-sm">{opt.label}</span>
+                </label>
+              ))}
+            </div>
+            {selectedRoles.length === 0 && (
+              <p className="text-red-600 text-xs mt-1">최소 1개의 역할을 선택해야 합니다.</p>
+            )}
           </div>
           {!isEdit && (
             <div>
@@ -164,7 +193,7 @@ export function UserFormModal({ isOpen, onClose, user }: UserFormModalProps) {
             <Button type="button" variant="outline" onClick={onClose} disabled={isPending}>
               취소
             </Button>
-            <Button type="submit" disabled={isPending}>
+            <Button type="submit" disabled={isPending || selectedRoles.length === 0}>
               {isPending ? '저장 중...' : '저장'}
             </Button>
           </DialogFooter>

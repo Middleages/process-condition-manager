@@ -5,7 +5,11 @@ import { LineFormModal } from './LineFormModal'
 import { useAdminLines, useDeleteLine } from '@/hooks/useAdminMaster'
 import type { LineResponse } from '@/api/adminMaster'
 
-export function LineManagementPanel() {
+interface LineManagementPanelProps {
+  readOnly?: boolean
+}
+
+export function LineManagementPanel({ readOnly = false }: LineManagementPanelProps) {
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [selectedLine, setSelectedLine] = useState<LineResponse | null>(null)
 
@@ -36,10 +40,13 @@ export function LineManagementPanel() {
     <div>
       <div className="flex items-center justify-between mb-4">
         <h2 className="font-medium">라인 목록</h2>
-        <Button size="sm" onClick={handleAdd}>
-          <Plus className="h-4 w-4 mr-1" />
-          라인 추가
-        </Button>
+        {!readOnly && (
+          <Button size="sm" onClick={handleAdd}>
+            <Plus className="h-4 w-4 mr-1" />
+            라인 추가
+          </Button>
+        )}
+        {readOnly && <span className="text-xs text-muted-foreground">읽기 전용</span>}
       </div>
       <div className="border rounded-lg overflow-hidden">
         <table className="w-full text-sm">
@@ -68,19 +75,21 @@ export function LineManagementPanel() {
                   {new Date(line.created_at).toLocaleDateString('ko-KR')}
                 </td>
                 <td className="px-4 py-3">
-                  <div className="flex items-center justify-end gap-1">
-                    <Button variant="ghost" size="sm" onClick={() => handleEdit(line)}>
-                      <Pencil className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-red-600 hover:text-red-700"
-                      onClick={() => handleDelete(line)}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
+                  {!readOnly && (
+                    <div className="flex items-center justify-end gap-1">
+                      <Button variant="ghost" size="sm" onClick={() => handleEdit(line)}>
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-red-600 hover:text-red-700"
+                        onClick={() => handleDelete(line)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  )}
                 </td>
               </tr>
             ))}

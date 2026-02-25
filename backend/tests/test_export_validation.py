@@ -42,7 +42,7 @@ async def export_data(db_session: AsyncSession):
 
     user = User(
         username="exporter", display_name="Exporter",
-        role="editor", password_hash=_hash, email="exporter@test.local",
+        roles=["editor"], password_hash=_hash, email="exporter@test.local",
     )
     db_session.add(user)
     await db_session.flush()

@@ -157,7 +157,7 @@ async def update_comment(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    if comment.created_by != user_id and user.role != "admin":
+    if comment.created_by != user_id and "admin" not in (user.roles or []):
         raise HTTPException(
             status_code=403,
             detail="Only the comment creator or admin can modify this comment"
@@ -227,7 +227,7 @@ async def delete_comment(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    if comment.created_by != user_id and user.role != "admin":
+    if comment.created_by != user_id and "admin" not in (user.roles or []):
         raise HTTPException(
             status_code=403,
             detail="Only the comment creator or admin can delete this comment"

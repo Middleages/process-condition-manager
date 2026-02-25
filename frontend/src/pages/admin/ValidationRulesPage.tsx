@@ -1,5 +1,8 @@
 import { useState, useMemo } from 'react'
 import { useAdminColumns } from '@/hooks/useAdminValidations'
+import { useAuthStore } from '@/stores/useAuthStore'
+import { canWrite } from '@/lib/permissions'
+import type { UserRole } from '@/types/user'
 import type { ColumnDefinition, ColumnValidation, CategoryCode } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -25,6 +28,9 @@ export default function ValidationRulesPage() {
   const [bulkUploadOpen, setBulkUploadOpen] = useState(false)
 
   const { data: categories = [], isLoading } = useAdminColumns(category)
+  const userRoles = useAuthStore((s) => s.user?.roles) as UserRole[] | undefined
+  // 검증 규칙은 system_config 카테고리 -> developer 역할만 쓰기 가능
+  const readOnly = !canWrite(userRoles, 'system_config')
 
   // Flatten columns with category_code
   const columns = useMemo(() => {
@@ -101,10 +107,14 @@ export default function ValidationRulesPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">검증 규칙 관리</h1>
-        <Button onClick={() => setBulkUploadOpen(true)}>
-          <Upload className="h-4 w-4 mr-2" />
-          일괄 업로드
-        </Button>
+        {!readOnly ? (
+          <Button onClick={() => setBulkUploadOpen(true)}>
+            <Upload className="h-4 w-4 mr-2" />
+            일괄 업로드
+          </Button>
+        ) : (
+          <span className="text-xs text-muted-foreground">읽기 전용</span>
+        )}
       </div>
 
       {/* Category Tabs */}
@@ -167,9 +177,11 @@ export default function ValidationRulesPage() {
                     <Badge variant="secondary">{getRulesCount(col.validations)}</Badge>
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <Button variant="ghost" size="sm" onClick={() => handleEdit(col)}>
-                      <Pencil className="h-4 w-4" />
-                    </Button>
+                    {!readOnly && (
+                      <Button variant="ghost" size="sm" onClick={() => handleEdit(col)}>
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    )}
                   </td>
                 </tr>
               ))}

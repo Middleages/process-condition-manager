@@ -11,7 +11,11 @@ import {
 } from '@/hooks/useAdminMaster'
 import type { EquipmentResponse } from '@/api/adminMaster'
 
-export function EquipmentManagementPanel() {
+interface EquipmentManagementPanelProps {
+  readOnly?: boolean
+}
+
+export function EquipmentManagementPanel({ readOnly = false }: EquipmentManagementPanelProps) {
   const [selectedLineId, setSelectedLineId] = useState<string>('')
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [selectedEquipment, setSelectedEquipment] = useState<EquipmentResponse | null>(null)
@@ -71,10 +75,13 @@ export function EquipmentManagementPanel() {
             ))}
           </select>
         </div>
-        <Button size="sm" onClick={handleAdd}>
-          <Plus className="h-4 w-4 mr-1" />
-          설비 추가
-        </Button>
+        {!readOnly && (
+          <Button size="sm" onClick={handleAdd}>
+            <Plus className="h-4 w-4 mr-1" />
+            설비 추가
+          </Button>
+        )}
+        {readOnly && <span className="text-xs text-muted-foreground">읽기 전용</span>}
       </div>
       <div className="border rounded-lg overflow-hidden">
         <table className="w-full text-sm">
@@ -114,12 +121,7 @@ export function EquipmentManagementPanel() {
                 <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{eq.ip ?? '-'}</td>
                 <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{eq.ftp_id ?? '-'}</td>
                 <td className="px-4 py-3 text-center">
-                  <button
-                    type="button"
-                    onClick={() => handleToggleActive(eq)}
-                    className="cursor-pointer"
-                    title={eq.is_active ? '비활성화 클릭' : '활성화 클릭'}
-                  >
+                  {readOnly ? (
                     <Badge
                       className={
                         eq.is_active
@@ -129,22 +131,41 @@ export function EquipmentManagementPanel() {
                     >
                       {eq.is_active ? '활성' : '비활성'}
                     </Badge>
-                  </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleToggleActive(eq)}
+                      className="cursor-pointer"
+                      title={eq.is_active ? '비활성화 클릭' : '활성화 클릭'}
+                    >
+                      <Badge
+                        className={
+                          eq.is_active
+                            ? 'bg-green-100 text-green-800 border-transparent'
+                            : 'bg-red-100 text-red-800 border-transparent'
+                        }
+                      >
+                        {eq.is_active ? '활성' : '비활성'}
+                      </Badge>
+                    </button>
+                  )}
                 </td>
                 <td className="px-4 py-3">
-                  <div className="flex items-center justify-end gap-1">
-                    <Button variant="ghost" size="sm" onClick={() => handleEdit(eq)}>
-                      <Pencil className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-red-600 hover:text-red-700"
-                      onClick={() => handleDelete(eq)}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
+                  {!readOnly && (
+                    <div className="flex items-center justify-end gap-1">
+                      <Button variant="ghost" size="sm" onClick={() => handleEdit(eq)}>
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-red-600 hover:text-red-700"
+                        onClick={() => handleDelete(eq)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  )}
                 </td>
               </tr>
             ))}

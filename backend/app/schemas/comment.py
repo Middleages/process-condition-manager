@@ -44,7 +44,7 @@ class CommentResponse(BaseModel):
     is_resolved: bool
     created_by: int
     creator_name: str
-    creator_role: str
+    creator_roles: list[str]
     created_at: datetime
     resolved_at: datetime | None
     resolved_by: int | None

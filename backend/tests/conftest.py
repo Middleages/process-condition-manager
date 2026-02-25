@@ -2,18 +2,19 @@
 Test configuration and fixtures for PCM backend tests.
 
 Uses SQLite (async via aiosqlite) for test isolation and speed.
-PostgreSQL-specific types (JSONB) are remapped to JSON for SQLite compatibility.
+PostgreSQL-specific types (JSONB, ARRAY) are remapped to JSON for SQLite compatibility.
 """
 
 from __future__ import annotations
 
+import json
 import pytest
 import pytest_asyncio
 from typing import TYPE_CHECKING
 
-from sqlalchemy import JSON, event
+from sqlalchemy import JSON, TypeDecorator, event
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, ARRAY
 from httpx import AsyncClient, ASGITransport
 
 from app.database import Base, get_db
@@ -43,6 +44,22 @@ def _compile_jsonb_as_json(element, compiler, **kwargs):
     return compiler.visit_JSON(element, **kwargs)
 
 
+def _compile_array_as_json(element, compiler, **kwargs):
+    """Render PostgreSQL ARRAY as plain JSON for SQLite (리스트를 JSON으로 직렬화)."""
+    return "JSON"
+
+
+def _patch_array_columns_for_sqlite():
+    """User.roles 등 ARRAY 컬럼을 SQLite 호환 JSON 타입으로 교체한다.
+
+    SQLite는 PostgreSQL ARRAY 타입을 지원하지 않으므로, 테스트 실행 시
+    ARRAY(String) 컬럼을 JSON 타입으로 동적 교체하여 리스트 직렬화/역직렬화를 지원한다.
+    """
+    from app.models.user import User
+    roles_col = User.__table__.c.roles
+    roles_col.type = JSON()
+
+
 # ---------------------------------------------------------------------------
 # Engine & session fixtures
 # ---------------------------------------------------------------------------
@@ -57,9 +74,13 @@ async def db_session():
     """
     engine = create_async_engine(SQLITE_URL, echo=False)
 
-    # Register a compile rule so JSONB is treated as JSON on SQLite
+    # Register compile rules so PostgreSQL types work on SQLite
     from sqlalchemy.ext.compiler import compiles as _compiles
     _compiles(JSONB, "sqlite")(_compile_jsonb_as_json)
+    _compiles(ARRAY, "sqlite")(_compile_array_as_json)
+
+    # ARRAY 컬럼을 JSON 타입으로 교체 (SQLite 호환)
+    _patch_array_columns_for_sqlite()
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -120,15 +141,15 @@ async def seed_test_data(db_session: AsyncSession):
 
     # -- Users --
     user = User(
-        username="tester1", display_name="Test User", role="editor",
+        username="tester1", display_name="Test User", roles=["editor"],
         password_hash=_default_hash, email="editor@test.local",
     )
     admin_user = User(
-        username="admin1", display_name="Admin User", role="admin",
+        username="admin1", display_name="Admin User", roles=["admin"],
         password_hash=_default_hash, email="admin@test.local",
     )
     reviewer_user = User(
-        username="reviewer1", display_name="Reviewer User", role="reviewer",
+        username="reviewer1", display_name="Reviewer User", roles=["reviewer"],
         password_hash=_default_hash, email="reviewer@test.local",
     )
     db_session.add_all([user, admin_user, reviewer_user])
@@ -309,7 +330,7 @@ def auth_headers():
     def _make_headers(user: User) -> dict:
         from app.services.auth_service import create_access_token
         token = create_access_token(
-            {"sub": str(user.id), "username": user.username, "role": user.role}
+            {"sub": str(user.id), "username": user.username, "roles": user.roles}
         )
         return {"Authorization": f"Bearer {token}"}
     return _make_headers

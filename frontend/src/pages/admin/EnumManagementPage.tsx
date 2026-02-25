@@ -3,6 +3,9 @@ import { Pencil } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { SelectOptionsEditModal } from '@/components/admin/SelectOptionsEditModal'
 import { useSelectColumns } from '@/hooks/useAdminColumns'
+import { useAuthStore } from '@/stores/useAuthStore'
+import { canWrite } from '@/lib/permissions'
+import type { UserRole } from '@/types/user'
 import type { ColumnSelectOptions } from '@/types/adminUser'
 
 function categoryBadgeClass(code: string | null) {
@@ -21,6 +24,10 @@ export default function EnumManagementPage() {
   const [isEditOpen, setIsEditOpen] = useState(false)
 
   const { data: columns = [], isLoading } = useSelectColumns()
+  const userRoles = useAuthStore((s) => s.user?.roles) as UserRole[] | undefined
+
+  // 선택 옵션 관리는 operations 카테고리 -> admin 역할만 쓰기 가능
+  const readOnly = !canWrite(userRoles, 'operations')
 
   const handleEdit = (col: ColumnSelectOptions) => {
     setSelectedColumn(col)
@@ -31,6 +38,7 @@ export default function EnumManagementPage() {
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl font-semibold">선택 옵션 관리</h1>
+        {readOnly && <span className="text-xs text-muted-foreground">읽기 전용</span>}
       </div>
 
       <div className="border rounded-lg overflow-hidden">
@@ -41,20 +49,22 @@ export default function EnumManagementPage() {
               <th className="px-4 py-3 text-left font-medium">표시 이름</th>
               <th className="px-4 py-3 text-left font-medium">카테고리</th>
               <th className="px-4 py-3 text-left font-medium">현재 옵션</th>
-              <th className="px-4 py-3 text-right font-medium">작업</th>
+              {!readOnly && (
+                <th className="px-4 py-3 text-right font-medium">작업</th>
+              )}
             </tr>
           </thead>
           <tbody>
             {isLoading && (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
+                <td colSpan={readOnly ? 4 : 5} className="px-4 py-8 text-center text-muted-foreground">
                   로딩 중...
                 </td>
               </tr>
             )}
             {!isLoading && columns.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
+                <td colSpan={readOnly ? 4 : 5} className="px-4 py-8 text-center text-muted-foreground">
                   선택 옵션이 있는 컬럼이 없습니다.
                 </td>
               </tr>
@@ -95,14 +105,16 @@ export default function EnumManagementPage() {
                     <span className="text-muted-foreground text-xs">없음</span>
                   )}
                 </td>
-                <td className="px-4 py-3">
-                  <div className="flex justify-end">
-                    <Button variant="ghost" size="sm" onClick={() => handleEdit(col)}>
-                      <Pencil className="h-3.5 w-3.5 mr-1" />
-                      편집
-                    </Button>
-                  </div>
-                </td>
+                {!readOnly && (
+                  <td className="px-4 py-3">
+                    <div className="flex justify-end">
+                      <Button variant="ghost" size="sm" onClick={() => handleEdit(col)}>
+                        <Pencil className="h-3.5 w-3.5 mr-1" />
+                        편집
+                      </Button>
+                    </div>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>

@@ -577,7 +577,7 @@ async def test_require_admin_valid(db_session: AsyncSession, seed_test_data):
         select(User).where(User.id == admin_user.id)
     )
     user = result.scalar_one()
-    assert user.role == "admin"
+    assert "admin" in user.roles
 
 
 @pytest.mark.asyncio
@@ -591,7 +591,7 @@ async def test_require_admin_non_admin_role(db_session: AsyncSession, seed_test_
         select(User).where(User.username == "tester1")
     )
     user = result.scalar_one()
-    assert user.role != "admin"
+    assert "admin" not in user.roles
 
 
 @pytest.mark.asyncio

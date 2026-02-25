@@ -102,13 +102,13 @@ def seed():
         for u in USERS:
             session.execute(
                 text(
-                    "INSERT INTO users (username, display_name, role, password_hash, email) "
-                    "VALUES (:un, :dn, :r, :ph, :email)"
+                    "INSERT INTO users (username, display_name, roles, password_hash, email) "
+                    "VALUES (:un, :dn, CAST(:roles AS VARCHAR(20)[]), :ph, :email)"
                 ),
                 {
                     "un": u["username"],
                     "dn": u["display_name"],
-                    "r": u["role"],
+                    "roles": u["roles"],
                     "ph": _default_password_hash,
                     "email": u.get("email"),
                 },

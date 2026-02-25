@@ -75,7 +75,7 @@ async def update_project_status(
 
     # For Review → Approved/Rejected: check role
     if current_status == "review" and new_status in ["approved", "rejected"]:
-        if current_user.role not in ["reviewer", "admin"]:
+        if "reviewer" not in current_user.roles and "admin" not in current_user.roles:
             raise HTTPException(
                 status_code=403,
                 detail="Only reviewers can approve or reject projects"

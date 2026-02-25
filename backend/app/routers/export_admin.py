@@ -1,10 +1,15 @@
-"""Admin router for ExportSystem and ExportColumnMapping CRUD operations."""
+"""Admin 전산 출력 시스템/매핑 CRUD 라우터.
+
+RBAC 분리:
+- GET 엔드포인트: admin 또는 developer (require_admin_or_developer)
+- 쓰기 엔드포인트: developer (require_system_write)
+"""
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.dependencies.auth import require_admin
+from app.dependencies.auth import require_admin_or_developer, require_system_write
 from app.models.user import User
 from app.services.export_admin_service import ExportAdminService
 from app.schemas.export_admin import (
@@ -21,15 +26,15 @@ router = APIRouter(prefix="/api/admin", tags=["export-admin"])
 
 
 # ---------------------------------------------------------------------------
-# ExportSystem endpoints
+# ExportSystem 엔드포인트
 # ---------------------------------------------------------------------------
 
 @router.get("/export-systems", response_model=list[ExportSystemAdminResponse])
 async def list_export_systems(
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _user: User = Depends(require_admin_or_developer),
 ):
-    """List all export systems (including inactive) with column count."""
+    """전체 출력 시스템 목록 조회 (admin/developer)."""
     return await ExportAdminService.list_systems(db)
 
 
@@ -37,9 +42,9 @@ async def list_export_systems(
 async def create_export_system(
     data: ExportSystemCreate,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _user: User = Depends(require_system_write),
 ):
-    """Create a new export system. Returns 409 if system_name already exists."""
+    """출력 시스템 생성 (developer only). system_name 중복 시 409."""
     return await ExportAdminService.create_system(db, data)
 
 
@@ -48,9 +53,9 @@ async def update_export_system(
     system_id: int,
     data: ExportSystemUpdate,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _user: User = Depends(require_system_write),
 ):
-    """Update an existing export system. Returns 404 if not found, 409 on name conflict."""
+    """출력 시스템 수정 (developer only). 404: 미발견, 409: 이름 충돌."""
     return await ExportAdminService.update_system(db, system_id, data)
 
 
@@ -58,14 +63,14 @@ async def update_export_system(
 async def delete_export_system(
     system_id: int,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _user: User = Depends(require_system_write),
 ):
-    """Delete an export system. CASCADE removes associated mappings."""
+    """출력 시스템 삭제 (developer only). CASCADE로 연관 매핑도 삭제."""
     await ExportAdminService.delete_system(db, system_id)
 
 
 # ---------------------------------------------------------------------------
-# ExportColumnMapping endpoints
+# ExportColumnMapping 엔드포인트
 # ---------------------------------------------------------------------------
 
 @router.get(
@@ -75,9 +80,9 @@ async def delete_export_system(
 async def list_export_mappings(
     system_id: int,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _user: User = Depends(require_admin_or_developer),
 ):
-    """List all column mappings for an export system ordered by sort_order."""
+    """출력 시스템 컬럼 매핑 목록 조회 (admin/developer)."""
     return await ExportAdminService.list_mappings(db, system_id)
 
 
@@ -90,9 +95,9 @@ async def create_export_mapping(
     system_id: int,
     data: ExportMappingCreate,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _user: User = Depends(require_system_write),
 ):
-    """Create a new column mapping for an export system. Auto-assigns sort_order."""
+    """출력 시스템 컬럼 매핑 생성 (developer only). sort_order 자동 할당."""
     return await ExportAdminService.create_mapping(db, system_id, data)
 
 
@@ -105,9 +110,9 @@ async def update_export_mapping(
     mapping_id: int,
     data: ExportMappingUpdate,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _user: User = Depends(require_system_write),
 ):
-    """Update a column mapping. Returns 404 if system or mapping not found."""
+    """출력 시스템 컬럼 매핑 수정 (developer only). 404: 시스템/매핑 미발견."""
     return await ExportAdminService.update_mapping(db, system_id, mapping_id, data)
 
 
@@ -120,9 +125,9 @@ async def delete_export_mapping(
     system_id: int,
     mapping_id: int,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _user: User = Depends(require_system_write),
 ):
-    """Delete a column mapping. Returns 404 if system or mapping not found."""
+    """출력 시스템 컬럼 매핑 삭제 (developer only). 404: 시스템/매핑 미발견."""
     await ExportAdminService.delete_mapping(db, system_id, mapping_id)
 
 
@@ -134,7 +139,7 @@ async def reorder_export_mappings(
     system_id: int,
     data: MappingReorderRequest,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _user: User = Depends(require_system_write),
 ):
-    """Reorder column mappings by providing an ordered list of mapping IDs."""
+    """출력 시스템 컬럼 매핑 순서 변경 (developer only)."""
     return await ExportAdminService.reorder_mappings(db, system_id, data.ordered_ids)
