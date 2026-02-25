@@ -235,6 +235,12 @@ Draft → Review → Approved → (Revision 생성 시) Archived
   - Export Type B: conditions EQP 컬럼 기반 설비별 행 생성으로 전환
   - 레거시 정리: equipment_service, EquipmentPanel 등 7개 파일 삭제 (~1,100줄 감소)
   - 백본 복사/개정/변경 이력 추적: conditions JSONB 통합으로 자동 동작
+- Backbone 레이어 비교 기능 완료: 조건표 편집기에서 Backbone 대비 변경사항 비교
+  - Frontend: BackboneComparisonPanel + BackboneComparisonView 신규 컴포넌트
+  - EditorHeader에 "BB 비교" 토글 버튼 + 변경 레이어 수 배지
+  - ReviewRequestModal에 Backbone 비교 뷰 통합 (compact 모드)
+  - diff.ts에 상세 비교 함수 추가 (getLayerComparisonDetail, computeProjectComparisonDetail)
+  - useEditorStore에 isBackboneComparisonOpen 상태 + toggleBackboneComparison 액션
 
 ## 개발 명령어
 
