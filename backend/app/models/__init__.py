@@ -7,6 +7,7 @@ from app.models.change_log import ChangeLog, ProjectStatusLog, ReviewComment
 from app.models.export import ExportSystem, ExportColumnMapping, RecipeXmlMapping
 from app.models.export_history import ExportHistory
 from app.models.export_data_source import ExportDataSource
+from app.models.equipment import Equipment
 
 __all__ = [
     "User",
@@ -18,4 +19,5 @@ __all__ = [
     "ExportSystem", "ExportColumnMapping", "RecipeXmlMapping",
     "ExportHistory",
     "ExportDataSource",
+    "Equipment",
 ]

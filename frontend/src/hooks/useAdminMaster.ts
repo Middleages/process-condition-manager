@@ -21,6 +21,10 @@ import {
   updateCategory,
   deleteCategory,
   reorderCategories,
+  fetchAdminEquipments,
+  createEquipment,
+  updateEquipment,
+  deleteEquipment,
 } from '@/api/adminMaster'
 import type {
   LineCreate,
@@ -30,6 +34,7 @@ import type {
   ColumnMetadataUpdate,
   CategoryCreateRequest,
   CategoryUpdate,
+  EquipmentCreate,
 } from '@/api/adminMaster'
 
 export const adminMasterKeys = {
@@ -39,6 +44,8 @@ export const adminMasterKeys = {
   layers: () => ['adminLayers'] as const,
   columns: () => ['adminColumns'] as const,
   categories: () => ['adminCategories'] as const,
+  equipments: (lineId?: number) =>
+    lineId ? (['admin-equipments', lineId] as const) : (['admin-equipments'] as const),
 }
 
 // ========== Lines ==========
@@ -267,6 +274,46 @@ export function useReorderCategories() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: adminMasterKeys.categories() })
       queryClient.invalidateQueries({ queryKey: ['columns'] })
+    },
+  })
+}
+
+// ========== Equipments ==========
+
+export function useAdminEquipments(lineId?: number) {
+  return useQuery({
+    queryKey: adminMasterKeys.equipments(lineId),
+    queryFn: () => fetchAdminEquipments(lineId),
+  })
+}
+
+export function useCreateEquipment() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: EquipmentCreate) => createEquipment(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-equipments'] })
+    },
+  })
+}
+
+export function useUpdateEquipment() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: number; payload: Partial<EquipmentCreate> }) =>
+      updateEquipment(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-equipments'] })
+    },
+  })
+}
+
+export function useDeleteEquipment() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => deleteEquipment(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-equipments'] })
     },
   })
 }

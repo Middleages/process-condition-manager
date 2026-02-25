@@ -125,6 +125,7 @@ process-condition-manager/
 - `export_systems` / `export_column_mappings` — 전산 출력 설정 (source_type으로 내부/외부 구분)
 - `export_data_sources` — 외부 데이터 소스 정의 (테이블명, JOIN 키, 컬럼 탐색)
 - `export_histories` — 전산 출력 이력 (감사 추적)
+- `equipments` — 설비 마스터 (line_id FK, equipment_name/model/PRC/ip/ftp, 자동완성 소스)
 - `recipe_xml_mappings` — XML XPath ↔ 조건표 컬럼 매핑
 
 ## 워크플로우 (상태 흐름)
@@ -145,7 +146,7 @@ Draft → Review → Approved → (Revision 생성 시) Archived
 - **Phase 2**: 레이어별 backbone 교체, Recipe XML 반영, 관리자 설정, Revision 기능
 - **Phase 3**: 승인 프로세스, 코멘트, 변경 이력, 전산 출력 (Type A/B/C)
 - **Phase 4**: 인증/권한, Cross-layer 검증, 전산 출력 확장, 대시보드
-- **Phase 5**: 동적 Backbone(SPEC-BACKBONE-001), 컬럼 기반 설비 관리(SPEC-EQP-001), Excel 붙여넣기(SPEC-PASTE-001 예정)
+- **Phase 5**: 동적 Backbone(SPEC-BACKBONE-001), 컬럼 기반 설비 관리(SPEC-EQP-001), 설비 마스터 테이블(SPEC-EQP-002), Excel 붙여넣기(SPEC-PASTE-001 예정)
 
 ## 현재 진행 상태
 
@@ -241,6 +242,14 @@ Draft → Review → Approved → (Revision 생성 시) Archived
   - ReviewRequestModal에 Backbone 비교 뷰 통합 (compact 모드)
   - diff.ts에 상세 비교 함수 추가 (getLayerComparisonDetail, computeProjectComparisonDetail)
   - useEditorStore에 isBackboneComparisonOpen 상태 + toggleBackboneComparison 액션
+- SPEC-EQP-002 완료: 설비 마스터 테이블 + 검색 가능 자동완성 (Phase 5)
+  - M1: Backend - Equipment 모델, Alembic 마이그레이션(016), CRUD API (Admin 5개 + Public 1개), Pydantic 스키마
+  - M2: Frontend - Admin Equipment 관리 패널 (EquipmentManagementPanel, EquipmentFormModal), MasterDataPage 서브탭 추가
+  - M3: Frontend - EquipmentAutocompleteEditor 커스텀 AG Grid 셀 에디터 (검색 가능 드롭다운)
+  - M3: buildColumnDefs에서 EQP_xx 컬럼 자동 감지 → 자동완성 에디터 적용
+  - M3: ConditionEditorPage에서 프로젝트 line_id 기반 설비 목록 프리로드
+  - DB: equipments 테이블 (line_id FK, equipment_name UNIQUE per line, ftp_pw write-only)
+  - 시드: 라인당 10대씩 20대 초기 데이터, EQP select_options null 전환
 - UI/기능 개선 (Ad-hoc)
   - Backbone 비교 패널 텍스트 겹침 수정 (stepSeq/layerName 레이아웃 개선)
   - EQP 카테고리 탭 표시 수정 (CategoryCode 타입에 'EQP' 추가)
