@@ -1,6 +1,8 @@
 import type { MutableRefObject } from 'react'
 import type { ColDef, CellClassParams, ITooltipParams } from 'ag-grid-community'
 import type { ColumnDefinition, DirtyCell } from '@/types'
+import type { EquipmentOption } from './EquipmentAutocompleteEditor'
+import { EquipmentAutocompleteEditor } from './EquipmentAutocompleteEditor'
 
 export interface BuildColumnDefsParams {
   columns: ColumnDefinition[]
@@ -12,6 +14,7 @@ export interface BuildColumnDefsParams {
   commentMapRef: MutableRefObject<Map<string, number>>
   rejectionCommentMapRef: MutableRefObject<Map<string, boolean>>
   scrollToColumnNameRef: MutableRefObject<string | null | undefined>
+  equipments?: EquipmentOption[]
 }
 
 export function buildColumnDefs(params: BuildColumnDefsParams): ColDef[] {
@@ -25,6 +28,7 @@ export function buildColumnDefs(params: BuildColumnDefsParams): ColDef[] {
     commentMapRef,
     rejectionCommentMapRef,
     scrollToColumnNameRef,
+    equipments,
   } = params
 
   const fixed: ColDef[] = [
@@ -138,7 +142,17 @@ export function buildColumnDefs(params: BuildColumnDefsParams): ColDef[] {
     }
 
     // Type-specific cell editor
-    if (col.data_type === 'select' && col.select_options) {
+    const isEqpNameColumn =
+      col.column_name.startsWith('EQP_') &&
+      !col.column_name.endsWith('_ET') &&
+      !col.column_name.endsWith('_FOCUS')
+
+    if (isEqpNameColumn && equipments && equipments.length > 0) {
+      // EQP equipment name columns: searchable autocomplete editor
+      def.cellEditor = EquipmentAutocompleteEditor
+      def.cellEditorParams = { equipments }
+      def.cellEditorPopup = true
+    } else if (col.data_type === 'select' && col.select_options) {
       def.cellEditor = 'agSelectCellEditor'
       def.cellEditorParams = {
         values: col.select_options,

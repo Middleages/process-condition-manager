@@ -8,7 +8,7 @@ from sqlalchemy import text
 from app.config import settings
 from app.database import async_session
 from app.routers import (
-    users, lines, columns, products,
+    users, lines, columns, products, equipments,
     projects, project_conditions, project_layers, project_lifecycle,
     admin, admin_users, admin_master, comments, export, export_admin, export_data_source, auth as auth_router,
     dashboard,
@@ -52,6 +52,7 @@ app.include_router(users.router)
 app.include_router(lines.router)
 app.include_router(columns.router)
 app.include_router(products.router)
+app.include_router(equipments.router)
 app.include_router(projects.router)
 app.include_router(project_conditions.router)
 app.include_router(project_layers.router)

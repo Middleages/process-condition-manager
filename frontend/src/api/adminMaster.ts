@@ -223,3 +223,54 @@ export async function reorderCategories(orderedIds: number[]): Promise<CategoryR
   })
   return data
 }
+
+// ========== Equipments ==========
+
+export interface EquipmentResponse {
+  id: number
+  line_id: number
+  line_name: string
+  equipment_name: string
+  equipment_model: string | null
+  prc: string | null
+  ip: string | null
+  ftp_id: string | null
+  is_active: boolean
+  sort_order: number
+}
+
+export interface EquipmentCreate {
+  line_id: number
+  equipment_name: string
+  equipment_model?: string
+  prc?: string
+  ip?: string
+  ftp_id?: string
+  ftp_pw?: string
+  is_active?: boolean
+  sort_order?: number
+}
+
+export async function fetchAdminEquipments(lineId?: number): Promise<EquipmentResponse[]> {
+  const { data } = await client.get<EquipmentResponse[]>('/admin/equipments', {
+    params: lineId ? { line_id: lineId } : undefined,
+  })
+  return data
+}
+
+export async function createEquipment(payload: EquipmentCreate): Promise<EquipmentResponse> {
+  const { data } = await client.post<EquipmentResponse>('/admin/equipments', payload)
+  return data
+}
+
+export async function updateEquipment(
+  id: number,
+  payload: Partial<EquipmentCreate>
+): Promise<EquipmentResponse> {
+  const { data } = await client.put<EquipmentResponse>(`/admin/equipments/${id}`, payload)
+  return data
+}
+
+export async function deleteEquipment(id: number): Promise<void> {
+  await client.delete(`/admin/equipments/${id}`)
+}

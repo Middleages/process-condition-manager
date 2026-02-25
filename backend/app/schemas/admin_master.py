@@ -152,3 +152,58 @@ class CategoryResponse(BaseModel):
 
 class CategoryReorderRequest(BaseModel):
     ordered_ids: list[int]
+
+
+# ---------------------------------------------------------------------------
+# Equipments
+# ---------------------------------------------------------------------------
+
+class EquipmentCreate(BaseModel):
+    line_id: int
+    equipment_name: str = Field(..., max_length=100)
+    equipment_model: str | None = Field(None, max_length=100)
+    prc: str | None = Field(None, max_length=50)
+    ip: str | None = Field(None, max_length=45)
+    ftp_id: str | None = Field(None, max_length=100)
+    ftp_pw: str | None = Field(None, max_length=255)
+    is_active: bool = True
+    sort_order: int = 0
+
+
+class EquipmentUpdate(BaseModel):
+    equipment_name: str | None = Field(None, max_length=100)
+    equipment_model: str | None = None
+    prc: str | None = None
+    ip: str | None = None
+    ftp_id: str | None = None
+    ftp_pw: str | None = None  # write-only, not returned in response
+    is_active: bool | None = None
+    sort_order: int | None = None
+
+
+class EquipmentResponse(BaseModel):
+    id: int
+    line_id: int
+    line_name: str = ""
+    equipment_name: str
+    equipment_model: str | None = None
+    prc: str | None = None
+    ip: str | None = None
+    ftp_id: str | None = None
+    # ftp_pw EXCLUDED - write-only field (REQ-EQP-017)
+    is_active: bool
+    sort_order: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class EquipmentPublicResponse(BaseModel):
+    id: int
+    equipment_name: str
+    equipment_model: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class EquipmentReorderRequest(BaseModel):
+    ordered_ids: list[int]

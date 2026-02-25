@@ -3,14 +3,16 @@ import { LineManagementPanel } from '@/components/admin/LineManagementPanel'
 import { ProductManagementPanel } from '@/components/admin/ProductManagementPanel'
 import { ColumnMetadataPanel } from '@/components/admin/ColumnMetadataPanel'
 import { CategoryManagementPanel } from '@/components/admin/CategoryManagementPanel'
+import { EquipmentManagementPanel } from '@/components/admin/EquipmentManagementPanel'
 
-type Tab = 'lines' | 'products' | 'columns' | 'categories'
+type Tab = 'lines' | 'products' | 'columns' | 'categories' | 'equipments'
 
 const tabList: { id: Tab; label: string }[] = [
   { id: 'lines', label: 'Lines' },
   { id: 'products', label: 'Products' },
   { id: 'columns', label: 'Columns' },
   { id: 'categories', label: 'Categories' },
+  { id: 'equipments', label: 'Equipments' },
 ]
 
 export default function MasterDataPage() {
@@ -42,6 +44,7 @@ export default function MasterDataPage() {
       {activeTab === 'products' && <ProductManagementPanel />}
       {activeTab === 'columns' && <ColumnMetadataPanel />}
       {activeTab === 'categories' && <CategoryManagementPanel />}
+      {activeTab === 'equipments' && <EquipmentManagementPanel />}
     </div>
   )
 }

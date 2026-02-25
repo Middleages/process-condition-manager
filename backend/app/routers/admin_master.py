@@ -1,4 +1,4 @@
-"""Admin router for master data management (Lines, Products, Layers, Columns, Categories)."""
+"""Admin router for master data management (Lines, Products, Layers, Columns, Categories, Equipments)."""
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +12,7 @@ from app.schemas.admin_master import (
     LayerCreate, LayerUpdate, LayerResponse, LayerReorderRequest,
     ColumnMetadataUpdate, ColumnMetadataResponse, ColumnCreateRequest,
     CategoryCreateRequest, CategoryUpdate, CategoryResponse, CategoryReorderRequest,
+    EquipmentCreate, EquipmentUpdate, EquipmentResponse, EquipmentReorderRequest,
 )
 from app.services import admin_master_service
 
@@ -254,4 +255,61 @@ async def delete_category(
 ):
     """Delete a category (admin only). Rejects if category has columns."""
     await admin_master_service.delete_category(db, category_id)
+    return Response(status_code=204)
+
+
+# ---------------------------------------------------------------------------
+# Equipments
+# (reorder endpoint MUST be before /{equipment_id} to avoid path conflict)
+# ---------------------------------------------------------------------------
+
+@router.get("/equipments", response_model=list[EquipmentResponse])
+async def list_equipments(
+    line_id: int | None = Query(None, description="Filter by line ID"),
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    """List all equipments with line info (admin only)."""
+    return await admin_master_service.list_equipments(db, line_id=line_id)
+
+
+@router.post("/equipments", response_model=EquipmentResponse, status_code=201)
+async def create_equipment(
+    data: EquipmentCreate,
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    """Create a new equipment (admin only)."""
+    return await admin_master_service.create_equipment(db, data)
+
+
+@router.put("/equipments/reorder", response_model=list[EquipmentResponse])
+async def reorder_equipments(
+    data: EquipmentReorderRequest,
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    """Reorder equipments by providing ordered list of IDs (admin only)."""
+    return await admin_master_service.reorder_equipments(db, data)
+
+
+@router.put("/equipments/{equipment_id}", response_model=EquipmentResponse)
+async def update_equipment(
+    equipment_id: int,
+    data: EquipmentUpdate,
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    """Update an equipment (admin only)."""
+    return await admin_master_service.update_equipment(db, equipment_id, data)
+
+
+@router.delete("/equipments/{equipment_id}", status_code=204)
+async def delete_equipment(
+    equipment_id: int,
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    """Soft-delete an equipment (admin only). Sets is_active = false."""
+    await admin_master_service.delete_equipment(db, equipment_id)
     return Response(status_code=204)

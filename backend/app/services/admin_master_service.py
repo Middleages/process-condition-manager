@@ -1,16 +1,18 @@
-"""Admin service for master data management (Lines, Products, Layers, Columns, Categories)."""
+"""Admin service for master data management (Lines, Products, Layers, Columns, Categories, Equipments)."""
 
-from sqlalchemy import select, func
+from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException
 
 from app.models import Line, Product, Layer, Project, ProjectLayer, ColumnDefinition, ColumnCategory
+from app.models.equipment import Equipment
 from app.schemas.admin_master import (
     LineCreate, LineUpdate, LineResponse,
     ProductCreate, ProductUpdate, ProductResponse,
     LayerCreate, LayerUpdate, LayerResponse, LayerReorderRequest,
     ColumnMetadataUpdate, ColumnMetadataResponse, ColumnCreateRequest,
     CategoryCreateRequest, CategoryUpdate, CategoryResponse, CategoryReorderRequest,
+    EquipmentCreate, EquipmentUpdate, EquipmentResponse, EquipmentReorderRequest,
 )
 
 
@@ -569,3 +571,154 @@ async def reorder_categories(db: AsyncSession, data: CategoryReorderRequest) -> 
     await db.commit()
 
     return await list_categories(db)
+
+
+# ---------------------------------------------------------------------------
+# Equipments
+# ---------------------------------------------------------------------------
+
+def _equipment_to_response(eqp: Equipment, line_name: str = "") -> EquipmentResponse:
+    """Convert Equipment ORM instance to EquipmentResponse."""
+    return EquipmentResponse(
+        id=eqp.id,
+        line_id=eqp.line_id,
+        line_name=line_name,
+        equipment_name=eqp.equipment_name,
+        equipment_model=eqp.equipment_model,
+        prc=eqp.prc,
+        ip=eqp.ip,
+        ftp_id=eqp.ftp_id,
+        is_active=eqp.is_active,
+        sort_order=eqp.sort_order,
+    )
+
+
+async def list_equipments(db: AsyncSession, line_id: int | None = None) -> list[EquipmentResponse]:
+    """List equipments joined with Line for line_name, optionally filtered by line_id."""
+    query = (
+        select(Equipment, Line.line_name.label("line_name"))
+        .join(Line, Equipment.line_id == Line.id)
+        .order_by(Equipment.line_id, Equipment.sort_order)
+    )
+    if line_id is not None:
+        query = query.where(Equipment.line_id == line_id)
+
+    result = await db.execute(query)
+    rows = result.all()
+
+    return [_equipment_to_response(eqp, line_name) for eqp, line_name in rows]
+
+
+async def create_equipment(db: AsyncSession, data: EquipmentCreate) -> EquipmentResponse:
+    """Create a new equipment. Raises 404 if line not found, 409 on duplicate name within line."""
+    line = await db.get(Line, data.line_id)
+    if not line:
+        raise HTTPException(status_code=404, detail="Line not found")
+
+    existing = await db.execute(
+        select(Equipment).where(
+            and_(Equipment.line_id == data.line_id, Equipment.equipment_name == data.equipment_name)
+        )
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(
+            status_code=409,
+            detail=f"Equipment name '{data.equipment_name}' already exists in this line",
+        )
+
+    eqp = Equipment(
+        line_id=data.line_id,
+        equipment_name=data.equipment_name,
+        equipment_model=data.equipment_model,
+        prc=data.prc,
+        ip=data.ip,
+        ftp_id=data.ftp_id,
+        ftp_pw=data.ftp_pw,
+        is_active=data.is_active,
+        sort_order=data.sort_order,
+    )
+    db.add(eqp)
+    await db.commit()
+    await db.refresh(eqp)
+
+    return _equipment_to_response(eqp, line.line_name)
+
+
+async def update_equipment(db: AsyncSession, equipment_id: int, data: EquipmentUpdate) -> EquipmentResponse:
+    """Update equipment fields. Raises 404 if not found, 409 on duplicate name within line."""
+    eqp = await db.get(Equipment, equipment_id)
+    if not eqp:
+        raise HTTPException(status_code=404, detail="Equipment not found")
+
+    if data.equipment_name is not None and data.equipment_name != eqp.equipment_name:
+        existing = await db.execute(
+            select(Equipment).where(
+                and_(
+                    Equipment.line_id == eqp.line_id,
+                    Equipment.equipment_name == data.equipment_name,
+                )
+            )
+        )
+        if existing.scalar_one_or_none():
+            raise HTTPException(
+                status_code=409,
+                detail=f"Equipment name '{data.equipment_name}' already exists in this line",
+            )
+        eqp.equipment_name = data.equipment_name
+
+    if data.equipment_model is not None:
+        eqp.equipment_model = data.equipment_model
+    if data.prc is not None:
+        eqp.prc = data.prc
+    if data.ip is not None:
+        eqp.ip = data.ip
+    if data.ftp_id is not None:
+        eqp.ftp_id = data.ftp_id
+    if data.ftp_pw is not None:
+        eqp.ftp_pw = data.ftp_pw
+    if data.is_active is not None:
+        eqp.is_active = data.is_active
+    if data.sort_order is not None:
+        eqp.sort_order = data.sort_order
+
+    await db.commit()
+    await db.refresh(eqp)
+
+    line = await db.get(Line, eqp.line_id)
+    line_name = line.line_name if line else ""
+
+    return _equipment_to_response(eqp, line_name)
+
+
+async def delete_equipment(db: AsyncSession, equipment_id: int) -> None:
+    """Soft-delete equipment by setting is_active = false.
+
+    Equipment may be referenced in conditions JSONB, so hard delete is avoided.
+    Raises 404 if not found.
+    """
+    eqp = await db.get(Equipment, equipment_id)
+    if not eqp:
+        raise HTTPException(status_code=404, detail="Equipment not found")
+
+    eqp.is_active = False
+    await db.commit()
+
+
+async def reorder_equipments(db: AsyncSession, data: EquipmentReorderRequest) -> list[EquipmentResponse]:
+    """Reorder equipments by setting sort_order based on position in ordered_ids."""
+    result = await db.execute(
+        select(Equipment).where(Equipment.id.in_(data.ordered_ids))
+    )
+    eqp_map = {eqp.id: eqp for eqp in result.scalars().all()}
+
+    for position, eqp_id in enumerate(data.ordered_ids):
+        if eqp_id in eqp_map:
+            eqp_map[eqp_id].sort_order = position
+
+    await db.commit()
+
+    # Determine the line_id from the first equipment to return the filtered list
+    if eqp_map:
+        first_eqp = next(iter(eqp_map.values()))
+        return await list_equipments(db, line_id=first_eqp.line_id)
+    return []

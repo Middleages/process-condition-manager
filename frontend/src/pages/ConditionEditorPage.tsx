@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useBlocker } from 'react-router-dom'
 import { useProjectDetail, useDeleteLayer, useValidateProjectMutation } from '@/hooks/useProjects'
 import { useColumns } from '@/hooks/useColumns'
@@ -32,6 +32,8 @@ import type { ProjectLayerData } from '@/types'
 import type { GridApi } from 'ag-grid-community'
 import { Loader2 } from 'lucide-react'
 import { ExportPanel } from '@/components/export/ExportPanel'
+import { fetchEquipments } from '@/api/equipments'
+import type { EquipmentOption } from '@/components/editor/EquipmentAutocompleteEditor'
 
 export default function ConditionEditorPage() {
   const { projectId } = useParams()
@@ -47,6 +49,15 @@ export default function ConditionEditorPage() {
   const { data: allLayers = [] } = useAllLayers()
   const { data: users = [] } = useUsers()
   const { data: commentData } = useComments(pid)
+
+  // --- Equipment list for EQP column autocomplete ---
+  const [equipments, setEquipments] = useState<EquipmentOption[]>([])
+  useEffect(() => {
+    if (!project?.line_id) return
+    fetchEquipments(project.line_id)
+      .then(setEquipments)
+      .catch(() => setEquipments([]))
+  }, [project?.line_id])
 
   // --- Store selectors ---
   const activeCategory = useEditorStore((s) => s.activeCategory)
@@ -282,6 +293,7 @@ export default function ConditionEditorPage() {
             rejectionCommentMap={rejectionCommentMap}
             projectStatus={project.status}
             currentUserRole={currentUser?.role}
+            equipments={equipments}
             onGridReady={(api) => { gridApiRef.current = api }}
             onCellChanged={handleCellChanged}
             onCellRightClick={modals.handleCellRightClick}

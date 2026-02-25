@@ -18,6 +18,7 @@ import type {
   ValidationError,
   GridRowData,
 } from '@/types'
+import type { EquipmentOption } from './EquipmentAutocompleteEditor'
 import { GridContextMenu } from './GridContextMenu'
 import { buildColumnDefs } from './buildColumnDefs'
 
@@ -32,6 +33,7 @@ interface Props {
   rejectionCommentMap?: Map<string, boolean>
   projectStatus?: string
   currentUserRole?: string
+  equipments?: EquipmentOption[]
   onGridReady?: (api: GridApi) => void
   onCellChanged: (
     projectLayerId: number,
@@ -72,6 +74,7 @@ export function ConditionGrid({
   rejectionCommentMap = new Map(),
   projectStatus,
   currentUserRole,
+  equipments,
   onGridReady: onGridReadyProp,
   onCellChanged,
   onCellRightClick,
@@ -149,8 +152,9 @@ export function ConditionGrid({
         commentMapRef,
         rejectionCommentMapRef,
         scrollToColumnNameRef,
+        equipments,
       }),
-    [columns, backboneMap, errorMap, readOnly]
+    [columns, backboneMap, errorMap, readOnly, equipments]
   )
 
   const handleCellContextMenu = useCallback(
