@@ -210,6 +210,12 @@ Draft → Review → Approved → (Revision 생성 시) Archived
     - Frontend: AuditLogPage (필터 바 + 페이지네이션 테이블), CategoryManagementPanel
   - Admin 탭 순서: 사용자 관리 | 마스터 데이터 | 선택 옵션 | XML 매핑 | 검증 규칙 | 전산 출력 | 변경 이력
   - Default: `/admin/users`
+- Backbone 레이어 비교 기능 완료: 조건표 편집기에서 Backbone 대비 변경사항 비교
+  - Frontend: BackboneComparisonPanel + BackboneComparisonView 신규 컴포넌트
+  - EditorHeader에 "BB 비교" 토글 버튼 + 변경 레이어 수 배지
+  - ReviewRequestModal에 Backbone 비교 뷰 통합 (compact 모드)
+  - diff.ts에 상세 비교 함수 추가 (getLayerComparisonDetail, computeProjectComparisonDetail)
+  - useEditorStore에 isBackboneComparisonOpen 상태 + toggleBackboneComparison 액션
 
 ## 개발 명령어
 
