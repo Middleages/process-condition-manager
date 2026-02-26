@@ -1,14 +1,14 @@
 # PCM Project Memory
 
-## Active SPECs (Implementation Queue)
+## Completed SPECs
 
-1. **SPEC-DEVICE-001** (Priority 1 - Foundation)
-   - device_master + layer_master + device_meta_source tables
-   - Sync service for external data loading (same DB, different tables)
-   - M1: device_master, M2: layer_master, M3: enrichment
-   - Path: `.moai/specs/SPEC-DEVICE-001/`
+- **SPEC-DEVICE-001** (Completed) - Device/Layer Master Integration, PR #34
+  - device_master, layer_master, sync_source_config, device_meta_source (4 tables)
+  - Migration 018, 4 services, 2 routers
 
-2. **SPEC-PROJECT-002** (Priority 2 - Depends on DEVICE-001)
+## Next SPECs (Implementation Queue)
+
+1. **SPEC-PROJECT-002** (Priority 1 - Depends on DEVICE-001)
    - Device-ref based project creation (line, product_name, process, part_id)
    - Short product support (layer selection)
    - Empty condition table support

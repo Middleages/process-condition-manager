@@ -208,3 +208,4 @@ pgdata/
 .python-version
 backend/.claude/
 backend/.moai/
+frontend/.claude/
