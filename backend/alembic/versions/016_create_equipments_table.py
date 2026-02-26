@@ -6,7 +6,7 @@ SCANNER_TOOL_OPTIONS. Clears select_options from EQP name columns since equipmen
 names will now come from the equipments master table.
 
 Revision ID: 016_create_equipments_table
-Revises: 015_eqp_columns_replace_equipment_assignments
+Revises: 015_eqp_replace_assignments
 Create Date: 2026-02-25
 """
 import sqlalchemy as sa
@@ -14,7 +14,7 @@ from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB
 
 revision = "016_create_equipments_table"
-down_revision = "015_eqp_columns_replace_equipment_assignments"
+down_revision = "015_eqp_replace_assignments"
 branch_labels = None
 depends_on = None
 

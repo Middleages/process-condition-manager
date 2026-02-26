@@ -10,7 +10,7 @@ conditions/backbone_conditions JSONB 내의 EQP_xx 컬럼으로 이관한다.
 4. EQP-SCANNER export_system의 additional_config 업데이트
 5. equipment_assignments 테이블 삭제
 
-Revision ID: 015_eqp_columns_replace_equipment_assignments
+Revision ID: 015_eqp_replace_assignments
 Revises: 014_drop_is_backbone_column
 Create Date: 2026-02-24
 """
@@ -20,7 +20,7 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB
 
-revision = "015_eqp_columns_replace_equipment_assignments"
+revision = "015_eqp_replace_assignments"
 down_revision = "014_drop_is_backbone_column"
 branch_labels = None
 depends_on = None
