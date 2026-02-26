@@ -15,6 +15,7 @@ export default function AdminLayout() {
   const tabs = [
     { path: '/admin/users', label: '사용자 관리' },
     { path: '/admin/master-data', label: '마스터 데이터 관리' },
+    { path: '/admin/device-masters', label: '디바이스 마스터' },
     { path: '/admin/enum-options', label: '선택 옵션 관리' },
     { path: '/admin/xml-mappings', label: 'XML 매핑 관리' },
     { path: '/admin/validations', label: '검증 규칙 관리' },

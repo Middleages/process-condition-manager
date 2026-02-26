@@ -8,6 +8,7 @@ from app.models.export import ExportSystem, ExportColumnMapping, RecipeXmlMappin
 from app.models.export_history import ExportHistory
 from app.models.export_data_source import ExportDataSource
 from app.models.equipment import Equipment
+from app.models.device_master import DeviceMaster, LayerMaster, SyncSourceConfig, DeviceMetaSource
 
 __all__ = [
     "User",
@@ -20,4 +21,5 @@ __all__ = [
     "ExportHistory",
     "ExportDataSource",
     "Equipment",
+    "DeviceMaster", "LayerMaster", "SyncSourceConfig", "DeviceMetaSource",
 ]
