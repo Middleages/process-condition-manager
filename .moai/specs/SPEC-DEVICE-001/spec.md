@@ -6,7 +6,7 @@
 |------|-------|
 | SPEC ID | SPEC-DEVICE-001 |
 | Title | Device Master & Layer Master Integration (External Data Foundation) |
-| Status | Planned |
+| Status | Completed |
 | Priority | High |
 | Created | 2026-02-26 |
 | Updated | 2026-02-26 |
