@@ -36,6 +36,8 @@ process-condition-manager/
 │   │   │   ├── project_lifecycle.py     # 상태 전환/개정/요약 (5 endpoints)
 │   │   │   ├── dashboard.py             # 대시보드 개요 (1 endpoint)
 │   │   │   ├── comments.py, admin.py, export.py, auth.py
+│   │   │   ├── admin_device.py            # 디바이스/레이어 마스터 Admin (9+ endpoints)
+│   │   │   ├── device_masters.py          # 디바이스 마스터 Public API (3 endpoints)
 │   │   │   └── users.py, lines.py, columns.py, products.py
 │   │   ├── services/         # 비즈니스 로직 (도메인별 분리)
 │   │   │   ├── project_service.py           # 프로젝트 CRUD + 개정
@@ -50,6 +52,10 @@ process-condition-manager/
 │   │   │   ├── export_history_service.py # 출력 이력 기록/조회
 │   │   │   ├── export_validation_service.py # 출력 전 데이터 검증
 │   │   │   ├── export_data_source_service.py # 외부 데이터 소스 관리
+│   │   │   ├── device_master_sync_service.py # 디바이스 마스터 동기화
+│   │   │   ├── device_enrichment_service.py  # 디바이스 메타 enrichment
+│   │   │   ├── device_meta_source_service.py # 메타 소스 CRUD
+│   │   │   ├── sync_source_config_service.py # 동기화 소스 설정
 │   │   │   ├── admin_service.py, diff_service.py
 │   │   │   └── auth_service.py
 │   │   ├── utils/            # 유틸리티
@@ -126,6 +132,8 @@ process-condition-manager/
 - `export_data_sources` — 외부 데이터 소스 정의 (테이블명, JOIN 키, 컬럼 탐색)
 - `export_histories` — 전산 출력 이력 (감사 추적)
 - `equipments` — 설비 마스터 (line_id FK, equipment_name/model/PRC/ip/ftp, 자동완성 소스)
+- `device_master` / `layer_master` — 디바이스·레이어 마스터 (외부 동기화, enrichment JSONB)
+- `sync_source_config` / `device_meta_source` — 동기화 소스 설정·메타 enrichment 매핑
 - `recipe_xml_mappings` — XML XPath ↔ 조건표 컬럼 매핑
 
 ## 워크플로우 (상태 흐름)
@@ -264,6 +272,18 @@ Draft → Review → Approved → (Revision 생성 시) Archived
   - M2: Header 다중 역할 배지, AdminLayout 역할별 탭 필터링
   - M2: UserFormModal 체크박스 (editor/reviewer/admin/developer)
   - M2: 관리 페이지 readOnly 모드 (역할별 쓰기 권한 분리)
+- SPEC-DEVICE-001 완료: 디바이스/레이어 마스터 통합 (Phase 5)
+  - M1: Device Master 테이블 + Sync 서비스 + Admin UI (Device List 서브탭)
+    - Backend: DeviceMaster 모델, Alembic 마이그레이션(018), Sync API (3개 + Enrich 3개), auto-enrich
+    - Frontend: DeviceMasterPage (Device List 테이블 + Sync 버튼 + 필터)
+  - M2: Layer Master 테이블 + Sync API
+    - Backend: LayerMaster 모델 (device_master_id FK + RESTRICT), layer 조회 API (numeric 정렬)
+    - Frontend: DeviceDetailModal (레이어 리스트 + enrichment 데이터 표시)
+  - M3: Device Meta Enrichment (동적 메타 소스 연동)
+    - Backend: DeviceMetaSource/SyncSourceConfig 모델, DeviceEnrichmentService (information_schema 검증), CRUD API 4개
+    - Frontend: Meta Sources 서브탭 + DeviceMetaSourceFormModal (컬럼 discovery 포함)
+  - DB: device_master, layer_master, sync_source_config, device_meta_source 테이블 4개
+  - Sync 흐름: 배치 동기화 → auto-enrich → synced_at 타임스탬프 (freshness tracking)
 
 ## 개발 명령어
 

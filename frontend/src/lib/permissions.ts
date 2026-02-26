@@ -42,6 +42,7 @@ export function getMenuCategory(tabPath: string): MenuCategory {
     '/admin/validations',
     '/admin/export-systems',
     '/admin/data-sources',
+    '/admin/device-masters',
   ]
   if (systemConfigPaths.includes(tabPath)) return 'system_config'
   if (tabPath === '/admin/audit-logs' || tabPath === '/admin/export-histories') return 'shared'

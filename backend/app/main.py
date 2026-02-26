@@ -11,7 +11,7 @@ from app.routers import (
     users, lines, columns, products, equipments,
     projects, project_conditions, project_layers, project_lifecycle,
     admin, admin_users, admin_master, comments, export, export_admin, export_data_source, auth as auth_router,
-    dashboard,
+    dashboard, device_masters, admin_device,
 )
 
 logger = logging.getLogger(__name__)
@@ -65,4 +65,6 @@ app.include_router(export_admin.router)
 app.include_router(export_data_source.router)
 app.include_router(export.router)
 app.include_router(export.project_router)
+app.include_router(device_masters.router)
+app.include_router(admin_device.router)
 app.include_router(dashboard.router)

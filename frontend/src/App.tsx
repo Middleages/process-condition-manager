@@ -17,6 +17,7 @@ import MasterDataPage from './pages/admin/MasterDataPage'
 import EnumManagementPage from './pages/admin/EnumManagementPage'
 import AuditLogPage from './pages/admin/AuditLogPage'
 import ExportDataSourcesPage from './pages/admin/ExportDataSourcesPage'
+import DeviceMasterPage from './pages/admin/DeviceMasterPage'
 import { ToastContainer } from './components/ui/toast'
 import { useAuthStore } from './stores/useAuthStore'
 
@@ -68,6 +69,7 @@ const router = createBrowserRouter([
               { index: true, element: <Navigate to="/admin/master-data" replace /> },
               { path: 'users', element: <UserManagementPage /> },
               { path: 'master-data', element: <MasterDataPage /> },
+              { path: 'device-masters', element: <DeviceMasterPage /> },
               { path: 'enum-options', element: <EnumManagementPage /> },
               { path: 'xml-mappings', element: <XmlMappingsPage /> },
               { path: 'validations', element: <ValidationRulesPage /> },
