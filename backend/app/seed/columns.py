@@ -491,7 +491,7 @@ COLUMN_DEFS: list[tuple] = [
                 "select",
                 None,
                 False,
-                SCANNER_TOOL_OPTIONS,
+                None,  # equipment names come from equipments master table
             ),
             (
                 f"EQP_{slot:02d}_ET",

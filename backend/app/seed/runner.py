@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.services.auth_service import get_password_hash
-from app.seed.columns import CATEGORIES, COLUMN_DEFS, VALIDATION_RULES
+from app.seed.columns import CATEGORIES, COLUMN_DEFS, SCANNER_TOOL_OPTIONS, VALIDATION_RULES
 from app.seed.layers import LAYERS, LAYER_NAMES, LAYER_PROFILES
 from app.seed.products import LINES, PRODUCTS, NON_BACKBONE_PRODUCTS, generate_conditions
 from app.seed.exports import _build_export_target_names, seed_external_data_sources
@@ -148,6 +148,34 @@ def seed():
             )
             line_ids[line["line_code"]] = result.scalar()
         print(f"  Lines: {len(line_ids)}")
+
+        # --- Equipments (per line) ---
+        EQUIPMENT_MODELS = {
+            "NSR-S322F": "NSR-S322F",
+            "NSR-S631E": "NSR-S631E",
+            "XT-1400E": "XT-1400E",
+            "XT-1900Gi": "XT-1900Gi",
+            "NXT-2000": "NXT-2000",
+            "EUV-3400": "EUV-3400",
+        }
+
+        eqp_count = 0
+        for line_code, line_id_val in line_ids.items():
+            for sort_idx, eqp_name in enumerate(SCANNER_TOOL_OPTIONS):
+                eqp_model = None
+                for prefix, model in EQUIPMENT_MODELS.items():
+                    if eqp_name.startswith(prefix):
+                        eqp_model = model
+                        break
+                session.execute(
+                    text(
+                        "INSERT INTO equipments (line_id, equipment_name, equipment_model, sort_order) "
+                        "VALUES (:line_id, :name, :model, :sort)"
+                    ),
+                    {"line_id": line_id_val, "name": eqp_name, "model": eqp_model, "sort": sort_idx},
+                )
+                eqp_count += 1
+        print(f"  Equipments: {eqp_count}")
 
         # --- Products (with Approved projects) + ProductLayers ---
         product_ids = {}
