@@ -20,7 +20,7 @@ export function BackboneComparisonPanel({
 }: Props) {
   if (!isOpen) return null
 
-  const handleCellClick = (layerId: number, columnName: string) => {
+  const handleCellClick = (layerId: string, columnName: string) => {
     const layer = layers.find((l) => l.layer_id === layerId)
     if (layer && onNavigateToCell) {
       onNavigateToCell(layer.layer_name, columnName)

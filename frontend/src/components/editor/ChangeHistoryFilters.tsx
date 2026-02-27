@@ -1,11 +1,11 @@
 interface FilterState {
-  layerId: number | null
+  layerId: string | null
   changeType: string | null
   userId: number | null
 }
 
 interface ChangeHistoryFiltersProps {
-  layers: Array<{ id: number; name: string }>
+  layers: Array<{ id: string; name: string }>
   users: Array<{ id: number; name: string }>
   filters: FilterState
   onFilterChange: (filters: FilterState) => void
@@ -36,7 +36,7 @@ export function ChangeHistoryFilters({
         onChange={(e) =>
           onFilterChange({
             ...filters,
-            layerId: e.target.value ? Number(e.target.value) : null,
+            layerId: e.target.value || null,
           })
         }
       >

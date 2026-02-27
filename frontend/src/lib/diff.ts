@@ -1,7 +1,7 @@
 import type { ProjectLayerData } from '@/types'
 
 export interface LayerDiffSummary {
-  layerId: number
+  layerId: string
   layerName: string
   changedCount: number
   changedColumns: string[]
@@ -98,7 +98,7 @@ export interface CellChange {
 }
 
 export interface LayerComparisonDetail {
-  layerId: number
+  layerId: string
   layerName: string
   stepSeq: string
   backboneProductName: string | null

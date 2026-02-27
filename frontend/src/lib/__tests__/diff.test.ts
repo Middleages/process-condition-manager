@@ -17,10 +17,10 @@ function makeLayer(
 ): ProjectLayerData {
   return {
     id: 1,
-    layer_id: 1,
+    layer_id: '1.0',
     layer_name: 'AA',
     step_seq: '010',
-    layer_number: '01',
+    layer_number: '1.0',
     backbone_product_id: 100,
     backbone_product_name: 'Product-A',
     sort_order: 1,
@@ -94,7 +94,7 @@ describe('computeProjectDiff', () => {
   it('returns zero totals for layers with no changes', () => {
     const layers: ProjectLayerData[] = [
       makeLayer({
-        layer_id: 1,
+        layer_id: '1.0',
         layer_name: 'AA',
         conditions: { a: '1' },
         backbone_conditions: { a: '1' },
@@ -109,14 +109,14 @@ describe('computeProjectDiff', () => {
   it('counts changed cells across multiple layers', () => {
     const layers: ProjectLayerData[] = [
       makeLayer({
-        layer_id: 1,
+        layer_id: '1.0',
         layer_name: 'AA',
         conditions: { a: '1', b: '2' },
         backbone_conditions: { a: '1', b: '99' },
       }),
       makeLayer({
         id: 2,
-        layer_id: 2,
+        layer_id: '2.0',
         layer_name: 'BB',
         conditions: { a: '5', b: '6', c: '7' },
         backbone_conditions: { a: '50', b: '60', c: '7' },
@@ -127,11 +127,11 @@ describe('computeProjectDiff', () => {
     expect(result.totalChangedLayers).toBe(2)
     expect(result.layers).toHaveLength(2)
 
-    expect(result.layers[0].layerId).toBe(1)
+    expect(result.layers[0].layerId).toBe('1.0')
     expect(result.layers[0].changedCount).toBe(1)
     expect(result.layers[0].changedColumns).toEqual(['b'])
 
-    expect(result.layers[1].layerId).toBe(2)
+    expect(result.layers[1].layerId).toBe('2.0')
     expect(result.layers[1].changedCount).toBe(2)
     expect(result.layers[1].changedColumns).toEqual(['a', 'b'])
   })
@@ -139,14 +139,14 @@ describe('computeProjectDiff', () => {
   it('excludes layers with zero changes from the summary', () => {
     const layers: ProjectLayerData[] = [
       makeLayer({
-        layer_id: 1,
+        layer_id: '1.0',
         layer_name: 'AA',
         conditions: { a: '1' },
         backbone_conditions: { a: '1' },
       }),
       makeLayer({
         id: 2,
-        layer_id: 2,
+        layer_id: '2.0',
         layer_name: 'BB',
         conditions: { a: 'changed' },
         backbone_conditions: { a: 'original' },

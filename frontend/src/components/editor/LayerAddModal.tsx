@@ -34,7 +34,7 @@ export function LayerAddModal({
 
   // Filter out already-existing layers
   const existingLayerIds = new Set(existingLayers.map((l) => l.layer_id))
-  const availableLayers = allLayers.filter((l) => !existingLayerIds.has(l.id))
+  const availableLayers = allLayers.filter((l) => !existingLayerIds.has(String(l.id)))
 
   // Reset on open
   useEffect(() => {
@@ -51,7 +51,7 @@ export function LayerAddModal({
 
     try {
       await addLayer.mutateAsync({
-        layer_id: Number(layerId),
+        layer_id: layerId,
         source_product_id: useSource && sourceProductId ? Number(sourceProductId) : undefined,
         changed_by: currentUserId,
       })

@@ -26,7 +26,7 @@ interface Props {
   layers: ProjectLayerData[]
   columns: ColumnDefinition[]
   validationErrors: ValidationError[]
-  scrollToLayerId: number | null
+  scrollToLayerId: string | null
   scrollToColumnName?: string | null
   readOnly?: boolean
   commentMap?: Map<string, number>

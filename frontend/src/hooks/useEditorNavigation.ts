@@ -12,7 +12,7 @@ export function useEditorNavigation({ project, categories }: UseEditorNavigation
   const setActiveColumnName = useEditorStore((s) => s.setActiveColumnName)
 
   const handleLayerClick = useCallback(
-    (layerId: number) => {
+    (layerId: string) => {
       setActiveLayerId(layerId)
       setActiveColumnName(null)
     },

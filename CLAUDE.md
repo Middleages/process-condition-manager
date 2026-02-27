@@ -154,7 +154,7 @@ Draft → Review → Approved → (Revision 생성 시) Archived
 - **Phase 2**: 레이어별 backbone 교체, Recipe XML 반영, 관리자 설정, Revision 기능
 - **Phase 3**: 승인 프로세스, 코멘트, 변경 이력, 전산 출력 (Type A/B/C)
 - **Phase 4**: 인증/권한, Cross-layer 검증, 전산 출력 확장, 대시보드
-- **Phase 5**: 동적 Backbone(SPEC-BACKBONE-001), 컬럼 기반 설비 관리(SPEC-EQP-001), 설비 마스터 테이블(SPEC-EQP-002), Excel 붙여넣기(SPEC-PASTE-001 예정)
+- **Phase 5**: 동적 Backbone(SPEC-BACKBONE-001), 컬럼 기반 설비 관리(SPEC-EQP-001), 설비 마스터 테이블(SPEC-EQP-002), Device-Ref 프로젝트 생성(SPEC-PROJECT-002), Excel 붙여넣기(SPEC-PASTE-001 예정)
 
 ## 현재 진행 상태
 
@@ -284,6 +284,20 @@ Draft → Review → Approved → (Revision 생성 시) Archived
     - Frontend: Meta Sources 서브탭 + DeviceMetaSourceFormModal (컬럼 discovery 포함)
   - DB: device_master, layer_master, sync_source_config, device_meta_source 테이블 4개
   - Sync 흐름: 배치 동기화 → auto-enrich → synced_at 타임스탬프 (freshness tracking)
+- SPEC-PROJECT-002 완료: Device-Ref 기반 프로젝트 생성 (Phase 5)
+  - M1: Schema Migration + Backend API
+    - Alembic 마이그레이션(019): device_master_id, process, device_type, header_metadata, line_id, product_name, part_id
+    - project_layers.layer_id INT → VARCHAR(10) 타입 변경 + backfill + 비정규화
+    - create_project_v2() TDD (8 tests), 4개 신규 라우터 엔드포인트
+    - 17-file 리팩터: `pl.layer.X` → `pl.X` (Layer relationship 제거)
+  - M2: Frontend Device-Ref Creation Modal (M2+M3+M4 통합)
+    - ProjectCreateModalV2: 캐스케이딩 드롭다운 (라인→제품명→공정→Part ID, Approach B)
+    - Full/Short 타입 선택 + 레이어 체크박스 패널 + 선택/해제 카운터
+    - 선택적 Backbone 드롭다운 ("Backbone 없음" 기본)
+    - 헤더 미리보기 + 중복 프로젝트 경고
+    - ProjectListPage: V2 모달 기본, V2 표시명 `{product_name} | {process} | {part_id}`
+    - Frontend 타입 마이그레이션: layer_id INT→STRING 전체 15+ 파일
+    - 513 BE / 137 FE 테스트 통과, TSC 0 에러
 
 ## 개발 명령어
 

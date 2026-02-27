@@ -38,8 +38,9 @@ class BackboneLayerResponse(BaseModel):
     """Project layer from the Approved project, used as backbone layer reference."""
     id: int
     project_id: int
-    layer_id: int
-    layer: LayerResponse
+    layer_id: str
+    layer_name: str
+    step_seq: str
     conditions: dict
     backbone_conditions: dict
     sort_order: int

@@ -150,3 +150,29 @@ export interface DiscoveredColumnInfo {
   column_name: string
   data_type: string
 }
+
+// ========== Project Creation (SPEC-PROJECT-002) ==========
+
+export interface DeviceSearchResult {
+  id: number
+  line_id: number
+  product_name: string
+  process: string
+  part_id: string | null
+  is_active: boolean
+  enrichment: Record<string, Record<string, unknown>>
+}
+
+export interface DeviceLayerItem {
+  id: number
+  layer_id: string
+  step_seq: string | null
+  descript: string | null
+}
+
+export interface DuplicateCheckResponse {
+  exists: boolean
+  existing_project_id?: number | null
+  existing_project_status?: string | null
+  existing_project_revision?: number | null
+}

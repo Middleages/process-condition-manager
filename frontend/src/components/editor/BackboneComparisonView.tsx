@@ -8,7 +8,7 @@ interface Props {
   layers: ProjectLayerData[]
   categories?: ColumnCategory[]
   /** Called when user clicks a cell row to navigate to it */
-  onCellClick?: (layerId: number, columnName: string) => void
+  onCellClick?: (layerId: string, columnName: string) => void
   /** Compact mode for embedding in modals */
   compact?: boolean
 }
@@ -54,7 +54,7 @@ const categoryColors: Record<string, string> = {
 interface LayerSectionProps {
   detail: LayerComparisonDetail
   categories?: ColumnCategory[]
-  onCellClick?: (layerId: number, columnName: string) => void
+  onCellClick?: (layerId: string, columnName: string) => void
   defaultExpanded?: boolean
   searchQuery?: string
 }

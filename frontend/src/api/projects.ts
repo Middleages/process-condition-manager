@@ -3,6 +3,7 @@ import type {
   Project,
   ProjectDetail,
   ProjectCreateRequest,
+  ProjectCreateRequestV2,
   BulkSaveRequest,
   BulkSaveResponse,
   ValidationResponse,
@@ -48,6 +49,11 @@ export async function createProject(req: ProjectCreateRequest): Promise<ProjectD
   return data
 }
 
+export async function createProjectV2(req: ProjectCreateRequestV2): Promise<ProjectDetail> {
+  const { data } = await client.post<ProjectDetail>('/projects/v2', req)
+  return data
+}
+
 export async function bulkSaveConditions(
   projectId: number,
   req: BulkSaveRequest
@@ -69,7 +75,7 @@ export async function validateProject(projectId: number): Promise<ValidationResp
 export async function fetchChangeLogs(
   projectId: number,
   params?: {
-    layer_id?: number
+    layer_id?: string
     column_name?: string
     limit?: number
     offset?: number

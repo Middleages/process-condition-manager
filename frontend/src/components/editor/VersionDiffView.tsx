@@ -5,7 +5,7 @@ import type { VersionDiffResponse, LayerDiff, CellDiff } from '@/types'
 interface Props {
   diff: VersionDiffResponse
   /** 셀 행 클릭 시 호출되는 콜백 */
-  onCellClick?: (layerId: number, columnName: string) => void
+  onCellClick?: (layerId: string, columnName: string) => void
 }
 
 // 변경 유형별 배지 스타일
@@ -30,7 +30,7 @@ function displayValue(val: string | null): string {
 
 interface LayerSectionProps {
   layerDiff: LayerDiff
-  onCellClick?: (layerId: number, columnName: string) => void
+  onCellClick?: (layerId: string, columnName: string) => void
 }
 
 function LayerSection({ layerDiff, onCellClick }: LayerSectionProps) {

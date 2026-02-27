@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   fetchDeviceMasters,
   fetchDeviceLayers,
+  checkDuplicate,
   syncDeviceMasters,
   syncLayerMasters,
   enrichDevice,
@@ -69,6 +70,17 @@ export function useDeviceLayers(deviceId: number | null) {
     queryKey: deviceMasterKeys.layers(deviceId ?? 0),
     queryFn: () => fetchDeviceLayers(deviceId!),
     enabled: deviceId !== null && deviceId > 0,
+  })
+}
+
+export function useCheckDuplicate() {
+  return useMutation({
+    mutationFn: (params: {
+      line_id: number
+      product_name: string
+      process: string
+      part_id: string
+    }) => checkDuplicate(params),
   })
 }
 

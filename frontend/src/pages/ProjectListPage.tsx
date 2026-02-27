@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useProjects } from '@/hooks/useProjects'
 import { useLines } from '@/hooks/useLines'
 import { StatusBadge } from '@/components/projects/StatusBadge'
-import { ProjectCreateModal } from '@/components/projects/ProjectCreateModal'
+import { ProjectCreateModalV2 } from '@/components/projects/ProjectCreateModalV2'
 import { VersionHistoryModal } from '@/components/projects/VersionHistoryModal'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -163,15 +163,17 @@ export default function ProjectListPage() {
                     className="px-4 py-3 font-medium cursor-pointer hover:text-blue-600"
                     onClick={() => navigate(`/projects/${project.id}/edit`)}
                   >
-                    {project.product_name}
+                    {project.device_master_id
+                      ? `${project.product_name} | ${project.process ?? ''} | ${project.part_id ?? ''}`
+                      : project.product_name}
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">{project.line_name ?? '-'}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{project.backbone_name}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{project.backbone_name ?? '-'}</td>
                   <td className="px-4 py-3 text-center text-muted-foreground">{project.layer_count}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       <span className="font-medium">v{project.revision}</span>
-                      {project.revision > 1 && (
+                      {project.revision > 1 && project.product_id != null && (
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
@@ -206,7 +208,7 @@ export default function ProjectListPage() {
         </table>
       </div>
 
-      <ProjectCreateModal open={createOpen} onOpenChange={setCreateOpen} />
+      <ProjectCreateModalV2 open={createOpen} onOpenChange={setCreateOpen} />
 
       <VersionHistoryModal
         open={historyProductId !== null}

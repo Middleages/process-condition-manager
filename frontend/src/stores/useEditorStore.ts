@@ -8,7 +8,7 @@ function cellKey(projectLayerId: number, columnName: string) {
 interface EditorState {
   // Active selections
   activeCategory: CategoryCode
-  activeLayerId: number | null
+  activeLayerId: string | null
   activeColumnName: string | null
 
   // Dirty cells (unsaved edits)
@@ -35,7 +35,7 @@ interface EditorState {
 
   // Actions
   setActiveCategory: (code: CategoryCode) => void
-  setActiveLayerId: (layerId: number | null) => void
+  setActiveLayerId: (layerId: string | null) => void
   setActiveColumnName: (columnName: string | null) => void
   setCellValue: (projectLayerId: number, columnName: string, value: unknown, originalValue: unknown) => void
   removeDirtyCell: (projectLayerId: number, columnName: string) => void

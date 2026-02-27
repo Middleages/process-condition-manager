@@ -16,7 +16,7 @@ interface Props {
   layers: ProjectLayerData[]
   validationErrors: ValidationError[]
   isDraft: boolean
-  onLayerClick: (layerId: number) => void
+  onLayerClick: (layerId: string) => void
   onBackboneReplace?: (layer: ProjectLayerData) => void
   onLayerAdd?: () => void
   onLayerDelete?: (layer: ProjectLayerData) => void
@@ -44,7 +44,7 @@ export function LayerNavPanel({
 
   // Count errors per layer
   const errorsByLayer = useMemo(() => {
-    const map = new Map<number, number>()
+    const map = new Map<string, number>()
     for (const err of validationErrors) {
       map.set(err.layer_id, (map.get(err.layer_id) ?? 0) + 1)
     }
@@ -53,7 +53,7 @@ export function LayerNavPanel({
 
   // Count dirty cells per layer (unsaved edits)
   const dirtyByLayer = useMemo(() => {
-    const map = new Map<number, number>()
+    const map = new Map<string, number>()
     for (const cell of dirtyCells.values()) {
       const layer = layers.find((l) => l.id === cell.projectLayerId)
       if (layer) {
@@ -65,7 +65,7 @@ export function LayerNavPanel({
 
   // Backbone diff count per layer (saved changes vs backbone)
   const backboneDiffByLayer = useMemo(() => {
-    const map = new Map<number, number>()
+    const map = new Map<string, number>()
     for (const layer of layers) {
       const count = getLayerChangeCount(layer)
       if (count > 0) {

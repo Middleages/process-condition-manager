@@ -56,7 +56,7 @@ export interface TimelineResponse {
 export interface TimelineParams {
   page?: number
   limit?: number
-  layer_id?: number
+  layer_id?: string
   change_type?: string
   changed_by?: number
 }
@@ -107,7 +107,7 @@ export interface CellDiff {
 }
 
 export interface LayerDiff {
-  layer_id: number
+  layer_id: string
   layer_name: string
   change_type: 'modified' | 'added' | 'removed'
   changes: CellDiff[]

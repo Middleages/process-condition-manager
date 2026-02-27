@@ -20,11 +20,11 @@ class ChangeLogRepository:
     async def fetch_project_layer_map(
         db: AsyncSession,
         project_id: int,
-        layer_id: int | None = None,
+        layer_id: str | None = None,
     ) -> dict[int, str]:
         """Fetch {project_layer_id: layer_name} map for a project.
 
-        Optionally filter by layer_id (the layer master table ID).
+        Optionally filter by layer_id (VARCHAR, e.g. '1.0').
 
         Args:
             db: Async database session
@@ -39,7 +39,7 @@ class ChangeLogRepository:
             .where(ProjectLayer.project_id == project_id)
         )
         if layer_id is not None:
-            query = query.where(ProjectLayer.layer_id == str(layer_id))
+            query = query.where(ProjectLayer.layer_id == layer_id)
 
         result = await db.execute(query)
         rows = result.all()

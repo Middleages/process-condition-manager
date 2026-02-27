@@ -3,7 +3,6 @@ import type {
   DeviceMaster,
   DeviceMasterListResponse,
   DeviceSyncResult,
-  LayerMaster,
   EnrichmentResult,
   EnrichmentSummary,
   SyncSourceConfig,
@@ -13,6 +12,9 @@ import type {
   DeviceMetaSourceCreate,
   DeviceMetaSourceUpdate,
   DiscoveredColumnInfo,
+  DeviceSearchResult,
+  DeviceLayerItem,
+  DuplicateCheckResponse,
 } from '@/types/deviceMaster'
 
 // ========== Public API ==========
@@ -33,8 +35,27 @@ export async function fetchDeviceMaster(id: number): Promise<DeviceMaster> {
   return data
 }
 
-export async function fetchDeviceLayers(deviceId: number): Promise<LayerMaster[]> {
-  const { data } = await client.get<LayerMaster[]>(`/device-masters/${deviceId}/layers`)
+export async function fetchDeviceLayers(deviceId: number): Promise<DeviceLayerItem[]> {
+  const { data } = await client.get<DeviceLayerItem[]>(`/device-masters/${deviceId}/layers`)
+  return data
+}
+
+
+export async function searchDevices(params: {
+  q: string
+  line_id?: number
+}): Promise<DeviceSearchResult[]> {
+  const { data } = await client.get<DeviceSearchResult[]>('/device-masters/search', { params })
+  return data
+}
+
+export async function checkDuplicate(params: {
+  line_id: number
+  product_name: string
+  process: string
+  part_id: string
+}): Promise<DuplicateCheckResponse> {
+  const { data } = await client.post<DuplicateCheckResponse>('/device-masters/check-duplicate', params)
   return data
 }
 

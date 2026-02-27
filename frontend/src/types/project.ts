@@ -3,7 +3,7 @@ export type ProjectStatus = 'draft' | 'review' | 'approved' | 'rejected' | 'arch
 
 export interface ProjectLayerData {
   id: number
-  layer_id: number
+  layer_id: string
   layer_name: string
   step_seq: string
   layer_number: string
@@ -17,12 +17,12 @@ export interface ProjectLayerData {
 
 export interface Project {
   id: number
-  product_id: number
+  product_id: number | null
   product_name: string
   line_id: number | null
   line_name: string | null
-  main_backbone_id: number
-  backbone_name: string
+  main_backbone_id: number | null
+  backbone_name: string | null
   status: ProjectStatus
   revision: number
   parent_project_id: number | null
@@ -32,6 +32,12 @@ export interface Project {
   layer_count: number
   created_at: string
   updated_at: string
+  // SPEC-PROJECT-002 V2 fields
+  device_master_id: number | null
+  process: string | null
+  device_type: 'full' | 'short'
+  header_metadata: Record<string, unknown> | null
+  part_id: string | null
 }
 
 export interface ProjectDetail extends Project {
@@ -43,6 +49,16 @@ export interface ProjectCreateRequest {
   product_id: number
   backbone_product_id: number
   created_by: number
+}
+
+export interface ProjectCreateRequestV2 {
+  line_id: number
+  product_name: string
+  process: string
+  part_id: string
+  device_type: 'full' | 'short'
+  selected_layer_ids?: string[]
+  backbone_product_id?: number | null
 }
 
 export interface LayerConditions {
@@ -74,7 +90,7 @@ export interface BackboneReplaceResponse {
 
 // ========== Layer Add/Delete ==========
 export interface LayerAddRequest {
-  layer_id: number
+  layer_id: string
   source_product_id?: number | null
   source_layer_name?: string | null
   changed_by: number
@@ -82,7 +98,7 @@ export interface LayerAddRequest {
 
 export interface LayerAddResponse {
   project_layer_id: number
-  layer_id: number
+  layer_id: string
   layer_name: string
   backbone_product_id: number | null
   backbone_product_name: string | null
@@ -124,7 +140,7 @@ export type RuleType =
   | 'client'
 
 export interface ValidationError {
-  layer_id: number
+  layer_id: string
   layer_name: string
   column_name: string
   display_name: string
