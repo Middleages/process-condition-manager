@@ -75,7 +75,7 @@ export async function validateProject(projectId: number): Promise<ValidationResp
 export async function fetchChangeLogs(
   projectId: number,
   params?: {
-    layer_id?: number
+    layer_id?: string
     column_name?: string
     limit?: number
     offset?: number

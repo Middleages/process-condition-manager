@@ -114,7 +114,7 @@ export function useValidateProjectMutation() {
 
 export function useChangeLogs(
   projectId: number,
-  params?: { layer_id?: number; column_name?: string; limit?: number }
+  params?: { layer_id?: string; column_name?: string; limit?: number }
 ) {
   return useQuery({
     queryKey: projectKeys.changeLogs(projectId, params),
