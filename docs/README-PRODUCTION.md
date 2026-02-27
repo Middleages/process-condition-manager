@@ -62,7 +62,8 @@ PostgreSQL 데이터베이스를 자동으로 백업하는 스크립트입니다
 **기능:**
 - Docker Compose를 통해 안전하게 백업 수행
 - 타임스탐프가 있는 SQL 파일로 저장
-- 7일 이상 된 백업 자동 삭제
+- `BACKUP_RETENTION_DAYS` 환경변수로 보관 기간 설정 (기본: 7일)
+- `PCM_BACKUP_DIR` 환경변수로 백업 디렉토리 변경 가능
 - 백업 성공/실패 명확한 상태 표시
 - Cron 작업으로 정기 실행 가능
 
@@ -101,6 +102,7 @@ PostgreSQL 데이터베이스를 자동으로 백업하는 스크립트입니다
 
 **기능:**
 - 지정된 백업 파일에서 안전하게 복구
+- **복구 전 현재 데이터 자동 백업** (`pre_restore_TIMESTAMP.sql`)
 - 복구 전 확인 메시지 표시
 - 데이터 손실 경고
 - 복구 후 정상 여부 자동 검증
@@ -114,7 +116,82 @@ PostgreSQL 데이터베이스를 자동으로 백업하는 스크립트입니다
 ./scripts/restore-db.sh /backup/pcm/backup_2026-02-22_020000.sql
 ```
 
-**주의:** ⚠️ 기존의 모든 데이터가 삭제되고 백업 데이터로 복원됩니다!
+**주의:** ⚠️ 기존의 모든 데이터가 삭제되고 백업 데이터로 복원됩니다! (복구 전 현재 데이터는 자동으로 백업됩니다)
+
+### 🔍 verify-backup.sh
+
+백업 파일의 무결성을 검증하는 스크립트입니다.
+
+**기능:**
+- 임시 데이터베이스(`pcm_verify_temp`)에 백업을 복원하여 검증
+- 테이블 수, 주요 테이블 존재 여부 확인
+- 검증 완료 후 임시 데이터베이스 자동 삭제
+- 인자 없으면 가장 최근 백업 자동 선택
+
+**사용법:**
+```bash
+# 최근 백업 자동 검증
+./scripts/verify-backup.sh
+
+# 특정 백업 검증
+./scripts/verify-backup.sh ./backup/backup_2026-02-22_020000.sql
+```
+
+### 🚀 migrate-db.sh
+
+Alembic 마이그레이션을 Docker Compose로 실행하는 래퍼 스크립트입니다.
+
+**기능:**
+- 마이그레이션 전 자동 백업
+- `--status`: 현재 마이그레이션 상태 확인
+- `--dry-run`: 실행할 SQL 미리보기
+- `--rollback`: 한 단계 롤백
+- 기본: `upgrade head`
+
+**사용법:**
+```bash
+# 마이그레이션 상태 확인
+./scripts/migrate-db.sh --status
+
+# 마이그레이션 적용
+./scripts/migrate-db.sh
+
+# SQL 미리보기 (실제 적용 안 함)
+./scripts/migrate-db.sh --dry-run
+
+# 한 단계 롤백
+./scripts/migrate-db.sh --rollback
+```
+
+### 🔄 deploy.sh
+
+통합 배포 자동화 스크립트입니다.
+
+**기능:**
+- 전체 배포: .env 검증 → 백업 → 빌드 → 마이그레이션 → 순차 재시작 → 헬스 체크
+- `--quick`: 빌드 + 재시작만 (백업/마이그레이션 건너뜀)
+- `--rollback`: 이전 이미지로 롤백
+- 순차 재시작으로 다운타임 최소화
+
+**사용법:**
+```bash
+# 전체 배포
+./scripts/deploy.sh
+
+# 빠른 배포 (코드 변경만)
+./scripts/deploy.sh --quick
+
+# 롤백
+./scripts/deploy.sh --rollback
+```
+
+### 📅 cron-example.txt
+
+Cron 작업 예시 파일입니다. 복사하여 `crontab -e`에 바로 붙여넣을 수 있습니다.
+
+```bash
+cat scripts/cron-example.txt
+```
 
 ## 빠른 시작
 
@@ -125,8 +202,8 @@ PostgreSQL 데이터베이스를 자동으로 백업하는 스크립트입니다
 cd /opt/process-condition-manager
 
 # 2. 환경 파일 설정
-cp .env.example .env
-# .env 파일 수정 (SECRET_KEY, 비밀번호 등)
+cp .env.prod.example .env
+# .env 파일 수정 (SECRET_KEY, 비밀번호, ENVIRONMENT 등)
 nano .env
 
 # 3. 이미지 빌드
@@ -136,7 +213,7 @@ docker-compose -f docker-compose.prod.yml build
 docker-compose -f docker-compose.prod.yml up -d
 
 # 5. 마이그레이션 적용
-docker-compose -f docker-compose.prod.yml exec -T backend alembic upgrade head
+./scripts/migrate-db.sh
 
 # 6. 시드 데이터 투입 (최초 1회만)
 docker-compose -f docker-compose.prod.yml exec -T backend python -m seed
@@ -151,10 +228,13 @@ curl http://localhost/api/health
 # 1. 백업 디렉토리 생성
 mkdir -p /backup/pcm
 
-# 2. Cron 작업 추가
+# 2. Cron 작업 추가 (cron-example.txt 참고)
 crontab -e
-# 다음 줄 추가:
+# 다음 줄 추가 (또는 scripts/cron-example.txt 내용 복사):
+# 매일 02:00 백업
 # 0 2 * * * /opt/process-condition-manager/scripts/backup-db.sh >> /var/log/pcm-backup.log 2>&1
+# 매주 일요일 03:00 백업 검증
+# 0 3 * * 0 /opt/process-condition-manager/scripts/verify-backup.sh >> /var/log/pcm-verify.log 2>&1
 
 # 3. 백업 확인
 ls -lh /backup/pcm/backup_*.sql
@@ -182,9 +262,14 @@ curl http://localhost/api/health
 │   └── README-PRODUCTION.md         # 이 파일
 ├── scripts/
 │   ├── backup-db.sh                 # 데이터베이스 자동 백업
-│   └── restore-db.sh                # 백업에서 복구
+│   ├── restore-db.sh                # 백업에서 복구 (복구 전 자동 백업)
+│   ├── verify-backup.sh             # 백업 무결성 검증
+│   ├── migrate-db.sh                # Alembic 마이그레이션 래퍼
+│   ├── deploy.sh                    # 통합 배포 자동화
+│   └── cron-example.txt             # Cron 작업 예시
 ├── docker-compose.prod.yml          # 프로덕션 Docker 설정
-├── .env                             # 환경 설정 (프로덕션용)
+├── .env.prod.example                # 운영 환경변수 템플릿
+├── .env                             # 환경 설정 (프로덕션용, git 미추적)
 └── ... (다른 파일들)
 ```
 
@@ -215,8 +300,8 @@ echo "yes" | ./scripts/restore-db.sh /backup/pcm/backup_2026-02-22_020000.sql
 ### Q: 백업 파일이 너무 커집니다
 
 ```bash
-# 오래된 백업 자동 정리는 7일 주기입니다
-# 더 짧은 주기로 정리하려면 스크립트 수정
+# 오래된 백업 자동 정리 주기는 BACKUP_RETENTION_DAYS 환경변수로 설정 (기본: 7일)
+# 예: BACKUP_RETENTION_DAYS=30 ./scripts/backup-db.sh
 # 현재 백업 확인
 du -sh /backup/pcm/*
 
@@ -238,5 +323,5 @@ PCM 프로젝트 라이센스를 따릅니다.
 
 ---
 
-**마지막 업데이트**: 2026-02-22
+**마지막 업데이트**: 2026-02-27
 **한국어 문서**: 비 개발자 운영자를 위한 친화적인 설명

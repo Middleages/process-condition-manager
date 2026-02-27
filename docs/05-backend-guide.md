@@ -645,20 +645,39 @@ async def caller():
 ### 설정 파일 구조
 
 ```python
+from pydantic import model_validator
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     # 데이터베이스
-    DATABASE_URL: str = "postgresql+asyncpg://user:pass@db:5432/pcm"
+    DATABASE_URL: str = "postgresql+asyncpg://pcm_user:pcm_pass@db:5432/pcm"
+    DATABASE_URL_SYNC: str = "postgresql://pcm_user:pcm_pass@db:5432/pcm"
 
     # 인증
-    SECRET_KEY: str = "your-secret-key"  # .env에서 로드
+    SECRET_KEY: str = "change-this-secret-key"  # .env에서 로드
 
     # 앱 정보
     APP_NAME: str = "Process Condition Manager"
 
     # CORS
-    CORS_ORIGINS: str = "http://localhost:5173,http://localhost"
+    CORS_ORIGINS: str = "http://localhost:5173,http://localhost:80,http://localhost"
+
+    # 환경 설정
+    ENVIRONMENT: str = "development"   # development | production
+    LOG_LEVEL: str = "INFO"            # DEBUG | INFO | WARNING | ERROR
+
+    # JWT 토큰
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+
+    @model_validator(mode="after")
+    def validate_production_settings(self) -> "Settings":
+        """운영 환경(production)에서 안전하지 않은 설정을 차단합니다."""
+        if self.ENVIRONMENT != "production":
+            return self
+        # SECRET_KEY 기본값/짧은 키 차단, DB 기본 비밀번호 차단
+        # 위반 시 ValueError로 앱 기동 차단
+        ...
 
     class Config:
         env_file = ".env"
@@ -666,14 +685,21 @@ class Settings(BaseSettings):
 settings = Settings()
 ```
 
+> **운영 환경 보호**: `ENVIRONMENT=production`일 때 기본 SECRET_KEY, 32자 미만 키, 기본 DB 비밀번호(`pcm_pass`)를 사용하면 앱이 시작되지 않습니다.
+
 ### 환경 변수 설정
 
-`.env` 파일 (프로젝트 루트):
+`.env` 파일 (프로젝트 루트, `.env.prod.example` 참고):
 
 ```
-DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/pcm
-SECRET_KEY=your-secret-key-change-in-production
+DATABASE_URL=postgresql+asyncpg://pcm_user:YOUR_PASSWORD@db:5432/pcm
+DATABASE_URL_SYNC=postgresql://pcm_user:YOUR_PASSWORD@db:5432/pcm
+SECRET_KEY=your-secret-key-change-in-production  # 운영: 32자 이상
 CORS_ORIGINS=http://localhost:5173,http://localhost
+ENVIRONMENT=development                           # 운영: production
+LOG_LEVEL=INFO
+ACCESS_TOKEN_EXPIRE_MINUTES=15
+REFRESH_TOKEN_EXPIRE_DAYS=7
 ```
 
 ---
@@ -882,6 +908,27 @@ class Project(Base):
 ---
 
 ## 로깅 설정
+
+### 구조화된 로깅 (logging_config.py)
+
+`app/logging_config.py`가 환경별 로깅을 설정합니다:
+
+- **개발 환경**: 읽기 쉬운 텍스트 포맷 (`2026-02-27 14:00:00 [INFO] app: message`)
+- **운영 환경**: JSON 한 줄 포맷 (Docker 로그 드라이버 호환)
+
+```python
+from app.logging_config import setup_logging
+
+# main.py에서 라우터 import 전에 호출
+setup_logging(settings.ENVIRONMENT, settings.LOG_LEVEL)
+```
+
+운영 환경 JSON 로그 출력 예시:
+```json
+{"timestamp": "2026-02-27T05:00:00+00:00", "level": "INFO", "logger": "app", "message": "서버 시작"}
+```
+
+### 서비스 코드에서 로깅
 
 중요한 작업을 로깅합니다:
 
