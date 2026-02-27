@@ -217,8 +217,10 @@ async def create_project_v2(
     db.add(project)
     await db.flush()
 
-    # 7. Create ProjectLayers for selected layers
-    for layer_id_str in selected_layer_ids:
+    # 7. Create ProjectLayers for selected layers (sorted numerically for
+    #    deterministic sort_order assignment)
+    sorted_layer_ids = sorted(selected_layer_ids, key=lambda x: float(x))
+    for idx, layer_id_str in enumerate(sorted_layer_ids):
         lm = device_layer_map[layer_id_str]
         bb_cond = backbone_map.get(layer_id_str)
 
@@ -237,7 +239,7 @@ async def create_project_v2(
             backbone_product_id=backbone_product_id if bb_cond is not None else None,
             conditions=conditions,
             backbone_conditions=backbone_conditions,
-            sort_order=0,  # LayerMaster does not have sort_order; use index-based
+            sort_order=(idx + 1) * 10,
         )
         db.add(project_layer)
 

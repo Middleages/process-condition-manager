@@ -5,8 +5,6 @@ selection. Tests verify business rules: device lookup, duplicate detection,
 backbone copy, layer selection, and header metadata propagation.
 """
 
-import copy
-
 import pytest
 import pytest_asyncio
 from fastapi import HTTPException
