@@ -32,7 +32,7 @@ class DeviceMaster(Base):
 
     __tablename__ = "device_master"
     __table_args__ = (
-        UniqueConstraint("line_id", "product_name", name="uq_device_master_line_product"),
+        UniqueConstraint("line_id", "product_name", "process", "part_id", name="uq_device_master_line_product_process_part"),
         Index("idx_device_master_line_id", "line_id"),
         Index("idx_device_master_product_name", "product_name"),
     )

@@ -225,7 +225,9 @@ async def seed_test_data(db_session: AsyncSession):
         import copy
         bpl = PL(
             project_id=backbone_project.id,
-            layer_id=layer.id,
+            layer_id=layer.layer_number,
+            layer_name=layer.layer_name,
+            step_seq=layer.step_seq,
             backbone_product_id=backbone.id,
             conditions=copy.deepcopy(cond),
             backbone_conditions=copy.deepcopy(cond),

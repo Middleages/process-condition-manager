@@ -146,7 +146,9 @@ async def export_seed(db_session: AsyncSession):
     for layer in [layer_a, layer_b]:
         db_session.add(ProjectLayer(
             project_id=approved_project.id,
-            layer_id=layer.id,
+            layer_id=layer.layer_number,
+            layer_name=layer.layer_name,
+            step_seq=layer.step_seq,
             sort_order=layer.sort_order,
             conditions=conditions,
         ))

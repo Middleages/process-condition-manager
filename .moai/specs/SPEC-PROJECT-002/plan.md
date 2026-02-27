@@ -33,17 +33,21 @@
 
 ### Implementation Steps
 
-**Step 1: Alembic Migration**
-- Add columns to `projects`: `device_master_id`, `process`, `device_type`, `header_metadata`, `line_id` (denormalized), `product_name` (denormalized), `part_id` (denormalized)
+**Step 1: Alembic Migration (019)**
+- Add columns to `projects`: `device_master_id` (FK), `process` (VARCHAR(50)), `device_type` (VARCHAR(20), default 'full'), `header_metadata` (JSONB), `line_id` (FK, denormalized), `product_name` (VARCHAR(100), denormalized), `part_id` (VARCHAR(100), denormalized)
 - Alter `product_id` to NULLABLE (was NOT NULL)
 - Alter `main_backbone_id` to NULLABLE (support "No backbone")
-- Create partial unique index `ix_projects_device_ref_active`
-- Backfill: For existing projects, populate `line_id` from `products.line_id`, `product_name` from `products.product_name`, `part_id` from `products.part_id`
+- **Change `project_layers.layer_id`**: Drop FK to `layers.id`, alter type INT -> VARCHAR(10)
+- **Backfill `project_layers.layer_id`**: Convert existing INT values (layers.id) to corresponding `layers.layer_number` (VARCHAR)
+- Backfill `projects`: populate `line_id` from `products.line_id`, `product_name` from `products.product_name`, `part_id` from `products.part_id`
+- **Change `device_master` unique constraint**: Drop `uq_device_master_line_product` (2-field), create `uq_device_master_line_product_process_part` (4-field: line_id, product_name, process, part_id)
+- Create partial unique index `ix_projects_device_ref_active` on `(line_id, product_name, process, part_id, revision) WHERE is_latest = true`
 
 **Step 2: Model Updates**
-- `backend/app/models/project.py`: Add new columns to `Project` model
+- `backend/app/models/project.py`: Add new columns to `Project` model (device_master_id, process, device_type, header_metadata, line_id, product_name, part_id). Change `product_id` and `main_backbone_id` to nullable.
+- Change `ProjectLayer.layer_id` from `Mapped[int] ForeignKey("layers.id")` to `Mapped[str] String(10)` (drop FK)
 - Add relationship: `device_master: Mapped["DeviceMaster | None"]`
-- Update `__table_args__` if needed for new constraints
+- `backend/app/models/device_master.py`: Update `DeviceMaster.__table_args__` unique constraint to 4-field (line_id, product_name, process, part_id)
 
 **Step 3: Pydantic Schemas**
 - `backend/app/schemas/device_master.py` (NEW): `DeviceSearchResult`, `DeviceLayerItem`, `DuplicateCheckResponse`
@@ -68,9 +72,9 @@
   8. Log backbone matching summary
 
 **Step 6: API Endpoints**
-- `backend/app/routers/device_master.py` (NEW):
-  - `GET /api/device-master/search?line_id=&product_name=&process=&part_id=` - Cascading search
-  - `GET /api/device-master/{id}/layers` - Device layers
+- `backend/app/routers/device_masters.py` (EXTEND existing SPEC-DEVICE-001 router):
+  - Add `GET /api/device-masters/search?line_id=&product_name=&process=&part_id=` - Cascading search
+  - Add `GET /api/device-masters/{id}/layers` - Device layers from layer_master
 - `backend/app/routers/projects.py`:
   - Update `POST /api/projects` to accept both V1 and V2 schemas
   - Add `GET /api/projects/check-duplicate?line_id=&product_name=&process=&part_id=` - Duplicate check

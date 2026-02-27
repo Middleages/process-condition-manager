@@ -33,14 +33,19 @@ def make_rule(rule_config: dict) -> SimpleNamespace:
 
 
 def make_project_layer(
-    layer_id: int,
+    pl_id: int,
     layer_name: str,
     conditions: dict,
     step_seq: str | None = None,
 ) -> SimpleNamespace:
-    """Mock ProjectLayer with nested layer."""
-    layer = SimpleNamespace(id=layer_id, layer_name=layer_name, step_seq=step_seq)
-    return SimpleNamespace(id=layer_id, layer=layer, conditions=conditions)
+    """Mock ProjectLayer with denormalized layer_name and step_seq."""
+    return SimpleNamespace(
+        id=pl_id,
+        layer_id=str(float(pl_id)),
+        layer_name=layer_name,
+        step_seq=step_seq,
+        conditions=conditions,
+    )
 
 
 COL_BY_NAME = {

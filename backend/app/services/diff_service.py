@@ -6,6 +6,13 @@ from sqlalchemy.orm import selectinload
 from fastapi import HTTPException
 
 from app.models import Project, ProjectLayer
+
+# Helper to parse layer_id (str like "1.0", "17.31") for numeric sorting
+def _layer_sort_key(layer_id: str) -> float:
+    try:
+        return float(layer_id)
+    except (ValueError, TypeError):
+        return float("inf")
 from app.utils.comparison import values_differ
 
 
@@ -28,11 +35,11 @@ async def get_version_diff(
         HTTPException 404: 프로젝트가 존재하지 않을 경우
         HTTPException 400: 두 프로젝트의 product_id가 다를 경우
     """
-    # 1. 두 프로젝트를 project_layers(+layer)와 함께 eager load
+    # 1. 두 프로젝트를 project_layers와 함께 eager load
     base_result = await db.execute(
         select(Project)
         .options(
-            selectinload(Project.layers).selectinload(ProjectLayer.layer),
+            selectinload(Project.layers),
         )
         .where(Project.id == project_id)
     )
@@ -44,7 +51,7 @@ async def get_version_diff(
     compare_result = await db.execute(
         select(Project)
         .options(
-            selectinload(Project.layers).selectinload(ProjectLayer.layer),
+            selectinload(Project.layers),
         )
         .where(Project.id == compare_project_id)
     )
@@ -61,8 +68,8 @@ async def get_version_diff(
         )
 
     # 3. layer_id 기준으로 레이어 조회 딕셔너리 구성
-    base_layers: dict[int, ProjectLayer] = {pl.layer_id: pl for pl in base_project.layers}
-    compare_layers: dict[int, ProjectLayer] = {pl.layer_id: pl for pl in compare_project.layers}
+    base_layers: dict[str, ProjectLayer] = {pl.layer_id: pl for pl in base_project.layers}
+    compare_layers: dict[str, ProjectLayer] = {pl.layer_id: pl for pl in compare_project.layers}
 
     # 4. 두 프로젝트에 존재하는 모든 layer_id 합집합
     all_layer_ids = set(base_layers.keys()) | set(compare_layers.keys())
@@ -70,13 +77,13 @@ async def get_version_diff(
     layer_diffs = []
     total_cells_changed = 0
 
-    for layer_id in sorted(all_layer_ids):
+    for layer_id in sorted(all_layer_ids, key=_layer_sort_key):
         base_pl = base_layers.get(layer_id)
         compare_pl = compare_layers.get(layer_id)
 
         if base_pl is None:
             # 비교 버전에만 존재 → "added" (base 기준으로 새로 추가된 레이어)
-            layer_name = compare_pl.layer.layer_name if compare_pl.layer else f"Layer {layer_id}"
+            layer_name = compare_pl.layer_name or f"Layer {layer_id}"
             conditions = compare_pl.conditions or {}
             changes = [
                 {
@@ -98,7 +105,7 @@ async def get_version_diff(
 
         elif compare_pl is None:
             # 기준 버전에만 존재 → "removed" (compare 버전에서 제거된 레이어)
-            layer_name = base_pl.layer.layer_name if base_pl.layer else f"Layer {layer_id}"
+            layer_name = base_pl.layer_name or f"Layer {layer_id}"
             conditions = base_pl.conditions or {}
             changes = [
                 {
@@ -120,7 +127,7 @@ async def get_version_diff(
 
         else:
             # 양쪽 모두 존재 → 컬럼별 값 비교
-            layer_name = base_pl.layer.layer_name if base_pl.layer else f"Layer {layer_id}"
+            layer_name = base_pl.layer_name or f"Layer {layer_id}"
             base_conditions = base_pl.conditions or {}
             compare_conditions = compare_pl.conditions or {}
 

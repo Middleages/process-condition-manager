@@ -6,9 +6,21 @@ from typing import Any
 # --- Request schemas ---
 
 class ProjectCreateRequest(BaseModel):
+    """V1 backward-compatible: product_id + backbone_product_id based creation."""
     product_id: int
     backbone_product_id: int
     created_by: int
+
+
+class ProjectCreateRequestV2(BaseModel):
+    """V2 device-ref based project creation request (SPEC-PROJECT-002)."""
+    line_id: int
+    product_name: str
+    process: str
+    part_id: str
+    device_type: str = "full"  # "full" | "short"
+    selected_layer_ids: list[str] | None = None  # layer_master.layer_id values, required when device_type="short"
+    backbone_product_id: int | None = None  # None = "no backbone"
 
 
 class LayerConditions(BaseModel):
@@ -26,7 +38,7 @@ class BulkSaveRequest(BaseModel):
 
 class ProjectLayerResponse(BaseModel):
     id: int
-    layer_id: int
+    layer_id: str
     layer_name: str
     step_seq: str
     layer_number: str
@@ -42,12 +54,12 @@ class ProjectLayerResponse(BaseModel):
 
 class ProjectResponse(BaseModel):
     id: int
-    product_id: int
+    product_id: int | None = None
     product_name: str
     line_id: int | None = None
     line_name: str | None = None
-    main_backbone_id: int
-    backbone_name: str
+    main_backbone_id: int | None = None
+    backbone_name: str | None = None
     status: str
     revision: int = 1
     parent_project_id: int | None = None
@@ -57,6 +69,12 @@ class ProjectResponse(BaseModel):
     layer_count: int = 0
     created_at: datetime
     updated_at: datetime
+    # SPEC-PROJECT-002 V2 fields
+    device_master_id: int | None = None
+    process: str | None = None
+    device_type: str = "full"
+    header_metadata: dict | None = None
+    part_id: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -66,7 +84,7 @@ class ProjectDetailResponse(ProjectResponse):
 
 
 class ValidationErrorItem(BaseModel):
-    layer_id: int
+    layer_id: str
     layer_name: str
     column_name: str
     display_name: str
@@ -263,7 +281,7 @@ class CellDiff(BaseModel):
 
 
 class LayerDiff(BaseModel):
-    layer_id: int
+    layer_id: str
     layer_name: str
     change_type: str  # "modified" | "added" | "removed"
     changes: list[CellDiff]

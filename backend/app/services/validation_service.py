@@ -6,9 +6,10 @@ from sqlalchemy.orm import selectinload
 from fastapi import HTTPException
 
 from app.models import (
-    Project, ProjectLayer, ColumnDefinition,
-    ColumnValidation, Layer,
+    Project, ColumnDefinition,
+    ColumnValidation,
 )
+from app.models.project import ProjectLayer
 from app.schemas.project import ValidationResponse, ValidationErrorItem
 from app.services.cross_layer_validation_service import validate_cross_layer_rules
 
@@ -18,7 +19,7 @@ def _validate_range(
     rule: ColumnValidation,
     col_name: str,
     col_by_name: dict[str, ColumnDefinition],
-    layer: Layer,
+    pl: ProjectLayer,
     errors: list[ValidationErrorItem],
 ) -> None:
     """Check if numeric value falls within min/max range."""
@@ -31,8 +32,8 @@ def _validate_range(
     except (TypeError, ValueError):
         col_def = col_by_name[col_name]
         errors.append(ValidationErrorItem(
-            layer_id=layer.id,
-            layer_name=layer.layer_name,
+            layer_id=pl.layer_id,
+            layer_name=pl.layer_name or "",
             column_name=col_name,
             display_name=col_def.display_name,
             rule_type="range",
@@ -46,8 +47,8 @@ def _validate_range(
 
     if min_val is not None and numeric_val < float(min_val):
         errors.append(ValidationErrorItem(
-            layer_id=layer.id,
-            layer_name=layer.layer_name,
+            layer_id=pl.layer_id,
+            layer_name=pl.layer_name or "",
             column_name=col_name,
             display_name=col_def.display_name,
             rule_type="range",
@@ -55,8 +56,8 @@ def _validate_range(
         ))
     elif max_val is not None and numeric_val > float(max_val):
         errors.append(ValidationErrorItem(
-            layer_id=layer.id,
-            layer_name=layer.layer_name,
+            layer_id=pl.layer_id,
+            layer_name=pl.layer_name or "",
             column_name=col_name,
             display_name=col_def.display_name,
             rule_type="range",
@@ -81,7 +82,7 @@ def _validate_conditional_required(
     col_name: str,
     conditions: dict,
     col_by_name: dict[str, ColumnDefinition],
-    layer: Layer,
+    pl: ProjectLayer,
     errors: list[ValidationErrorItem],
 ) -> None:
     """Check conditional required: if condition_column matches condition_value via operator, target must be non-empty."""
@@ -98,8 +99,8 @@ def _validate_conditional_required(
             col_def = col_by_name.get(col_name)
             if col_def:
                 errors.append(ValidationErrorItem(
-                    layer_id=layer.id,
-                    layer_name=layer.layer_name,
+                    layer_id=pl.layer_id,
+                    layer_name=pl.layer_name or "",
                     column_name=col_name,
                     display_name=col_def.display_name,
                     rule_type="conditional_required",
@@ -117,7 +118,7 @@ async def validate_project(
     result = await db.execute(
         select(Project)
         .options(
-            selectinload(Project.layers).selectinload(ProjectLayer.layer),
+            selectinload(Project.layers),
         )
         .where(Project.id == project_id)
     )
@@ -144,9 +145,8 @@ async def validate_project(
     # 3. Validate each project_layer
     errors: list[ValidationErrorItem] = []
 
-    for project_layer in project.layers:
-        conditions = project_layer.conditions or {}
-        layer = project_layer.layer
+    for pl in project.layers:
+        conditions = pl.conditions or {}
 
         # Required field checks
         for col_name in required_columns:
@@ -154,8 +154,8 @@ async def validate_project(
             if value is None or (isinstance(value, str) and value.strip() == ""):
                 col_def = col_by_name[col_name]
                 errors.append(ValidationErrorItem(
-                    layer_id=layer.id,
-                    layer_name=layer.layer_name,
+                    layer_id=pl.layer_id,
+                    layer_name=pl.layer_name or "",
                     column_name=col_name,
                     display_name=col_def.display_name,
                     rule_type="required",
@@ -167,10 +167,10 @@ async def validate_project(
             value = conditions.get(col_name)
             for rule in rules:
                 if rule.rule_type == "range":
-                    _validate_range(value, rule, col_name, col_by_name, layer, errors)
+                    _validate_range(value, rule, col_name, col_by_name, pl, errors)
                 elif rule.rule_type == "conditional_required":
                     _validate_conditional_required(
-                        value, rule, col_name, conditions, col_by_name, layer, errors,
+                        value, rule, col_name, conditions, col_by_name, pl, errors,
                     )
 
     # 4. 크로스 레이어 검증 (레이어 루프 완료 후 실행)

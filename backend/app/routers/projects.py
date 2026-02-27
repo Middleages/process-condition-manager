@@ -6,6 +6,7 @@ from app.models.user import User
 from app.dependencies.auth import get_current_user, require_active_user
 from app.schemas.project import (
     ProjectCreateRequest,
+    ProjectCreateRequestV2,
     ProjectResponse,
     ProjectDetailResponse,
     ProjectLayerResponse,
@@ -17,14 +18,27 @@ router = APIRouter(prefix="/api/projects", tags=["projects"])
 
 def _build_project_response(project, *, layer_count: int = 0) -> ProjectResponse:
     product = project.product
+    # V2 projects (device-ref based) may have product=None
+    if product is not None:
+        product_name = product.product_name
+        line_id = product.line_id
+        line_name = product.line.line_name if product.line else None
+    else:
+        product_name = project.product_name or ""
+        line_id = project.line_id
+        line_name = project.line.line_name if project.line else None
+
+    backbone = project.backbone
+    backbone_name = backbone.product_name if backbone else None
+
     return ProjectResponse(
         id=project.id,
         product_id=project.product_id,
-        product_name=product.product_name,
-        line_id=product.line_id,
-        line_name=product.line.line_name if product.line else None,
+        product_name=product_name,
+        line_id=line_id,
+        line_name=line_name,
         main_backbone_id=project.main_backbone_id,
-        backbone_name=project.backbone.product_name,
+        backbone_name=backbone_name,
         status=project.status,
         revision=project.revision,
         parent_project_id=project.parent_project_id,
@@ -34,20 +48,25 @@ def _build_project_response(project, *, layer_count: int = 0) -> ProjectResponse
         layer_count=layer_count,
         created_at=project.created_at,
         updated_at=project.updated_at,
+        # SPEC-PROJECT-002 V2 fields
+        device_master_id=project.device_master_id,
+        process=project.process,
+        device_type=project.device_type,
+        header_metadata=project.header_metadata,
+        part_id=project.part_id,
     )
 
 
 def _build_project_detail_response(project) -> ProjectDetailResponse:
     layers = []
     for pl in project.layers:
-        layer = pl.layer
         bb_product = pl.backbone_product
         layers.append(ProjectLayerResponse(
             id=pl.id,
             layer_id=pl.layer_id,
-            layer_name=layer.layer_name,
-            step_seq=layer.step_seq,
-            layer_number=layer.layer_number,
+            layer_name=pl.layer_name or "",
+            step_seq=pl.step_seq or "",
+            layer_number=pl.layer_id,
             backbone_product_id=pl.backbone_product_id,
             backbone_product_name=bb_product.product_name if bb_product else None,
             conditions=pl.conditions,
@@ -58,14 +77,27 @@ def _build_project_detail_response(project) -> ProjectDetailResponse:
     layers.sort(key=lambda x: x.sort_order)
 
     product = project.product
+    # V2 projects (device-ref based) may have product=None
+    if product is not None:
+        product_name = product.product_name
+        line_id = product.line_id
+        line_name = product.line.line_name if product.line else None
+    else:
+        product_name = project.product_name or ""
+        line_id = project.line_id
+        line_name = project.line.line_name if project.line else None
+
+    backbone = project.backbone
+    backbone_name = backbone.product_name if backbone else None
+
     return ProjectDetailResponse(
         id=project.id,
         product_id=project.product_id,
-        product_name=product.product_name,
-        line_id=product.line_id,
-        line_name=product.line.line_name if product.line else None,
+        product_name=product_name,
+        line_id=line_id,
+        line_name=line_name,
         main_backbone_id=project.main_backbone_id,
-        backbone_name=project.backbone.product_name,
+        backbone_name=backbone_name,
         status=project.status,
         revision=project.revision,
         parent_project_id=project.parent_project_id,
@@ -75,6 +107,12 @@ def _build_project_detail_response(project) -> ProjectDetailResponse:
         created_at=project.created_at,
         updated_at=project.updated_at,
         layers=layers,
+        # SPEC-PROJECT-002 V2 fields
+        device_master_id=project.device_master_id,
+        process=project.process,
+        device_type=project.device_type,
+        header_metadata=project.header_metadata,
+        part_id=project.part_id,
     )
 
 
@@ -87,6 +125,21 @@ async def create_project(
     project = await project_service.create_project(
         db, request.product_id, request.backbone_product_id, current_user.id,
     )
+    return _build_project_detail_response(project)
+
+
+@router.post("/v2", response_model=ProjectDetailResponse, status_code=201)
+async def create_project_v2(
+    req: ProjectCreateRequestV2,
+    current_user: User = Depends(require_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a project using device-ref based V2 flow (SPEC-PROJECT-002).
+
+    Resolves device_master by (line_id, product_name, process, part_id),
+    copies layers from layer_master, and optionally applies backbone conditions.
+    """
+    project = await project_service.create_project_v2(db, req, current_user.id)
     return _build_project_detail_response(project)
 
 

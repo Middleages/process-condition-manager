@@ -15,7 +15,7 @@ class LayerResponse(BaseModel):
 class ProductLayerResponse(BaseModel):
     id: int
     product_id: int
-    layer_id: int
+    layer_id: str
     layer: LayerResponse
     conditions: dict[str, Any]
 

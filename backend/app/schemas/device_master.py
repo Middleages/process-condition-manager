@@ -236,5 +236,44 @@ class ColumnInfo(BaseModel):
     data_type: str
 
 
+# ---------------------------------------------------------------------------
+# Project Creation (SPEC-PROJECT-002)
+# ---------------------------------------------------------------------------
+
+
+class DeviceSearchResult(BaseModel):
+    """Search result from device_master."""
+
+    id: int
+    line_id: int
+    product_name: str
+    process: str
+    part_id: str | None
+    is_active: bool
+    enrichment: dict  # JSONB from device_master.enrichment
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DeviceLayerItem(BaseModel):
+    """Layer from layer_master for a device."""
+
+    id: int  # layer_master PK
+    layer_id: str  # VARCHAR(10): "1.0", "1.21", "17.31"
+    step_seq: str | None
+    descript: str | None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DuplicateCheckResponse(BaseModel):
+    """Result of duplicate project check."""
+
+    exists: bool
+    existing_project_id: int | None = None
+    existing_project_status: str | None = None
+    existing_project_revision: int | None = None
+
+
 # Pydantic v2 모델 재빌드 (forward reference 해소)
 DeviceSyncResult.model_rebuild()

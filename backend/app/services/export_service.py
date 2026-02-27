@@ -184,11 +184,10 @@ class ExportService:
     async def _get_project_layers(
         self, db: AsyncSession, project_id: int
     ) -> list[ProjectLayer]:
-        """Fetch project layers with layer info, ordered by sort_order."""
+        """Fetch project layers ordered by sort_order."""
         query = (
             select(ProjectLayer)
             .where(ProjectLayer.project_id == project_id)
-            .options(selectinload(ProjectLayer.layer))
             .order_by(ProjectLayer.sort_order)
         )
         result = await db.execute(query)
@@ -365,20 +364,18 @@ class ExportService:
 
         Supported pcm_field values:
           - 'project.product_id'  -> project.product_id (int)
-          - 'layer.step_seq'      -> pl.layer.step_seq
-          - 'layer.layer_name'    -> pl.layer.layer_name
-          - 'layer.layer_number'  -> pl.layer.layer_number
+          - 'layer.step_seq'      -> pl.step_seq
+          - 'layer.layer_name'    -> pl.layer_name
+          - 'layer.layer_number'  -> pl.layer_id (layer_id IS now layer_number)
         """
         if pcm_field == "project.product_id":
             return project.product_id
-        if pl.layer is None:
-            return None
         if pcm_field == "layer.step_seq":
-            return pl.layer.step_seq
+            return pl.step_seq
         if pcm_field == "layer.layer_name":
-            return pl.layer.layer_name
+            return pl.layer_name
         if pcm_field == "layer.layer_number":
-            return pl.layer.layer_number
+            return pl.layer_id
         return None
 
     # --- Type A/B/C wrappers (delegate to export_builders) ---

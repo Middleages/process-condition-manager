@@ -66,7 +66,7 @@ class TestValidateProject:
             e for e in result.errors
             if e.rule_type == "required"
             and e.column_name == "SC_EXPOSE_ENERGY_mJ"
-            and e.layer_name == first_layer.layer.layer_name
+            and e.layer_name == first_layer.layer_name
         ]
         assert len(req_errors) == 1
         assert result.is_valid is False
@@ -85,7 +85,7 @@ class TestValidateProject:
             e for e in result.errors
             if e.rule_type == "required"
             and e.column_name == "SP_ADHESION_USE"
-            and e.layer_name == first_layer.layer.layer_name
+            and e.layer_name == first_layer.layer_name
         ]
         assert len(req_errors) == 1
 
@@ -107,7 +107,7 @@ class TestValidateProject:
             e for e in result.errors
             if e.rule_type == "range"
             and e.column_name == "SP_SPIN1_SPEED_rpm"
-            and e.layer_name == first_layer.layer.layer_name
+            and e.layer_name == first_layer.layer_name
         ]
         assert len(range_errors) == 1
         assert result.is_valid is False
@@ -126,7 +126,7 @@ class TestValidateProject:
             e for e in result.errors
             if e.rule_type == "range"
             and e.column_name == "SP_SPIN1_SPEED_rpm"
-            and e.layer_name == first_layer.layer.layer_name
+            and e.layer_name == first_layer.layer_name
         ]
         assert len(range_errors) == 1
 
@@ -156,7 +156,7 @@ class TestValidateProject:
             e for e in result.errors
             if e.rule_type == "range"
             and e.column_name == "SP_SPIN1_SPEED_rpm"
-            and e.layer_name == first_layer.layer.layer_name
+            and e.layer_name == first_layer.layer_name
         ]
         assert len(range_errors) == 0
 
@@ -165,7 +165,7 @@ class TestValidateProject:
             e for e in result.errors
             if e.rule_type == "required"
             and e.column_name == "SP_SPIN1_SPEED_rpm"
-            and e.layer_name == first_layer.layer.layer_name
+            and e.layer_name == first_layer.layer_name
         ]
         assert len(req_errors) == 1
 
@@ -183,7 +183,7 @@ class TestValidateProject:
             e for e in result.errors
             if e.rule_type == "range"
             and e.column_name == "SP_SPIN1_SPEED_rpm"
-            and e.layer_name == first_layer.layer.layer_name
+            and e.layer_name == first_layer.layer_name
         ]
         assert len(range_errors) == 1
 
@@ -208,7 +208,7 @@ class TestValidateProject:
             e for e in result.errors
             if e.rule_type == "conditional_required"
             and e.column_name == "SP_ADHESION_TYPE"
-            and e.layer_name == first_layer.layer.layer_name
+            and e.layer_name == first_layer.layer_name
         ]
         assert len(cond_errors) == 1
 
@@ -228,7 +228,7 @@ class TestValidateProject:
         cond_errors = [
             e for e in result.errors
             if e.rule_type == "conditional_required"
-            and e.layer_name == layer_b.layer.layer_name
+            and e.layer_name == layer_b.layer_name
         ]
         assert len(cond_errors) == 0
 
@@ -299,7 +299,7 @@ class TestValidateProject:
             e for e in result.errors
             if e.rule_type == "conditional_required"
             and e.column_name == "SP_ADHESION_TYPE"
-            and e.layer_name == first_layer.layer.layer_name
+            and e.layer_name == first_layer.layer_name
         ]
         assert len(cond_errors) == 1
 
@@ -342,7 +342,7 @@ class TestValidateProject:
             e for e in result.errors
             if e.rule_type == "conditional_required"
             and e.column_name == "SP_ADHESION_TYPE"
-            and e.layer_name == first_layer.layer.layer_name
+            and e.layer_name == first_layer.layer_name
         ]
         assert len(cond_errors) == 0
 
@@ -385,7 +385,7 @@ class TestValidateProject:
             e for e in result.errors
             if e.rule_type == "conditional_required"
             and e.column_name == "SP_ADHESION_TYPE"
-            and e.layer_name == first_layer.layer.layer_name
+            and e.layer_name == first_layer.layer_name
         ]
         assert len(cond_errors) == 1
 
@@ -428,7 +428,7 @@ class TestValidateProject:
             e for e in result.errors
             if e.rule_type == "conditional_required"
             and e.column_name == "SP_ADHESION_TYPE"
-            and e.layer_name == first_layer.layer.layer_name
+            and e.layer_name == first_layer.layer_name
         ]
         assert len(cond_errors) == 0
 
@@ -471,7 +471,7 @@ class TestValidateProject:
             e for e in result.errors
             if e.rule_type == "conditional_required"
             and e.column_name == "SP_ADHESION_TYPE"
-            and e.layer_name == first_layer.layer.layer_name
+            and e.layer_name == first_layer.layer_name
         ]
         assert len(cond_errors) == 1
 

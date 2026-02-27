@@ -10,6 +10,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
 if TYPE_CHECKING:
+    from app.models.device_master import DeviceMaster
+    from app.models.line import Line
     from app.models.product import Product
     from app.models.user import User
 
@@ -18,8 +20,8 @@ class Project(Base):
     __tablename__ = "projects"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    product_id: Mapped[int] = mapped_column(ForeignKey("products.id"), index=True)
-    main_backbone_id: Mapped[int] = mapped_column(ForeignKey("products.id"))
+    product_id: Mapped[int | None] = mapped_column(ForeignKey("products.id"), nullable=True, index=True)
+    main_backbone_id: Mapped[int | None] = mapped_column(ForeignKey("products.id"), nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="draft")  # draft / review / approved / rejected / archived
     revision: Mapped[int] = mapped_column(Integer, default=1)
     parent_project_id: Mapped[int | None] = mapped_column(ForeignKey("projects.id"), nullable=True)
@@ -31,9 +33,19 @@ class Project(Base):
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # 개정 생성 시 작성자가 입력한 개정 사유 (선택 입력)
     revision_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # SPEC-PROJECT-002: device master reference columns
+    device_master_id: Mapped[int | None] = mapped_column(ForeignKey("device_master.id"), nullable=True)
+    process: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    device_type: Mapped[str] = mapped_column(String(20), default="full")
+    header_metadata: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    line_id: Mapped[int | None] = mapped_column(ForeignKey("lines.id"), nullable=True)
+    product_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    part_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
-    product: Mapped["Product"] = relationship(foreign_keys=[product_id])
-    backbone: Mapped["Product"] = relationship(foreign_keys=[main_backbone_id])
+    product: Mapped["Product | None"] = relationship(foreign_keys=[product_id])
+    backbone: Mapped["Product | None"] = relationship(foreign_keys=[main_backbone_id])
+    line: Mapped["Line | None"] = relationship(foreign_keys=[line_id])
+    device_master: Mapped["DeviceMaster | None"] = relationship(foreign_keys=[device_master_id])
     parent_project: Mapped["Project | None"] = relationship(
         remote_side="Project.id", foreign_keys=[parent_project_id]
     )
@@ -48,7 +60,9 @@ class ProjectLayer(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
-    layer_id: Mapped[int] = mapped_column(ForeignKey("layers.id"))
+    layer_id: Mapped[str] = mapped_column(String(10))
+    layer_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    step_seq: Mapped[str | None] = mapped_column(String(20), nullable=True)
     backbone_product_id: Mapped[int | None] = mapped_column(ForeignKey("products.id"), nullable=True)
     conditions: Mapped[dict] = mapped_column(JSONB, default=dict)
     backbone_conditions: Mapped[dict] = mapped_column(JSONB, default=dict)
@@ -57,5 +71,4 @@ class ProjectLayer(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     project: Mapped["Project"] = relationship(back_populates="layers")
-    layer: Mapped["Layer"] = relationship()
     backbone_product: Mapped["Product | None"] = relationship(foreign_keys=[backbone_product_id])

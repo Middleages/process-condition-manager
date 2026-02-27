@@ -104,7 +104,8 @@ async def dashboard_data(db_session: AsyncSession):
     project_layers = []
     for proj in projects:
         pl = ProjectLayer(
-            project_id=proj.id, layer_id=layer1.id,
+            project_id=proj.id, layer_id=layer1.layer_number,
+            layer_name=layer1.layer_name, step_seq=layer1.step_seq,
             conditions={"COL_A": "10"}, sort_order=0,
         )
         db_session.add(pl)

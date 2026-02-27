@@ -54,7 +54,7 @@ class BackboneRepository:
     async def get_backbone_layer_map(
         db: AsyncSession,
         product_id: int,
-    ) -> dict[int, dict]:
+    ) -> dict[str, dict]:
         """Return {layer_id: conditions} from the Approved project for a product.
 
         Args:
@@ -62,8 +62,8 @@ class BackboneRepository:
             product_id: Product whose Approved project's layers to retrieve
 
         Returns:
-            Dict mapping layer_id to the conditions dict from the Approved project.
-            Returns empty dict if no Approved project exists.
+            Dict mapping layer_id (str, e.g. "1.0") to the conditions dict
+            from the Approved project. Returns empty dict if no Approved project exists.
         """
         approved_project = await BackboneRepository.get_approved_project_for_product(
             db, product_id
@@ -182,10 +182,9 @@ class BackboneRepository:
         if approved_project is None:
             return []
 
-        # Re-query with layer relationship eagerly loaded
+        # Re-query project layers (layer_name/step_seq are denormalized on ProjectLayer)
         result = await db.execute(
             select(ProjectLayer)
-            .options(selectinload(ProjectLayer.layer))
             .where(ProjectLayer.project_id == approved_project.id)
             .order_by(ProjectLayer.sort_order)
         )

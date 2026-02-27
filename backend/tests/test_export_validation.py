@@ -123,7 +123,8 @@ async def export_data(db_session: AsyncSession):
 
     # ProjectLayer with conditions (will be updated per test)
     pl = ProjectLayer(
-        project_id=project.id, layer_id=layer.id,
+        project_id=project.id, layer_id=layer.layer_number,
+        layer_name=layer.layer_name, step_seq=layer.step_seq,
         conditions={"NUM_COL": "100", "FLOAT_COL": "3.14", "TEXT_COL": "hello"},
         sort_order=0,
     )

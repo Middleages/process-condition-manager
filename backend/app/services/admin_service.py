@@ -11,7 +11,7 @@ from openpyxl import load_workbook
 
 from app.models import (
     RecipeXmlMapping, ColumnDefinition, ColumnCategory, ColumnValidation,
-    ChangeLog, ProjectLayer, Project, Product, Layer, User,
+    ChangeLog, ProjectLayer, Project, Product, User,
 )
 from app.schemas.admin import (
     RecipeMappingResponse, RecipeMappingCreate, RecipeMappingUpdate,
@@ -556,20 +556,18 @@ async def list_audit_logs(
     from sqlalchemy import func
 
     UserAlias = aliased(User, name="changed_by_user")
-    LayerAlias = aliased(Layer, name="layer_alias")
 
     base_query = (
         select(
             ChangeLog,
             Project.id.label("project_id"),
             Product.product_name.label("project_name"),
-            LayerAlias.layer_name.label("layer_name"),
+            ProjectLayer.layer_name.label("layer_name"),
             UserAlias.display_name.label("changed_by_name"),
         )
         .outerjoin(ProjectLayer, ChangeLog.project_layer_id == ProjectLayer.id)
         .outerjoin(Project, ProjectLayer.project_id == Project.id)
         .outerjoin(Product, Project.product_id == Product.id)
-        .outerjoin(LayerAlias, ProjectLayer.layer_id == LayerAlias.id)
         .outerjoin(UserAlias, ChangeLog.changed_by == UserAlias.id)
     )
 

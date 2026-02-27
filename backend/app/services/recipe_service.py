@@ -84,12 +84,12 @@ def match_layer_to_project(
 
     # Exact match on layer_name
     for pl in project_layers:
-        if pl.layer.layer_name.upper() == key_upper:
+        if pl.layer_name and pl.layer_name.upper() == key_upper:
             return pl
 
     # Partial match: layer_name contained in key or vice versa
     for pl in project_layers:
-        lname = pl.layer.layer_name.upper()
+        lname = (pl.layer_name or "").upper()
         if lname in key_upper or key_upper in lname:
             return pl
 
@@ -115,7 +115,7 @@ async def parse_recipe_xml(
     result = await db.execute(
         select(Project)
         .options(
-            selectinload(Project.layers).selectinload(ProjectLayer.layer),
+            selectinload(Project.layers),
         )
         .where(Project.id == project_id)
     )
@@ -147,7 +147,7 @@ async def parse_recipe_xml(
     if not mappings:
         return RecipeDiffResult(
             project_layer_id=matched_pl.id if matched_pl else None,
-            layer_name=matched_pl.layer.layer_name if matched_pl else None,
+            layer_name=matched_pl.layer_name if matched_pl else None,
             detected_layer_key=layer_key,
             total_mapped=0,
             diff_count=0,
@@ -220,7 +220,7 @@ async def parse_recipe_xml(
 
     return RecipeDiffResult(
         project_layer_id=matched_pl.id if matched_pl else None,
-        layer_name=matched_pl.layer.layer_name if matched_pl else None,
+        layer_name=matched_pl.layer_name if matched_pl else None,
         detected_layer_key=layer_key,
         total_mapped=len(items),
         diff_count=diff_count,

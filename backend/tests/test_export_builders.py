@@ -28,10 +28,6 @@ from app.services.export_builders import (
 # Helpers
 # ---------------------------------------------------------------------------
 
-def make_layer(layer_name: str) -> SimpleNamespace:
-    return SimpleNamespace(layer_name=layer_name)
-
-
 def make_col_def(column_name: str) -> SimpleNamespace:
     return SimpleNamespace(column_name=column_name)
 
@@ -54,10 +50,11 @@ def make_mapping(
 def make_pl(
     layer_name: str, conditions: dict,
     pl_id: int = 1, sort_order: int = 0,
+    layer_id: str = "1.0", step_seq: int = 1,
 ) -> SimpleNamespace:
     return SimpleNamespace(
-        id=pl_id, layer=make_layer(layer_name),
-        conditions=conditions, sort_order=sort_order,
+        id=pl_id, layer_name=layer_name, layer_id=layer_id,
+        step_seq=step_seq, conditions=conditions, sort_order=sort_order,
     )
 
 
@@ -133,7 +130,8 @@ class TestBuildTypeAData:
     def test_none_conditions_treated_as_empty(self):
         """ProjectLayer with conditions=None -> treated as {}."""
         layers = [SimpleNamespace(
-            id=1, layer=make_layer("L1"), conditions=None, sort_order=0,
+            id=1, layer_name="L1", layer_id="1.0", step_seq=1,
+            conditions=None, sort_order=0,
         )]
         mappings = [make_mapping("TARGET_A", "COL_A")]
         headers, rows = build_type_a_data("PROD-1", layers, mappings)
