@@ -2,6 +2,10 @@ context_search:
     auto_detect:
         enabled: true
     enabled: true
+    memory_integration:
+        enabled: true
+        include_in_context: true
+        priority_over_search: true
     performance:
         cache_ttl_seconds: 300
         timeout_seconds: 10

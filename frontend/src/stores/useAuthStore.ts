@@ -14,6 +14,7 @@ interface AuthState {
   logout: () => Promise<void>
   refreshToken: () => Promise<string | null>
   fetchCurrentUser: () => Promise<void>
+  restoreSession: () => Promise<void>
   setAccessToken: (token: string) => void
   clearAuth: () => void
 }
@@ -113,6 +114,26 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   setAccessToken: (token: string) => {
     authToken.set(token)
     set({ accessToken: token })
+  },
+
+  restoreSession: async () => {
+    const state = get()
+    if (state.accessToken) {
+      // 메모리에 토큰이 있으면 유저 정보만 갱신
+      await state.fetchCurrentUser()
+      return
+    }
+    // 새로고침으로 메모리 토큰이 사라진 경우,
+    // HTTP-only 쿠키의 refresh token으로 세션 복원 시도
+    set({ isLoading: true })
+    try {
+      const newToken = await state.refreshToken()
+      if (newToken) {
+        await state.fetchCurrentUser()
+      }
+    } finally {
+      set({ isLoading: false })
+    }
   },
 
   clearAuth: () => {

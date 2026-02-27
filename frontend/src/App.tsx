@@ -23,23 +23,15 @@ import { useAuthStore } from './stores/useAuthStore'
 
 /**
  * AppInitializer attempts to restore the auth session on mount.
- * If a valid refresh token cookie exists, fetchCurrentUser will
- * use the token in memory; if the access token is gone (e.g., page
- * reload), the 401 interceptor will trigger a refresh automatically.
+ * If a valid refresh token cookie exists, it silently refreshes
+ * the access token so the user stays logged in after page reload.
  */
 function AppInitializer() {
-  const { fetchCurrentUser, accessToken } = useAuthStore()
+  const restoreSession = useAuthStore((s) => s.restoreSession)
 
   useEffect(() => {
-    // Only attempt to restore session if we have an access token in memory.
-    // On a fresh page load the access token is gone (memory storage),
-    // so the ProtectedRoute will redirect to /login which will trigger
-    // the normal auth flow. If we want silent refresh on page load,
-    // we can call refreshToken() here instead.
-    if (accessToken) {
-      fetchCurrentUser()
-    }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+    restoreSession()
+  }, [restoreSession])
 
   return null
 }

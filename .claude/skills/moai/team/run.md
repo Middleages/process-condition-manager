@@ -206,16 +206,23 @@ Task(
 
 #### 4.2 Team Shutdown
 
-```
-SendMessage(type: "shutdown_request", recipient: "backend-dev", content: "Phase complete")
-SendMessage(type: "shutdown_request", recipient: "frontend-dev", content: "Phase complete")
-SendMessage(type: "shutdown_request", recipient: "tester", content: "Phase complete")
-```
+1. Shutdown all teammates:
+   ```
+   SendMessage(type: "shutdown_request", recipient: "backend-dev", content: "Phase complete")
+   SendMessage(type: "shutdown_request", recipient: "frontend-dev", content: "Phase complete")
+   SendMessage(type: "shutdown_request", recipient: "tester", content: "Phase complete")
+   ```
 
-Wait for shutdown_response from each, then:
-```
-TeamDelete
-```
+2. Wait for shutdown_response from each teammate
+
+3. Clean up GLM env vars and restore Claude-only operation:
+   ```bash
+   moai cc
+   ```
+   This safely removes GLM env vars while preserving ANTHROPIC_AUTH_TOKEN and other settings.
+   Do NOT manually Read/Write settings.local.json — use the CLI command which handles JSON merging correctly.
+
+4. TeamDelete to clean up team resources
 
 #### 4.3 Report Summary
 

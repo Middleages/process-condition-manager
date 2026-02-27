@@ -146,8 +146,14 @@ After all reviews complete:
    SendMessage(type: "shutdown_request", recipient: "quality-reviewer", content: "Review complete, shutting down")
    SendMessage(type: "shutdown_request", recipient: "ux-reviewer", content: "Review complete, shutting down")
    ```
-2. TeamDelete to clean up resources
-3. Optionally create fix tasks for critical issues
+2. Clean up GLM env vars and restore Claude-only operation:
+   ```bash
+   moai cc
+   ```
+   This safely removes GLM env vars while preserving ANTHROPIC_AUTH_TOKEN and other settings.
+   Do NOT manually Read/Write settings.local.json — use the CLI command which handles JSON merging correctly.
+3. TeamDelete to clean up resources
+4. Optionally create fix tasks for critical issues
 
 ## Fallback
 

@@ -11,6 +11,7 @@ from app.seed.columns import CATEGORIES, COLUMN_DEFS, SCANNER_TOOL_OPTIONS, VALI
 from app.seed.layers import LAYERS, LAYER_NAMES, LAYER_PROFILES
 from app.seed.products import LINES, PRODUCTS, NON_BACKBONE_PRODUCTS, generate_conditions
 from app.seed.exports import _build_export_target_names, seed_external_data_sources
+from app.seed.devices import seed_device_masters
 from app.seed.users import USERS
 
 engine = create_engine(settings.DATABASE_URL_SYNC)
@@ -525,6 +526,9 @@ def seed():
 
         # --- External Data Sources (mock tables + registration) ---
         seed_external_data_sources(session)
+
+        # --- Device Masters (mock external tables + sync config + device data) ---
+        seed_device_masters(session, line_ids)
 
         session.commit()
         print("\nSeed completed successfully!")

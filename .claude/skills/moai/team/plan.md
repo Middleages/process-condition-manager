@@ -170,10 +170,16 @@ AskUserQuestion with options:
    SendMessage(type: "shutdown_request", recipient: "architect", content: "Plan phase complete, shutting down")
    ```
 3. Wait maximum 30 seconds for shutdown_responses
-4. After 30 seconds: proceed with TeamDelete regardless of response status
-5. Log any unresponsive teammates for debugging
-6. Do NOT wait indefinitely for shutdown_response
-7. Execute /clear to free context for next phase
+4. Clean up GLM env vars and restore Claude-only operation:
+   ```bash
+   moai cc
+   ```
+   This safely removes GLM env vars while preserving ANTHROPIC_AUTH_TOKEN and other settings.
+   Do NOT manually Read/Write settings.local.json — use the CLI command which handles JSON merging correctly.
+5. TeamDelete to clean up team resources
+6. Log any unresponsive teammates for debugging
+7. Do NOT wait indefinitely for shutdown_response
+8. Execute /clear to free context for next phase
 
 **Timeout Rule**: If a teammate does not respond to shutdown_request within 30 seconds, proceed without their confirmation. This prevents the common issue of teammates hanging during cleanup.
 
