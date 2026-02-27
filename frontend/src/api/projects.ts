@@ -2,7 +2,6 @@ import client from './client'
 import type {
   Project,
   ProjectDetail,
-  ProjectCreateRequest,
   ProjectCreateRequestV2,
   BulkSaveRequest,
   BulkSaveResponse,
@@ -41,11 +40,6 @@ export async function fetchProjects(params?: {
 
 export async function fetchProjectDetail(projectId: number): Promise<ProjectDetail> {
   const { data } = await client.get<ProjectDetail>(`/projects/${projectId}`)
-  return data
-}
-
-export async function createProject(req: ProjectCreateRequest): Promise<ProjectDetail> {
-  const { data } = await client.post<ProjectDetail>('/projects', req)
   return data
 }
 

@@ -53,7 +53,7 @@ def _build_device_response(device: DeviceMaster, line_name: str) -> DeviceMaster
 
 @router.get("/search", response_model=list[DeviceSearchResult])
 async def search_devices(
-    q: str = Query(..., min_length=1, description="검색 키워드 (product_name / process / part_id ILIKE)"),
+    q: str = Query(..., min_length=2, max_length=100, description="검색 키워드 (product_name / process / part_id ILIKE)"),
     line_id: int | None = Query(None, description="Line ID 필터"),
     _user: User = Depends(require_active_user),
     db: AsyncSession = Depends(get_db),
@@ -70,10 +70,10 @@ async def search_devices(
 
 @router.post("/check-duplicate", response_model=DuplicateCheckResponse)
 async def check_duplicate(
-    line_id: int = Body(...),
-    product_name: str = Body(...),
-    process: str = Body(...),
-    part_id: str = Body(...),
+    line_id: int = Body(..., gt=0),
+    product_name: str = Body(..., min_length=1, max_length=100),
+    process: str = Body(..., min_length=1, max_length=50),
+    part_id: str = Body(..., min_length=1, max_length=100),
     _user: User = Depends(require_active_user),
     db: AsyncSession = Depends(get_db),
 ) -> DuplicateCheckResponse:

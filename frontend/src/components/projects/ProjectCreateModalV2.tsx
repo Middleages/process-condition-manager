@@ -179,6 +179,10 @@ export function ProjectCreateModalV2({ open, onOpenChange }: Props) {
     [selectedLayerIds.length]
   )
 
+  // ========== Computed display values ==========
+  const duplicateData = checkDuplicate.data
+  const hasDuplicate = duplicateData?.exists === true
+
   // ========== Submission ==========
   const isSubmitDisabled =
     !selectedLineId ||
@@ -186,6 +190,8 @@ export function ProjectCreateModalV2({ open, onOpenChange }: Props) {
     !selectedProcess ||
     !selectedPartId ||
     (deviceType === 'short' && selectedLayerIds.length === 0) ||
+    hasDuplicate ||
+    checkDuplicate.isPending ||
     createProjectV2.isPending
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -211,12 +217,8 @@ export function ProjectCreateModalV2({ open, onOpenChange }: Props) {
     }
   }
 
-  // ========== Computed display values ==========
   const lineSelected = selectedLineId != null
   const allCascadingSelected = !!(selectedProductName && selectedProcess && selectedPartId)
-
-  const duplicateData = checkDuplicate.data
-  const hasDuplicate = duplicateData?.exists === true
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -516,9 +518,21 @@ export function ProjectCreateModalV2({ open, onOpenChange }: Props) {
             )}
 
             {/* ===== Error display ===== */}
+            {checkDuplicate.isError && (
+              <p className="text-xs text-amber-600">
+                중복 확인에 실패했습니다. 네트워크를 확인해주세요.
+              </p>
+            )}
             {createProjectV2.isError && (
               <p className="text-sm text-destructive">
-                프로젝트 생성에 실패했습니다. 다시 시도해주세요.
+                {(() => {
+                  const err = createProjectV2.error as { response?: { status?: number; data?: { detail?: string } } }
+                  const status = err?.response?.status
+                  if (status === 409) return '동일한 디바이스 조합의 활성 프로젝트가 이미 존재합니다.'
+                  if (status === 404) return '디바이스 정보를 찾을 수 없습니다. 입력값을 확인해주세요.'
+                  if (status === 400) return err?.response?.data?.detail || '입력값이 올바르지 않습니다.'
+                  return '프로젝트 생성에 실패했습니다. 다시 시도해주세요.'
+                })()}
               </p>
             )}
           </div>

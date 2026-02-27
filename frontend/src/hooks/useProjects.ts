@@ -2,7 +2,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   fetchProjects,
   fetchProjectDetail,
-  createProject,
   createProjectV2,
   bulkSaveConditions,
   validateProject,
@@ -21,7 +20,6 @@ import {
 } from '@/api/projects'
 import type {
   ProjectStatus,
-  ProjectCreateRequest,
   ProjectCreateRequestV2,
   BulkSaveRequest,
   BackboneReplaceRequest,
@@ -69,17 +67,6 @@ export function useProjectDetail(projectId: number) {
     queryKey: projectKeys.detail(projectId),
     queryFn: () => fetchProjectDetail(projectId),
     enabled: projectId > 0,
-  })
-}
-
-export function useCreateProject() {
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: (req: ProjectCreateRequest) => createProject(req),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: projectKeys.lists() })
-    },
   })
 }
 

@@ -11,6 +11,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.device_master import DeviceMaster, LayerMaster
 
 
+def _escape_like(s: str) -> str:
+    """Escape LIKE metacharacters (%, _) to prevent unintended wildcard matching."""
+    return s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 async def search_devices(
     db: AsyncSession,
     line_id: int | None = None,
@@ -25,17 +30,22 @@ async def search_devices(
     if line_id is not None:
         query = query.where(DeviceMaster.line_id == line_id)
     if product_name is not None:
-        query = query.where(DeviceMaster.product_name.ilike(f"%{product_name}%"))
+        escaped = _escape_like(product_name)
+        query = query.where(DeviceMaster.product_name.ilike(f"%{escaped}%"))
     if process is not None:
-        query = query.where(DeviceMaster.process.ilike(f"%{process}%"))
+        escaped = _escape_like(process)
+        query = query.where(DeviceMaster.process.ilike(f"%{escaped}%"))
     if part_id is not None:
-        query = query.where(DeviceMaster.part_id.ilike(f"%{part_id}%"))
+        escaped = _escape_like(part_id)
+        query = query.where(DeviceMaster.part_id.ilike(f"%{escaped}%"))
 
     query = query.order_by(DeviceMaster.product_name).limit(limit)
     result = await db.execute(query)
     return list(result.scalars().all())
 
 
+# @MX:ANCHOR: [AUTO] V2 프로젝트 생성·중복 검사·리비전의 핵심 디바이스 조회 함수 (fan_in >= 3)
+# @MX:REASON: project_service.create_project_v2, device_masters.check_duplicate, revise_project 등에서 호출
 async def get_device_by_ref(
     db: AsyncSession,
     line_id: int,

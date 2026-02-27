@@ -45,12 +45,6 @@ export interface ProjectDetail extends Project {
 }
 
 // ========== API Requests ==========
-export interface ProjectCreateRequest {
-  product_id: number
-  backbone_product_id: number
-  created_by: number
-}
-
 export interface ProjectCreateRequestV2 {
   line_id: number
   product_name: string
