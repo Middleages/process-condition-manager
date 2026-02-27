@@ -17,7 +17,7 @@ export interface LayerInfo {
 export interface ProductLayerInfo {
   id: number
   product_id: number
-  layer_id: number
+  layer_id: string
   layer: LayerInfo
   conditions: Record<string, unknown>
 }
