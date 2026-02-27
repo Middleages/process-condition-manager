@@ -1,290 +1,271 @@
 # PCM Architecture Overview
 
-Process Condition Manager is a semiconductor photo process condition management web application designed for managing and controlling process conditions across manufacturing layers and products.
+Generated: 2026-02-27
+Version: 3.0.0 (SPEC-DEVICE-001 + SPEC-PROJECT-002 + SPEC-RBAC-001 + SPEC-EQP-002)
 
-## System Architecture
+---
 
-### High-Level View
-
-PCM follows a layered architecture pattern with clear separation of concerns:
+## System Architecture Diagram
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                   Presentation Layer                        │
-│              React 18 + TypeScript Frontend                 │
-│     (50+ Components, 12 Pages, 30+ Hooks, AG Grid)          │
-└─────────────────────────────────────────────────────────────┘
-                              ▲
-                              │ HTTP/REST
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                   API Gateway Layer                         │
-│     Nginx Reverse Proxy (Docker) on port 80                 │
-└─────────────────────────────────────────────────────────────┘
-                              ▲
-                              │ HTTP/JSON
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│               FastAPI Backend (Python)                      │
-│        18 Routers + 23 Services + 4 Repositories            │
-│           Async/Await Pattern throughout                    │
-└─────────────────────────────────────────────────────────────┘
-         ▲                              ▲
-         │ AsyncSession                 │ REST API
-         ▼                              ▼
-┌──────────────────────┐    ┌─────────────────────────────────┐
-│   PostgreSQL DB      │    │  External Systems               │
-│  + JSONB Support     │    │  (Equipment, Recipe XML, etc)   │
-└──────────────────────┘    └─────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│                          Browser (React 18)                          │
+│   DashboardPage  ProjectListPage  ConditionEditorPage  AdminPages    │
+│   ─────────────────────────────────────────────────────────────────  │
+│   Pages (15)   Hooks (24)   Components (70+)   Stores (3)   API (19) │
+└───────────────────────────┬─────────────────────────────────────────┘
+                            │  HTTP / REST (Axios + TanStack Query)
+                            ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                       Nginx Reverse Proxy :80                        │
+│          /api/*  ──►  backend:8000                                   │
+│          /*      ──►  frontend:5173                                  │
+└──────────┬──────────────────────────────────────────────────────────┘
+           │
+           ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                    FastAPI Backend :8000                              │
+│  ┌─────────────┐  ┌──────────────────────────────────────────────┐  │
+│  │  Middleware  │  │  Routers (21 files, ~115 endpoints)           │  │
+│  │  CORS       │  │  auth | projects | project_conditions         │  │
+│  │  Exception  │  │  project_layers | project_lifecycle           │  │
+│  │  Handler    │  │  admin | admin_users | admin_master           │  │
+│  └─────────────┘  │  admin_device | device_masters                │  │
+│                   │  export | export_admin | export_data_source    │  │
+│                   │  dashboard | comments | columns                │  │
+│                   │  lines | products | equipments | users         │  │
+│                   └──────────────────┬───────────────────────────┘  │
+│                                      │                               │
+│                   ┌──────────────────▼───────────────────────────┐  │
+│                   │  Services (28 files)                           │  │
+│                   │  project_service | project_status_service      │  │
+│                   │  project_analytics_service | condition_service  │  │
+│                   │  validation_service | cross_layer_validation   │  │
+│                   │  backbone_service | recipe_service             │  │
+│                   │  device_master_query | device_master_sync      │  │
+│                   │  device_enrichment | sync_source_config        │  │
+│                   │  device_meta_source | export_service           │  │
+│                   │  export_builders | export_admin_service        │  │
+│                   │  export_history | export_validation            │  │
+│                   │  export_data_source | admin_service            │  │
+│                   │  admin_master_service | admin_user_service     │  │
+│                   │  auth_service | comment_service                │  │
+│                   │  change_log_service | dashboard_service        │  │
+│                   │  diff_service                                   │  │
+│                   └──────────────────┬───────────────────────────┘  │
+│                                      │                               │
+│                   ┌──────────────────▼───────────────────────────┐  │
+│                   │  Repositories (4 files)                        │  │
+│                   │  backbone | comment | change_log | dashboard   │  │
+│                   └──────────────────┬───────────────────────────┘  │
+│                                      │                               │
+│                   ┌──────────────────▼───────────────────────────┐  │
+│                   │  SQLAlchemy 2.x Async ORM (12 model files)    │  │
+│                   └──────────────────┬───────────────────────────┘  │
+└──────────────────────────────────────┼──────────────────────────────┘
+                                       │  asyncpg
+                                       ▼
+                        ┌──────────────────────────┐
+                        │  PostgreSQL 16 :5432       │
+                        │  JSONB conditions storage  │
+                        │  19 Alembic migrations     │
+                        └──────────────────────────┘
 ```
 
-### Technology Stack
+---
 
-**Backend:**
-- FastAPI 0.100+ (async Python web framework)
-- SQLAlchemy 2.0+ (async ORM with JSONB support)
-- asyncpg (PostgreSQL async driver)
-- Pydantic v2 (data validation and DTOs)
-- python-jose (JWT authentication)
-- openpyxl (Excel export)
-- lxml (XML processing for recipe import/diff)
-- pytest-asyncio (async testing)
+## Technology Stack
 
-**Frontend:**
-- React 18 (UI framework)
-- TypeScript 5.7 (type safety)
-- React Router v7 (navigation, 13 routes)
-- React Query (server state management)
-- Zustand (client state management, 3 stores)
-- AG Grid Community Edition (data grid, 300+ columns)
-- Tailwind CSS 4 (styling)
-- Vite (build tool)
-- Vitest (testing)
-- Axios (HTTP client, 19 API modules)
+| Layer | Technology | Version | Purpose |
+|-------|-----------|---------|---------|
+| Frontend Framework | React | 18 | UI rendering |
+| Frontend Language | TypeScript | 5.x (strict) | Type-safe frontend code |
+| Frontend Build | Vite | 5.x | Dev server + bundler |
+| Frontend Routing | React Router | v7 | Client-side routing |
+| Frontend State | Zustand | 4.x | Global state management |
+| Frontend Server State | TanStack React Query | 5.x | Server state + caching |
+| Frontend Grid | AG Grid Community | 31+ | Condition table editing |
+| Frontend HTTP | Axios | 1.x | API client with interceptors |
+| Frontend Styling | Tailwind CSS | v4 | Utility-first CSS |
+| Frontend Icons | Lucide React | latest | Icon components |
+| Frontend Testing | Vitest | latest | Unit + component tests |
+| Backend Framework | FastAPI | 0.100+ | REST API server |
+| Backend Language | Python | 3.13 | Backend logic |
+| Backend ORM | SQLAlchemy | 2.x (async) | Database access layer |
+| Backend Validation | Pydantic | v2 | Request/response schemas |
+| Backend Auth | python-jose | 3.x | JWT token generation/validation |
+| Backend Passwords | passlib (bcrypt) | 1.7 | Password hashing |
+| Backend Excel | openpyxl | 3.x | Excel export generation |
+| Backend XML | lxml | 4.x | Recipe XML parsing (XPath) |
+| Backend Migrations | Alembic | 1.x | Database schema migrations |
+| Backend Testing | pytest + pytest-asyncio | latest | 515 tests across 33 files |
+| Database | PostgreSQL | 16 | Primary data store (JSONB) |
+| Proxy | Nginx | latest | Reverse proxy + routing |
+| Containerization | Docker Compose | v3.8 | Multi-service orchestration |
 
-**Infrastructure:**
-- Docker Compose (local development, 4 services)
-- Nginx (reverse proxy and static serving)
-- PostgreSQL 15+ (relational database)
-- Alembic (database migrations)
+---
 
 ## Key Architectural Patterns
 
-### Backend: Layered Architecture + Repository Pattern
+### Backend: 5-Layer Architecture
 
 ```
-Router Layer (18 endpoints)
-    ↓ HTTP Request
-Service Layer (23 services)
-    ↓ Business Logic
-Repository Layer (4 repositories)
-    ↓ Data Access
-ORM Layer (SQLAlchemy 2.0 async)
-    ↓ SQL Generation
-PostgreSQL Database (JSONB columns)
+Router → Service → Repository → Model → PostgreSQL
 ```
 
-Each router delegates to a service, which uses repositories for data access. This enables clean separation, testability, and maintainability.
+- **Routers**: HTTP endpoint handlers, authentication guards, request/response schema mapping
+- **Services**: Business logic orchestration, domain rule enforcement, external service calls
+- **Repositories**: Optimized data access patterns, N+1 query prevention, complex join aggregations
+- **Models**: SQLAlchemy 2.x async ORM definitions with typed columns and relationships
+- **Schemas**: Pydantic v2 models providing API contract validation (18 schema files)
 
-### Frontend: Component-Based + Hooks + State Management
+### Frontend: Feature-Sliced Architecture
 
 ```
-Pages (12 protected routes)
-    ↓
-Components (50+)
-    ↓
-Hooks (30+, custom and built-in)
-    ↓
-API Client (Axios, 19 modules)
-    ↓
-Zustand Stores (3: auth, toast, projects)
-    ↓
-HTTP → Backend
+Pages → Hooks → Components → Stores → API → Backend
 ```
 
-### Authentication & Authorization
+- **Pages**: Route-level components that orchestrate hooks and compose layouts
+- **Hooks**: Domain-specific data fetching (TanStack Query) and mutation logic (24 hook files)
+- **Components**: Reusable UI elements organized by domain subdirectory (70+ across 8 subdirs)
+- **Stores**: Zustand stores for editor state, auth state, and toast notifications
+- **API**: Axios-based typed API client modules per domain (19 modules)
 
-- JWT-based authentication with Access + Refresh tokens
-- Role-Based Access Control (RBAC) with 2 roles: user, admin
-- `get_current_user` dependency (high fan-in, 10+ routers)
-- `require_admin` dependency (high fan-in, 8+ routers)
-- Protected routes and API endpoints
+### Data Storage Strategy
 
-### Data Model: JSONB for Dynamic Conditions
+- **Condition data**: Stored as JSONB in `project_layers.conditions` — enables flexible ~300-column schema without DDL changes per column addition
+- **Backbone conditions**: Stored in `project_layers.backbone_conditions` for diff/comparison baseline (auto-updated on backbone replace)
+- **Change history**: EAV-style `change_logs` table — every cell edit tracked with source_type (manual/backbone/recipe), before/after values
+- **Configuration data**: Relational tables for master data (columns, validations, export systems, device masters)
+- **Export mappings**: `export_column_mappings` with source_type field distinguishing internal (JSONB) vs external (JOIN) data sources
 
-PCM stores ~300 parameters per layer in PostgreSQL JSONB columns:
-- `ProductLayers.conditions` - Master condition template
-- `ProjectLayers.conditions` - Project-specific conditions
-- `ProjectLayers.backbone_conditions` - Copied from backbone
-- `ColumnValidations.rule_config` - Validation rules as JSON
+### Authentication: JWT + HTTP-only Cookie Dual-Token Strategy
 
-This flexibility enables rapid addition of new parameters without schema changes.
+- Access token: 15-minute lifetime, stored in Zustand memory store (cleared on page refresh)
+- Refresh token: 7-day lifetime, stored in HTTP-only cookie (survives page refresh)
+- Axios response interceptor auto-refreshes on 401 before retrying original request
+- RBAC enforced at router level via FastAPI dependency injection
+
+---
 
 ## Core Domain Concepts
 
-### Backbone: Template-Based Project Creation
+| Concept | Description |
+|---------|-------------|
+| Process Condition Table | Grid of rows (layers) x columns (~300 parameters) representing fab lithography process conditions |
+| Layer (ProjectLayer) | One row in the condition table with step_seq, layer name, and a conditions JSONB object |
+| Column Definition | Metadata for each parameter column: category (SP/SC/OVL/DEV/EQP), data type, validation rules |
+| Backbone (Dynamic) | An Approved project whose conditions serve as the reference baseline for new projects (SPEC-BACKBONE-001) |
+| Project V1 | Project created via product + backbone selection (legacy creation flow) |
+| Project V2 | Project created via DeviceMaster + LayerMaster reference (SPEC-DEVICE-001 / SPEC-PROJECT-002) |
+| Device Master | Hardware device catalog (SPEC-DEVICE-001) — source of truth for V2 project layer templates |
+| Layer Master | Layer/step template entries tied to a DeviceMaster record |
+| Recipe XML | Equipment-exported XML; XPath-mapped conditions are diffed against current values, user selects which to apply |
+| Revision | A new Draft version created from an Approved project; original transitions to Archived |
+| Export Type A | Horizontal format: each layer is a column, conditions as rows |
+| Export Type B | Equipment-split format: one sheet per equipment referenced in EQP columns |
+| Export Type C | Key-value transpose format: column names as keys, condition values as values |
+| Cross-Layer Validation | Rules that check consistency across multiple layers (reference_exists, compare_layers, equipment_compatibility) |
 
-A "Backbone" is an approved Product's condition table (ProductLayers) used as a template when creating new projects. The backbone copy process transfers both structure and initial values, enabling consistency and fast project setup.
+---
 
-### Project Lifecycle
+## Data Entity Table
 
-Projects progress through states: **Draft** (editable) → **Review** (reviewable) → **Approved** (locked) → **Archived** (historical).
+| Model File | Entities | Purpose |
+|-----------|----------|---------|
+| user.py | User | Authentication, multi-role RBAC (roles TEXT[] ARRAY, 4 roles: editor/reviewer/admin/developer) |
+| line.py | Line | Fab line master (e.g., Line-1, Line-2); FK for products, projects, equipments |
+| product.py | Product, Layer, ProductLayer | Product master + layer templates (V1 backbone source); ProductLayer links products to layers |
+| project.py | Project, ProjectLayer | Core work unit: conditions (JSONB), backbone_conditions (JSONB), device_ref_id, device_ref_version |
+| column.py | ColumnCategory, ColumnDefinition, ColumnValidation | Column metadata (5 categories), validation rules (range/enum/regex/cross-layer), display ordering |
+| change_log.py | ChangeLog, ProjectStatusLog, ReviewComment | Cell-level change history, status transition audit log, reviewer comments |
+| export.py | ExportSystem, ExportColumnMapping, RecipeXmlMapping | Export system config, column-to-output-cell mappings (source_type: internal/external), XML XPath mappings |
+| export_history.py | ExportHistory | Audit trail for every export download (who, when, which system) |
+| export_data_source.py | ExportDataSource | External DB table definitions for Export sourcing data via JOIN |
+| equipment.py | Equipment | Equipment master per line (autocomplete source for EQP_xx columns; ftp_pw write-only) |
+| device_master.py | DeviceMaster, LayerMaster, SyncSourceConfig, DeviceMetaSource | Device/layer catalog for V2 project creation and sync orchestration |
 
-Each state change is tracked with revision control and change logging.
+---
 
-### Layers and Parameters
+## High Fan-in Modules
 
-Manufacturing processes consist of multiple **Layers** (e.g., "Photoresist", "Development"). Each layer contains **Parameters** stored as JSONB, organized by **ColumnCategories** (SP, SC, OVL, DEV).
+### Backend (3+ callers)
 
-### Validation System
+| Module | Estimated Callers | Role |
+|--------|------------------|------|
+| `app/dependencies/auth.py` | All 21 routers | Authentication + 6 RBAC dependency guards |
+| `app/database.py` (async_session, Base) | All models + services | Async DB session factory |
+| `app/models/project.py` (Project, ProjectLayer) | 10+ services | Core domain entities |
+| `app/utils/comparison.py` (values_differ) | condition_service, validation_service, diff_service, export_validation_service | Unified cell value comparison (normalizes numeric types) |
+| `app/constants.py` | project_status_service, validation_service, admin_service, cross_layer_validation_service | Domain constants: status transitions, rule types, category codes |
+| `app/repositories/backbone_repository.py` | project_service, backbone_service | Approved-project-based dynamic backbone queries |
+| `app/repositories/change_log_repository.py` | project_analytics_service, change_log_service | Change history queries + statistics |
 
-Parameters support multiple validation types:
-- Range validation (min/max)
-- Required/optional fields
-- Conditional requirements (if field A then require field B)
-- Cross-layer validation (consistency across multiple layers)
-- Pattern validation (regex)
+### Frontend (3+ consumers)
 
-### Recipe XML and Diff
+| Module | Estimated Consumers | Role |
+|--------|--------------------|----|
+| `src/api/client.ts` | All 19 API modules | Axios instance with auth + refresh interceptors |
+| `src/stores/useEditorStore.ts` | ConditionEditorPage + 6+ editor components | Central editor state (dirty cells, grid data, layer nav, UI toggles) |
+| `src/stores/useAuthStore.ts` | ProtectedRoute, Header, AdminLayout, all admin pages | Auth state (current user, access token, RBAC helpers) |
+| `src/types/index.ts` | All pages, hooks, components | Re-export hub for all 12 TypeScript type files |
+| `src/components/editor/ConditionGrid.tsx` | ConditionEditorPage | AG Grid wrapper: condition table rendering + cell editing |
+| `src/components/editor/buildColumnDefs.ts` | ConditionGrid | AG Grid column definition builder (EQP autocomplete detection, category grouping) |
 
-Equipment exports recipe definitions as XML. PCM:
-1. Imports the recipe XML
-2. Performs structural diff against current conditions
-3. Generates change preview for user review
-4. Applies selected changes selectively (not all-or-nothing)
-
-### Change Tracking
-
-Every cell modification is logged in ChangeLogs with:
-- Field name (parameter)
-- Old and new values
-- Change type (manual, backbone, recipe, status)
-- Timestamp and user
-
-### Comments System
-
-Comments operate at 3 levels:
-- **Project level** - Overall feedback on the project
-- **Layer level** - Feedback on specific manufacturing layer
-- **Cell level** - Feedback on individual parameter values
-
-### Export System
-
-Export supports 3 formats:
-- **TYPE_A** - Horizontal layout (typical Excel)
-- **TYPE_B** - Equipment-split layout (grouped by equipment)
-- **TYPE_C** - Transposed layout (rotated view)
-
-Export mappings are configurable per external system via ExportColumnMappings.
-
-## Data Entities (10 Core Tables)
-
-| Entity | Purpose | Key Fields |
-|--------|---------|-----------|
-| Users | User accounts | id, username, display_name, role, is_active |
-| Products | Product master data | id, product_name, description, line_id |
-| Layers | Manufacturing layers | id, layer_name, step_seq, layer_number, sort_order |
-| ProductLayers | Product condition template | product_id, layer_id, conditions (JSONB) |
-| Projects | Project work items | id, product_id, main_backbone_id, status, revision, parent_project_id |
-| ProjectLayers | Project-specific layers | project_id, layer_id, backbone_product_id, conditions (JSONB), backbone_conditions (JSONB) |
-| ColumnCategories | Parameter categories | SP, SC, OVL, DEV (4 default) |
-| ColumnDefinitions | Parameter definitions | column_name, display_name, category_id, data_type, select_options |
-| ColumnValidations | Validation rules | column_id, rule_type, rule_config (JSONB) |
-| ChangeLogs | Audit trail | project_id, field_name, old_value, new_value, change_type |
-
-Supporting tables: Comments (project/layer/cell), ExportSystems, ExportColumnMappings, ExportHistories, AuditLogs.
-
-## High Fan-In Modules (Architectural Anchors)
-
-### Backend High Fan-In
-
-- `app.database.get_db` - Database session dependency (18+ routers)
-- `app.dependencies.auth.get_current_user` - Current user injection (10+ routers)
-- `app.dependencies.auth.require_admin` - Admin check (8+ routers)
-- `app.models.User` - User entity (14+ imports)
-- `app.models.Project` - Project entity (8+ imports)
-- `app.services.project_service` - Core project logic (3+ routers)
-- `app.repositories.backbone_repository` - Backbone operations (4+ services)
-- `app.utils.comparison.compare_dicts` - Condition diffing (4+ places)
-
-These modules require careful documentation (@MX:ANCHOR tags) and refactoring considerations due to their broad influence.
-
-### Frontend High Fan-In
-
-- `stores/useAuthStore` - Authentication state (20+ components)
-- `stores/useToastStore` - Toast notifications (15+ components)
-- `api/client.ts` - Axios configuration (19+ modules)
-- `hooks/useProjects` - Project data fetching (5+ pages)
-
-## Database Deployment
-
-The database schema is version-controlled via **Alembic** with 14 migration versions, enabling reproducible deployments and safe schema evolution.
+---
 
 ## Testing Infrastructure
 
-- Backend: 25 test files with 380/380 tests passing (~7,900 lines)
-- Frontend: 5 test files using Vitest
-- Async test support via pytest-asyncio
-- In-memory SQLite for isolated testing
-- Dependency injection for mock auth and database
+| Category | Count | Framework | Notes |
+|----------|-------|-----------|-------|
+| Backend test files | 33 | pytest + pytest-asyncio | Located in `backend/tests/` |
+| Backend tests (passing) | 515 | pytest | Core business logic focus |
+| Frontend test files | 2 | Vitest | Located in `frontend/src/**/__tests__/` |
+| Test coverage target | 85%+ | pytest-cov | Backend priority per TRUST 5 |
+| Mock strategy | pytest-mock + httpx | async test client | No external calls in CI |
 
-## Performance Characteristics
+Backend test areas: backbone copy, condition validation, bulk save, status transitions, cross-layer validation, export format generation (Type A/B/C), RBAC guard enforcement, diff calculation, device master sync.
 
-- AG Grid handles 300+ columns × 60+ layers without virtualization
-- JSONB queries optimized with PostgreSQL GIN indexes
-- Async API ensures non-blocking under load
-- Docker Compose deployment supports local development with fast iteration
+Frontend test areas: diff calculation utilities (diff.ts), validation logic, auth component rendering.
 
-## Network Architecture
+---
+
+## Network and Deployment Architecture
 
 ```
-Internet
-    ↓
-┌─────────────────────┐
-│   Docker Network    │
-├─────────────────────┤
-│                     │
-│  Nginx:80           │
-│  ├─→ Frontend       │
-│  └─→ API:8000       │
-│                     │
-│  FastAPI:8000       │
-│  └─→ PostgreSQL     │
-│                     │
-└─────────────────────┘
+Development environment:
+  Browser ──► localhost:5173  (Vite dev server, HMR hot reload)
+  Browser ──► localhost:8000  (FastAPI uvicorn --reload)
+  DB tools ──► localhost:5432 (PostgreSQL direct access)
+
+Production (Docker Compose, 4 services):
+  Browser ──► nginx:80
+                ├── /api/*  ──► backend:8000 (FastAPI + uvicorn)
+                └── /*      ──► frontend:5173 (Vite / static)
+  backend:8000 ──► db:5432  (asyncpg, internal Docker network)
+
+Docker volumes:
+  pgdata         -- PostgreSQL data persistence (survives container restart)
+  /app/node_modules -- Frontend node_modules (isolated from host)
 ```
 
-All services communicate via Docker internal networking with Nginx as the reverse proxy.
+Service dependency order: db (healthcheck) → backend → frontend → nginx
 
-## Deployment Model
+---
 
-PCM deploys as 4 Docker services coordinated by docker-compose:
-1. **nginx** - Reverse proxy and static frontend serving
-2. **backend** - FastAPI application server
-3. **database** - PostgreSQL database
-4. **pgadmin** (optional) - Database administration UI
+## Security Overview
 
-This model supports local development, staging, and production deployments with environment variable configuration.
-
-## Security Considerations
-
-- JWT tokens with configurable expiration
-- Password hashing via python-jose
-- Role-based access control enforcement
-- Input validation via Pydantic schemas
-- SQL injection prevention via SQLAlchemy ORM
-- CORS configuration for frontend domain restriction
-- Audit logging via ChangeLogs table
-
-## Summary
-
-PCM is a well-architected, modern web application following industry best practices:
-
-- **Layered architecture** enables testability and maintainability
-- **Async throughout** provides scalability
-- **Domain-driven design** with clear models for backbone, project, layers, parameters
-- **Flexible JSONB storage** enables rapid parameter evolution
-- **Comprehensive validation** prevents invalid state
-- **Audit trails** enable compliance and debugging
-- **Clean separation** between frontend and backend
-- **Container deployment** enables reproducibility
+| Concern | Implementation |
+|---------|---------------|
+| Authentication | JWT access token (15min in-memory) + refresh token (7d HTTP-only cookie) |
+| Password storage | bcrypt hashing via passlib |
+| Role-based access control | 4 roles: editor, reviewer, admin, developer; roles stored as PostgreSQL TEXT[] ARRAY |
+| RBAC dependency guards | get_current_user, require_active_user, require_admin_or_developer, require_ops_write, require_system_write, require_project_owner |
+| Operations vs System Config | admin role: master data, users; developer role: system config, export systems, device masters |
+| CORS | Configurable allow-list via CORS_ORIGINS environment variable |
+| Input validation | Pydantic v2 strict validation on all request bodies and query parameters |
+| SQL injection prevention | SQLAlchemy ORM parameterized queries throughout (no raw SQL string concatenation) |
+| Secret management | DATABASE_URL, SECRET_KEY via environment variables (.env not committed) |
+| Token auto-refresh | Axios 401 interceptor transparently refreshes and retries failed requests |
+| Write-only fields | Equipment.ftp_pw serialized as None in all responses (write-only pattern) |
+| Error masking | Global exception handler returns generic 500 messages (no stack traces to client) |

@@ -1,1022 +1,372 @@
 # PCM Module Catalog
 
-Comprehensive reference of all PCM modules with responsibilities, key file paths, and interdependencies.
+Generated: 2026-02-27
+Version: 3.0.0 (SPEC-DEVICE-001 + SPEC-PROJECT-002 + SPEC-RBAC-001 + SPEC-EQP-002)
+
+---
+
+## Module Layer Classification
+
+```
+PRESENTATION    Routers (21) + Frontend Pages (15) + Components (70+)
+BUSINESS        Services (28) + Frontend Hooks (24) + Stores (3)
+DATA            Repositories (4) + Frontend API Modules (19)
+INFRASTRUCTURE  Models (12) + Schemas (18) + Database + Docker + Nginx
+```
+
+---
 
 ## Backend Modules
 
-### Core Infrastructure Modules
-
-#### Authentication & Security
-
-**Module:** `app.dependencies.auth`
-**Location:** `backend/app/dependencies/auth.py`
-**Responsibility:** JWT authentication and authorization enforcement
-**Key Functions:**
-- `get_current_user()` - Extract and validate JWT, return User model (high fan-in: 10+ routers)
-- `require_admin()` - Enforce admin role requirement (high fan-in: 8+ routers)
-- `create_access_token()` - Generate JWT with expiration
-- `verify_token()` - Validate token signature and expiration
-
-**Dependencies:** `app.models.User`, `app.database`, python-jose library
-**Used By:** All 18 routers for user identification and authorization
-**Notes:** Tokens include user_id and username in payload, configurable expiration time
-
-#### Database Connection
-
-**Module:** `app.database`
-**Location:** `backend/app/database.py`
-**Responsibility:** Async database session management and connection pooling
-**Key Classes:**
-- `get_db()` - Async generator yielding SQLAlchemy AsyncSession (high fan-in: 18+ routers)
-- `engine` - AsyncEngine configured for PostgreSQL asyncpg driver
-- `SessionLocal` - AsyncSessionMaker for session creation
-
-**Dependencies:** SQLAlchemy 2.0 async, asyncpg driver
-**Used By:** All repository and service layers
-**Configuration:** DATABASE_URL from environment (postgresql+asyncpg://user:pass@host/db)
-**Notes:** Connection pooling with configurable pool size, prepared statements enabled
-
-#### Configuration Management
-
-**Module:** `app.config`
-**Location:** `backend/app/config.py`
-**Responsibility:** Centralized application configuration using Pydantic Settings
-**Key Settings:**
-- `database_url` - PostgreSQL connection string
-- `jwt_secret_key` - JWT signing secret
-- `jwt_algorithm` - Algorithm (HS256)
-- `access_token_expire_minutes` - Token TTL (default 30 min)
-- `debug` - Debug mode toggle
-
-**Pattern:** Pydantic BaseSettings with environment variable override
-**Used By:** All modules requiring configuration
-**Notes:** Environment-specific configuration via .env files
-
-### Model Layer
-
-**Module:** `app.models`
-**Location:** `backend/app/models/` (10 SQLAlchemy models)
-
-#### User Model
-
-**File:** `backend/app/models/user.py`
-**Entities:** Users table
-**Fields:** id (pk), username (unique), display_name, role (enum: user/admin), is_active
-**Relationships:** One-to-many with Projects (user_id), Comments (user_id), ChangeLogs (user_id)
-**High Fan-In:** 14+ imports across routers and services
-**Notes:** Password hashing via Pydantic validator, no password stored in model
-
-#### Project Model
-
-**File:** `backend/app/models/project.py`
-**Entities:** Projects table
-**Fields:** id (pk), product_id (fk), main_backbone_id (fk to Products), status (enum: draft/review/approved/archived), revision (int), parent_project_id (fk for versioning)
-**Relationships:** One-to-many with ProjectLayers, Comments, ChangeLogs
-**High Fan-In:** 8+ imports in services and routers
-**Notes:** Revision tracking via parent_project_id for version history
-
-#### Product Model
-
-**File:** `backend/app/models/product.py`
-**Entities:** Products table (used as backbone template)
-**Fields:** id (pk), product_name, description, line_id (fk)
-**Relationships:** One-to-many with ProductLayers, Projects (backbone reference)
-**Notes:** Master data, linked to manufacturing line
-
-#### Layer Model
-
-**File:** `backend/app/models/layer.py`
-**Entities:** Layers table
-**Fields:** id (pk), layer_name, step_seq (sequence), layer_number, sort_order
-**Relationships:** One-to-many with ProductLayers, ProjectLayers
-**Notes:** Represents manufacturing process layers (e.g., photoresist, development)
-
-#### ProductLayer Model
-
-**File:** `backend/app/models/product_layer.py`
-**Entities:** ProductLayers table (master condition template)
-**Fields:** id (pk), product_id (fk), layer_id (fk), conditions (JSONB ~300 params)
-**Relationships:** Referenced by ProjectLayers.backbone_conditions
-**Notes:** JSONB conditions structure enables flexible parameter storage
-
-#### ProjectLayer Model
-
-**File:** `backend/app/models/project_layer.py`
-**Entities:** ProjectLayers table
-**Fields:** id (pk), project_id (fk), layer_id (fk), backbone_product_id (fk), conditions (JSONB), backbone_conditions (JSONB)
-**Relationships:** Many-to-one with Projects, Layers, Products
-**Notes:** Stores both project-modified conditions and original backbone for diffing
-
-#### ColumnDefinition Model
-
-**File:** `backend/app/models/column_definition.py`
-**Entities:** ColumnDefinitions table
-**Fields:** id (pk), column_name, display_name, category_id (SP/SC/OVL/DEV), data_type (string/number/select), select_options (JSONB for enums)
-**Relationships:** One-to-many with ColumnValidations
-**Notes:** Defines parameter metadata and display information
-
-#### ColumnValidation Model
-
-**File:** `backend/app/models/column_validation.py`
-**Entities:** ColumnValidations table
-**Fields:** id (pk), column_id (fk), rule_type (range/required/conditional_required/cross_layer/pattern), rule_config (JSONB)
-**Notes:** JSONB rule_config contains type-specific validation parameters
-
-#### ChangeLog Model
-
-**File:** `backend/app/models/changelog.py`
-**Entities:** ChangeLogs table (audit trail)
-**Fields:** id (pk), project_id (fk), field_name, old_value, new_value, change_type (manual/backbone/recipe/status), created_at, created_by
-**Notes:** Immutable audit log for compliance and debugging
-
-#### Comment Model
-
-**File:** `backend/app/models/comment.py`
-**Entities:** Comments table
-**Fields:** id (pk), project_id (fk), layer_id (fk, nullable), cell_identifier (nullable), content, created_by (fk to Users)
-**Notes:** Supports 3-level comments (project/layer/cell) via optional foreign keys
-
-### Data Transfer Objects (Schemas)
-
-**Module:** `app.schemas`
-**Location:** `backend/app/schemas/` (10+ Pydantic models)
-**Responsibility:** Request/response validation and serialization
-**Key Schemas:**
-- `UserSchema` - User representation (id, username, display_name, role)
-- `ProjectSchema` - Project representation with status and revision
-- `ProjectLayerSchema` - Layer conditions with validation rules
-- `ColumnDefinitionSchema` - Parameter definition with metadata
-- `ChangeLogSchema` - Change record with type and timestamp
-- `CommentSchema` - Comment with multi-level support
-- `ExportSchema` - Export job status and file reference
-
-**Pattern:** Pydantic models with validation, used in all API endpoints
-**Used By:** All routers for request validation and response serialization
-
-### Repository Layer
-
-**Module:** `app.repositories`
-**Location:** `backend/app/repositories/` (4 repositories)
-**Responsibility:** Data access abstraction with query building and result mapping
-
-#### ProjectRepository
-
-**File:** `backend/app/repositories/project_repository.py`
-**Methods:**
-- `create(project_data)` - Insert new project
-- `get(project_id)` - Fetch by id with relationships
-- `get_by_status(status)` - Filter by lifecycle status
-- `update(project_id, data)` - Update fields
-- `get_with_layers(project_id)` - Eager load layers and conditions
-
-**Used By:** ProjectService
-**Notes:** Handles complex queries like fetching project with all layer conditions for UI grid
-
-#### BackboneRepository
-
-**File:** `backend/app/repositories/backbone_repository.py`
-**Methods:**
-- `get_backbone(product_id)` - Fetch ProductLayers as template
-- `copy_backbone(source_product_id, target_project_id)` - Clone conditions to new project
-- `get_backbone_diff(project_id)` - Compare project conditions to original backbone
-
-**Used By:** ProjectService, ProjectLayerService (high fan-in: 4+ services)
-**Key Logic:** JSONB comparison for diff detection
-**Notes:** Critical for maintaining project versioning
-
-#### ConditionRepository
-
-**File:** `backend/app/repositories/condition_repository.py`
-**Methods:**
-- `get_conditions(project_id, layer_id)` - Fetch JSONB conditions object
-- `update_conditions(project_id, layer_id, data)` - Merge JSONB changes
-- `validate_conditions(conditions, column_defs)` - Apply validation rules
-
-**Used By:** ConditionService
-**Notes:** JSONB merge operations preserve existing keys while updating specified ones
-
-#### ValidationRepository
-
-**File:** `backend/app/repositories/validation_repository.py`
-**Methods:**
-- `get_rules(column_id)` - Fetch validation rules
-- `validate_value(column_id, value)` - Check against all rules for column
-- `validate_cross_layer(project_id, rules)` - Check layer interdependencies
-
-**Used By:** ValidationService
-**Notes:** Supports range, regex, conditional, and cross-layer validation types
-
-### Service Layer
-
-**Module:** `app.services`
-**Location:** `backend/app/services/` (23 service classes)
-**Responsibility:** Business logic and domain model operations
-
-#### ProjectService
-
-**File:** `backend/app/services/project_service.py`
-**Methods:**
-- `create_project(product_id)` - Create with backbone copy
-- `update_status(project_id, new_status)` - Handle lifecycle transitions
-- `fork_project(project_id)` - Create revision (sets parent_project_id)
-- `get_project_with_grid_data()` - Format for AG Grid (300+ columns)
-
-**Dependencies:** ProjectRepository, BackboneRepository, ChangeLogService
-**Used By:** ProjectRouter (high fan-in: 3+ routers)
-**Notes:** Core business logic, handles backbone copying and revision management
-
-#### ConditionService
-
-**File:** `backend/app/services/condition_service.py`
-**Methods:**
-- `save_conditions(project_id, layer_id, values)` - Persist JSONB changes
-- `get_grid_conditions()` - Format conditions for AG Grid display
-- `apply_recipe_diff(project_id, recipe_xml)` - Import and merge recipe
-
-**Dependencies:** ConditionRepository, ValidationService
-**Used By:** ConditionRouter
-**Notes:** Handles JSONB merge, validation, and recipe integration
-
-#### ValidationService
-
-**File:** `backend/app/services/validation_service.py`
-**Methods:**
-- `validate_condition(column_id, value)` - Single field validation
-- `validate_layer(layer_id, conditions)` - All fields in layer
-- `validate_cross_layer(project_id)` - Cross-layer consistency
-
-**Dependencies:** ValidationRepository, ColumnDefinitionRepository
-**Used By:** ConditionService
-**Notes:** Applies all validation types (range, required, conditional, pattern)
-
-#### CommentService
-
-**File:** `backend/app/services/comment_service.py`
-**Methods:**
-- `create_comment(project_id, layer_id, cell_id, content)` - Add at any level
-- `get_comments(project_id)` - Fetch with level filtering
-- `resolve_comment(comment_id)` - Mark as addressed
-
-**Used By:** CommentRouter
-**Notes:** Supports 3-level commenting (project/layer/cell)
-
-#### ChangeLogService
-
-**File:** `backend/app/services/changelog_service.py`
-**Methods:**
-- `log_change(project_id, field_name, old_value, new_value, change_type)` - Immutable audit
-- `get_history(project_id)` - Fetch change trail
-- `get_since(project_id, timestamp)` - Changes after timestamp
-
-**Used By:** ProjectService, ConditionService (automatic logging on all changes)
-**Notes:** Immutable append-only log, never updated or deleted
-
-#### ExportService
-
-**File:** `backend/app/services/export_service.py`
-**Methods:**
-- `preview_export(project_id, format_type)` - Show preview before export
-- `export_excel(project_id, system_id)` - Generate TYPE_A/B/C Excel
-- `export_zip(project_ids)` - Batch zip multiple projects
-- `get_export_history(project_id)` - Fetch export records
-
-**Dependencies:** ExportRepository, ExportColumnMappingRepository
-**Used By:** ExportRouter
-**Notes:** Supports 3 export formats with configurable mappings per system
-
-#### EquipmentService
-
-**File:** `backend/app/services/equipment_service.py`
-**Methods:**
-- `assign_equipment(layer_id, equipment_id)` - Link equipment to layer
-- `get_equipment(layer_id)` - Fetch assigned equipment
-- `get_recipe_template(equipment_id)` - Get recipe XML schema
-
-**Used By:** EquipmentRouter
-**Notes:** Equipment master data and recipe mapping
-
-### Router Layer (API Endpoints)
-
-**Module:** `app.routers`
-**Location:** `backend/app/routers/` (18 routers)
-**Responsibility:** HTTP endpoint definition and request/response mapping
-
-#### Authentication Router
-
-**File:** `backend/app/routers/auth.py`
-**Endpoints:**
-- `POST /api/auth/login` - Login with username/password
-- `POST /api/auth/logout` - Invalidate token
-- `POST /api/auth/refresh` - Refresh expired token
-- `GET /api/auth/me` - Get current user profile
-
-**Pattern:** FastAPI APIRouter with FastAPI dependency injection
-**Status Codes:** 200 success, 401 unauthorized, 422 validation error
-**Notes:** JWT tokens returned in response body for SPA consumption
-
-#### Project Router
-
-**File:** `backend/app/routers/project.py`
-**Endpoints:**
-- `GET /api/projects` - List projects with filters
-- `POST /api/projects` - Create new project
-- `GET /api/projects/{id}` - Fetch single project
-- `PUT /api/projects/{id}` - Update project fields
-- `DELETE /api/projects/{id}` - Archive project
-- `PUT /api/projects/{id}/status` - Transition lifecycle
-
-**Dependencies:** ProjectService, ChangeLogService
-**Protected By:** `require_admin` for create/delete/status-change
-**Notes:** Returns grid-formatted data for AG Grid frontend
-
-#### Condition Router
-
-**File:** `backend/app/routers/project_conditions.py`
-**Endpoints:**
-- `GET /api/project-conditions/{project_id}/{layer_id}` - Fetch JSONB conditions
-- `PUT /api/project-conditions/{project_id}/{layer_id}` - Save JSONB changes
-- `GET /api/project-conditions/{project_id}/grid-data` - Format for grid
-
-**Dependencies:** ConditionService, ValidationService
-**Validation:** Schema validation via ColumnDefinitions
-**Notes:** Grid endpoint returns flattened view of nested JSONB
-
-#### Layer Router
-
-**File:** `backend/app/routers/project_layers.py`
-**Endpoints:**
-- `POST /api/project-layers/{project_id}` - Add layer to project
-- `DELETE /api/project-layers/{project_id}/{layer_id}` - Remove layer
-- `PUT /api/project-layers/{project_id}/{layer_id}` - Replace backbone reference
-
-**Dependencies:** LayerService, ProjectLayerRepository
-**Notes:** Backbone can be switched to different product
-
-#### Column Router
-
-**File:** `backend/app/routers/columns.py`
-**Endpoints:**
-- `GET /api/columns` - List all column definitions with categories
-- `GET /api/columns/{category}` - Filter by category (SP, SC, OVL, DEV)
-- `GET /api/columns/{id}/validations` - Fetch validation rules
-
-**Used By:** Frontend for grid column configuration
-**Cached:** Yes, definitions rarely change
-**Notes:** Drives AG Grid column configuration on frontend
-
-#### Master Data Routers
-
-**Files:** `backend/app/routers/products.py`, `layers.py`, `lines.py`
-**Responsibility:** CRUD for Products, Layers, Lines (manufacturing infrastructure)
-**Protected By:** `require_admin` for mutations
-**Notes:** Reference data used throughout the system
-
-#### Comment Router
-
-**File:** `backend/app/routers/comments.py`
-**Endpoints:**
-- `POST /api/comments` - Create comment (project/layer/cell level)
-- `GET /api/comments/{project_id}` - List comments with level
-- `PUT /api/comments/{id}` - Update comment
-- `DELETE /api/comments/{id}` - Delete comment
-
-**Dependencies:** CommentService
-**Notes:** Comment data includes optional layer_id and cell_identifier
-
-#### Recipe Import Router
-
-**File:** `backend/app/routers/recipe.py`
-**Endpoints:**
-- `POST /api/recipe/import` - Upload and parse recipe XML
-- `GET /api/recipe/diff` - Show differences to current conditions
-- `POST /api/recipe/apply` - Apply selected changes
-
-**Dependencies:** RecipeService, ConditionService, ComparisonUtility
-**Validation:** XML schema validation
-**Notes:** Diff algorithm in app.utils.comparison
-
-#### Export Router
-
-**File:** `backend/app/routers/export.py`
-**Endpoints:**
-- `GET /api/export/preview` - Preview before export
-- `POST /api/export/excel` - Generate Excel (TYPE_A/B/C)
-- `POST /api/export/zip` - Batch zip multiple projects
-- `GET /api/export/history` - Fetch export records
-- `GET /api/export/download/{job_id}` - Download file
-
-**Dependencies:** ExportService, ExportHistoryRepository
-**File Output:** Temporary files in /tmp/exports
-**Notes:** Async background jobs for large exports
-
-#### User Management Router (Admin)
-
-**File:** `backend/app/routers/admin/users.py`
-**Endpoints:**
-- `GET /api/admin/users` - List users (admin only)
-- `POST /api/admin/users` - Create user
-- `PUT /api/admin/users/{id}` - Update role/status
-- `DELETE /api/admin/users/{id}` - Deactivate user
-
-**Protected By:** `require_admin`
-**Notes:** RBAC enforcement at endpoint level
-
-#### Dashboard Router
-
-**File:** `backend/app/routers/dashboard.py`
-**Endpoints:**
-- `GET /api/dashboard/stats` - Count by status, user activity
-- `GET /api/dashboard/timeline` - Recent activity feed
-
-**Cached:** Yes, aggregated data
-**Notes:** Read-heavy, optimized queries
-
-### Utility Modules
-
-#### Comparison Utility
-
-**File:** `backend/app/utils/comparison.py`
-**Functions:**
-- `compare_dicts(dict1, dict2)` - Deep diff algorithm (high fan-in: 4+ uses)
-- `generate_diff_report(original, current, updated)` - Structured diff for recipe import
-- `merge_dicts(base, updates)` - JSONB merge logic
-
-**Used By:** BackboneRepository, ConditionService, RecipeService
-**Notes:** Used for backbone diffing and recipe comparison
-
-#### Excel Export Utility
-
-**File:** `backend/app/utils/excel_export.py`
-**Functions:**
-- `format_conditions_for_export(conditions, format_type)` - Layout transformation
-- `write_excel_file(data, output_path)` - File generation using openpyxl
-
-**Used By:** ExportService
-**Notes:** Supports TYPE_A (horizontal), TYPE_B (equipment grouped), TYPE_C (transposed)
-
-#### XML Processing Utility
-
-**File:** `backend/app/utils/xml_processing.py`
-**Functions:**
-- `parse_recipe_xml(xml_string)` - XML to dict conversion using lxml
-- `validate_recipe_schema(xml_element)` - Schema validation
-
-**Used By:** RecipeService
-**Notes:** Handles equipment-specific recipe format
-
-### Seed Data
-
-**File:** `backend/app/seed/init_db.py`
-**Responsibility:** Initial database population for development
-**Data Seeded:**
-- Default users (admin, user)
-- Sample products and layers
-- Column definitions and validations
-- Sample projects with conditions
-
-**Usage:** Called by docker-compose or manual CLI
-**Notes:** Idempotent, safe to run multiple times
-
-### Testing
-
-**Module:** `backend/tests`
-**Location:** `backend/tests/` (25 test files, 380/380 passing)
-**Coverage:** 85%+ across all layers
-**Fixtures:** Shared pytest fixtures for database, auth, API client
-**Pattern:** AsyncClient from Starlette for ASGI testing
-**Database:** SQLite in-memory for isolation
-**Notes:** Tests use dependency injection to override real database with test database
+### Presentation Layer: Routers (21 files, ~115 endpoints)
+
+| File | Path | Endpoints | Responsibility | Key Dependencies |
+|------|------|-----------|----------------|-----------------|
+| auth.py | app/routers/auth.py | 4 | Login, logout, token refresh, current user | auth_service |
+| users.py | app/routers/users.py | 1 | Current user profile read | get_current_user |
+| lines.py | app/routers/lines.py | 1 | Line master list (public read) | Line model |
+| columns.py | app/routers/columns.py | 1 | Column definitions list with validations | ColumnDefinition model |
+| products.py | app/routers/products.py | 5 | Product list, layer list, product-layer joins | Product, Layer models |
+| equipments.py | app/routers/equipments.py | 1 | Equipment list by line (autocomplete source) | Equipment model |
+| projects.py | app/routers/projects.py | 4 | Project CRUD (V1 product-based + V2 device-ref creation) | project_service |
+| project_conditions.py | app/routers/project_conditions.py | 7 | Condition bulk save/validate, change logs, cell history, version list, JSONB diff | condition_service, validation_service, change_log_service, project_analytics_service, diff_service |
+| project_layers.py | app/routers/project_layers.py | 5 | Backbone replace, Recipe XML upload/apply, layer add/delete | backbone_service, recipe_service |
+| project_lifecycle.py | app/routers/project_lifecycle.py | 5 | Status transitions (Draft→Review→Approved), revise, change summary | project_service, project_status_service, project_analytics_service, change_log_service |
+| dashboard.py | app/routers/dashboard.py | 1 | Dashboard overview aggregations (4 query types) | dashboard_service |
+| comments.py | app/routers/comments.py | 4 | Review comment CRUD per project | comment_service |
+| admin.py | app/routers/admin.py | 11 | Column validations CRUD, cross-layer rules CRUD, select options, audit logs | admin_service, export_history_service |
+| admin_users.py | app/routers/admin_users.py | 5 | User CRUD, deactivate, password reset | admin_user_service |
+| admin_master.py | app/routers/admin_master.py | 26 | Line/Product/Layer/Column/Category CRUD + reorder | admin_master_service |
+| admin_device.py | app/routers/admin_device.py | 13 | Device master admin: sync source config, meta sources, sync trigger | device_enrichment_service, device_master_sync_service, sync_source_config_service, device_meta_source_service |
+| device_masters.py | app/routers/device_masters.py | 5 | Device master public queries (list, detail, layers) | device_master_query_service |
+| export.py | app/routers/export.py | 3 | Export preview, single download, bulk ZIP download | export_service, export_history_service, export_validation_service |
+| export_admin.py | app/routers/export_admin.py | 9 | Export system CRUD, column mapping CRUD | export_admin_service |
+| export_data_source.py | app/routers/export_data_source.py | 5 | External data source CRUD | export_data_source_service |
+
+Note: export.py registers two routers (export.router for /api/export, export.project_router for /api/projects/{id}/export).
+
+---
+
+### Business Layer: Services (28 files)
+
+#### Core Project Services
+
+| File | Path | Responsibility |
+|------|------|----------------|
+| project_service.py | app/services/project_service.py | Project CRUD, V1/V2 creation, backbone copy, layer initialization, revision creation |
+| project_status_service.py | app/services/project_status_service.py | Status transition workflow (Draft→Review→Approved→Archived), validation pre-check |
+| project_analytics_service.py | app/services/project_analytics_service.py | Change summary generation, version history list, uses ChangeLogRepository |
+| condition_service.py | app/services/condition_service.py | Bulk condition save, dirty cell application, change_log recording |
+| validation_service.py | app/services/validation_service.py | Single-layer column validation (range, enum, required, regex rules) |
+| cross_layer_validation_service.py | app/services/cross_layer_validation_service.py | Cross-layer rules: reference_exists, compare_layers, equipment_compatibility |
+| diff_service.py | app/services/diff_service.py | JSONB diff between two project versions (backbone vs current, version A vs B) |
+
+#### Backbone and Recipe Services
+
+| File | Path | Responsibility |
+|------|------|----------------|
+| backbone_service.py | app/services/backbone_service.py | Layer-level backbone replacement (copies from Approved project_layers) |
+| recipe_service.py | app/services/recipe_service.py | Recipe XML parse (lxml XPath), diff against current conditions, selective apply |
+
+#### Device Master Services (SPEC-DEVICE-001)
+
+| File | Path | Responsibility |
+|------|------|----------------|
+| device_master_query_service.py | app/services/device_master_query_service.py | Device/layer master read queries for V2 project creation and admin views |
+| device_master_sync_service.py | app/services/device_master_sync_service.py | Sync orchestration: pull from external source, upsert DeviceMaster/LayerMaster |
+| device_enrichment_service.py | app/services/device_enrichment_service.py | Enrichment of device records with metadata from DeviceMetaSource tables |
+| sync_source_config_service.py | app/services/sync_source_config_service.py | CRUD for SyncSourceConfig (external data source connection settings) |
+| device_meta_source_service.py | app/services/device_meta_source_service.py | CRUD for DeviceMetaSource (metadata column definitions for device enrichment) |
+
+#### Export Services
+
+| File | Path | Responsibility |
+|------|------|----------------|
+| export_service.py | app/services/export_service.py | Export orchestration: coordinates builders, resolves data sources, calls history logger |
+| export_builders.py | app/services/export_builders.py | Pure Excel-building functions: build_type_a(), build_type_b(), build_type_c() |
+| export_admin_service.py | app/services/export_admin_service.py | ExportSystem and ExportColumnMapping CRUD |
+| export_history_service.py | app/services/export_history_service.py | ExportHistory record creation and query |
+| export_validation_service.py | app/services/export_validation_service.py | Pre-export data quality validation (completeness, required fields) |
+| export_data_source_service.py | app/services/export_data_source_service.py | ExportDataSource CRUD and external table introspection |
+
+#### Admin Services
+
+| File | Path | Responsibility |
+|------|------|----------------|
+| admin_service.py | app/services/admin_service.py | Column validation CRUD, cross-layer rule CRUD, select options, audit log queries |
+| admin_master_service.py | app/services/admin_master_service.py | Line/Product/Layer/ColumnDefinition/ColumnCategory CRUD with FK-safe deletion and reorder |
+| admin_user_service.py | app/services/admin_user_service.py | User CRUD, role assignment, deactivation, password reset (bcrypt) |
+
+#### Infrastructure Services
+
+| File | Path | Responsibility |
+|------|------|----------------|
+| auth_service.py | app/services/auth_service.py | JWT token generation/validation, login, logout, token refresh |
+| comment_service.py | app/services/comment_service.py | Review comment CRUD, uses CommentRepository for optimized joins |
+| change_log_service.py | app/services/change_log_service.py | ChangeLog queries with filters, timeline, cell history; uses ChangeLogRepository |
+| dashboard_service.py | app/services/dashboard_service.py | Dashboard aggregation orchestration using DashboardRepository |
+
+---
+
+### Data Layer: Repositories (4 files + __init__)
+
+| File | Path | Responsibility | Optimization Focus |
+|------|------|----------------|-------------------|
+| backbone_repository.py | app/repositories/backbone_repository.py | Approved project backbone eligibility queries + condition retrieval | Partial index on status=Approved; avoids N+1 on layer joins |
+| comment_repository.py | app/repositories/comment_repository.py | ReviewComment queries with user JOIN | Single JOIN query vs N+1 per comment |
+| change_log_repository.py | app/repositories/change_log_repository.py | ChangeLog/StatusLog queries + statistics aggregations | Indexed queries on project_id + column_key; bulk fetch |
+| dashboard_repository.py | app/repositories/dashboard_repository.py | 4 dashboard aggregate query types (status counts, my projects, review queue, activity timeline) | All aggregations in single SQL query per type |
+
+---
+
+### Infrastructure Layer: Models (12 files)
+
+| File | Path | Entities | Key Fields |
+|------|------|----------|-----------|
+| user.py | app/models/user.py | User | id, username, email, roles (TEXT[]), is_active, hashed_password |
+| line.py | app/models/line.py | Line | id, name |
+| product.py | app/models/product.py | Product, Layer, ProductLayer | product: line_id, name; layer: step_seq, name; product_layer: conditions JSONB |
+| project.py | app/models/project.py | Project, ProjectLayer | project: status, version, line_id, device_ref_id, device_ref_version; project_layer: conditions JSONB, backbone_conditions JSONB |
+| column.py | app/models/column.py | ColumnCategory, ColumnDefinition, ColumnValidation | category: code (SP/SC/OVL/DEV/EQP); definition: key, display_name, data_type, order; validation: rule_type, parameters |
+| change_log.py | app/models/change_log.py | ChangeLog, ProjectStatusLog, ReviewComment | changelog: project_layer_id, column_key, old_value, new_value, source_type; status_log: from/to_status |
+| export.py | app/models/export.py | ExportSystem, ExportColumnMapping, RecipeXmlMapping | export_system: name, format_type; mapping: source_type (internal/external), data_source_id, source_column_name |
+| export_history.py | app/models/export_history.py | ExportHistory | project_id, export_system_id, user_id, exported_at, layer_ids |
+| export_data_source.py | app/models/export_data_source.py | ExportDataSource | table_name, join_key, description |
+| equipment.py | app/models/equipment.py | Equipment | line_id, equipment_name (UNIQUE per line), model, PRC, ip, ftp, ftp_pw (write-only) |
+| device_master.py | app/models/device_master.py | DeviceMaster, LayerMaster, SyncSourceConfig, DeviceMetaSource | device: name, code, line_id; layer_master: step_seq, name, device_master_id; sync: connection config |
+
+---
+
+### Infrastructure Layer: Schemas (18 files)
+
+| File | Path | Covers |
+|------|------|--------|
+| user.py | app/schemas/user.py | UserResponse, UserCreate, UserUpdate |
+| line.py | app/schemas/line.py | LineResponse |
+| product.py | app/schemas/product.py | ProductResponse, LayerResponse |
+| project.py | app/schemas/project.py | ProjectCreate (V1+V2), ProjectResponse, ProjectLayerResponse, ProjectSummary |
+| column.py | app/schemas/column.py | ColumnDefinitionResponse, ColumnCategoryResponse, ColumnValidationResponse |
+| comment.py | app/schemas/comment.py | ReviewCommentCreate, ReviewCommentResponse |
+| backbone.py | app/schemas/backbone.py | BackboneProjectResponse, BackboneLayerResponse |
+| dashboard.py | app/schemas/dashboard.py | DashboardOverviewResponse |
+| export.py | app/schemas/export.py | ExportPreviewResponse, ExportSystemResponse |
+| export_admin.py | app/schemas/export_admin.py | ExportSystemCreate/Update, ExportColumnMappingCreate |
+| export_data_source.py | app/schemas/export_data_source.py | ExportDataSourceCreate, ExportDataSourceResponse |
+| device_master.py | app/schemas/device_master.py | DeviceMasterResponse, LayerMasterResponse, SyncSourceConfigResponse |
+| admin.py | app/schemas/admin.py | ValidationRuleCreate, CrossLayerRuleCreate, SelectOptionUpdate, AuditLogResponse |
+| admin_master.py | app/schemas/admin_master.py | LineCreate, ProductCreate, LayerCreate, ColumnDefinitionCreate, CategoryCreate |
+| admin_user.py | app/schemas/admin_user.py | AdminUserCreate, AdminUserUpdate, PasswordResetRequest |
+| recipe.py | app/schemas/recipe.py | RecipeDiffResponse, RecipeApplyRequest |
 
 ---
 
 ## Frontend Modules
 
-### Core Application Structure
-
-**Module:** `src/`
-**Location:** `frontend/src/`
-**Architecture:** React 18 with TypeScript, component-based with hooks, Zustand stores for state
-
-#### Entry Point
-
-**File:** `frontend/src/main.tsx`
-**Responsibility:** React app initialization and mount
-**Imports:** App component, global styles
-**Notes:** Vite entry point, handles client-side rendering
-
-#### Router Configuration
-
-**File:** `frontend/src/App.tsx`
-**Responsibility:** React Router setup with 13 protected and public routes
-**Routes:**
-- `GET /login` - LoginPage (public)
-- `GET /` - DashboardPage (protected)
-- `GET /projects` - ProjectListPage (protected)
-- `GET /projects/:projectId/edit` - ConditionEditorPage (protected)
-- `GET /admin/users` - UserManagementPage (admin)
-- `GET /admin/master-data` - MasterDataPage (admin)
-- `GET /admin/enum-options` - EnumManagementPage (admin)
-- `GET /admin/xml-mappings` - XmlMappingsPage (admin)
-- `GET /admin/validations` - ValidationRulesPage (admin)
-- `GET /admin/data-sources` - ExportDataSourcesPage (admin)
-- `GET /admin/export-systems` - ExportSystemsPage (admin)
-- `GET /admin/audit-logs` - AuditLogPage (admin)
-- `GET /*` - NotFoundPage (fallback)
-
-**Protected By:** useAuth hook checking isAuthenticated and role
-**Notes:** Routes use lazy loading for code splitting
-
-### State Management
-
-**Module:** `src/stores`
-**Location:** `frontend/src/stores/` (3 Zustand stores)
-
-#### Authentication Store
-
-**File:** `frontend/src/stores/useAuthStore.ts`
-**State:**
-- `user` - Current User object (id, username, display_name, role)
-- `token` - JWT access token
-- `refreshToken` - JWT refresh token
-- `isAuthenticated` - Boolean flag
-- `isAdmin` - Computed from user.role
-
-**Actions:**
-- `login(username, password)` - Call /api/auth/login
-- `logout()` - Clear tokens and call /api/auth/logout
-- `refreshAccessToken()` - Call /api/auth/refresh
-- `setUser(user)` - Update user profile
-
-**High Fan-In:** 20+ components
-**Persistence:** Tokens stored in localStorage, auto-logout on expiration
-**Notes:** Observable state, components re-render on token changes
-
-#### Toast Store
-
-**File:** `frontend/src/stores/useToastStore.ts`
-**State:**
-- `toasts` - Array of {id, message, type, duration}
-- `type` - 'success', 'error', 'warning', 'info'
-
-**Actions:**
-- `addToast(message, type, duration)` - Add notification
-- `removeToast(id)` - Remove specific toast
-- `clearAll()` - Clear all notifications
-
-**High Fan-In:** 15+ components
-**Notes:** Auto-dismiss after duration, dismissible by user
-
-#### Project Store
-
-**File:** `frontend/src/stores/useProjectStore.ts`
-**State:**
-- `projects` - Array of Project objects
-- `selectedProject` - Currently editing project
-- `filters` - Status, user, date filters
-- `sortBy` - Column name and direction
-
-**Actions:**
-- `setProjects(projects)` - Update list
-- `selectProject(project)` - Set editing target
-- `setFilters(filters)` - Update filter criteria
-
-**Used By:** ProjectListPage, ConditionEditorPage
-**Notes:** Derived from server state, not primary source of truth
-
-### API Client
-
-**Module:** `src/api`
-**Location:** `frontend/src/api/` (19 API modules)
-**Responsibility:** Axios client configuration and API endpoint bindings
-
-#### HTTP Client Configuration
-
-**File:** `frontend/src/api/client.ts`
-**Configuration:**
-- Base URL: `${window.location.origin}/api`
-- Request interceptor: Attach JWT token from useAuthStore
-- Response interceptor: Handle 401, 403, 5xx errors
-- Timeout: 30 seconds
-
-**High Fan-In:** 19+ API modules
-**Error Handling:** Global error handler triggers toast notifications
-**CORS:** Configured by Nginx reverse proxy
-**Notes:** Axios instance shared across all API modules
-
-#### API Modules
-
-**Project API** (`frontend/src/api/projects.ts`)
-- `getProjects(filters)` - List with pagination
-- `createProject(productId)` - Create new
-- `getProject(id)` - Single fetch
-- `updateProject(id, data)` - Update fields
-- `deleteProject(id)` - Archive
-- `getProjectGridData(id)` - Grid-formatted conditions
-
-**Condition API** (`frontend/src/api/conditions.ts`)
-- `getConditions(projectId, layerId)` - Fetch JSONB
-- `updateConditions(projectId, layerId, data)` - Save changes
-- `validateCondition(columnId, value)` - Real-time validation
-
-**Recipe API** (`frontend/src/api/recipe.ts`)
-- `importRecipe(projectId, recipeXml)` - Upload XML
-- `getRecipeDiff(projectId)` - Preview changes
-- `applyRecipeDiff(projectId, selectedChanges)` - Apply selective
-
-**Export API** (`frontend/src/api/export.ts`)
-- `previewExport(projectId, formatType)` - Show preview
-- `exportExcel(projectId, systemId)` - Generate file
-- `exportZip(projectIds)` - Batch zip
-- `downloadExport(jobId)` - Download file
-- `getExportHistory(projectId)` - Fetch records
-
-**Comment API** (`frontend/src/api/comments.ts`)
-- `createComment(projectId, layerId, cellId, content)` - Add at level
-- `getComments(projectId)` - List with level
-- `updateComment(id, content)` - Edit comment
-- `deleteComment(id)` - Remove comment
-
-**User API** (`frontend/src/api/users.ts`)
-- `login(username, password)` - Login
-- `logout()` - Logout
-- `refreshToken()` - Token refresh
-- `getCurrentUser()` - User profile
-
-**Column API** (`frontend/src/api/columns.ts`)
-- `getColumns()` - All definitions
-- `getColumnsByCategory(category)` - Filter (SP, SC, OVL, DEV)
-- `getValidations(columnId)` - Validation rules
-
-**Additional APIs:** admin, dashboard, equipment, master data (products, lines, layers), validation
-**Pattern:** Axios client instance with request/response transformation
-**Error Handling:** Centralized in client.ts interceptors
-
-### Hooks
-
-**Module:** `src/hooks`
-**Location:** `frontend/src/hooks/` (30+ custom hooks)
-**Responsibility:** Encapsulate component logic and state management
-
-#### Authentication Hooks
-
-**`useAuth` Hook** (`frontend/src/hooks/useAuth.ts`)
-- **State Access:** user, token, isAuthenticated, isAdmin from useAuthStore
-- **Pattern:** Custom hook wrapping Zustand store
-- **Used By:** Protected components for access control
-- **High Fan-In:** 20+ components
-
-**`useLoginForm` Hook** (`frontend/src/hooks/useLoginForm.ts`)
-- **Responsibility:** Login form state and validation
-- **State:** username, password, error, loading
-- **Functions:** handleChange, handleSubmit, validateForm
-
-#### Data Fetching Hooks
-
-**`useProjects` Hook** (`frontend/src/hooks/useProjects.ts`)
-- **Functionality:** Fetch projects list with React Query caching
-- **Parameters:** filters (status, user), sortBy
-- **Returns:** {data, isLoading, error, refetch}
-- **High Fan-In:** 5+ pages
-- **Caching:** 5 minute stale time
-
-**`useProject` Hook** (`frontend/src/hooks/useProject.ts`)
-- **Functionality:** Fetch single project with eager-loaded layers
-- **Parameter:** projectId
-- **Returns:** {project, isLoading, error}
-
-**`useConditions` Hook** (`frontend/src/hooks/useConditions.ts`)
-- **Functionality:** Fetch and manage JSONB conditions for layer
-- **Parameters:** projectId, layerId
-- **Functions:** getConditions, updateConditions, validateCondition
-- **Pattern:** Mutation support via useProjectConditionsMutation
-
-**`useExportData` Hook** (`frontend/src/hooks/useExportData.ts`)
-- **Functionality:** Preview and generate exports
-- **Functions:** previewExport, generateExcel, generateZip, downloadFile
-
-#### Form Hooks
-
-**`useForm` Hook** (`frontend/src/hooks/useForm.ts`)
-- **Responsibility:** Generic form state management
-- **State:** formData, errors, touched, isDirty
-- **Functions:** handleChange, handleBlur, handleSubmit, resetForm
-
-**`useProjectForm` Hook** (`frontend/src/hooks/useProjectForm.ts`)
-- **Responsibility:** Project editing form with multi-step validation
-- **State:** projectData, validationErrors, step
-- **Validation:** Column definitions applied to each condition
-
-**`useGridCellEdit` Hook** (`frontend/src/hooks/useGridCellEdit.ts`)
-- **Responsibility:** AG Grid cell edit handling and validation
-- **Functions:** onCellValueChanged, validateCell, markForSave
-- **Integration:** Zustand store for tracking dirty cells
-
-#### Lifecycle Hooks
-
-**`useAsync` Hook** (`frontend/src/hooks/useAsync.ts`)
-- **Responsibility:** Async operation state management
-- **State:** loading, error, data, status
-- **Pattern:** useEffect wrapper with cleanup
-
-**`useLocalStorage` Hook** (`frontend/src/hooks/useLocalStorage.ts`)
-- **Responsibility:** Persist state to localStorage with sync
-- **Usage:** Token persistence, UI preferences
-
-#### Utility Hooks
-
-**`useDebounce` Hook** (`frontend/src/hooks/useDebounce.ts`)
-- **Responsibility:** Debounce value changes
-- **Usage:** Condition search, field validation
-
-**`useResize` Hook** (`frontend/src/hooks/useResize.ts`)
-- **Responsibility:** Window resize listener
-- **Usage:** Responsive grid sizing
-
-### Components
-
-**Module:** `src/components`
-**Location:** `frontend/src/components/` (50+ components)
-**Architecture:** Presentational + container component pattern
-
-#### Page Components (12 protected routes)
-
-**LoginPage** (`frontend/src/pages/LoginPage.tsx`)
-- **Purpose:** User authentication
-- **Form:** username, password input
-- **Hooks:** useLoginForm, useAuth
-- **Redirect:** /projects on success
-
-**DashboardPage** (`frontend/src/pages/DashboardPage.tsx`)
-- **Purpose:** Overview and recent activity
-- **Content:** Stats (count by status), timeline, quick links
-- **Hooks:** useDashboard, useAuth
-- **Protected:** Requires login
-
-**ProjectListPage** (`frontend/src/pages/ProjectListPage.tsx`)
-- **Purpose:** Browse and manage projects
-- **Features:** Filtering (status, user), sorting, pagination
-- **Grid:** React Table or custom table showing projects
-- **Hooks:** useProjects, useProjectStore, useFilters
-- **Actions:** Create, edit, delete, status change
-
-**ConditionEditorPage** (`frontend/src/pages/ConditionEditorPage.tsx`)
-- **Purpose:** Edit project layer conditions
-- **UI:** AG Grid with 300+ columns, formula bar, validation feedback
-- **Hooks:** useProject, useConditions, useGridCellEdit, useValidation
-- **Features:** Real-time validation, change tracking, save/cancel
-- **Sidebar:** Layers panel, comments panel, recipe import
-
-#### Layout Components
-
-**Layout** (`frontend/src/components/Layout.tsx`)
-- **Purpose:** Main page wrapper
-- **Content:** Header (logo, user menu), Sidebar (nav), main content, Footer
-- **Responsive:** Mobile menu toggle
-
-**Header** (`frontend/src/components/Header.tsx`)
-- **Content:** PCM branding, current user display, logout button
-- **Hooks:** useAuth, useToast
-
-**Sidebar** (`frontend/src/components/Sidebar.tsx`)
-- **Content:** Navigation links, role-based menu visibility
-- **Links:** Dashboard, Projects, Admin sections (user role dependent)
-
-#### Data Grid Components
-
-**ConditionGrid** (`frontend/src/components/ConditionGrid.tsx`)
-- **Purpose:** AG Grid wrapper with PCM customizations
-- **Columns:** 300+ from ColumnDefinitions, grouped by category
-- **Features:** Cell editing, inline validation, formula bar
-- **Hooks:** useConditions, useGridCellEdit, useValidation
-- **Integration:** AG Grid Community with JSONB cell data
-
-**GridCellEditor** (`frontend/src/components/GridCellEditor.tsx`)
-- **Purpose:** Custom cell editing component
-- **Types:** Text input, number, select, date
-- **Validation:** Real-time feedback from backend
-- **Features:** Dropdown for enum columns, range indicators
-
-#### Form Components
-
-**ProjectForm** (`frontend/src/components/ProjectForm.tsx`)
-- **Purpose:** Create/edit project
-- **Fields:** product selection, backbone selection, description
-- **Hooks:** useProjectForm, useAuth
-- **Validation:** Product must be approved, backbone must exist
-
-**ConditionForm** (`frontend/src/components/ConditionForm.tsx`)
-- **Purpose:** Edit conditions with validation
-- **Pattern:** Uncontrolled form with ref validation
-- **Validation:** Column-level rules applied as user types
-
-#### Feature Components
-
-**RecipeImportPanel** (`frontend/src/components/RecipeImportPanel.tsx`)
-- **Purpose:** Upload and preview recipe XML diff
-- **Features:** File upload, diff preview (old vs new), selective apply
-- **Hooks:** useRecipe, useExport
-
-**CommentPanel** (`frontend/src/components/CommentPanel.tsx`)
-- **Purpose:** Display and add comments
-- **Levels:** Project, layer, cell level comments
-- **Features:** Add, edit, resolve comments
-- **Hooks:** useComments
-
-**ExportPanel** (`frontend/src/components/ExportPanel.tsx`)
-- **Purpose:** Configure and generate exports
-- **Options:** Format type (A/B/C), system selection, batch
-- **Features:** Preview, generate, download, history
-- **Hooks:** useExportData
-
-#### Shared Components
-
-**Button, Input, Select, Dialog, Modal, Toast, Spinner, Badge, Tag**
-**Library:** Tailwind CSS 4 styled
-**Accessibility:** ARIA labels, keyboard navigation
-**Notes:** Reusable across all pages
-
-### Types
-
-**Module:** `src/types`
-**Location:** `frontend/src/types/` (10+ type files)
-**Responsibility:** TypeScript type definitions for domain models
-
-#### Core Domain Types
-
-**User Type** (`frontend/src/types/user.ts`)
-- `User` interface with id, username, display_name, role (enum), is_active
-- `Role` enum: 'user', 'admin'
-
-**Project Types** (`frontend/src/types/project.ts`)
-- `Project` interface: id, product_id, status, revision, parent_project_id
-- `ProjectStatus` enum: 'draft', 'review', 'approved', 'archived'
-- `ProjectWithLayers` extends Project with layers array
-
-**Layer Types** (`frontend/src/types/layer.ts`)
-- `Layer` interface: id, layer_name, step_seq, layer_number
-- `ProjectLayer` extends with conditions (JSONB), backbone_conditions
-
-**Condition Types** (`frontend/src/types/condition.ts`)
-- `Condition` as Record<string, any> (flexible JSONB)
-- `GridData` for flattened grid view
-
-**Column Types** (`frontend/src/types/column.ts`)
-- `ColumnDefinition` interface: column_name, display_name, category, data_type
-- `ColumnCategory` enum: 'SP', 'SC', 'OVL', 'DEV'
-
-**Validation Types** (`frontend/src/types/validation.ts`)
-- `ValidationRule` interface: rule_type, rule_config
-- `ValidationError` interface: field, message, type
-
-**Export Types** (`frontend/src/types/export.ts`)
-- `ExportJob` interface: id, format_type, system_id, status, file_url
-- `ExportFormat` enum: 'TYPE_A', 'TYPE_B', 'TYPE_C'
-
-**Comment Types** (`frontend/src/types/comment.ts`)
-- `Comment` interface: id, project_id, layer_id (optional), content
-- `CommentLevel` enum: 'project', 'layer', 'cell'
-
-### Library Utilities
-
-**Module:** `src/lib`
-**Location:** `frontend/src/lib/` (utility functions)
-
-#### API Helper Functions
-
-**`frontend/src/lib/api.ts`**
-- `handleApiError(error)` - Global error handling
-- `formatApiResponse(response)` - Response normalization
-
-#### Data Formatting
-
-**`frontend/src/lib/format.ts`**
-- `formatDate(date)` - Consistent date formatting
-- `formatNumber(value, precision)` - Number formatting
-- `formatJSON(obj)` - JSON pretty-printing
-
-#### Validation Utilities
-
-**`frontend/src/lib/validation.ts`**
-- `validateRange(value, min, max)` - Range check
-- `validateRequired(value)` - Non-empty check
-- `validatePattern(value, pattern)` - Regex check
-- `validateEmail(email)` - Email format check
-
-#### Grid Utilities
-
-**`frontend/src/lib/grid.ts`**
-- `flattenConditions(nested)` - JSONB to grid row
-- `unflattenConditions(row)` - Grid row to JSONB
-- `applyValidationStyles(cellData, validationRules)` - Grid styling
-
-### Build Configuration
-
-**File:** `frontend/package.json`
-**Build Tool:** Vite with React plugin
-**Dev Server:** Vite HMR on port 5173
-**Test Runner:** Vitest with React Testing Library
-**Linting:** ESLint with TypeScript support
-**Formatting:** Prettier
-**Type Checking:** TypeScript 5.7
+### Presentation Layer: Pages (15 files)
+
+| File | Path | Route | Auth Required | Role |
+|------|------|-------|---------------|------|
+| LoginPage.tsx | src/pages/LoginPage.tsx | /login | No | Public authentication entry |
+| DashboardPage.tsx | src/pages/DashboardPage.tsx | / | Yes | Overview: status cards, my projects, review queue, activity |
+| ProjectListPage.tsx | src/pages/ProjectListPage.tsx | /projects | Yes | Project list with line + status filters, URL state sync |
+| ConditionEditorPage.tsx | src/pages/ConditionEditorPage.tsx | /projects/:id/edit | Yes | Full condition table editor with panels and modals |
+| NotFoundPage.tsx | src/pages/NotFoundPage.tsx | * | No | 404 fallback |
+| AdminLayout.tsx | src/pages/admin/AdminLayout.tsx | /admin | Yes (admin/developer) | Admin section shell with role-filtered tabs |
+| UserManagementPage.tsx | src/pages/admin/UserManagementPage.tsx | /admin/users | Yes (admin) | User CRUD, role assignment, deactivate |
+| MasterDataPage.tsx | src/pages/admin/MasterDataPage.tsx | /admin/master-data | Yes (admin) | Line/Product/Layer/Column/Category/Equipment management |
+| DeviceMasterPage.tsx | src/pages/admin/DeviceMasterPage.tsx | /admin/device-masters | Yes (developer) | DeviceMaster + LayerMaster admin + sync config |
+| EnumManagementPage.tsx | src/pages/admin/EnumManagementPage.tsx | /admin/enum-options | Yes (admin/developer) | Select column options editor |
+| XmlMappingsPage.tsx | src/pages/admin/XmlMappingsPage.tsx | /admin/xml-mappings | Yes (developer) | Recipe XML XPath mappings CRUD |
+| ValidationRulesPage.tsx | src/pages/admin/ValidationRulesPage.tsx | /admin/validations | Yes (admin) | Column validation + cross-layer rule CRUD |
+| ExportSystemsPage.tsx | src/pages/admin/ExportSystemsPage.tsx | /admin/export-systems | Yes (developer) | Export system + column mapping CRUD |
+| ExportDataSourcesPage.tsx | src/pages/admin/ExportDataSourcesPage.tsx | /admin/data-sources | Yes (developer) | External data source CRUD |
+| AuditLogPage.tsx | src/pages/admin/AuditLogPage.tsx | /admin/audit-logs | Yes (admin/developer) | Audit log viewer with filters + pagination |
 
 ---
 
-## Module Dependencies
+### Business Layer: Hooks (24 files)
 
-### Backend Dependency Graph
+#### Data Fetching Hooks (TanStack Query)
 
-```
-FastAPI App
-├── Routers (18)
-│   ├── auth.py → AuthService → get_current_user
-│   ├── project.py → ProjectService → ProjectRepository
-│   ├── condition.py → ConditionService → ConditionRepository
-│   ├── export.py → ExportService → ExportRepository
-│   └── ... (15 more routers)
-│
-├── Services (23)
-│   ├── ProjectService → ProjectRepository, BackboneRepository
-│   ├── ConditionService → ConditionRepository, ValidationService
-│   ├── ExportService → ExportRepository, ExportColumnMappingRepository
-│   └── ... (20 more services)
-│
-├── Repositories (4)
-│   ├── ProjectRepository → Project model
-│   ├── BackboneRepository → ProductLayer model
-│   ├── ConditionRepository → ProjectLayer model
-│   └── ValidationRepository → ColumnValidation model
-│
-├── Models (10)
-│   └── SQLAlchemy ORM classes
-│
-├── Schemas (10+)
-│   └── Pydantic DTOs
-│
-├── Dependencies
-│   └── auth.py → User model
-│
-└── Utils
-    ├── comparison.py → Dict diffing
-    ├── excel_export.py → Excel generation
-    └── xml_processing.py → Recipe parsing
-```
+| File | Path | Queries / Mutations |
+|------|------|---------------------|
+| useProjects.ts | src/hooks/useProjects.ts | useProjects (list), useProjectDetail, useCreateProject, useDeleteProject, useDeleteLayer, useValidateProjectMutation |
+| useColumns.ts | src/hooks/useColumns.ts | useColumns (all definitions + validations) |
+| useLines.ts | src/hooks/useLines.ts | useLines (line list) |
+| useUsers.ts | src/hooks/useUsers.ts | useUsers (list for reviewer selection) |
+| useComments.ts | src/hooks/useComments.ts | useComments, useCreateComment, useUpdateComment, useDeleteComment |
+| useDashboard.ts | src/hooks/useDashboard.ts | useDashboardOverview, useRefreshDashboard |
+| useProducts.ts | src/hooks/useProducts.ts | useProducts, useProductLayers (V1 backbone selection) |
+| useDeviceMaster.ts | src/hooks/useDeviceMaster.ts | useDeviceMasters, useDeviceMasterLayers (V2 project creation) |
 
-### Frontend Dependency Graph
+#### Editor Hooks
 
-```
-App.tsx (React Router)
-├── Pages (12)
-│   ├── LoginPage → useAuth, useLoginForm
-│   ├── DashboardPage → useDashboard
-│   ├── ProjectListPage → useProjects, useProjectStore
-│   ├── ConditionEditorPage → useProject, useConditions, useGridCellEdit
-│   └── Admin pages → require_admin check
-│
-├── Stores (3 Zustand)
-│   ├── useAuthStore → localStorage
-│   ├── useToastStore → notifications
-│   └── useProjectStore → derived state
-│
-├── Hooks (30+)
-│   ├── useAuth → useAuthStore
-│   ├── useProjects → api/projects.ts
-│   ├── useConditions → api/conditions.ts
-│   └── ... (27 more hooks)
-│
-├── Components (50+)
-│   ├── Layout → Header, Sidebar
-│   ├── ConditionGrid → AG Grid wrapper
-│   ├── Forms → useForm hooks
-│   └── Features → Recipe, Comments, Export
-│
-├── API Client (19 modules)
-│   └── client.ts → axios instance
-│
-├── Types (10+)
-│   └── TypeScript interfaces
-│
-└── Lib (utilities)
-    ├── api.ts → Error handling
-    ├── format.ts → Data formatting
-    ├── validation.ts → Rules
-    └── grid.ts → AG Grid helpers
-```
+| File | Path | Responsibility |
+|------|------|----------------|
+| useEditorCellEdit.ts | src/hooks/useEditorCellEdit.ts | Cell edit dirty tracking, bulk save, autosave trigger |
+| useEditorNavigation.ts | src/hooks/useEditorNavigation.ts | Layer navigation, error cell focus, category tab navigation |
+| useEditorModals.ts | src/hooks/useEditorModals.ts | Modal open/close state management for all editor modals |
+| useAutoSave.ts | src/hooks/useAutoSave.ts | 30-second interval autosave trigger |
+| useConfirm.ts | src/hooks/useConfirm.ts | Reusable confirm dialog promise wrapper |
+| useExportHistory.ts | src/hooks/useExportHistory.ts | Export history list for ExportHistoryPanel |
+| useExportPreview.ts | src/hooks/useExportPreview.ts | Export preview data fetch |
+| useExportSystems.ts | src/hooks/useExportSystems.ts | Export system list for ExportPanel |
 
-### Cross-Module Communication
+#### Admin Hooks
 
-**High Fan-In Modules (require careful design):**
-- Backend: get_db, get_current_user, require_admin, compare_dicts
-- Frontend: useAuthStore, useToastStore, client.ts, useProjects
-
-**These modules should be marked with @MX:ANCHOR tags due to their broad influence.**
+| File | Path | Responsibility |
+|------|------|----------------|
+| useAdminUsers.ts | src/hooks/useAdminUsers.ts | User CRUD mutations + list queries |
+| useAdminMaster.ts | src/hooks/useAdminMaster.ts | Line/Product/Layer/Column/Category/Equipment CRUD |
+| useAdminColumns.ts | src/hooks/useAdminColumns.ts | ColumnDefinition + ColumnCategory mutations |
+| useAdminMappings.ts | src/hooks/useAdminMappings.ts | RecipeXmlMapping CRUD |
+| useAdminValidations.ts | src/hooks/useAdminValidations.ts | ColumnValidation + CrossLayerRule CRUD |
+| useAdminAudit.ts | src/hooks/useAdminAudit.ts | Audit log queries with filter + pagination |
+| useExportAdmin.ts | src/hooks/useExportAdmin.ts | ExportSystem + ExportColumnMapping CRUD |
+| useExportDataSources.ts | src/hooks/useExportDataSources.ts | ExportDataSource CRUD |
 
 ---
 
-## Summary
+### Business Layer: Stores (3 files)
 
-PCM's modular architecture enables:
-- **Clear separation of concerns** - Each layer has specific responsibility
-- **Easy testing** - Dependency injection and repository pattern
-- **Scalability** - Add services/routers without modifying existing code
-- **Maintainability** - Domain-driven models match business logic
-- **Reusability** - Components and hooks used across multiple pages
+| File | Path | State Managed |
+|------|------|--------------|
+| useEditorStore.ts | src/stores/useEditorStore.ts | gridData, dirtyCells, validationErrors, selectedLayerIndex, activeCategory, isBackboneComparisonOpen, isChangeHistoryOpen, readOnlyMode, currentVersionId |
+| useAuthStore.ts | src/stores/useAuthStore.ts | currentUser (User), accessToken, isAuthenticated, fetchCurrentUser, logout, refreshToken |
+| useToastStore.ts | src/stores/useToastStore.ts | toasts queue, addToast, removeToast |
+
+---
+
+### Data Layer: API Modules (19 files)
+
+| File | Path | Backend Endpoints Called |
+|------|------|--------------------------|
+| client.ts | src/api/client.ts | Axios instance: baseURL, Bearer token injection, 401 refresh interceptor |
+| authToken.ts | src/api/authToken.ts | POST /api/auth/login, POST /api/auth/logout, POST /api/auth/refresh, GET /api/auth/me |
+| projects.ts | src/api/projects.ts | GET/POST /api/projects, GET/PUT/DELETE /api/projects/:id, project lifecycle endpoints |
+| columns.ts | src/api/columns.ts | GET /api/columns |
+| lines.ts | src/api/lines.ts | GET /api/lines |
+| users.ts | src/api/users.ts | GET /api/users |
+| comments.ts | src/api/comments.ts | GET/POST/PUT/DELETE /api/projects/:id/comments |
+| dashboard.ts | src/api/dashboard.ts | GET /api/dashboard |
+| products.ts | src/api/products.ts | GET /api/products, GET /api/products/:id/layers |
+| equipments.ts | src/api/equipments.ts | GET /api/equipments?line_id=X |
+| export.ts | src/api/export.ts | GET /api/projects/:id/export/*, POST /api/export/bulk |
+| exportAdmin.ts | src/api/exportAdmin.ts | GET/POST/PUT/DELETE /api/admin/export-systems, /api/admin/export-mappings |
+| exportDataSource.ts | src/api/exportDataSource.ts | GET/POST/PUT/DELETE /api/admin/export-data-sources |
+| deviceMaster.ts | src/api/deviceMaster.ts | GET /api/device-masters, GET /api/device-masters/:id/layers |
+| adminUsers.ts | src/api/adminUsers.ts | GET/POST/PUT /api/admin/users, PATCH deactivate/reset-password |
+| adminMaster.ts | src/api/adminMaster.ts | CRUD for /api/admin/lines, products, layers, columns, categories, equipments |
+| adminColumns.ts | src/api/adminColumns.ts | CRUD for /api/admin/column-definitions, /api/admin/column-categories |
+| adminMappings.ts | src/api/adminMappings.ts | CRUD for /api/admin/xml-mappings |
+| adminValidations.ts | src/api/adminValidations.ts | CRUD for /api/admin/validations, /api/admin/cross-layer-rules |
+| adminAudit.ts | src/api/adminAudit.ts | GET /api/admin/audit-logs |
+| admin.ts | src/api/admin.ts | GET /api/admin/select-options, PUT /api/admin/select-options/:id |
+
+---
+
+### Presentation Layer: Components (70+ files, 8 subdirectories)
+
+#### editor/ (28 files) — Core Condition Table Editor
+
+| File | Responsibility |
+|------|----------------|
+| ConditionGrid.tsx | AG Grid community wrapper: renders condition table, handles cell edit events |
+| buildColumnDefs.ts | Builds AG Grid ColDef array from ColumnDefinition list; auto-detects EQP_xx → autocomplete editor |
+| GridContextMenu.tsx | Right-click context menu: copy row, paste, fill down |
+| EditorHeader.tsx | Project title, status badge, action buttons (save, validate, BB compare toggle) |
+| CategoryTabs.tsx | SP/SC/OVL/DEV/EQP category tab switcher |
+| LayerNavPanel.tsx | Left-side layer list with navigation and add/delete |
+| ValidationPanel.tsx | Validation error list with cross-layer error distinction + cell focus navigation |
+| ChangeHistoryPanel.tsx | Slide-out change history with filters |
+| ChangeHistoryEntry.tsx | Single change log entry display |
+| ChangeHistoryFilters.tsx | Filter bar for change history panel |
+| BackboneComparisonPanel.tsx | Side panel: backbone vs current diff summary by layer |
+| BackboneComparisonView.tsx | Detailed diff view: column-level changes per layer |
+| VersionHistoryPanel.tsx | Version list dropdown with read-only archived version viewer |
+| VersionDiffView.tsx | Side-by-side diff view between two versions |
+| CellHistoryModal.tsx | Modal: complete edit history for a single cell |
+| CommentPanel.tsx | Review comment thread panel |
+| CommentDialog.tsx | Comment create/edit dialog |
+| CommentThread.tsx | Threaded comment display |
+| ReviewRequestModal.tsx | Submit for review: validation summary + backbone comparison preview |
+| ApprovalButtons.tsx | Approve / Reject action buttons (reviewer role) |
+| RevisionCreateModal.tsx | Create new revision with reason input |
+| StatusBanner.tsx | Top banner showing current project status |
+| StatusTimeline.tsx | Visual timeline of status transitions |
+| BackboneReplaceModal.tsx | Modal: select and replace backbone for a specific layer |
+| RecipeUploadModal.tsx | Modal: upload Recipe XML file |
+| RecipeDiffTable.tsx | Table showing XML diff results with apply checkboxes |
+| LayerAddModal.tsx | Modal: add new layer to project |
+| EquipmentAutocompleteEditor.tsx | Custom AG Grid cell editor: searchable equipment dropdown |
+
+#### admin/ (23 files) — Admin Management Panels
+
+| File | Responsibility |
+|------|----------------|
+| LineManagementPanel.tsx | Line CRUD with inline editing |
+| LineFormModal.tsx | Line create/edit modal |
+| ProductManagementPanel.tsx | Product CRUD |
+| ProductFormModal.tsx | Product create/edit modal |
+| LayerManagementPanel.tsx | Layer CRUD with reorder |
+| LayerFormModal.tsx | Layer create/edit modal |
+| ColumnMetadataPanel.tsx | Column definition list with category grouping |
+| CategoryManagementPanel.tsx | Column category CRUD |
+| EquipmentManagementPanel.tsx | Equipment master CRUD per line |
+| EquipmentFormModal.tsx | Equipment create/edit modal |
+| UserFormModal.tsx | User create/edit with multi-role checkbox UI |
+| PasswordResetModal.tsx | Admin password reset for a user |
+| ValidationEditModal.tsx | Column validation rule create/edit |
+| CrossLayerRuleForm.tsx | Cross-layer validation rule form |
+| MappingFormModal.tsx | XML mapping create/edit modal |
+| ExportSystemForm.tsx | Export system create/edit |
+| ExportMappingForm.tsx | Export column mapping form |
+| ExportMappingManager.tsx | Export mapping list manager |
+| ExportDataSourceForm.tsx | External data source form |
+| SelectOptionsEditModal.tsx | Select column options editor |
+| DeviceDetailModal.tsx | Device master detail view |
+| DeviceMetaSourceFormModal.tsx | DeviceMetaSource create/edit form |
+| BulkUploadModal.tsx | Bulk data upload interface |
+
+#### export/ (6 files) — Export UI
+
+| File | Responsibility |
+|------|----------------|
+| ExportPanel.tsx | Export system selector + download trigger (Approved projects only) |
+| ExportSystemList.tsx | List of available export systems |
+| ExportPreviewTable.tsx | Preview grid for selected export system |
+| ExportDownloadButton.tsx | Single/bulk download action button |
+| ExportHistoryPanel.tsx | Export history log display |
+| ExportValidationReport.tsx | Pre-download validation result display |
+
+#### projects/ (3 files)
+
+| File | Responsibility |
+|------|----------------|
+| StatusBadge.tsx | Colored status badge (Draft/Review/Approved/Archived) |
+| VersionHistoryModal.tsx | Full version history modal from project list |
+| ProjectCreateModalV2.tsx | V2 project creation: DeviceMaster + LayerMaster selection |
+
+#### auth/ (2 files + tests)
+
+| File | Responsibility |
+|------|----------------|
+| ProtectedRoute.tsx | Redirects to /login if not authenticated |
+| RequireRole.tsx | Role-gated render wrapper for admin UI elements |
+
+#### layout/ (2 files)
+
+| File | Responsibility |
+|------|----------------|
+| Header.tsx | Top navigation: project nav, user info, multi-role badge, logout |
+| Layout.tsx | App shell: Header + Outlet (React Router) |
+
+#### ui/ (8 files) — Headless/Primitive UI Components
+
+button.tsx, dialog.tsx, input.tsx, select.tsx, badge.tsx, toast.tsx, combobox.tsx, confirm-dialog.tsx
+
+#### Root-level
+
+| File | Responsibility |
+|------|----------------|
+| ErrorBoundary.tsx | React error boundary: catches render errors, displays fallback UI |

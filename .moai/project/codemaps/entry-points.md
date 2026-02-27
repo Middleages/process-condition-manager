@@ -1,1162 +1,383 @@
 # PCM Entry Points Catalog
 
-Comprehensive reference of all API endpoints and frontend routes with request/response signatures.
-
-## Backend API Endpoints (18 Routers)
-
-### Authentication Router
-
-**File:** `backend/app/routers/auth.py`
-
-#### POST /api/auth/login
-
-**Purpose:** User login with credentials
-**Request Body:**
-```json
-{
-  "username": "string",
-  "password": "string"
-}
-```
-
-**Response (200 OK):**
-```json
-{
-  "access_token": "eyJhbGciOiJIUzI1NiIs...",
-  "refresh_token": "eyJhbGciOiJIUzI1NiIs...",
-  "token_type": "bearer",
-  "user": {
-    "id": "uuid",
-    "username": "string",
-    "display_name": "string",
-    "role": "user|admin",
-    "is_active": true
-  }
-}
-```
-
-**Error Responses:**
-- 401 Unauthorized: Invalid credentials
-- 422 Unprocessable Entity: Missing required fields
-
-**Dependencies:** AuthService, User model
-**Used By:** LoginPage
-**Side Effects:** None
-
-#### POST /api/auth/logout
-
-**Purpose:** Invalidate current token
-**Headers:** `Authorization: Bearer {access_token}`
-**Response (204 No Content):** Empty body
-
-**Dependencies:** get_current_user dependency
-**Side Effects:** Token blacklist (optional)
-
-#### POST /api/auth/refresh
-
-**Purpose:** Refresh expired access token
-**Request Body:**
-```json
-{
-  "refresh_token": "string"
-}
-```
-
-**Response (200 OK):**
-```json
-{
-  "access_token": "eyJhbGciOiJIUzI1NiIs...",
-  "token_type": "bearer"
-}
-```
-
-**Error Responses:**
-- 401 Unauthorized: Invalid or expired refresh token
-
-#### GET /api/auth/me
-
-**Purpose:** Get current authenticated user profile
-**Headers:** `Authorization: Bearer {access_token}`
-**Response (200 OK):**
-```json
-{
-  "id": "uuid",
-  "username": "string",
-  "display_name": "string",
-  "role": "user|admin",
-  "is_active": true
-}
-```
-
-**Dependencies:** get_current_user dependency
-**Used By:** Header, navigation, role-based UI
+Generated: 2026-02-27
+Version: 3.0.0 (SPEC-DEVICE-001 + SPEC-PROJECT-002 + SPEC-RBAC-001 + SPEC-EQP-002)
 
 ---
 
-### Project Router
+## Application Entry Points
 
-**File:** `backend/app/routers/project.py`
+### Backend Entry Point
 
-#### GET /api/projects
+**File**: `backend/app/main.py`
 
-**Purpose:** List projects with filtering and pagination
-**Query Parameters:**
-- `status` (optional): 'draft' | 'review' | 'approved' | 'archived'
-- `user_id` (optional): Filter by user
-- `product_id` (optional): Filter by product
-- `skip` (optional): Pagination offset, default 0
-- `limit` (optional): Page size, default 20
+Responsibilities:
+- Creates `FastAPI` application instance
+- Configures CORS middleware (allow-list from `CORS_ORIGINS` env var)
+- Registers global unhandled exception handler (returns generic 500)
+- Defines `GET /api/health` health check endpoint (tests DB connectivity)
+- Registers all 21 routers via `app.include_router()`
 
-**Response (200 OK):**
-```json
-{
-  "total": 42,
-  "items": [
-    {
-      "id": "uuid",
-      "product_id": "uuid",
-      "product_name": "string",
-      "status": "draft|review|approved|archived",
-      "revision": 1,
-      "created_at": "2024-01-15T10:30:00Z",
-      "created_by": "username",
-      "updated_at": "2024-01-15T14:45:00Z"
-    }
-  ],
-  "page": 1,
-  "pages": 3
-}
-```
+**Startup sequence**:
+1. FastAPI application created with title from settings
+2. CORS middleware attached
+3. Exception handler registered
+4. All routers registered with `/api` prefix
+5. SQLAlchemy async engine initialized on first request
 
-**Dependencies:** ProjectService, get_current_user
-**Filters:** User sees own projects + admin projects
-**Caching:** 1 minute
-**Sorting:** Default created_at DESC
+### Frontend Entry Point
 
-#### POST /api/projects
+**File**: `frontend/src/main.tsx`
 
-**Purpose:** Create new project with backbone copy
-**Headers:** `Authorization: Bearer {access_token}`
-**Request Body:**
-```json
-{
-  "product_id": "uuid",
-  "main_backbone_id": "uuid",
-  "description": "string (optional)"
-}
-```
+Responsibilities:
+- Creates React root via `ReactDOM.createRoot`
+- Wraps application in `QueryClientProvider` (TanStack Query)
+- Renders `<App />` component
 
-**Response (201 Created):**
-```json
-{
-  "id": "uuid",
-  "product_id": "uuid",
-  "status": "draft",
-  "revision": 1,
-  "main_backbone_id": "uuid",
-  "created_at": "2024-01-15T10:30:00Z",
-  "created_by": "username"
-}
-```
+**File**: `frontend/src/App.tsx`
 
-**Error Responses:**
-- 403 Forbidden: User not authorized
-- 404 Not Found: Product or backbone not found
-- 409 Conflict: Product already has approved project
+Responsibilities:
+- Defines all frontend routes using React Router `createBrowserRouter`
+- Implements `AppInitializer` component for session restoration on mount
+- Wraps router in `ErrorBoundary` and `ToastContainer`
+- Registers `ProtectedRoute` wrapper around all authenticated routes
 
-**Dependencies:** ProjectService, BackboneRepository
-**Side Effects:** Creates ProjectLayers with copied conditions, logs change
-**User Role:** user, admin
+### Seed Data Entry Point
 
-#### GET /api/projects/{project_id}
+**File**: `backend/app/seed/__main__.py`
 
-**Purpose:** Fetch single project with all related data
-**Path Parameters:**
-- `project_id` (required): UUID
+Invocation: `python -m app.seed` (inside Docker container)
 
-**Response (200 OK):**
-```json
-{
-  "id": "uuid",
-  "product_id": "uuid",
-  "product_name": "string",
-  "status": "draft|review|approved|archived",
-  "revision": 1,
-  "parent_project_id": "uuid (optional)",
-  "main_backbone_id": "uuid",
-  "layers": [
-    {
-      "id": "uuid",
-      "layer_id": "uuid",
-      "layer_name": "string",
-      "layer_number": 1,
-      "backbone_product_id": "uuid",
-      "conditions": { ... },
-      "backbone_conditions": { ... }
-    }
-  ],
-  "created_at": "2024-01-15T10:30:00Z",
-  "created_by": "username"
-}
-```
-
-**Error Responses:**
-- 404 Not Found: Project not found
-- 403 Forbidden: User not authorized to view
-
-**Dependencies:** ProjectService
-**Used By:** ConditionEditorPage, DashboardPage
-
-#### PUT /api/projects/{project_id}
-
-**Purpose:** Update project fields
-**Path Parameters:**
-- `project_id` (required): UUID
-
-**Request Body:**
-```json
-{
-  "description": "string (optional)"
-}
-```
-
-**Response (200 OK):** Updated project object
-
-**Error Responses:**
-- 403 Forbidden: Cannot edit approved/archived projects
-- 404 Not Found: Project not found
-- 409 Conflict: Cannot change backbone after approval
-
-**Dependencies:** ProjectService, ChangeLogService
-**Side Effects:** Logs change type "manual"
-**User Role:** Owner or admin
-
-#### DELETE /api/projects/{project_id}
-
-**Purpose:** Archive project (soft delete)
-**Path Parameters:**
-- `project_id` (required): UUID
-
-**Response (204 No Content):** Empty body
-
-**Error Responses:**
-- 403 Forbidden: Cannot delete approved projects (must archive)
-- 404 Not Found: Project not found
-
-**Dependencies:** ProjectService
-**Side Effects:** Sets status to "archived", logs change
-**User Role:** Owner or admin
-
-#### PUT /api/projects/{project_id}/status
-
-**Purpose:** Transition project through lifecycle
-**Path Parameters:**
-- `project_id` (required): UUID
-
-**Request Body:**
-```json
-{
-  "new_status": "draft|review|approved|archived"
-}
-```
-
-**Response (200 OK):**
-```json
-{
-  "id": "uuid",
-  "status": "new_status",
-  "updated_at": "2024-01-15T15:00:00Z"
-}
-```
-
-**Allowed Transitions:**
-- draft → review (anyone)
-- review → draft (anyone)
-- review → approved (admin only)
-- approved → archived (admin only)
-
-**Error Responses:**
-- 403 Forbidden: Invalid transition or user not authorized
-- 409 Conflict: Cannot revert approved project
-
-**Dependencies:** ProjectService, ChangeLogService
-**Side Effects:** Logs status change, freezes conditions on approval
-**User Role:** user for review, admin for approval
+Responsibilities:
+- Seeds initial master data: lines, products, layers, column categories, column definitions, users, equipment, export systems, XML mappings
+- Uses `runner.py` to orchestrate seed module execution order
+- Idempotent: checks for existing records before inserting
 
 ---
 
-### Condition Router
+## API Endpoint Catalog
 
-**File:** `backend/app/routers/project_conditions.py`
+Total endpoints: ~115 across 21 router files
 
-#### GET /api/project-conditions/{project_id}/{layer_id}
+### auth.py — Authentication (prefix: /api/auth)
 
-**Purpose:** Fetch JSONB conditions for single layer
-**Path Parameters:**
-- `project_id` (required): UUID
-- `layer_id` (required): UUID
+| Method | Path | Auth Required | Description |
+|--------|------|---------------|-------------|
+| POST | /api/auth/login | No | Username + password login, returns access token + sets refresh cookie |
+| POST | /api/auth/logout | Yes | Clears refresh cookie |
+| POST | /api/auth/refresh | No (cookie) | Exchanges refresh cookie for new access token |
+| GET | /api/auth/me | Yes | Current authenticated user profile |
 
-**Response (200 OK):**
-```json
-{
-  "project_id": "uuid",
-  "layer_id": "uuid",
-  "conditions": {
-    "SP_PARAMETER_1": "value",
-    "SC_PARAMETER_1": 123,
-    "OVL_PARAMETER_1": true,
-    "DEV_PARAMETER_1": "2024-01-15"
-  },
-  "backbone_conditions": { ... },
-  "validation_errors": []
-}
-```
+### users.py (prefix: /api/users)
 
-**Query Parameters:**
-- `include_validation` (optional): Include validation rules, default true
+| Method | Path | Auth Required | Description |
+|--------|------|---------------|-------------|
+| GET | /api/users | Yes | List all active users (for reviewer dropdowns) |
 
-**Error Responses:**
-- 404 Not Found: Project or layer not found
-- 403 Forbidden: User not authorized
+### lines.py (prefix: /api/lines)
 
-**Dependencies:** ConditionService, ValidationService
-**Caching:** 30 seconds (invalidated on edit)
-**Used By:** ConditionEditorPage, GridCellEditor
+| Method | Path | Auth Required | Description |
+|--------|------|---------------|-------------|
+| GET | /api/lines | Yes | List all lines |
 
-#### PUT /api/project-conditions/{project_id}/{layer_id}
+### columns.py (prefix: /api/columns)
 
-**Purpose:** Save JSONB condition changes with validation
-**Path Parameters:**
-- `project_id` (required): UUID
-- `layer_id` (required): UUID
+| Method | Path | Auth Required | Description |
+|--------|------|---------------|-------------|
+| GET | /api/columns | Yes | All column definitions with categories and validation rules |
 
-**Request Body:**
-```json
-{
-  "conditions": {
-    "SP_PARAMETER_1": "new_value",
-    "SC_PARAMETER_1": 456
-  },
-  "change_type": "manual|recipe|import"
-}
-```
+### products.py (prefix: /api/products)
 
-**Response (200 OK):**
-```json
-{
-  "project_id": "uuid",
-  "layer_id": "uuid",
-  "conditions": { ... },
-  "validation_errors": []
-}
-```
+| Method | Path | Auth Required | Description |
+|--------|------|---------------|-------------|
+| GET | /api/products | Yes | List products (optionally filtered by line_id) |
+| GET | /api/products/{id} | Yes | Product detail |
+| GET | /api/products/{id}/layers | Yes | Product's layer list |
+| GET | /api/backbones | Yes | Dynamic backbone list (Approved projects per line) |
+| GET | /api/backbone-layers | Yes | Backbone project's layers (for V1 project creation) |
 
-**Error Responses:**
-- 400 Bad Request: Validation failed
-- 403 Forbidden: Project is approved/archived
-- 404 Not Found: Project or layer not found
-- 409 Conflict: Concurrent edit detected
+### equipments.py (prefix: /api/equipments)
 
-**Dependencies:** ConditionService, ValidationService, ChangeLogService
-**Validation Applied:**
-- Range validation (min/max)
-- Required field checks
-- Pattern validation (regex)
-- Cross-layer consistency
+| Method | Path | Auth Required | Description |
+|--------|------|---------------|-------------|
+| GET | /api/equipments | Yes | Equipment list by line_id (autocomplete source for EQP columns) |
 
-**Side Effects:**
-- Updates ProjectLayers.conditions (JSONB merge)
-- Logs each change to ChangeLogs
-- Invalidates condition cache
+### projects.py (prefix: /api/projects)
 
-**User Role:** user, admin (approver only on approved)
+| Method | Path | Auth Required | Description |
+|--------|------|---------------|-------------|
+| GET | /api/projects | Yes | Project list (filters: status, line_id) |
+| POST | /api/projects | Yes | Create project V1 (product + backbone) or V2 (device_master) |
+| GET | /api/projects/{id} | Yes | Project detail with layers |
+| DELETE | /api/projects/{id} | Yes (owner) | Delete draft project |
 
-#### GET /api/project-conditions/{project_id}/grid-data
+### project_conditions.py (prefix: /api/projects/{id})
 
-**Purpose:** Fetch conditions flattened for AG Grid display
-**Path Parameters:**
-- `project_id` (required): UUID
+| Method | Path | Auth Required | Description |
+|--------|------|---------------|-------------|
+| PUT | /api/projects/{id}/conditions | Yes (owner) | Bulk save condition changes, records change_logs |
+| POST | /api/projects/{id}/validate | Yes | Run validation, returns errors by layer |
+| GET | /api/projects/{id}/change-logs | Yes | Change log list with filters (column, source_type, layer) |
+| GET | /api/projects/{id}/cell-history | Yes | Full edit history for a specific column_key in a layer |
+| GET | /api/projects/{id}/versions | Yes | All versions (Draft + Archived) of this project lineage |
+| GET | /api/projects/{id}/diff | Yes | JSONB diff between two project_layer versions |
+| GET | /api/projects/{id}/export/simple | Yes | Full condition table Excel download (all statuses) |
 
-**Response (200 OK):**
-```json
-{
-  "columns": [
-    {
-      "field": "layer_name",
-      "headerName": "Layer",
-      "width": 100,
-      "editable": false
-    },
-    {
-      "field": "SP_PARAMETER_1",
-      "headerName": "SP Parameter 1",
-      "width": 120,
-      "editable": true,
-      "cellDataType": "text"
-    }
-  ],
-  "rows": [
-    {
-      "layer_id": "uuid",
-      "layer_name": "Photoresist",
-      "SP_PARAMETER_1": "value",
-      "SC_PARAMETER_1": 123
-    }
-  ],
-  "validationRules": { ... }
-}
-```
+### project_layers.py (prefix: /api/projects/{id})
 
-**Response:** 300+ columns flattened from nested JSONB
-**Caching:** 1 minute
-**Used By:** ConditionGrid AG Grid configuration
+| Method | Path | Auth Required | Description |
+|--------|------|---------------|-------------|
+| POST | /api/projects/{id}/layers/{layerId}/backbone-replace | Yes (owner) | Replace a layer's conditions with backbone source |
+| POST | /api/projects/{id}/layers/{layerId}/recipe-upload | Yes (owner) | Upload Recipe XML for a layer |
+| GET | /api/projects/{id}/layers/{layerId}/recipe-diff | Yes | Get diff between Recipe XML and current conditions |
+| POST | /api/projects/{id}/layers/{layerId}/recipe-apply | Yes (owner) | Apply selected Recipe XML diff entries |
+| POST | /api/projects/{id}/layers | Yes (owner) | Add new layer to project |
 
----
+### project_lifecycle.py (prefix: /api/projects/{id})
 
-### Layer Router
+| Method | Path | Auth Required | Description |
+|--------|------|---------------|-------------|
+| POST | /api/projects/{id}/submit-review | Yes (owner) | Submit project for review (Draft → Review); requires 0 validation errors |
+| POST | /api/projects/{id}/approve | Yes (reviewer) | Approve project (Review → Approved) |
+| POST | /api/projects/{id}/reject | Yes (reviewer) | Reject project (Review → Draft) |
+| POST | /api/projects/{id}/revise | Yes | Create new revision (Approved → new Draft v+1; original → Archived) |
+| GET | /api/projects/{id}/change-summary | Yes | Summary of changes vs backbone for review |
 
-**File:** `backend/app/routers/project_layers.py`
+### dashboard.py (prefix: /api/dashboard)
 
-#### POST /api/project-layers/{project_id}
+| Method | Path | Auth Required | Description |
+|--------|------|---------------|-------------|
+| GET | /api/dashboard | Yes | Overview: status counts, my projects, review queue, activity timeline |
 
-**Purpose:** Add existing layer to project
-**Path Parameters:**
-- `project_id` (required): UUID
+### comments.py (prefix: /api/projects/{id}/comments)
 
-**Request Body:**
-```json
-{
-  "layer_id": "uuid",
-  "backbone_product_id": "uuid (optional)"
-}
-```
+| Method | Path | Auth Required | Description |
+|--------|------|---------------|-------------|
+| GET | /api/projects/{id}/comments | Yes | List all review comments for project |
+| POST | /api/projects/{id}/comments | Yes | Create review comment |
+| PUT | /api/projects/{id}/comments/{commentId} | Yes (author) | Update comment |
+| DELETE | /api/projects/{id}/comments/{commentId} | Yes (author) | Delete comment |
 
-**Response (201 Created):**
-```json
-{
-  "id": "uuid",
-  "project_id": "uuid",
-  "layer_id": "uuid",
-  "layer_name": "string",
-  "conditions": {},
-  "backbone_conditions": {}
-}
-```
+### admin.py (prefix: /api/admin)
 
-**Error Responses:**
-- 403 Forbidden: Project is approved/archived
-- 409 Conflict: Layer already exists in project
+| Method | Path | Auth Required | Description |
+|--------|------|---------------|-------------|
+| GET | /api/admin/validations | Yes (admin) | List column validation rules |
+| POST | /api/admin/validations | Yes (admin) | Create validation rule |
+| PUT | /api/admin/validations/{id} | Yes (admin) | Update validation rule |
+| DELETE | /api/admin/validations/{id} | Yes (admin) | Delete validation rule |
+| GET | /api/admin/cross-layer-rules | Yes (admin) | List cross-layer validation rules |
+| POST | /api/admin/cross-layer-rules | Yes (admin) | Create cross-layer rule |
+| PUT | /api/admin/cross-layer-rules/{id} | Yes (admin) | Update cross-layer rule |
+| DELETE | /api/admin/cross-layer-rules/{id} | Yes (admin) | Delete cross-layer rule |
+| GET | /api/admin/select-options | Yes (admin/developer) | Get select column options |
+| PUT | /api/admin/select-options/{columnKey} | Yes (admin/developer) | Update select options for a column |
+| GET | /api/admin/audit-logs | Yes (admin/developer) | Audit log with filters + pagination |
 
-**Dependencies:** LayerService, BackboneRepository
-**Side Effects:** Creates ProjectLayer record, copies backbone if specified
+### admin_users.py (prefix: /api/admin/users)
 
-#### DELETE /api/project-layers/{project_id}/{layer_id}
+| Method | Path | Auth Required | Description |
+|--------|------|---------------|-------------|
+| GET | /api/admin/users | Yes (admin) | List all users |
+| POST | /api/admin/users | Yes (admin) | Create user |
+| PUT | /api/admin/users/{id} | Yes (admin) | Update user (name, email, roles) |
+| PATCH | /api/admin/users/{id}/deactivate | Yes (admin) | Deactivate user account |
+| POST | /api/admin/users/{id}/reset-password | Yes (admin) | Reset user password |
 
-**Purpose:** Remove layer from project
-**Path Parameters:**
-- `project_id` (required): UUID
-- `layer_id` (required): UUID
+### admin_master.py (prefix: /api/admin, 26 endpoints)
 
-**Response (204 No Content):** Empty body
+Manages: Line, Product, Layer, ColumnDefinition, ColumnCategory, Equipment
 
-**Error Responses:**
-- 403 Forbidden: Project is approved/archived
+Pattern per entity: GET list, POST create, PUT update, DELETE (FK-safe), POST reorder
 
-**Dependencies:** LayerService
-**Side Effects:** Deletes ProjectLayer record, logs change
+| Resource | Base Path |
+|----------|-----------|
+| Lines | /api/admin/lines |
+| Products | /api/admin/products |
+| Layers | /api/admin/layers |
+| Column Definitions | /api/admin/column-definitions |
+| Column Categories | /api/admin/column-categories |
+| Equipment | /api/admin/equipments |
 
-#### PUT /api/project-layers/{project_id}/{layer_id}
+### admin_device.py (prefix: /api/admin/device-masters, 13 endpoints)
 
-**Purpose:** Replace backbone reference for layer
-**Path Parameters:**
-- `project_id` (required): UUID
-- `layer_id` (required): UUID
+| Group | Paths |
+|-------|-------|
+| Sync Source Config | GET/POST/PUT /api/admin/device-masters/sync-source |
+| Device Meta Sources | GET/POST/PUT/DELETE /api/admin/device-masters/meta-sources |
+| Sync Trigger | POST /api/admin/device-masters/sync |
+| Device List | GET /api/admin/device-masters |
+| Layer Master | GET /api/admin/device-masters/{id}/layers |
 
-**Request Body:**
-```json
-{
-  "backbone_product_id": "uuid"
-}
-```
+### device_masters.py (prefix: /api/device-masters, 5 endpoints)
 
-**Response (200 OK):** Updated layer with new backbone conditions
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | /api/device-masters | List device masters (filterable by line_id) |
+| GET | /api/device-masters/{id} | Device master detail |
+| GET | /api/device-masters/{id}/layers | Layer masters for a device |
+| GET | /api/device-masters/{id}/projects | Projects using this device master |
+| GET | /api/device-masters/search | Search device masters |
 
-**Error Responses:**
-- 403 Forbidden: Project is approved/archived
+### export.py (project_router prefix: /api/projects/{id}/export)
 
-**Dependencies:** BackboneRepository
-**Side Effects:** Copies backbone conditions, logs change
+| Method | Path | Auth Required | Description |
+|--------|------|---------------|-------------|
+| GET | /api/projects/{id}/export/systems | Yes | Available export systems for project's line |
+| GET | /api/projects/{id}/export/preview/{systemId} | Yes (Approved) | Preview export data (no file download) |
+| GET | /api/projects/{id}/export/download/{systemId} | Yes (Approved) | Download single export Excel file |
+| POST | /api/export/bulk | Yes (Approved) | Bulk download multiple systems as ZIP |
+
+### export_admin.py (prefix: /api/admin)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET/POST | /api/admin/export-systems | List + create export systems |
+| GET/PUT/DELETE | /api/admin/export-systems/{id} | System detail + CRUD |
+| GET/POST | /api/admin/export-systems/{id}/mappings | Column mappings for system |
+| PUT/DELETE | /api/admin/export-mappings/{id} | Update/delete mapping |
+
+### export_data_source.py (prefix: /api/admin/export-data-sources, 5 endpoints)
+
+CRUD for ExportDataSource records: GET list, POST create, GET detail, PUT update, DELETE.
 
 ---
 
-### Column Router
+## Frontend Route Tree
 
-**File:** `backend/app/routers/columns.py`
-
-#### GET /api/columns
-
-**Purpose:** List all column definitions with categories
-**Query Parameters:**
-- `category` (optional): 'SP' | 'SC' | 'OVL' | 'DEV'
-- `include_validations` (optional): Include validation rules, default false
-
-**Response (200 OK):**
-```json
-{
-  "columns": [
-    {
-      "id": "uuid",
-      "column_name": "SP_PARAMETER_1",
-      "display_name": "SP Parameter 1",
-      "category": "SP",
-      "data_type": "text|number|select|date",
-      "select_options": ["Option1", "Option2"],
-      "sort_order": 1
-    }
-  ],
-  "categories": ["SP", "SC", "OVL", "DEV"]
-}
+```
+/login                           (public, LoginPage)
+/                                (protected, DashboardPage)
+  └─► requires: authenticated
+/projects                        (protected, ProjectListPage)
+  └─► requires: authenticated
+  └─► query params: ?status=X&line_id=Y (URL state sync)
+/projects/:projectId/edit        (protected, ConditionEditorPage)
+  └─► requires: authenticated
+/admin                           (protected, AdminLayout)
+  └─► requires: authenticated + (admin OR developer role)
+  /admin/master-data             (MasterDataPage)
+    └─► requires: admin role (write); developer can view
+  /admin/device-masters          (DeviceMasterPage)
+    └─► requires: developer role
+  /admin/users                   (UserManagementPage)
+    └─► requires: admin role
+  /admin/enum-options            (EnumManagementPage)
+    └─► requires: admin OR developer role
+  /admin/xml-mappings            (XmlMappingsPage)
+    └─► requires: developer role
+  /admin/validations             (ValidationRulesPage)
+    └─► requires: admin role
+  /admin/data-sources            (ExportDataSourcesPage)
+    └─► requires: developer role
+  /admin/export-systems          (ExportSystemsPage)
+    └─► requires: developer role
+  /admin/audit-logs              (AuditLogPage)
+    └─► requires: admin OR developer role
+  /admin (index)                 (Navigate to /admin/master-data)
+*                                (NotFoundPage, public)
 ```
 
-**Caching:** 1 hour (rarely changes)
-**Used By:** ConditionGrid column configuration, ColumnSelector
-
-#### GET /api/columns/{category}
-
-**Purpose:** List columns for specific category
-**Path Parameters:**
-- `category` (required): 'SP' | 'SC' | 'OVL' | 'DEV'
-
-**Response (200 OK):**
-```json
-{
-  "category": "SP",
-  "columns": [ ... ]
-}
-```
-
-#### GET /api/columns/{column_id}/validations
-
-**Purpose:** Fetch validation rules for column
-**Path Parameters:**
-- `column_id` (required): UUID
-
-**Response (200 OK):**
-```json
-{
-  "column_id": "uuid",
-  "column_name": "SP_PARAMETER_1",
-  "validations": [
-    {
-      "id": "uuid",
-      "rule_type": "range|required|conditional_required|pattern|cross_layer",
-      "rule_config": {
-        "min": 0,
-        "max": 100
-      }
-    }
-  ]
-}
-```
-
-**Dependencies:** ValidationRepository
-**Used By:** GridCellEditor, validation client-side
+Admin tab visibility is role-filtered in `AdminLayout.tsx`:
+- `admin` role sees: Users, Master Data, Validations, Audit Logs, Enum Options
+- `developer` role sees: Device Masters, XML Mappings, Export Systems, Data Sources, Audit Logs, Enum Options
+- Both roles: Enum Options, Audit Logs
 
 ---
 
-### Master Data Routers
+## CLI Entry Points
 
-**Files:** `products.py`, `lines.py`, `layers.py`
+### Docker Compose Operations
 
-#### GET /api/products
+```bash
+# Start all services
+docker-compose up -d
 
-**Purpose:** List products (used as backbone templates)
-**Query Parameters:**
-- `line_id` (optional): Filter by manufacturing line
-- `skip` (optional): Pagination offset
-- `limit` (optional): Page size
+# Start with logs
+docker-compose up
 
-**Response (200 OK):**
-```json
-{
-  "items": [
-    {
-      "id": "uuid",
-      "product_name": "string",
-      "description": "string",
-      "line_id": "uuid",
-      "layer_count": 12,
-      "is_approved": true
-    }
-  ],
-  "total": 15
-}
+# Backend only (hot reload)
+docker-compose up backend
+
+# Stop all
+docker-compose down
+
+# Stop and delete volumes (CAUTION: deletes DB data)
+docker-compose down -v
 ```
 
-#### GET /api/lines
+### Database Migrations (Alembic)
 
-**Purpose:** List manufacturing lines
-**Response (200 OK):**
-```json
-{
-  "items": [
-    {
-      "id": "uuid",
-      "line_name": "Production Line A",
-      "equipment_count": 8
-    }
-  ]
-}
+```bash
+# Apply all pending migrations
+docker-compose exec backend alembic upgrade head
+
+# Generate new migration from model changes
+docker-compose exec backend alembic revision --autogenerate -m "description"
+
+# Check current migration version
+docker-compose exec backend alembic current
+
+# Downgrade one step
+docker-compose exec backend alembic downgrade -1
 ```
 
-#### GET /api/layers
+Migration history (19 total):
+- 001_initial_schema
+- 002–009: Phase 1–2 features
+- 010–015: Phase 3–4 features (export, RBAC, dashboard)
+- 016_create_equipments_table
+- 017_user_role_to_roles_array
+- 018_create_device_layer_master_tables
+- 019_add_device_ref_to_projects
 
-**Purpose:** List all manufacturing layers
-**Response (200 OK):**
-```json
-{
-  "items": [
-    {
-      "id": "uuid",
-      "layer_name": "Photoresist",
-      "step_seq": 1,
-      "layer_number": 1
-    }
-  ]
-}
+### Seed Data
+
+```bash
+# Run seed data initialization
+docker-compose exec backend python -m app.seed
+
+# Seed creates: lines, products, layers, users (admin/editor/reviewer/developer),
+# column categories + definitions (~60 EQP columns + SP/SC/OVL/DEV),
+# equipment (10 per line), export systems, XML mappings
 ```
 
----
+### Backend Testing
 
-### Comment Router
+```bash
+# Run all 515 tests
+docker-compose exec backend pytest
 
-**File:** `backend/app/routers/comments.py`
+# Run with coverage report
+docker-compose exec backend pytest --cov=app --cov-report=term-missing
 
-#### POST /api/comments
+# Run specific test file
+docker-compose exec backend pytest tests/test_condition_service.py -v
 
-**Purpose:** Create comment at project/layer/cell level
-**Request Body:**
-```json
-{
-  "project_id": "uuid",
-  "layer_id": "uuid (optional)",
-  "cell_identifier": "string (optional, e.g. SP_PARAMETER_1)",
-  "content": "string"
-}
+# Run tests matching pattern
+docker-compose exec backend pytest -k "backbone" -v
 ```
 
-**Response (201 Created):**
-```json
-{
-  "id": "uuid",
-  "project_id": "uuid",
-  "layer_id": "uuid (null if project level)",
-  "cell_identifier": "string (null if layer level)",
-  "content": "string",
-  "created_by": "username",
-  "created_at": "2024-01-15T10:30:00Z"
-}
+### Frontend Development
+
+```bash
+# Development server
+cd frontend && npm run dev
+
+# Production build
+cd frontend && npm run build
+
+# Run frontend tests
+cd frontend && npm test
+
+# Type check
+cd frontend && npm run type-check
 ```
 
-**Dependencies:** CommentService, get_current_user
-**Side Effects:** Logs comment creation
-
-#### GET /api/comments/{project_id}
-
-**Purpose:** List all comments for project
-**Path Parameters:**
-- `project_id` (required): UUID
-
-**Query Parameters:**
-- `level` (optional): 'project' | 'layer' | 'cell'
-- `layer_id` (optional): Filter by layer
-
-**Response (200 OK):**
-```json
-{
-  "comments": [
-    {
-      "id": "uuid",
-      "level": "project|layer|cell",
-      "content": "string",
-      "created_by": "username",
-      "created_at": "2024-01-15T10:30:00Z"
-    }
-  ]
-}
-```
-
-#### PUT /api/comments/{comment_id}
-
-**Purpose:** Update comment content
-**Path Parameters:**
-- `comment_id` (required): UUID
-
-**Request Body:**
-```json
-{
-  "content": "string"
-}
-```
-
-**Response (200 OK):** Updated comment
-
-#### DELETE /api/comments/{comment_id}
-
-**Purpose:** Delete comment
-**Response (204 No Content):** Empty body
-
----
-
-### Recipe Import Router
-
-**File:** `backend/app/routers/recipe.py`
-
-#### POST /api/recipe/import
-
-**Purpose:** Upload and parse recipe XML for diff
-**Request Body:** Multipart form with recipe file
-**Response (200 OK):**
-```json
-{
-  "recipe_id": "uuid",
-  "equipment_id": "uuid",
-  "parsed_conditions": { ... }
-}
-```
-
-#### GET /api/recipe/diff
-
-**Purpose:** Preview differences between recipe and project
-**Query Parameters:**
-- `recipe_id` (required): Recipe UUID
-- `project_id` (required): Project UUID
-- `layer_id` (required): Layer UUID
-
-**Response (200 OK):**
-```json
-{
-  "differences": [
-    {
-      "parameter": "SP_PARAMETER_1",
-      "old_value": "old",
-      "new_value": "new",
-      "conflict": false
-    }
-  ]
-}
-```
-
-#### POST /api/recipe/apply
-
-**Purpose:** Apply selected recipe changes to project
-**Request Body:**
-```json
-{
-  "recipe_id": "uuid",
-  "project_id": "uuid",
-  "layer_id": "uuid",
-  "selected_changes": ["SP_PARAMETER_1", "SC_PARAMETER_2"]
-}
-```
-
-**Response (200 OK):**
-```json
-{
-  "applied_count": 2,
-  "failed_count": 0
-}
-```
-
----
-
-### Export Router
-
-**File:** `backend/app/routers/export.py`
-
-#### GET /api/export/preview
-
-**Purpose:** Preview export format before generating file
-**Query Parameters:**
-- `project_id` (required): UUID
-- `format_type` (required): 'TYPE_A' | 'TYPE_B' | 'TYPE_C'
-- `system_id` (required): Export system UUID
-
-**Response (200 OK):**
-```json
-{
-  "preview": {
-    "headers": ["Layer", "SP_PARAMETER_1", "SC_PARAMETER_1"],
-    "rows": [
-      ["Photoresist", "value1", 123],
-      ["Development", "value2", 456]
-    ],
-    "format_description": "Horizontal layout"
-  }
-}
-```
-
-#### POST /api/export/excel
-
-**Purpose:** Generate and download Excel export
-**Request Body:**
-```json
-{
-  "project_id": "uuid",
-  "format_type": "TYPE_A|TYPE_B|TYPE_C",
-  "system_id": "uuid"
-}
-```
-
-**Response (200 OK):**
-```json
-{
-  "job_id": "uuid",
-  "file_url": "/api/export/download/uuid",
-  "status": "completed|processing"
-}
-```
-
-**File Output:** Excel file with conditions formatted per type
-
-#### POST /api/export/zip
-
-**Purpose:** Batch export multiple projects as ZIP
-**Request Body:**
-```json
-{
-  "project_ids": ["uuid1", "uuid2", "uuid3"],
-  "format_type": "TYPE_A|TYPE_B|TYPE_C"
-}
-```
-
-**Response (200 OK):**
-```json
-{
-  "job_id": "uuid",
-  "file_url": "/api/export/download/uuid"
-}
-```
-
-#### GET /api/export/history
-
-**Purpose:** Fetch export history for project
-**Query Parameters:**
-- `project_id` (required): UUID
-
-**Response (200 OK):**
-```json
-{
-  "exports": [
-    {
-      "id": "uuid",
-      "format_type": "TYPE_A",
-      "file_name": "project_1_A.xlsx",
-      "created_at": "2024-01-15T10:30:00Z",
-      "created_by": "username"
-    }
-  ]
-}
-```
-
-#### GET /api/export/download/{job_id}
-
-**Purpose:** Download generated export file
-**Response:** Binary file (Excel or ZIP)
-
----
-
-### Admin Router (Users)
-
-**File:** `backend/app/routers/admin/users.py`
-
-#### GET /api/admin/users
-
-**Purpose:** List all users (admin only)
-**Protected By:** require_admin
-**Response (200 OK):**
-```json
-{
-  "users": [
-    {
-      "id": "uuid",
-      "username": "string",
-      "display_name": "string",
-      "role": "user|admin",
-      "is_active": true,
-      "project_count": 5
-    }
-  ]
-}
-```
-
-#### POST /api/admin/users
-
-**Purpose:** Create new user
-**Protected By:** require_admin
-**Request Body:**
-```json
-{
-  "username": "string",
-  "display_name": "string",
-  "password": "string",
-  "role": "user|admin"
-}
-```
-
-**Response (201 Created):** Created user object
-
-#### PUT /api/admin/users/{user_id}
-
-**Purpose:** Update user role or status
-**Protected By:** require_admin
-**Request Body:**
-```json
-{
-  "role": "user|admin",
-  "is_active": true|false
-}
-```
-
-**Response (200 OK):** Updated user object
-
-#### DELETE /api/admin/users/{user_id}
-
-**Purpose:** Deactivate user (soft delete)
-**Protected By:** require_admin
-**Response (204 No Content):** Empty body
-
----
-
-### Dashboard Router
-
-**File:** `backend/app/routers/dashboard.py`
-
-#### GET /api/dashboard/stats
-
-**Purpose:** Get overview statistics
-**Response (200 OK):**
-```json
-{
-  "project_counts": {
-    "draft": 5,
-    "review": 2,
-    "approved": 12,
-    "archived": 1
-  },
-  "recent_activity": [
-    {
-      "type": "project_created|status_changed|conditions_updated",
-      "project_id": "uuid",
-      "timestamp": "2024-01-15T10:30:00Z",
-      "user": "username"
-    }
-  ],
-  "user_counts": {
-    "active": 8,
-    "inactive": 2
-  }
-}
-```
-
-#### GET /api/dashboard/timeline
-
-**Purpose:** Get recent activity timeline
-**Query Parameters:**
-- `limit` (optional): Number of events, default 20
-
-**Response (200 OK):**
-```json
-{
-  "events": [
-    {
-      "id": "uuid",
-      "type": "project_created",
-      "description": "Created project for Product A",
-      "timestamp": "2024-01-15T10:30:00Z",
-      "user": "username"
-    }
-  ]
-}
-```
-
----
-
-## Frontend Routes (13 React Router)
-
-**File:** `frontend/src/App.tsx`
-
-### Public Routes
-
-#### /login - LoginPage
-
-**Purpose:** User authentication
-**Protected:** No (redirects to /login if not authenticated)
-**Components:** LoginForm, LoginLayout
-**State Management:** useAuthStore.login()
-**On Success:** Redirect to /
-
-#### /* - NotFoundPage
-
-**Purpose:** 404 error handling
-**Shown:** When route doesn't match any defined route
-**Components:** ErrorLayout, NotFoundMessage
-
----
-
-### Protected Routes (Requires Authentication)
-
-#### / - DashboardPage
-
-**Purpose:** Overview and analytics
-**Protected By:** useAuth hook (redirects to /login if not authenticated)
-**Components:** Layout, StatsPanel, TimelinePanel, QuickLinks
-**Hooks:** useDashboard, useAuth
-**Data:** Dashboard stats from GET /api/dashboard/stats
-
-#### /projects - ProjectListPage
-
-**Purpose:** Browse and manage projects
-**Protected By:** useAuth hook
-**Components:** Layout, ProjectTable, FilterPanel, CreateProjectButton
-**Hooks:** useProjects, useProjectStore, useFilters
-**Data:**
-- Project list from GET /api/projects
-- Filter options
-- Pagination controls
-
-**Features:**
-- Filter by status (draft, review, approved, archived)
-- Filter by product, user, date range
-- Sort by any column
-- Pagination with configurable page size
-- Create new project
-- Quick actions (edit, delete, approve)
-
-#### /projects/:projectId/edit - ConditionEditorPage
-
-**Purpose:** Edit project layer conditions in grid
-**Protected By:** useAuth hook (redirects if user not owner)
-**Components:**
-- Layout
-- ConditionGrid (AG Grid with 300+ columns)
-- LayerPanel (layer selector)
-- CommentPanel
-- RecipeImportPanel
-- ExportPanel
-
-**Hooks:** useProject, useConditions, useGridCellEdit, useValidation
-**Data:**
-- Project details from GET /api/projects/{projectId}
-- Conditions from GET /api/project-conditions/{projectId}/{layerId}
-- Grid data from GET /api/project-conditions/{projectId}/grid-data
-- Column definitions from GET /api/columns
-
-**Features:**
-- AG Grid with 300+ columns grouped by category (SP, SC, OVL, DEV)
-- Real-time cell editing with validation
-- Change tracking (visual indicators for modified cells)
-- Layer navigation sidebar
-- Comments panel (project/layer/cell level)
-- Recipe import with diff preview
-- Export preview and generation
-
-**Read-Only When:** Project status is "approved" or "archived"
-
----
-
-### Admin Routes (Requires Admin Role)
-
-#### /admin/users - UserManagementPage
-
-**Purpose:** Manage users and roles
-**Protected By:** useAuth hook + require_admin
-**Components:** Layout, UserTable, CreateUserForm, RoleSelector
-**Data:** Users from GET /api/admin/users
-
-#### /admin/master-data - MasterDataPage
-
-**Purpose:** Manage products, lines, layers
-**Protected By:** require_admin
-**Components:** Layout, ProductTable, LineTable, LayerTable
-**Data:** Products, lines, layers from master data APIs
-
-#### /admin/enum-options - EnumManagementPage
-
-**Purpose:** Manage select options for columns
-**Protected By:** require_admin
-**Components:** Layout, ColumnSelector, OptionEditor
-
-#### /admin/xml-mappings - XmlMappingsPage
-
-**Purpose:** Configure recipe XML parsing
-**Protected By:** require_admin
-**Components:** Layout, EquipmentSelector, XMLMappingEditor
-
-#### /admin/validations - ValidationRulesPage
-
-**Purpose:** Configure validation rules
-**Protected By:** require_admin
-**Components:** Layout, ColumnSelector, ValidationRuleEditor
-
-#### /admin/data-sources - ExportDataSourcesPage
-
-**Purpose:** Configure external data sources
-**Protected By:** require_admin
-**Components:** Layout, DataSourceTable, DataSourceForm
-
-#### /admin/export-systems - ExportSystemsPage
-
-**Purpose:** Configure export systems and formats
-**Protected By:** require_admin
-**Components:** Layout, ExportSystemTable, ExportSystemForm, ColumnMappingEditor
-
-#### /admin/audit-logs - AuditLogPage
-
-**Purpose:** View system audit trail
-**Protected By:** require_admin
-**Components:** Layout, LogTable, FilterPanel
-**Data:** Audit logs from GET /api/audit-logs
-
----
-
-## Entry Point Statistics
-
-**Backend:**
-- Total Endpoints: 45+ across 18 routers
-- Authenticated: 40+ (require Authorization header)
-- Public: 5 (login, register, health check)
-- Protected Admin: 15+ (require admin role)
-
-**Frontend:**
-- Total Routes: 13
-- Public: 2 (login, 404)
-- Protected: 1 (dashboard)
-- Admin: 8 (various admin pages)
-- Redirects: All public routes redirect to /login if not authenticated
-
-**Data Models Exposed:**
-- User: 3 endpoints
-- Project: 7 endpoints
-- Condition: 3 endpoints
-- Comment: 4 endpoints
-- Export: 5 endpoints
-- Master Data: 3 endpoints
-- Admin: 8+ endpoints
-- Dashboard: 2 endpoints
-
-**Total Request/Response Pairs:** 45+ backend, 13 frontend routes
-
-## API Response Status Codes Used
-
-- 200 OK - Successful GET/PUT
-- 201 Created - Successful POST
-- 204 No Content - Successful DELETE
-- 400 Bad Request - Validation errors
-- 401 Unauthorized - Missing or invalid token
-- 403 Forbidden - User not authorized (role or ownership)
-- 404 Not Found - Resource not found
-- 409 Conflict - State conflict (e.g., cannot edit approved project)
-- 422 Unprocessable Entity - Request body validation failed
-- 500 Internal Server Error - Server error
-- 503 Service Unavailable - Database or external service down
+### Swagger / API Documentation
+
+When backend is running:
+- Swagger UI: `http://localhost:8000/docs`
+- ReDoc: `http://localhost:8000/redoc`
+- OpenAPI JSON: `http://localhost:8000/openapi.json`
+- Health check: `http://localhost:8000/api/health`

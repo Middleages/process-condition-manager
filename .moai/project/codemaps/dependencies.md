@@ -1,514 +1,535 @@
 # PCM Dependency Graph
 
-Visual and textual representation of module dependencies, highlighting critical paths and circular dependency risks.
+Generated: 2026-02-27
+Version: 3.0.0 (SPEC-DEVICE-001 + SPEC-PROJECT-002 + SPEC-RBAC-001 + SPEC-EQP-002)
 
-## Backend Dependency Layers
+---
 
-### Layer 1: External Dependencies
+## Backend Router → Service → Repository → Model Chain
 
-```mermaid
-graph LR
-    PostgreSQL["PostgreSQL 15+<br/>(JSONB Support)"]
-    Python["Python 3.10+"]
-
-    FastAPI["FastAPI 0.100+"]
-    SQLAlchemy["SQLAlchemy 2.0+<br/>(Async ORM)"]
-    asyncpg["asyncpg<br/>(PostgreSQL Driver)"]
-
-    Python -->|framework| FastAPI
-    Python -->|orm| SQLAlchemy
-    Python -->|driver| asyncpg
-
-    FastAPI -->|async db| SQLAlchemy
-    SQLAlchemy -->|connects via| asyncpg
-    asyncpg -->|protocol| PostgreSQL
-```
-
-### Layer 2: Core Infrastructure Dependencies
-
-```mermaid
-graph TD
-    DB["database.py<br/>(get_db)"]
-    Config["config.py<br/>(Settings)"]
-    Auth["dependencies/auth.py<br/>(get_current_user)"]
-    Models["models/ (10 entities)"]
-
-    Config -->|env vars| DB
-    DB -->|SQLAlchemy| Models
-    Auth -->|User model| Models
-
-    style DB fill:#ff9999
-    style Auth fill:#ff9999
-    style Config fill:#ffcc99
-```
-
-High fan-in modules requiring careful changes:
-- `database.get_db` - 18+ importers
-- `dependencies.auth.get_current_user` - 10+ importers
-- `dependencies.auth.require_admin` - 8+ importers
-
-### Layer 3: Repository Layer Dependencies
-
-```mermaid
-graph TD
-    DB["get_db()"]
-
-    PR["ProjectRepository"]
-    BR["BackboneRepository"]
-    CR["ConditionRepository"]
-    VR["ValidationRepository"]
-
-    DB -->|session| PR
-    DB -->|session| BR
-    DB -->|session| CR
-    DB -->|session| VR
-
-    BR -->|uses| PR
-    CR -->|validation| VR
-```
-
-### Layer 4: Service Layer Dependencies
-
-```mermaid
-graph TD
-    PR["ProjectRepository"]
-    BR["BackboneRepository"]
-    CR["ConditionRepository"]
-    VR["ValidationRepository"]
-
-    ProjectSvc["ProjectService"]
-    ConditionSvc["ConditionService"]
-    ValidationSvc["ValidationService"]
-    ExportSvc["ExportService"]
-    CommentSvc["CommentService"]
-    ChangeLogSvc["ChangeLogService"]
-
-    ProjectSvc -->|project ops| PR
-    ProjectSvc -->|backbone copy| BR
-    ProjectSvc -->|track changes| ChangeLogSvc
-
-    ConditionSvc -->|condition ops| CR
-    ConditionSvc -->|validate| ValidationSvc
-    ConditionSvc -->|log changes| ChangeLogSvc
-
-    ValidationSvc -->|rules| VR
-
-    ExportSvc -->|track exports| ChangeLogSvc
-    CommentSvc -->|log comments| ChangeLogSvc
-
-    style ProjectSvc fill:#99ccff
-    style ConditionSvc fill:#99ccff
-    style ValidationSvc fill:#99ccff
-```
-
-### Layer 5: Router to Service Dependencies
-
-```mermaid
-graph TD
-    AuthRouter["auth.py"]
-    ProjectRouter["project.py"]
-    ConditionRouter["condition.py"]
-    CommentRouter["comment.py"]
-    ExportRouter["export.py"]
-
-    AuthSvc["AuthService"]
-    ProjectSvc["ProjectService"]
-    ConditionSvc["ConditionService"]
-    CommentSvc["CommentService"]
-    ExportSvc["ExportService"]
-
-    AuthRouter -->|login/logout| AuthSvc
-    ProjectRouter -->|CRUD + lifecycle| ProjectSvc
-    ConditionRouter -->|conditions| ConditionSvc
-    CommentRouter -->|comments| CommentSvc
-    ExportRouter -->|export| ExportSvc
-
-    ProjectRouter -->|track changes| ProjectSvc
-    ConditionRouter -->|validate| ConditionSvc
-```
-
-### Complete Backend Dependency Stack
+### Text Representation
 
 ```
-Routers (HTTP Layer)
-    ↓ HTTP request
-Services (Business Logic)
-    ↓ operations
-Repositories (Data Access)
-    ↓ queries
-Models (ORM)
-    ↓ SQL
-PostgreSQL Database
+auth.py
+  └─► auth_service
+        └─► User model
+
+users.py
+  └─► get_current_user (dependency)
+        └─► User model
+
+lines.py
+  └─► Line model (direct ORM query)
+
+columns.py
+  └─► ColumnDefinition, ColumnValidation models (direct query)
+
+products.py
+  └─► Product, Layer, ProductLayer models (direct query)
+
+equipments.py
+  └─► Equipment model (direct query, filtered by line_id)
+
+projects.py
+  └─► project_service
+        ├─► BackboneRepository
+        │     └─► Project, ProjectLayer models
+        ├─► device_master_query_service
+        │     └─► DeviceMaster, LayerMaster models
+        ├─► Project, ProjectLayer, ColumnDefinition models
+
+project_conditions.py
+  ├─► condition_service
+  │     └─► ProjectLayer, ChangeLog models
+  ├─► validation_service
+  │     └─► ColumnValidation, ColumnDefinition models
+  ├─► cross_layer_validation_service (via validation_service)
+  │     └─► ProjectLayer, ColumnValidation models
+  ├─► change_log_service
+  │     └─► ChangeLogRepository
+  │           └─► ChangeLog, ProjectStatusLog models
+  ├─► project_analytics_service
+  │     └─► ChangeLogRepository
+  │           └─► ChangeLog models
+  └─► diff_service
+        └─► ProjectLayer models
+
+project_layers.py
+  ├─► backbone_service
+  │     └─► BackboneRepository
+  │           └─► Project, ProjectLayer models
+  └─► recipe_service
+        └─► RecipeXmlMapping, ProjectLayer models
+
+project_lifecycle.py
+  ├─► project_service
+  ├─► project_status_service
+  │     └─► ProjectStatusLog, Project models
+  ├─► project_analytics_service
+  │     └─► ChangeLogRepository
+  └─► change_log_service
+        └─► ChangeLogRepository
+
+dashboard.py
+  └─► dashboard_service
+        └─► DashboardRepository
+              └─► Project, ProjectLayer, User models
+
+comments.py
+  └─► comment_service
+        └─► CommentRepository
+              └─► ReviewComment, User models
+
+admin.py
+  ├─► admin_service
+  │     └─► ColumnValidation, CrossLayerRule, SelectOption, ChangeLog models
+  └─► export_history_service
+        └─► ExportHistory model
+
+admin_users.py
+  └─► admin_user_service
+        └─► User model
+
+admin_master.py
+  └─► admin_master_service
+        └─► Line, Product, Layer, ColumnDefinition, ColumnCategory, Equipment models
+
+admin_device.py
+  ├─► device_enrichment_service
+  │     └─► DeviceMaster, DeviceMetaSource models
+  ├─► device_master_sync_service
+  │     └─► SyncSourceConfig, DeviceMaster, LayerMaster models
+  ├─► sync_source_config_service
+  │     └─► SyncSourceConfig model
+  └─► device_meta_source_service
+        └─► DeviceMetaSource model
+
+device_masters.py
+  └─► device_master_query_service
+        └─► DeviceMaster, LayerMaster models
+
+export.py
+  ├─► export_service
+  │     ├─► export_builders (pure Excel functions)
+  │     ├─► export_data_source_service
+  │     │     └─► ExportDataSource model
+  │     └─► ExportSystem, ExportColumnMapping, ProjectLayer models
+  ├─► export_history_service
+  │     └─► ExportHistory model
+  └─► export_validation_service
+        └─► ProjectLayer, ColumnDefinition models
+
+export_admin.py
+  └─► export_admin_service
+        └─► ExportSystem, ExportColumnMapping models
+
+export_data_source.py
+  └─► export_data_source_service
+        └─► ExportDataSource model
 ```
 
-**Cross-cutting Dependencies:**
-- Auth → All routers (dependency injection)
-- Database → All repositories (session management)
-- ChangeLogService → ProjectService, ConditionService, CommentService (audit trail)
+---
 
-## Frontend Dependency Layers
-
-### Layer 1: Core Dependencies
-
-```mermaid
-graph LR
-    React["React 18"]
-    TypeScript["TypeScript 5.7"]
-    Router["React Router v7"]
-    Query["React Query"]
-    Zustand["Zustand"]
-
-    React -->|routing| Router
-    React -->|state| Query
-    React -->|state| Zustand
-```
-
-### Layer 2: Data Layer Dependencies
+### Mermaid Diagram: Backend Router → Service → Repository
 
 ```mermaid
 graph TD
-    Client["api/client.ts<br/>(Axios config)"]
-    Auth["useAuthStore<br/>(JWT tokens)"]
+    subgraph Routers
+        R1[projects.py]
+        R2[project_conditions.py]
+        R3[project_layers.py]
+        R4[project_lifecycle.py]
+        R5[dashboard.py]
+        R6[export.py]
+        R7[admin_device.py]
+        R8[admin_master.py]
+        R9[comments.py]
+        R10[auth.py]
+    end
 
-    ProjectAPI["api/projects.ts"]
-    ConditionAPI["api/conditions.ts"]
-    ExportAPI["api/export.ts"]
-    CommentAPI["api/comments.ts"]
+    subgraph Services
+        S1[project_service]
+        S2[condition_service]
+        S3[validation_service]
+        S4[project_status_service]
+        S5[project_analytics_service]
+        S6[backbone_service]
+        S7[recipe_service]
+        S8[change_log_service]
+        S9[dashboard_service]
+        S10[export_service]
+        S11[export_builders]
+        S12[device_master_query_service]
+        S13[device_master_sync_service]
+        S14[comment_service]
+        S15[auth_service]
+        S16[admin_master_service]
+        S17[diff_service]
+    end
 
-    Auth -->|token injection| Client
+    subgraph Repositories
+        REPO1[BackboneRepository]
+        REPO2[ChangeLogRepository]
+        REPO3[CommentRepository]
+        REPO4[DashboardRepository]
+    end
 
-    Client -->|base URL| ProjectAPI
-    Client -->|base URL| ConditionAPI
-    Client -->|base URL| ExportAPI
-    Client -->|base URL| CommentAPI
+    subgraph Models
+        M1[Project / ProjectLayer]
+        M2[User]
+        M3[ColumnDefinition / Validation]
+        M4[ChangeLog / StatusLog]
+        M5[Equipment]
+        M6[DeviceMaster / LayerMaster]
+        M7[ExportSystem / Mapping]
+        M8[ReviewComment]
+    end
 
-    style Client fill:#ff9999
-    style Auth fill:#ff9999
+    R1 --> S1
+    R2 --> S2
+    R2 --> S3
+    R2 --> S8
+    R2 --> S5
+    R2 --> S17
+    R3 --> S6
+    R3 --> S7
+    R4 --> S1
+    R4 --> S4
+    R4 --> S5
+    R4 --> S8
+    R5 --> S9
+    R6 --> S10
+    R7 --> S13
+    R7 --> S12
+    R8 --> S16
+    R9 --> S14
+    R10 --> S15
+
+    S1 --> REPO1
+    S6 --> REPO1
+    S5 --> REPO2
+    S8 --> REPO2
+    S9 --> REPO4
+    S14 --> REPO3
+
+    REPO1 --> M1
+    REPO2 --> M4
+    REPO3 --> M8
+    REPO4 --> M1
+    REPO4 --> M2
+
+    S1 --> M1
+    S2 --> M1
+    S3 --> M3
+    S4 --> M4
+    S10 --> S11
+    S10 --> M7
+    S12 --> M6
+    S13 --> M6
+    S15 --> M2
+    S16 --> M5
 ```
 
-High fan-in modules:
-- `client.ts` - 19+ API modules depend on it
-- `useAuthStore` - 20+ components
-- `useToastStore` - 15+ components
+---
 
-### Layer 3: Hook Dependencies
+## Frontend Page → Hook → API → Store Chain
+
+### Text Representation
+
+```
+LoginPage
+  └─► useAuthStore.login()
+        └─► api/authToken.ts (POST /api/auth/login)
+
+DashboardPage
+  ├─► useDashboardOverview → api/dashboard.ts (GET /api/dashboard)
+  ├─► useLines → api/lines.ts (GET /api/lines)
+  └─► useRefreshDashboard (invalidate query cache)
+
+ProjectListPage
+  ├─► useProjects → api/projects.ts (GET /api/projects)
+  ├─► useLines → api/lines.ts
+  └─► URL state sync (useSearchParams: ?status=X&line_id=Y)
+
+ConditionEditorPage
+  ├─► useProjectDetail → api/projects.ts (GET /api/projects/:id)
+  ├─► useColumns → api/columns.ts (GET /api/columns)
+  ├─► useUsers → api/users.ts (GET /api/users)
+  ├─► useComments → api/comments.ts (GET /api/projects/:id/comments)
+  ├─► useEditorCellEdit
+  │     ├─► useEditorStore (dirty cells, grid data)
+  │     └─► api/projects.ts (PUT /api/projects/:id/conditions bulk save)
+  ├─► useEditorNavigation
+  │     └─► useEditorStore (layer index, error navigation)
+  ├─► useEditorModals
+  │     └─► useEditorStore (modal open state)
+  ├─► useValidateProjectMutation → api/projects.ts (POST /api/projects/:id/validate)
+  ├─► useDeleteLayer → api/projects.ts (DELETE /api/projects/:id/layers/:layerId)
+  ├─► useAutoSave (30s interval → useEditorCellEdit.save)
+  └─► useConfirm → useToastStore (confirm dialog)
+
+AdminLayout
+  └─► useAuthStore (role check for tab visibility)
+
+UserManagementPage
+  └─► useAdminUsers → api/adminUsers.ts (GET/POST/PUT/PATCH /api/admin/users)
+
+MasterDataPage
+  └─► useAdminMaster → api/adminMaster.ts (CRUD /api/admin/lines, products, etc.)
+
+DeviceMasterPage
+  └─► useDeviceMaster → api/deviceMaster.ts (GET /api/device-masters)
+      useAdminUsers (sync trigger mutation)
+
+ExportSystemsPage
+  └─► useExportAdmin → api/exportAdmin.ts (CRUD /api/admin/export-systems)
+
+ExportDataSourcesPage
+  └─► useExportDataSources → api/exportDataSource.ts (CRUD /api/admin/export-data-sources)
+
+ValidationRulesPage
+  └─► useAdminValidations → api/adminValidations.ts (CRUD validations + cross-layer rules)
+
+AuditLogPage
+  └─► useAdminAudit → api/adminAudit.ts (GET /api/admin/audit-logs)
+```
+
+---
+
+### Mermaid Diagram: Frontend Page → Hook → API
 
 ```mermaid
 graph TD
-    useAuth["useAuth"]
-    useAuthStore["useAuthStore"]
-    useProjects["useProjects"]
-    useConditions["useConditions"]
-    useExport["useExport"]
-    useComments["useComments"]
+    subgraph Pages
+        P1[DashboardPage]
+        P2[ProjectListPage]
+        P3[ConditionEditorPage]
+        P4[LoginPage]
+        P5[AdminPages]
+    end
 
-    useAuth -->|store| useAuthStore
-    useProjects -->|api| ProjectAPI["api/projects.ts"]
-    useConditions -->|api| ConditionAPI["api/conditions.ts"]
-    useExport -->|api| ExportAPI["api/export.ts"]
-    useComments -->|api| CommentAPI["api/comments.ts"]
+    subgraph Hooks
+        H1[useDashboardOverview]
+        H2[useProjects]
+        H3[useProjectDetail]
+        H4[useColumns]
+        H5[useEditorCellEdit]
+        H6[useEditorNavigation]
+        H7[useEditorModals]
+        H8[useAutoSave]
+        H9[useComments]
+        H10[useAdminUsers]
+        H11[useAdminMaster]
+        H12[useExportAdmin]
+        H13[useDeviceMaster]
+        H14[useLines]
+    end
 
-    useProjects -->|auth| useAuth
-    useConditions -->|auth| useAuth
-    useExport -->|auth| useAuth
+    subgraph Stores
+        ST1[useEditorStore]
+        ST2[useAuthStore]
+        ST3[useToastStore]
+    end
+
+    subgraph API
+        A1[api/dashboard.ts]
+        A2[api/projects.ts]
+        A3[api/columns.ts]
+        A4[api/authToken.ts]
+        A5[api/adminUsers.ts]
+        A6[api/adminMaster.ts]
+        A7[api/exportAdmin.ts]
+        A8[api/deviceMaster.ts]
+        A9[api/lines.ts]
+        A10[client.ts]
+    end
+
+    P1 --> H1
+    P1 --> H14
+    P2 --> H2
+    P2 --> H14
+    P3 --> H3
+    P3 --> H4
+    P3 --> H5
+    P3 --> H6
+    P3 --> H7
+    P3 --> H8
+    P3 --> H9
+    P4 --> ST2
+    P5 --> H10
+    P5 --> H11
+    P5 --> H12
+    P5 --> H13
+
+    H1 --> A1
+    H2 --> A2
+    H3 --> A2
+    H4 --> A3
+    H5 --> A2
+    H5 --> ST1
+    H6 --> ST1
+    H7 --> ST1
+    H10 --> A5
+    H11 --> A6
+    H12 --> A7
+    H13 --> A8
+    H14 --> A9
+
+    ST2 --> A4
+    A1 --> A10
+    A2 --> A10
+    A3 --> A10
+    A4 --> A10
+    A5 --> A10
+    A6 --> A10
+    A7 --> A10
+    A8 --> A10
+    A9 --> A10
 ```
 
-### Layer 4: Component Dependencies
+---
 
-```mermaid
-graph TD
-    Layout["Layout<br/>(Header, Sidebar)"]
+## External Dependencies
 
-    LoginPage["LoginPage"]
-    DashboardPage["DashboardPage"]
-    ProjectListPage["ProjectListPage"]
-    ConditionEditorPage["ConditionEditorPage"]
-    AdminPages["Admin Pages"]
+### Backend (requirements.txt)
 
-    LoginPage -->|hook| useLoginForm
-    DashboardPage -->|hook| useDashboard
-    ProjectListPage -->|hook| useProjects
-    ConditionEditorPage -->|hooks| useProject
-    ConditionEditorPage -->|hooks| useConditions
-    ConditionEditorPage -->|hooks| useGridCellEdit
-```
+| Package | Purpose | Critical |
+|---------|---------|---------|
+| fastapi | REST API framework | Yes |
+| uvicorn | ASGI server | Yes |
+| sqlalchemy[asyncio] | Async ORM | Yes |
+| asyncpg | PostgreSQL async driver | Yes |
+| alembic | Database migrations | Yes |
+| pydantic | Request/response validation | Yes |
+| python-jose[cryptography] | JWT generation/validation | Yes |
+| passlib[bcrypt] | Password hashing | Yes |
+| openpyxl | Excel export (.xlsx generation) | Yes |
+| lxml | XML parsing (Recipe XML, XPath) | Yes |
+| pytest | Test runner | Dev |
+| pytest-asyncio | Async test support | Dev |
+| httpx | Async HTTP client for tests | Dev |
+| pytest-mock | Mock fixtures | Dev |
+| pytest-cov | Coverage reporting | Dev |
 
-### Layer 5: Page Component Tree
+### Frontend (package.json)
 
-```
-App.tsx (Router)
-├── Layout (wrapper)
-│   ├── Header
-│   ├── Sidebar
-│   └── main content
-│       ├── LoginPage
-│       ├── DashboardPage
-│       ├── ProjectListPage
-│       ├── ConditionEditorPage
-│       │   ├── ConditionGrid (AG Grid)
-│       │   ├── GridCellEditor
-│       │   ├── RecipeImportPanel
-│       │   ├── CommentPanel
-│       │   └── ExportPanel
-│       ├── UserManagementPage
-│       ├── MasterDataPage
-│       └── ... (6 more admin pages)
-```
+| Package | Purpose | Critical |
+|---------|---------|---------|
+| react | UI library | Yes |
+| react-dom | DOM rendering | Yes |
+| react-router-dom | Client-side routing (v7) | Yes |
+| @tanstack/react-query | Server state management | Yes |
+| zustand | Client state management | Yes |
+| ag-grid-community | Condition table grid | Yes |
+| axios | HTTP client | Yes |
+| tailwindcss | CSS utility framework (v4) | Yes |
+| lucide-react | Icon components | Yes |
+| vite | Build tool + dev server | Yes |
+| typescript | Type checking | Yes |
+| vitest | Unit test runner | Dev |
+| @testing-library/react | Component testing | Dev |
 
-## Cross-System Dependencies
+---
 
-### Authentication Flow Dependencies
+## Cross-Cutting Dependencies
 
-```mermaid
-graph LR
-    Frontend["Frontend<br/>useAuthStore"]
-    LoginPage["LoginPage"]
-    APIClient["api/client.ts"]
-    BackendAuth["backend/routers/auth.py"]
-    AuthService["AuthService"]
-    UserModel["User model"]
-    DB["PostgreSQL<br/>users table"]
-
-    LoginPage -->|credentials| APIClient
-    APIClient -->|POST /api/auth/login| BackendAuth
-    BackendAuth -->|auth logic| AuthService
-    AuthService -->|lookup| UserModel
-    UserModel -->|query| DB
-    DB -->|user record| AuthService
-    AuthService -->|JWT token| BackendAuth
-    BackendAuth -->|token| APIClient
-    APIClient -->|store token| Frontend
-```
-
-Key dependency: All authenticated requests require token from Frontend → stored in useAuthStore → injected by api/client.ts
-
-### Condition Editing Flow Dependencies
-
-```mermaid
-graph LR
-    Grid["ConditionGrid<br/>(AG Grid)"]
-    Editor["GridCellEditor"]
-    Hook["useConditions"]
-    Validation["useValidation"]
-    API["api/conditions.ts"]
-
-    Grid -->|cell value changed| Editor
-    Editor -->|validate| Validation
-    Validation -->|backend rules| API
-    API -->|PUT /api/project-conditions| Backend["ConditionService"]
-    Backend -->|apply validation| ValidationService["ValidationService"]
-    Backend -->|update JSONB| ConditionRepository
-
-    ConditionRepository -->|SELECT...| DB["ProjectLayers table"]
-```
-
-### Backbone Copy Flow Dependencies
-
-```mermaid
-graph LR
-    CreateProject["createProject()"]
-    ProjectRouter["project.py"]
-    ProjectSvc["ProjectService"]
-    BackboneRepo["BackboneRepository"]
-
-    CreateProject -->|API call| ProjectRouter
-    ProjectRouter -->|business logic| ProjectSvc
-    ProjectSvc -->|copy backbone| BackboneRepo
-
-    BackboneRepo -->|SELECT ProductLayers| DB1["ProductLayers<br/>(template)"]
-    BackboneRepo -->|INSERT ProjectLayers| DB2["ProjectLayers<br/>(project)"]
-
-    ProjectSvc -->|log change| ChangeLogService
-```
-
-### Export Flow Dependencies
-
-```mermaid
-graph LR
-    ExportPanel["ExportPanel"]
-    ExportAPI["api/export.ts"]
-    ExportRouter["export.py"]
-    ExportSvc["ExportService"]
-
-    ExportPanel -->|preview/generate| ExportAPI
-    ExportAPI -->|POST /api/export/excel| ExportRouter
-    ExportRouter -->|format data| ExportSvc
-
-    ExportSvc -->|read conditions| ConditionRepo["ConditionRepository"]
-    ExportSvc -->|read mappings| MappingRepo["ExportColumnMappingRepository"]
-    ExportSvc -->|excel generation| openpyxl["openpyxl library"]
-
-    openpyxl -->|file| ExportSvc
-    ExportSvc -->|save file| FileSystem["/tmp/exports"]
-```
-
-## Dependency Risk Analysis
-
-### Critical Paths (High Priority for Maintenance)
-
-1. **Authentication Critical Path**
-   - `dependencies/auth.py` → `User model` → `users table`
-   - Impacts: All 18 routers (100% of API)
-   - Risk: Breaking change = system-wide outage
-   - Mitigation: Comprehensive unit tests, backward-compatible schema changes
-
-2. **Database Session Critical Path**
-   - `database.get_db()` → `AsyncSession` → `PostgreSQL`
-   - Impacts: All repositories (100% of data access)
-   - Risk: Connection pooling failure = cascading failures
-   - Mitigation: Connection pooling configuration, health checks
-
-3. **JSONB Operations Critical Path**
-   - `comparison.compare_dicts()` → JSONB merge → `ProjectLayers.conditions`
-   - Impacts: Condition editing, backbone copy, recipe import
-   - Risk: Data corruption from incorrect merge logic
-   - Mitigation: Comprehensive diff testing with edge cases
-
-### Circular Dependency Risks
-
-**Actual Circular Dependencies:** None detected
-
-**Potential Risks:**
-1. CommentService could depend on ProjectService AND ProjectService could depend on CommentService
-   - **Mitigation:** Keep CommentService independent, use event-based logging
-
-2. ExportService depends on ProjectService for data, ProjectService logs to ChangeLogService which ExportService also uses
-   - **Mitigation:** ChangeLogService is read-only for ExportService
-
-### Fan-In Risk Modules
-
-**Backend:**
-
-| Module | Importers | Risk | Mitigation |
-|--------|-----------|------|-----------|
-| `database.get_db` | 18 | Breaking change affects all routers | Type-safe Dependency class, version compatibility |
-| `auth.get_current_user` | 10 | Auth change breaks protected endpoints | Interface stability, unit tests |
-| `auth.require_admin` | 8 | Role check failure = security breach | Centralized RBAC rules, audit logging |
-| `models.User` | 14 | Schema change requires migration | Alembic migrations, backward compatibility |
-| `utils.comparison` | 4 | Diff logic affects condition merging | Comprehensive test suite with edge cases |
-
-**Frontend:**
-
-| Module | Importers | Risk | Mitigation |
-|--------|-----------|------|-----------|
-| `useAuthStore` | 20 | Token/user state corruption | Zustand actions testing, localStorage validation |
-| `useToastStore` | 15 | Notification storms, UI blocking | Toast queue limit, auto-dismiss, user dismissal |
-| `client.ts` | 19 | Network config broken = API inaccessible | Axios interceptor testing, fallback mechanisms |
-| `useProjects` | 5 | Project data stale | React Query cache invalidation, polling strategy |
-
-### Dependency Version Constraints
-
-**Backend:**
-- FastAPI 0.100+ (async support required)
-- SQLAlchemy 2.0+ (async ORM, sqlalchemy.ext.asyncio)
-- asyncpg required for PostgreSQL async driver
-- python-jose for JWT operations
-- Pydantic v2 for schema validation
-
-**Frontend:**
-- React 18+ (hooks API)
-- React Router v7 (newer routing model)
-- TypeScript 5.7+ (strict type checking)
-- React Query for server state
-- Zustand for client state
-- AG Grid Community for data grid
-
-### Breaking Change Analysis
-
-**High-Risk Changes:**
-1. **Removing `database.get_db` parameter** - Would break all 18 routers
-2. **Changing `User` model primary key** - Would invalidate foreign keys
-3. **Modifying JWT token format** - Would invalidate existing tokens
-4. **Changing column_id to column_name** - Would break validation rules
-
-**Low-Risk Changes:**
-1. **Adding new optional columns to models** - Safe with default values
-2. **Adding new router endpoints** - Backward compatible
-3. **Adding new export format types** - Optional feature
-
-## Dependency Visualization
-
-### Backend Service Dependency Graph
+### Authentication Flow
 
 ```
-        Routers (18)
-           ▲  ▲  ▲
-           │  │  │
-       ┌───┴──┴──┴─────────┐
-       │                    │
-   Services (23)        Utils (3)
-       │                    │
-       │   ┌────────────────┘
-       │   │
-  Repositories (4)
-       │
-       ▼
-    Models (10)
-       │
-       ▼
-  PostgreSQL DB
+All protected routers
+  └─► app/dependencies/auth.py
+        ├─► get_current_user (decodes JWT, fetches User from DB)
+        ├─► require_active_user (checks is_active flag)
+        ├─► require_admin_or_developer (checks roles array contains 'admin' OR 'developer')
+        ├─► require_ops_write (checks roles contains 'admin')
+        ├─► require_system_write (checks roles contains 'developer')
+        └─► require_project_owner (checks project.created_by == current_user.id)
 ```
 
-### Frontend Component Dependency Graph
+Frontend auth cross-cutting:
 
 ```
-    App.tsx (Router)
-       │
-    Layout
-       │
-    ┌──┴────────────┬──────────────┬──────────────┐
-    │               │              │              │
- Pages (12)    Components (50+)  Hooks (30+)  Stores (3)
-    │               │              │              │
-    └───────────────┴──────────────┴──────────────┘
-            │
-         API (19)
-            │
-         Types (10+)
-            │
-        Backend APIs
+src/api/client.ts
+  ├─► Injects Authorization: Bearer {accessToken} header on all requests
+  ├─► On 401 response: calls POST /api/auth/refresh
+  ├─► On refresh success: retries original request with new token
+  └─► On refresh failure: calls useAuthStore.logout(), redirects to /login
 ```
 
-## Import Dependency Summary
+### Database Session Factory
 
-**Backend Total Dependencies:**
-- SQLAlchemy/asyncpg: 1
-- FastAPI: 1
-- Pydantic: 2
-- Python-jose: 1
-- Standard library: Multiple
+```
+app/database.py
+  ├─► async_session (AsyncSession factory) — used by all services
+  ├─► Base (DeclarativeBase) — used by all models
+  └─► engine (AsyncEngine) — lifecycle managed by FastAPI lifespan
+```
 
-**Frontend Total Dependencies:**
-- React: 1
-- React Router: 1
-- Zustand: 1
-- React Query: 1
-- Axios: 1
-- AG Grid Community: 1
-- Tailwind CSS: 1
-- TypeScript: 1
+All services receive an `AsyncSession` via FastAPI Depends injection pattern:
 
-**No Circular Dependencies Detected** ✓
+```python
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    async with async_session() as session:
+        yield session
+```
 
-## Dependency Health Recommendations
+### Configuration
 
-1. **Document all breaking changes** via CHANGELOG
-2. **Use semantic versioning** for API versions
-3. **Maintain backward compatibility** in schemas
-4. **Monitor dependency security** via automated scanning
-5. **Upgrade dependencies quarterly** with testing
-6. **Add @MX:ANCHOR tags** to high fan-in modules
-7. **Implement deprecation warnings** before breaking changes
-8. **Test dependency injection** thoroughly
-9. **Version APIs** to support multiple versions
-10. **Use adapter pattern** for major dependency changes
+```
+app/config.py (Pydantic BaseSettings)
+  ├─► DATABASE_URL (asyncpg URL from env)
+  ├─► DATABASE_URL_SYNC (psycopg2 URL for Alembic from env)
+  ├─► SECRET_KEY (JWT signing key from env)
+  ├─► CORS_ORIGINS (comma-separated list from env)
+  └─► APP_NAME (application name)
+```
 
-## Critical Path Monitoring
+### Constants Module
 
-Monitor these critical paths for performance:
-1. Condition save → Database commit → Client notification (typical latency: <500ms)
-2. Project create → Backbone copy → Project initialization (typical latency: <1s)
-3. Export generation → File writing → Download (typical latency: <5s for 100 projects)
-4. Recipe import → Diff calculation → Grid update (typical latency: <2s)
+```
+app/constants.py
+  ├─► STATUS_TRANSITIONS dict — valid from→to status pairs
+  ├─► VALIDATION_RULE_TYPES list — range/enum/required/regex/cross_layer
+  ├─► CATEGORY_CODES list — SP/SC/OVL/DEV/EQP
+  └─► SOURCE_TYPES list — manual/backbone/recipe
+```
 
-Set alerts for latency increases >2x baseline to detect dependency issues early.
+Used by: project_status_service, validation_service, admin_service, cross_layer_validation_service
+
+### values_differ() Utility
+
+```
+app/utils/comparison.py (values_differ)
+  ├─► Normalizes numeric types (int/float comparison without false positives)
+  ├─► Handles None/empty string equivalence
+  └─► Used by: condition_service, validation_service, diff_service, export_validation_service
+```
+
+---
+
+## Potential Circular Dependency Analysis
+
+### Backend
+
+| Risk | Modules | Status | Mitigation |
+|------|---------|--------|-----------|
+| LOW | project_service imports device_master_query_service | No cycle | V2 creation delegates to device service; no reverse import |
+| LOW | export_service imports export_builders | No cycle | export_builders is pure functions module with no service imports |
+| LOW | admin_service imports export_history_service | No cycle | export_history_service only imports ExportHistory model |
+| NONE DETECTED | All service → repository → model chains | Clean | Repositories only import models; services only import repositories and models |
+
+### Frontend
+
+| Risk | Modules | Status | Mitigation |
+|------|---------|--------|-----------|
+| LOW | useEditorStore imported by multiple hooks and components | No cycle | Store has no imports of hooks or components |
+| LOW | useAuthStore imported by client.ts (interceptor) | No cycle | Axios interceptor accesses store state; store does not import client |
+| NONE DETECTED | All page → hook → api chains | Clean | API modules only import client.ts; no reverse imports |
+
+### Architectural Safeguards
+
+- Models never import services (one-way dependency)
+- Repositories only import models (no service imports)
+- Services may import other services but not routers
+- Frontend API modules only import `client.ts` (no cross-API module imports)
+- Stores do not import hooks (hooks read/write stores unidirectionally)

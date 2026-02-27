@@ -297,8 +297,19 @@ Draft → Review → Approved → (Revision 생성 시) Archived
     - 헤더 미리보기 + 중복 프로젝트 경고
     - ProjectListPage: V2 모달 기본, V2 표시명 `{product_name} | {process} | {part_id}`
     - Frontend 타입 마이그레이션: layer_id INT→STRING 전체 15+ 파일
-    - 513 BE / 137 FE 테스트 통과, TSC 0 에러
+    - 515 BE / 137 FE 테스트 통과, TSC 0 에러
   - Post-fix: REQ-PROJ-053 enrichment 표시, V2 라우터 파라미터 크래시 수정, revise_project() V2 중복 체크 추가
+- 코드 품질 개선 (Post SPEC-PROJECT-002)
+  - ruff 린트 이슈 15건 수정 (F401 unused imports, F821 undefined names, E712/E741/E402)
+  - 코드 리뷰 피드백 12건 중 9건 반영 (미사용 V1 코드 삭제, @MX:ANCHOR 태그 추가 등)
+  - V2 프로젝트 호환성 버그 7건 수정:
+    - CRITICAL: device_master_sync_service ON CONFLICT 제약조건명 수정
+    - CRITICAL: cross_layer_validation_service raw dict → ValidationErrorItem 변환
+    - CRITICAL: export_service V2 product_name 해결 (_resolve_product_name 헬퍼)
+    - HIGH: project_analytics_service V2 버전 히스토리 (device_master_id 그룹핑)
+    - HIGH: LayerAddModal 필터링 키 불일치 수정 (layer_name 비교)
+    - MEDIUM: backbone_service layer_id 타입 int|str, admin_service audit log V2 필터
+  - 515 BE 테스트 통과, TSC 0 에러, ruff clean
 
 ## 개발 명령어
 

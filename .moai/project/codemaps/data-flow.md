@@ -1,858 +1,513 @@
 # PCM Data Flow Architecture
 
-Comprehensive documentation of critical data flow paths through the PCM system, illustrating how data moves between frontend, backend, and database layers.
-
-## Key Data Flows
-
-### Flow 1: User Authentication and Session Management
-
-**Trigger:** User enters credentials on LoginPage
-**Duration:** ~500ms
-
-```
-User Input (LoginPage)
-    ↓
-Form Validation (useLoginForm hook)
-    ↓
-API Call: POST /api/auth/login (axios client)
-    ↓
-Backend: auth.py router
-    ↓
-AuthService.authenticate(username, password)
-    ↓
-Database Query: SELECT * FROM users WHERE username = ?
-    ↓
-Password Hash Validation (python-jose)
-    ↓
-Generate JWT tokens (access + refresh)
-    ↓
-API Response: {access_token, refresh_token, user}
-    ↓
-useAuthStore.login() - Store tokens in state
-    ↓
-localStorage.setItem('token') - Persist token
-    ↓
-Redirect to /projects dashboard
-```
-
-**Data Points:**
-- Input: username (string), password (string)
-- Processing: Password hash comparison, JWT generation
-- Output: JWT access token (string), refresh token (string), user object
-- Storage: useAuthStore (in-memory), localStorage (browser storage)
-
-**Token Structure:**
-```json
-Access Token Payload: {
-  "sub": "user_id",
-  "username": "string",
-  "exp": 1705327800,
-  "iat": 1705327200
-}
-```
-
-**Token Lifecycle:**
-- Access token: 30 minutes expiration
-- Refresh token: 7 days expiration
-- Auto-refresh: Intercepted 401 triggers refresh via POST /api/auth/refresh
-- Logout: Tokens cleared from storage
-
-**Critical Dependencies:**
-- `database.get_db()` - Database session
-- `User model` - User entity lookup
-- `python-jose` - JWT encoding/decoding
-- `useAuthStore` - Frontend state management
+Generated: 2026-02-27
+Version: 3.0.0 (SPEC-DEVICE-001 + SPEC-PROJECT-002 + SPEC-RBAC-001 + SPEC-EQP-002)
 
 ---
 
-### Flow 2: Project Creation with Backbone Copy
+## 1. Project Creation Flow
 
-**Trigger:** User clicks "Create Project" button on ProjectListPage
-**Duration:** ~1.5 seconds
+### V1: Product-Based Creation (Legacy)
 
-```
-User selects Product + Backbone (ProjectForm)
-    ↓
-Form Validation
-    ↓
-API Call: POST /api/projects
-  {
-    "product_id": "uuid",
-    "main_backbone_id": "uuid"
-  }
-    ↓
-Backend: project.py router
-    ↓
-get_current_user dependency injects authenticated user
-    ↓
-ProjectService.create_project(product_id, current_user)
-    ↓
-Database Query 1: SELECT * FROM products WHERE id = ?
-    ↓
-Database Query 2: SELECT * FROM product_layers
-    WHERE product_id = main_backbone_id
-    ↓
-BackboneRepository.get_backbone(main_backbone_id)
-    Returns ProductLayers with conditions JSONB:
-    {
-      "SP_PARAMETER_1": "value",
-      "SC_PARAMETER_1": 123,
-      "DEV_PARAMETER_1": false
-    }
-    ↓
-ProjectService creates new Project record
-    ↓
-Database Query 3: INSERT INTO projects
-    (product_id, main_backbone_id, status)
-    VALUES (...)
-    Returns: project_id
-    ↓
-BackboneRepository.copy_backbone(main_backbone_id, new_project_id)
-    ↓
-For each layer in ProductLayers:
-    Database Query 4: INSERT INTO project_layers
-    (project_id, layer_id, backbone_product_id,
-     conditions, backbone_conditions)
-    VALUES (...copied conditions...)
-    ↓
-ChangeLogService.log_change(
-  project_id,
-  'backbone_copy',
-  null,
-  backbone_id,
-  'backbone'
-)
-    ↓
-Database Query 5: INSERT INTO changelogs (...)
-    ↓
-API Response: {project_id, status: 'draft', layers: [...]}
-    ↓
-Frontend: useProjectStore.selectProject(new_project)
-    ↓
-Redirect to /projects/{projectId}/edit
+```mermaid
+sequenceDiagram
+    participant UI as ProjectCreateModal (V1)
+    participant API as api/projects.ts
+    participant Router as projects.py
+    participant Service as project_service
+    participant BbRepo as BackboneRepository
+    participant DB as PostgreSQL
+
+    UI->>API: POST /api/projects {name, line_id, product_id, backbone_project_id}
+    API->>Router: validate ProjectCreate schema
+    Router->>Service: create_project_v1(data, user)
+    Service->>BbRepo: get_backbone_layers(backbone_project_id)
+    BbRepo->>DB: SELECT project_layers WHERE project_id = backbone_project_id AND project.status = 'Approved'
+    DB-->>BbRepo: ProjectLayer rows with conditions JSONB
+    BbRepo-->>Service: layer list with conditions
+    Service->>DB: INSERT INTO projects (name, line_id, product_id, status='Draft', version=1)
+    loop For each backbone layer
+        Service->>DB: INSERT INTO project_layers (project_id, step_seq, layer_name, conditions=backbone.conditions, backbone_conditions=backbone.conditions)
+    end
+    DB-->>Service: created project + layers
+    Service-->>Router: ProjectResponse
+    Router-->>UI: 201 Created {id, name, status, layers}
+    UI->>UI: navigate to /projects/:id/edit
 ```
 
-**Data Points:**
-- Input: product_id, main_backbone_id, current_user
-- Backbone Template: ProductLayers.conditions (JSONB ~300 params)
-- Processing: Backbone copy with deep JSONB cloning
-- Output: Project record with all ProjectLayers created
-- Audit: Change logged with type 'backbone'
+### V2: Device-Ref Based Creation (SPEC-DEVICE-001 / SPEC-PROJECT-002)
 
-**JSONB Structure Example:**
-```json
-ProductLayers.conditions (Master):
-{
-  "SP": {
-    "SP_PARAMETER_1": "standard",
-    "SP_PARAMETER_2": 100
-  },
-  "SC": {
-    "SC_PARAMETER_1": 50
-  },
-  "OVL": {},
-  "DEV": {}
-}
+```mermaid
+sequenceDiagram
+    participant UI as ProjectCreateModalV2
+    participant API as api/projects.ts
+    participant Router as projects.py
+    participant Service as project_service
+    participant DevSvc as device_master_query_service
+    participant DB as PostgreSQL
 
-Copied to ProjectLayers.conditions (Project Copy)
-AND ProjectLayers.backbone_conditions (Backup of original)
+    UI->>API: POST /api/projects {name, line_id, device_master_id, device_ref_version}
+    API->>Router: validate ProjectCreate (V2 variant)
+    Router->>Service: create_project_v2(data, user)
+    Service->>DevSvc: get_device_master_layers(device_master_id)
+    DevSvc->>DB: SELECT layer_masters WHERE device_master_id = X ORDER BY step_seq
+    DB-->>DevSvc: LayerMaster rows
+    DevSvc-->>Service: layer master list
+    Service->>DB: INSERT INTO projects (name, line_id, device_ref_id, device_ref_version, status='Draft', version=1)
+    loop For each layer master
+        Service->>DB: INSERT INTO project_layers (project_id, step_seq, layer_name, conditions={}, backbone_conditions={})
+    end
+    DB-->>Service: created project + empty layers
+    Service-->>Router: ProjectResponse
+    Router-->>UI: 201 Created {id, name, status, layers}
+    UI->>UI: navigate to /projects/:id/edit
 ```
-
-**Critical Dependencies:**
-- `ProjectRepository.create()` - Insert project
-- `BackboneRepository.copy_backbone()` - Deep JSONB copy (critical logic)
-- `ChangeLogService.log_change()` - Audit trail
-- `comparison.compare_dicts()` - Used in verification
-
-**Risks:**
-- Concurrent project creation can cause race condition on revision counter
-- Large JSONB copy (300+ params) on slow database
 
 ---
 
-### Flow 3: Condition Editing (Single Cell Change in Grid)
+## 2. Backbone Copy Flow
 
-**Trigger:** User edits cell in AG Grid on ConditionEditorPage
-**Duration:** ~300-800ms (depends on validation complexity)
+Triggered when a user replaces a specific layer's conditions with backbone source.
 
+```mermaid
+sequenceDiagram
+    participant UI as BackboneReplaceModal
+    participant API as api/projects.ts
+    participant Router as project_layers.py
+    participant Service as backbone_service
+    participant BbRepo as BackboneRepository
+    participant DB as PostgreSQL
+
+    UI->>API: POST /api/projects/:id/layers/:layerId/backbone-replace {backbone_project_id, backbone_layer_id}
+    API->>Router: authenticate (owner guard)
+    Router->>Service: replace_layer_backbone(project_id, layer_id, backbone_project_id, backbone_layer_id)
+    Service->>BbRepo: get_backbone_layer_conditions(backbone_project_id, backbone_layer_id)
+    BbRepo->>DB: SELECT project_layers.conditions WHERE id = backbone_layer_id AND project.status = 'Approved'
+    DB-->>BbRepo: conditions JSONB
+    BbRepo-->>Service: conditions dict
+    Service->>DB: UPDATE project_layers SET conditions = backbone_conditions_copy, backbone_conditions = backbone_conditions_copy, source_type = 'backbone' WHERE id = layer_id
+    Service->>DB: INSERT INTO change_logs (project_layer_id, column_key, old_value, new_value, source_type='backbone') for each changed column
+    DB-->>Service: updated layer
+    Service-->>Router: ProjectLayerResponse
+    Router-->>UI: 200 OK {conditions, backbone_conditions}
+    UI->>UI: refresh AG Grid with new conditions, backbone cells highlighted
 ```
-User types new value in grid cell
-    ↓
-AG Grid: onCellValueChanged event
-    ↓
-GridCellEditor component
-    ↓
-useGridCellEdit hook captures change
-    ↓
-Client-side Validation:
-  - Type check (number, string, date, select)
-  - Format validation (email, date format)
-    ↓
-Mark cell as dirty (visual indicator)
-    ↓
-User clicks "Save" button
-    ↓
-useConditions.updateConditions() hook
-    ↓
-Collect all dirty cells for the layer
-    ↓
-API Call: PUT /api/project-conditions/{projectId}/{layerId}
-  {
-    "conditions": {
-      "SP_PARAMETER_1": "new_value",
-      "SC_PARAMETER_1": 456
-    },
-    "change_type": "manual"
-  }
-    ↓
-Backend: condition.py router
-    ↓
-get_current_user + authorization check
-    ↓
-Check project status: must be 'draft' or 'review'
-    ↓
-ConditionService.save_conditions(projectId, layerId, data)
-    ↓
-ConditionRepository.get_conditions(projectId, layerId)
-    Returns current conditions JSONB
-    ↓
-ValidationService.validate_layer(layerId, new_conditions)
-    ↓
-For each column in data:
-    Database Query: SELECT * FROM column_validations
-    WHERE column_id = ?
-    ↓
-Apply validation rules:
-    - Range: min <= value <= max
-    - Required: value IS NOT NULL
-    - Pattern: REGEX_MATCH(value, pattern)
-    - Conditional: IF condition_a THEN require condition_b
-    ↓
-If validation fails:
-    API Response: {
-      "validation_errors": [
-        {"field": "SP_PARAMETER_1", "message": "Must be 0-100"}
-      ]
-    }
-    Response Status: 400 Bad Request
-    ↓
-Frontend displays validation errors in grid
-    User corrects input
-    ↓
-Else: Validation passes
-    ↓
-ConditionRepository.update_conditions(
-  projectId,
-  layerId,
-  new_values
-)
-    ↓
-JSONB Merge Logic:
-    OLD: {SP_PARAMETER_1: "old", SC_PARAMETER_1: 100}
-    NEW: {SP_PARAMETER_1: "new"}
-    RESULT: {SP_PARAMETER_1: "new", SC_PARAMETER_1: 100}
-    ↓
-Database Query: UPDATE project_layers
-    SET conditions = jsonb_set(conditions, '{SP_PARAMETER_1}', '"new"')
-    WHERE project_id = ? AND layer_id = ?
-    ↓
-For each changed field:
-    ChangeLogService.log_change(
-      project_id,
-      'SP_PARAMETER_1',
-      old_value: 'old',
-      new_value: 'new',
-      change_type: 'manual',
-      user_id: current_user.id
-    )
-    ↓
-Database Query: INSERT INTO changelogs (...)
-    ↓
-Invalidate condition cache
-    ↓
-API Response: {
-  "conditions": {...updated},
-  "validation_errors": []
-}
-    ↓
-Frontend:
-  - Clear dirty cell markers
-  - Update grid display
-  - Show success toast notification
-  - Update useConditions hook cache
-```
-
-**Data Points:**
-- Input: Single cell value (string/number/bool/date)
-- Validation Rules: From ColumnValidations.rule_config (JSONB)
-- Processing: Type validation, rule application
-- Output: Updated ProjectLayers.conditions
-- Audit: Single ChangeLog entry per field changed
-
-**Validation Rule Example:**
-```json
-ColumnValidations for SP_PARAMETER_1:
-{
-  "rule_type": "range",
-  "rule_config": {
-    "min": 0,
-    "max": 100
-  }
-}
-
-ColumnValidations for DEV_PARAMETER_1:
-{
-  "rule_type": "conditional_required",
-  "rule_config": {
-    "condition": "SP_PARAMETER_1 = 'high'",
-    "required_field": "DEV_PARAMETER_1"
-  }
-}
-```
-
-**Critical Dependencies:**
-- `ConditionRepository.update_conditions()` - JSONB merge (complex logic)
-- `ValidationService.validate_layer()` - Rule application
-- `ChangeLogService.log_change()` - Each change logged individually
-- `comparison.compare_dicts()- Used in rule validation
-
-**Performance Considerations:**
-- For 300+ column edits: Should batch save instead of individual cell saves
-- JSONB merge is O(n) where n = number of fields in conditions
-- Validation lookup is O(m) where m = number of validation rules
-
-**Error Scenarios:**
-1. Validation failure → 400 Bad Request, show error in UI
-2. Concurrent edit → 409 Conflict, refresh from server
-3. Project status changed to approved → 403 Forbidden, refresh project status
-4. Database constraint violation → 500 Internal Server Error, log and show generic error
 
 ---
 
-### Flow 4: Recipe Import with Diff and Selective Apply
+## 3. Condition Editing + Auto-Save Flow
 
-**Trigger:** User uploads recipe XML file on RecipeImportPanel
-**Duration:** ~2-5 seconds (depends on file size)
+```mermaid
+sequenceDiagram
+    participant User
+    participant Grid as ConditionGrid (AG Grid)
+    participant Store as useEditorStore
+    participant Hook as useEditorCellEdit
+    participant AutoSave as useAutoSave
+    participant API as api/projects.ts
+    participant Router as project_conditions.py
+    participant Service as condition_service
+    participant DB as PostgreSQL
 
+    User->>Grid: edit cell (column_key, layer_id, new_value)
+    Grid->>Hook: onCellValueChanged(params)
+    Hook->>Hook: run client-side validation (range/enum/required)
+    Hook->>Store: set dirtyCells[layerId][columnKey] = new_value
+    Hook->>Store: set validationErrors (if any)
+    Grid->>Grid: re-render cell with dirty color indicator
+
+    Note over AutoSave: Every 30 seconds
+    AutoSave->>Hook: trigger save()
+    Hook->>Store: read all dirtyCells
+    Hook->>API: PUT /api/projects/:id/conditions {changes: [{layer_id, column_key, value}]}
+    API->>Router: validate bulk save request
+    Router->>Service: save_conditions(project_id, changes, user_id)
+    loop For each change
+        Service->>DB: SELECT current value from project_layers.conditions[column_key]
+        Service->>DB: UPDATE project_layers SET conditions[column_key] = new_value
+        Service->>DB: INSERT INTO change_logs (old_value, new_value, source_type='manual', user_id)
+    end
+    DB-->>Service: success
+    Service-->>Router: SaveResponse
+    Router-->>Hook: 200 OK
+    Hook->>Store: clear dirtyCells for saved changes
+    Grid->>Grid: re-render cells as clean (dirty color removed)
 ```
-User selects recipe XML file
-    ↓
-File Upload Form
-    ↓
-API Call: POST /api/recipe/import (multipart/form-data)
-    ↓
-Backend: recipe.py router
-    ↓
-File saved temporarily in /tmp/recipes/
-    ↓
-RecipeService.parse_recipe_xml(file_path)
-    ↓
-lxml.etree.parse(file) - XML parsing
-    ↓
-Validate XML schema against equipment template
-    ↓
-Extract parameters into dictionary:
-{
-  "SP_PARAMETER_1": "equipment_value1",
-  "SC_PARAMETER_1": 200,
-  "DEV_PARAMETER_1": true
-}
-    ↓
-Store parsed recipe in temporary storage (recipe_id)
-    ↓
-API Response: {recipe_id, parsed_conditions}
-    ↓
-User selects layers to compare
-    ↓
-Frontend: useRecipe.getRecipeDiff()
-    ↓
-API Call: GET /api/recipe/diff?recipe_id=...&project_id=...&layer_id=...
-    ↓
-Backend: recipe.py router
-    ↓
-RecipeService.calculate_diff(recipe_id, project_id, layer_id)
-    ↓
-Database Query: SELECT conditions, backbone_conditions
-    FROM project_layers
-    WHERE project_id = ? AND layer_id = ?
-    ↓
-Load recipe_conditions from temp storage
-    ↓
-comparison.compare_dicts(current_conditions, recipe_conditions)
-    Deep comparison returns:
-    {
-      "added": {"NEW_PARAM": "value"},
-      "removed": {"OLD_PARAM": "value"},
-      "modified": {
-        "SP_PARAMETER_1": {
-          "old": "old_value",
-          "new": "new_value"
-        }
-      }
-    }
-    ↓
-API Response: Diff report with each change
-    {
-      "changes": [
-        {
-          "type": "modified",
-          "field": "SP_PARAMETER_1",
-          "old_value": "old",
-          "new_value": "new",
-          "conflict": false
-        }
-      ],
-      "summary": {"added": 0, "removed": 0, "modified": 2}
-    }
-    ↓
-Frontend: RecipeImportPanel displays diff preview
-    Show checkbox for each change
-    User can select which changes to apply
-    ↓
-User clicks "Apply Selected Changes"
-    ↓
-API Call: POST /api/recipe/apply
-  {
-    "recipe_id": "uuid",
-    "project_id": "uuid",
-    "layer_id": "uuid",
-    "selected_changes": ["SP_PARAMETER_1", "SC_PARAMETER_1"]
-  }
-    ↓
-Backend: recipe.py router
-    ↓
-RecipeService.apply_recipe_diff(...)
-    ↓
-Load selected changes from recipe
-    ↓
-For each selected change:
-    Run validation on new value
-    ↓
-If any validation fails:
-    Rollback transaction
-    API Response: 400 Bad Request with validation errors
-    ↓
-Else: All validations pass
-    ↓
-ConditionRepository.update_conditions(
-      projectId,
-      layerId,
-      selected_changes_dict
-    )
-    ↓
-JSONB Merge:
-    OLD: {SP_PARAMETER_1: "old", SC_PARAMETER_1: 100, DEV: "value"}
-    RECIPE: {SP_PARAMETER_1: "new", SC_PARAMETER_1: 200}
-    RESULT: {SP_PARAMETER_1: "new", SC_PARAMETER_1: 200, DEV: "value"}
-    ↓
-Database Query: UPDATE project_layers
-    SET conditions = jsonb_merge(conditions, new_values)
-    WHERE project_id = ? AND layer_id = ?
-    ↓
-For each applied change:
-    ChangeLogService.log_change(
-      project_id,
-      field_name,
-      old_value,
-      new_value,
-      change_type: 'recipe',
-      recipe_source: equipment_id
-    )
-    ↓
-Database Query: INSERT INTO changelogs (...)
-    ↓
-Clean up temporary recipe file
-    ↓
-API Response: {
-  "applied_count": 2,
-  "failed_count": 0,
-  "conditions": {...updated}
-}
-    ↓
-Frontend:
-  - Hide diff panel
-  - Refresh grid data
-  - Show success toast: "Applied 2 changes from recipe"
-  - Update change history
-```
-
-**Data Points:**
-- Input: Recipe XML file from equipment
-- Parsing: Equipment-specific XML schema
-- Diff: Compare recipe values vs. project values (deep dictionary comparison)
-- Selection: User selects subset of changes (cherry-pick)
-- Validation: Each selected change validated before apply
-- Output: Updated ProjectLayers.conditions with selected changes
-- Audit: Each change logged with type 'recipe' and equipment source
-
-**Risk Areas:**
-- XML parsing could fail on malformed file → 400 Bad Request
-- Large recipe files with 1000+ parameters → slow comparison
-- Concurrent recipe imports could overwrite temp files → use random temp directory names
-- Memory usage: Parsing large XML files → use streaming parser for large files
-
-**Critical Dependencies:**
-- `lxml.etree` - XML parsing
-- `comparison.compare_dicts()` - Diff algorithm (high fan-in, critical logic)
-- `ValidationService.validate_layer()` - Validate recipe values
-- `ChangeLogService.log_change()` - Audit trail
 
 ---
 
-### Flow 5: Project Status Approval Workflow
+## 4. Validation Flow
 
-**Trigger:** Admin clicks "Approve" on project in review status
-**Duration:** ~500ms
+### Single-Layer Validation
 
-```
-Admin selects project on ProjectListPage
-    ↓
-Project status is 'review'
-    ↓
-Admin clicks "Approve" button
-    ↓
-Confirmation dialog appears
-    ↓
-Admin confirms
-    ↓
-API Call: PUT /api/projects/{projectId}/status
-  {
-    "new_status": "approved"
-  }
-    ↓
-Backend: project.py router
-    ↓
-require_admin dependency check (only admin can approve)
-    ↓
-ProjectService.update_status(projectId, 'approved')
-    ↓
-Database Query: SELECT * FROM projects WHERE id = ?
-    ↓
-Validate status transition: 'review' → 'approved' allowed
-    ↓
-Check all conditions validated:
-    For each ProjectLayer:
-      SELECT COUNT(*) FROM changelogs
-      WHERE project_id = ?
-      AND change_type IN ('validation_failed')
-    ↓
-If validation failures exist:
-    API Response: 409 Conflict
-    Message: "Cannot approve: validation errors remain"
-    ↓
-Else: No validation errors
-    ↓
-Database Query: UPDATE projects
-    SET status = 'approved',
-        approved_at = NOW(),
-        approved_by = current_user.id
-    WHERE id = ?
-    ↓
-Lock conditions (prevent further edits):
-    Database Query: UPDATE project_layers
-    SET is_locked = TRUE
-    WHERE project_id = ?
-    ↓
-ChangeLogService.log_change(
-  project_id,
-  'status',
-  old_value: 'review',
-  new_value: 'approved',
-  change_type: 'status',
-  user_id: admin_user.id
-)
-    ↓
-Database Query: INSERT INTO changelogs (...)
-    ↓
-API Response: {
-  "id": "uuid",
-  "status": "approved",
-  "approved_at": "2024-01-15T14:45:00Z",
-  "approved_by": "admin_username"
-}
-    ↓
-Frontend:
-  - Update project in useProjectStore
-  - Disable edit buttons on ConditionEditorPage
-  - Show info toast: "Project approved successfully"
-  - Update project status badge to 'approved'
+```mermaid
+sequenceDiagram
+    participant UI as ValidationPanel
+    participant API as api/projects.ts
+    participant Router as project_conditions.py
+    participant ValSvc as validation_service
+    participant DB as PostgreSQL
+
+    UI->>API: POST /api/projects/:id/validate
+    API->>Router: authenticate
+    Router->>ValSvc: validate_project(project_id)
+    ValSvc->>DB: SELECT project_layers WHERE project_id = X
+    ValSvc->>DB: SELECT column_validations (range, required, enum, regex rules)
+    loop For each layer
+        loop For each column with validation rules
+            ValSvc->>ValSvc: apply rule (range check, required check, enum check, regex match)
+            ValSvc->>ValSvc: call values_differ() for comparison
+        end
+    end
+    ValSvc-->>Router: ValidationResult {errors: [{layer_id, column_key, message, rule_type}]}
+    Router-->>UI: 200 OK {errors}
+    UI->>UI: display errors in ValidationPanel, highlight error cells in grid
 ```
 
-**Data Points:**
-- Input: Admin user ID, project ID, new status
-- Validation: Status transition rules
-- Authorization: require_admin check
-- Output: Project with locked conditions, status change logged
-- Audit: Status change logged with approver info
+### Cross-Layer Validation
 
-**State Machine:**
-```
-draft ↔ review → approved → archived
-  ↓____________________↑
-  (can revert to draft)
-```
+```mermaid
+sequenceDiagram
+    participant ValSvc as validation_service
+    participant XValSvc as cross_layer_validation_service
+    participant DB as PostgreSQL
 
-**Critical Dependencies:**
-- `require_admin` - Authorization check
-- `ProjectService.update_status()` - Status logic
-- `ChangeLogService.log_change()` - Audit trail
+    ValSvc->>XValSvc: validate_cross_layer_rules(project_id, layers_data)
+    XValSvc->>DB: SELECT cross_layer_rules WHERE is_active = true
+    loop For each rule
+        alt rule_type = reference_exists
+            XValSvc->>XValSvc: check layer A column_key value exists in layer B
+        else rule_type = compare_layers
+            XValSvc->>XValSvc: compare value between two specified layers with operator
+        else rule_type = equipment_compatibility
+            XValSvc->>XValSvc: check EQP column consistency across specified layers
+        end
+    end
+    XValSvc-->>ValSvc: cross_layer_errors [{source_layer_id, target_layer_id, column_key, message}]
+```
 
 ---
 
-### Flow 6: Excel Export (Multiple Formats)
+## 5. Status Transition Flow (Draft → Review → Approved → Archived)
 
-**Trigger:** User generates Excel export on ExportPanel
-**Duration:** ~2-10 seconds (depends on project size and format)
+```mermaid
+stateDiagram-v2
+    [*] --> Draft: Project created
+    Draft --> Review: submit-review (0 validation errors required)
+    Review --> Draft: reject (reviewer role)
+    Review --> Approved: approve (reviewer role)
+    Approved --> Archived: revise (creates new Draft v+1)
+    Approved --> Archived: next revision approved
 
-```
-User selects export format (TYPE_A/B/C)
-    ↓
-User clicks "Export to Excel"
-    ↓
-API Call: POST /api/export/excel
-  {
-    "project_id": "uuid",
-    "format_type": "TYPE_A",
-    "system_id": "uuid"
-  }
-    ↓
-Backend: export.py router
-    ↓
-ExportService.preview_export(projectId, formatType, systemId)
-    ↓
-Database Query 1: SELECT * FROM projects WHERE id = ?
-    ↓
-Database Query 2: SELECT pl.*, l.layer_name
-    FROM project_layers pl
-    JOIN layers l ON pl.layer_id = l.id
-    WHERE pl.project_id = ?
-    ↓
-Database Query 3: SELECT * FROM export_column_mappings
-    WHERE export_system_id = ?
-    ↓
-For each ProjectLayer, load conditions JSONB
-    ↓
-Format conditions based on TYPE:
-
-TYPE_A (Horizontal - typical Excel):
-    Headers: Layer | SP_PARAM_1 | SP_PARAM_2 | SC_PARAM_1 | ...
-    Rows:    Layer1 | value1    | value2    | value3    | ...
-             Layer2 | value4    | value5    | value6    | ...
-
-TYPE_B (Equipment Split):
-    For each equipment:
-      Sheet name: Equipment1
-      Headers: Layer | Equipment1_Param1 | Equipment1_Param2
-      Rows: Layer1 | value1 | value2
-
-TYPE_C (Transposed):
-    Headers: Layer | Param1 | Param2 | Param3 | ...
-    Rows:    Value1 | Value2 | Value3 | ...
-    ↓
-openpyxl.Workbook() - Create Excel workbook
-    ↓
-For each format:
-    Create worksheet
-    Write headers
-    Write data rows
-    Apply formatting (colors, fonts, borders)
-    Apply column widths
-    ↓
-Save workbook to temporary file: /tmp/exports/{job_id}.xlsx
-    ↓
-Database Query: INSERT INTO export_histories
-    (project_id, system_id, format_type, file_name, status)
-    VALUES (...)
-    ↓
-API Response: {
-  "job_id": "uuid",
-  "file_url": "/api/export/download/uuid",
-  "status": "completed"
-}
-    ↓
-Frontend: ExportPanel
-    - Show download button
-    - Show file size
-    - Show export time
-    ↓
-User clicks "Download"
-    ↓
-API Call: GET /api/export/download/{jobId}
-    ↓
-Backend: export.py router
-    ↓
-Load file from /tmp/exports/{jobId}.xlsx
-    ↓
-API Response: Binary file with headers:
-    Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
-    Content-Disposition: attachment; filename="project_export.xlsx"
-    ↓
-Browser downloads file to user's downloads folder
+    note right of Draft: Editable conditions\nAuto-save enabled
+    note right of Review: Read-only\nReview comments enabled
+    note right of Approved: Read-only\nExport enabled\nBackbone source available
+    note right of Archived: Read-only\nHistorical view only
 ```
 
-**Data Points:**
-- Input: project_id, format_type, system_id
-- Format Configuration: ExportColumnMappings.column_mapping JSONB
-- Processing: Conditions JSONB flattened per format
-- Output: Excel file (.xlsx) with 1-3 worksheets
-- Storage: Temporary file in /tmp/exports/
-- Audit: ExportHistory entry created
+**Submit for Review** (`POST /api/projects/:id/submit-review`):
+1. `project_status_service` calls `validation_service.validate_project()`
+2. If errors > 0: returns 400 with validation error list
+3. If errors == 0: updates `project.status = 'Review'`
+4. Inserts `project_status_logs` record (Draft → Review, user_id, timestamp)
 
-**Format Details:**
+**Approve** (`POST /api/projects/:id/approve`):
+1. `require_reviewer` RBAC guard
+2. Updates `project.status = 'Approved'`
+3. Inserts status log (Review → Approved)
+4. Project now eligible as backbone source for new projects
 
-TYPE_A (Horizontal) - Most Common:
-```
-Layer Name | SP_PARAM_1 | SC_PARAM_1 | OVL_PARAM_1 | DEV_PARAM_1
-Photoresist | value1    | value2     | value3      | value4
-Development | value5    | value6     | value7      | value8
-```
+**Reject** (`POST /api/projects/:id/reject`):
+1. `require_reviewer` RBAC guard
+2. Updates `project.status = 'Draft'` (allows further editing)
+3. Inserts status log (Review → Draft, with reject reason)
 
-TYPE_B (Equipment Split):
-```
-Equipment A Sheet:
-Layer Name | Equipment_Param_1 | Equipment_Param_2
-Photoresist | value1           | value2
-
-Equipment B Sheet:
-Layer Name | Equipment_Param_1 | Equipment_Param_2
-Photoresist | value3           | value4
-```
-
-TYPE_C (Transposed):
-```
-Parameter Name | Layer1 | Layer2 | Layer3
-SP_PARAM_1     | val1   | val2   | val3
-SC_PARAM_1     | val4   | val5   | val6
-```
-
-**Critical Dependencies:**
-- `openpyxl` - Excel generation
-- `ExportColumnMappingRepository` - Column mapping configuration
-- File system for temporary storage
-
-**Performance Considerations:**
-- Large projects (300+ columns × 60+ layers) → Excel generation ~5-10 seconds
-- ZIP export of multiple projects → ~2 seconds per project
-- Cleanup temp files after download → Scheduled job every 24 hours
+**Revise** (`POST /api/projects/:id/revise`):
+1. `project_service.create_revision()`
+2. Original project status → 'Archived'
+3. New project created: copies all project_layers with conditions, increments version
+4. New project status = 'Draft', linked to same product/device, new `revision_reason` stored
+5. Returns new project ID
 
 ---
 
-### Flow 7: Dashboard Analytics Data Aggregation
+## 6. Export Flow (Type A / B / C)
 
-**Trigger:** User navigates to dashboard (DashboardPage)
-**Duration:** ~800ms (cached, reduces on repeated access)
+```mermaid
+sequenceDiagram
+    participant UI as ExportPanel
+    participant API as api/export.ts
+    participant Router as export.py
+    participant ExportSvc as export_service
+    participant Builders as export_builders
+    participant DataSrcSvc as export_data_source_service
+    participant HistSvc as export_history_service
+    participant DB as PostgreSQL
 
+    UI->>API: GET /api/projects/:id/export/download/:systemId
+    API->>Router: authenticate (project must be Approved)
+    Router->>ExportSvc: generate_export(project_id, system_id, user_id)
+    ExportSvc->>DB: SELECT export_system + export_column_mappings WHERE system_id = X
+    ExportSvc->>DB: SELECT project_layers + conditions WHERE project_id = X
+
+    loop For each column mapping with source_type = 'external'
+        ExportSvc->>DataSrcSvc: fetch_external_column_data(data_source_id, source_column_name, layer_ids)
+        DataSrcSvc->>DB: JOIN external table ON layer key
+        DB-->>DataSrcSvc: external column values
+        DataSrcSvc-->>ExportSvc: {layer_id: value} map
+    end
+
+    alt format_type = 'type_a'
+        ExportSvc->>Builders: build_type_a(layers, mappings, data)
+        Note over Builders: Horizontal: each layer = column, conditions = rows
+    else format_type = 'type_b'
+        ExportSvc->>Builders: build_type_b(layers, mappings, data)
+        Note over Builders: Equipment-split: one sheet per EQP column value
+    else format_type = 'type_c'
+        ExportSvc->>Builders: build_type_c(layers, mappings, data)
+        Note over Builders: Key-value transpose: column names as rows
+    end
+
+    Builders-->>ExportSvc: openpyxl Workbook
+    ExportSvc->>HistSvc: record_export(project_id, system_id, user_id, layer_ids)
+    HistSvc->>DB: INSERT INTO export_histories
+    ExportSvc-->>Router: Excel bytes (BytesIO)
+    Router-->>UI: StreamingResponse (.xlsx file download)
 ```
-DashboardPage mounts
-    ↓
-useDashboard hook triggers
-    ↓
-useEffect: Fetch dashboard stats
-    ↓
-API Call: GET /api/dashboard/stats
-    ↓
-Backend: dashboard.py router
-    ↓
-Database Query 1: Count projects by status
-    SELECT status, COUNT(*) as count
-    FROM projects
-    WHERE created_by = current_user.id OR current_user.role = 'admin'
-    GROUP BY status
-    ↓
-Results:
-{
-  "draft": 5,
-  "review": 2,
-  "approved": 12,
-  "archived": 1
-}
-    ↓
-Database Query 2: Get recent activity (last 10 changes)
-    SELECT cl.*, p.product_name, u.username
-    FROM changelogs cl
-    JOIN projects p ON cl.project_id = p.id
-    JOIN users u ON cl.created_by = u.id
-    ORDER BY cl.created_at DESC
-    LIMIT 10
-    ↓
-Database Query 3: Count active users
-    SELECT COUNT(DISTINCT user_id)
-    FROM changelogs
-    WHERE created_at > NOW() - INTERVAL '30 days'
-    ↓
-API Response: {
-  "project_counts": {...},
-  "recent_activity": [...],
-  "user_counts": {...}
-}
-    ↓
-Frontend: React Query caches response (5 minute stale time)
-    ↓
-DashboardPage renders:
-  - StatsPanel: Display project counts by status
-  - TimelinePanel: Display recent activity
-  - QuickLinks: Quick actions for common tasks
-    ↓
-User can refetch manually or cache invalidates after 5 minutes
-```
-
-**Data Points:**
-- Input: Current user (from JWT token)
-- Aggregation: Group by status, order by timestamp
-- Output: Summary statistics and timeline
-- Caching: React Query 5 minute stale time
-
-**Critical Dependencies:**
-- ChangeLogService - Activity tracking
-- Database indexing on changelogs.created_at for performance
 
 ---
 
-## Summary of Data Flow Patterns
+## 7. Recipe XML Import + Diff Flow
 
-### Common Patterns
+```mermaid
+sequenceDiagram
+    participant UI as RecipeUploadModal + RecipeDiffTable
+    participant API as api/projects.ts
+    participant Router as project_layers.py
+    participant RecipeSvc as recipe_service
+    participant DB as PostgreSQL
 
-1. **Authorization Check:** Every request checked via `get_current_user` dependency
-2. **Validation:** Input validated before processing (Pydantic schemas)
-3. **Change Logging:** Every state change logged to ChangeLogs table
-4. **Caching:** Frequently accessed data cached (columns, products, dashboard)
-5. **JSONB Operations:** Flexible parameter storage using PostgreSQL JSONB
-6. **Async Throughout:** All database operations async for scalability
+    UI->>API: POST /api/projects/:id/layers/:layerId/recipe-upload (multipart XML file)
+    API->>Router: authenticate (owner)
+    Router->>RecipeSvc: parse_recipe_xml(xml_bytes, layer_id)
+    RecipeSvc->>DB: SELECT recipe_xml_mappings (XPath ↔ column_key mappings)
+    RecipeSvc->>RecipeSvc: lxml parse XML, extract values via XPath expressions
+    RecipeSvc->>DB: SELECT project_layers.conditions WHERE id = layer_id
+    loop For each mapped XPath value
+        RecipeSvc->>RecipeSvc: compare extracted value vs current condition value (values_differ)
+    end
+    RecipeSvc-->>Router: RecipeDiffResponse [{column_key, xpath, recipe_value, current_value, is_different}]
+    Router-->>UI: 200 OK {diff_items}
 
-### Critical Data Structures
-
-**JSONB Conditions:**
-- 300+ parameters per layer
-- Stored in ProjectLayers.conditions
-- Backup copy in ProjectLayers.backbone_conditions
-- Merged during updates (not replaced)
-
-**Change Logs:**
-- Immutable append-only log
-- Every field change recorded individually
-- Includes change type (manual, backbone, recipe, status)
-- Enables audit trail and history reconstruction
-
-**Validation Rules:**
-- Per-column configuration in ColumnValidations
-- Supports: range, required, conditional, pattern, cross_layer
-- Applied on save, cached on client for UX feedback
-
-### Performance Bottlenecks
-
-1. **Grid Loading:** 300+ columns × 60+ layers → optimize AG Grid virtualization
-2. **Export Generation:** Large projects → background job recommended
-3. **Diff Calculation:** Recipe comparison → cache for repeated views
-4. **Dashboard Aggregation:** Lots of changelogs → denormalize or index
-
-### Security Considerations
-
-1. **Authentication:** JWT tokens with expiration
-2. **Authorization:** Role-based access control (user, admin)
-3. **Project Ownership:** Users can only edit own projects
-4. **Approval Workflow:** Only admin can approve projects
-5. **Audit Trail:** All changes logged for compliance
+    UI->>UI: display diff items in RecipeDiffTable with checkboxes
+    User->>UI: select subset of diff items to apply
+    UI->>API: POST /api/projects/:id/layers/:layerId/recipe-apply {apply_items: [column_key list]}
+    API->>Router: authenticate (owner)
+    Router->>RecipeSvc: apply_recipe_diff(layer_id, apply_items, user_id)
+    loop For each selected column_key
+        RecipeSvc->>DB: UPDATE project_layers.conditions[column_key] = recipe_value
+        RecipeSvc->>DB: INSERT INTO change_logs (source_type='recipe', old_value, new_value)
+    end
+    RecipeSvc-->>Router: updated conditions
+    Router-->>UI: 200 OK {updated_conditions}
+    UI->>UI: refresh grid with new recipe values
+```
 
 ---
 
-This document provides the complete data flow view necessary for debugging, optimization, and feature development.
+## 8. Authentication Flow
+
+### Login
+
+```mermaid
+sequenceDiagram
+    participant UI as LoginPage
+    participant Store as useAuthStore
+    participant API as api/authToken.ts
+    participant Router as auth.py
+    participant AuthSvc as auth_service
+    participant DB as PostgreSQL
+
+    UI->>Store: login(username, password)
+    Store->>API: POST /api/auth/login {username, password}
+    API->>Router: OAuth2PasswordRequestForm
+    Router->>AuthSvc: authenticate_user(username, password)
+    AuthSvc->>DB: SELECT user WHERE username = X
+    AuthSvc->>AuthSvc: passlib.verify(password, hashed_password)
+    AuthSvc-->>Router: User or None
+    Router->>AuthSvc: create_access_token(user_id, roles, exp=15min)
+    Router->>AuthSvc: create_refresh_token(user_id, exp=7d)
+    Router-->>Store: {access_token} + Set-Cookie: refresh_token (HTTP-only)
+    Store->>Store: set accessToken, currentUser, isAuthenticated
+    Store-->>UI: success
+    UI->>UI: navigate to /
+```
+
+### Token Refresh (Axios Interceptor)
+
+```mermaid
+sequenceDiagram
+    participant Interceptor as Axios Response Interceptor (client.ts)
+    participant API as api/authToken.ts
+    participant Router as auth.py
+    participant Store as useAuthStore
+
+    Interceptor->>Interceptor: detect 401 response on any API call
+    Interceptor->>API: POST /api/auth/refresh (sends HTTP-only cookie automatically)
+    API->>Router: verify refresh token from cookie
+    Router->>Router: decode JWT, check exp, fetch User
+    Router-->>API: {access_token: new_token}
+    API-->>Interceptor: new access token
+    Interceptor->>Store: set new accessToken
+    Interceptor->>Interceptor: retry original failed request with new token
+    Interceptor-->>Caller: original response (transparent to caller)
+
+    Note over Interceptor: On refresh failure (expired/invalid cookie):
+    Interceptor->>Store: logout() (clears state)
+    Interceptor->>Interceptor: redirect to /login
+```
+
+### Logout
+
+```mermaid
+sequenceDiagram
+    participant UI as Header
+    participant Store as useAuthStore
+    participant API as api/authToken.ts
+    participant Router as auth.py
+
+    UI->>Store: logout()
+    Store->>API: POST /api/auth/logout
+    API->>Router: clear refresh token cookie (Set-Cookie: refresh_token=; MaxAge=0)
+    Router-->>Store: 200 OK
+    Store->>Store: clear accessToken, currentUser
+    Store-->>UI: redirect to /login
+```
+
+---
+
+## 9. Device Master Sync Flow (SPEC-DEVICE-001)
+
+```mermaid
+sequenceDiagram
+    participant Admin as DeviceMasterPage (admin UI)
+    participant API as api/deviceMaster.ts
+    participant Router as admin_device.py
+    participant SyncSvc as device_master_sync_service
+    participant EnrichSvc as device_enrichment_service
+    participant MetaSvc as device_meta_source_service
+    participant DB as PostgreSQL
+    participant ExtDB as External Database / API Source
+
+    Admin->>API: POST /api/admin/device-masters/sync
+    API->>Router: authenticate (developer role)
+    Router->>SyncSvc: trigger_sync()
+    SyncSvc->>DB: SELECT sync_source_configs (connection settings, source table, mappings)
+    SyncSvc->>ExtDB: query external source (DB connection / HTTP API)
+    ExtDB-->>SyncSvc: raw device + layer records
+    loop For each device record
+        SyncSvc->>DB: UPSERT device_masters (name, code, line_id) ON CONFLICT DO UPDATE
+        loop For each layer record
+            SyncSvc->>DB: UPSERT layer_masters (step_seq, name, device_master_id)
+        end
+    end
+
+    Note over SyncSvc,EnrichSvc: Enrichment phase (metadata join)
+    SyncSvc->>EnrichSvc: enrich_devices(updated_device_ids)
+    EnrichSvc->>DB: SELECT device_meta_sources (table_name, join_key, columns)
+    loop For each meta source
+        EnrichSvc->>DB: JOIN external_table ON device.code = external_table.join_key
+        EnrichSvc->>DB: UPDATE device_masters SET meta_json = enriched_data
+    end
+
+    DB-->>Router: sync_result {synced_count, enriched_count, errors}
+    Router-->>Admin: 200 OK {sync_result}
+    Admin->>Admin: refresh device master list
+```
+
+**V2 Project Creation with Device Master**:
+
+After sync, device masters are available for V2 project creation:
+
+```
+DeviceMasterPage (admin) confirms device records are synced and correct
+     ↓
+ProjectCreateModalV2 (user)
+  GET /api/device-masters → list available device masters
+  GET /api/device-masters/:id/layers → get associated layer masters
+  User selects device master + confirms layer list
+  POST /api/projects {device_master_id, device_ref_version, ...}
+     ↓
+project_service.create_project_v2()
+  - Creates Project with device_ref_id, device_ref_version FK fields
+  - Creates ProjectLayer for each LayerMaster with empty conditions {}
+  - User fills in conditions via ConditionEditorPage
+```
+
+---
+
+## 10. Backbone Comparison Flow
+
+Allows editors to review differences between current conditions and backbone baseline.
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Header as EditorHeader
+    participant Store as useEditorStore
+    participant Panel as BackboneComparisonPanel
+    participant View as BackboneComparisonView
+    participant DiffLib as src/lib/diff.ts
+
+    User->>Header: click "BB Compare" toggle button
+    Header->>Store: toggleBackboneComparison()
+    Store->>Store: isBackboneComparisonOpen = true
+    Store-->>Panel: render BackboneComparisonPanel
+
+    Panel->>DiffLib: computeProjectComparisonDetail(layers, columns)
+    Note over DiffLib: Iterates each layer, compares conditions vs backbone_conditions
+    Note over DiffLib: Uses getLayerComparisonDetail() per layer
+    DiffLib-->>Panel: {changedLayers: [{layerName, changedColumns: [{key, current, backbone}]}]}
+
+    Panel->>Panel: display count of changed layers in badge
+    User->>Panel: click specific layer
+    Panel->>View: render BackboneComparisonView (column-level diff)
+
+    Note over View: Also embedded in ReviewRequestModal (compact mode)
+    Note over View: Shows: column name, backbone value, current value, diff highlighted
+```
+
+---
+
+## 11. Change History Flow
+
+```mermaid
+sequenceDiagram
+    participant UI as ChangeHistoryPanel
+    participant API as api/projects.ts
+    participant Router as project_conditions.py
+    participant Service as change_log_service
+    participant Repo as ChangeLogRepository
+    participant DB as PostgreSQL
+
+    UI->>API: GET /api/projects/:id/change-logs?layer_id=X&source_type=manual&page=1
+    API->>Router: authenticate
+    Router->>Service: get_change_logs(project_id, filters)
+    Service->>Repo: query_change_logs(project_id, filters, pagination)
+    Repo->>DB: SELECT change_logs JOIN users WHERE project_layer.project_id = X [+ filters] ORDER BY created_at DESC LIMIT 50
+    DB-->>Repo: ChangeLog rows with user info
+    Repo-->>Service: paginated results
+    Service-->>Router: ChangeLogListResponse
+    Router-->>UI: {items, total, page}
+
+    User->>UI: click specific cell in ChangeHistoryEntry
+    UI->>API: GET /api/projects/:id/cell-history?layer_id=X&column_key=Y
+    API->>Router: authenticate
+    Router->>Service: get_cell_history(project_id, layer_id, column_key)
+    Service->>Repo: query_cell_history(layer_id, column_key)
+    Repo->>DB: SELECT change_logs WHERE project_layer_id = X AND column_key = Y ORDER BY created_at
+    DB-->>Repo: full cell history
+    Repo-->>Router: CellHistoryResponse
+    Router-->>UI: [{old_value, new_value, source_type, user, timestamp}]
+    UI->>UI: render CellHistoryModal with timeline
+```
