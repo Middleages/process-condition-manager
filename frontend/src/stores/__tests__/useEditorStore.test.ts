@@ -142,11 +142,11 @@ describe('reset', () => {
 
     // Mutate various pieces of state
     store.setActiveCategory('OVL')
-    store.setActiveLayerId(42)
+    store.setActiveLayerId('42.0')
     store.setCellValue(1, 'x', 'new', 'old')
     store.setValidationErrors([
       {
-        layer_id: 1,
+        layer_id: '1.0',
         layer_name: 'AA',
         column_name: 'x',
         display_name: 'X',
@@ -180,12 +180,12 @@ describe('setActiveCategory', () => {
 
 describe('setActiveLayerId', () => {
   it('sets active layer id', () => {
-    useEditorStore.getState().setActiveLayerId(5)
-    expect(useEditorStore.getState().activeLayerId).toBe(5)
+    useEditorStore.getState().setActiveLayerId('5.0')
+    expect(useEditorStore.getState().activeLayerId).toBe('5.0')
   })
 
   it('sets active layer id to null', () => {
-    useEditorStore.getState().setActiveLayerId(5)
+    useEditorStore.getState().setActiveLayerId('5.0')
     useEditorStore.getState().setActiveLayerId(null)
     expect(useEditorStore.getState().activeLayerId).toBeNull()
   })
@@ -198,7 +198,7 @@ describe('setValidationErrors', () => {
   it('sets validation errors', () => {
     const errors = [
       {
-        layer_id: 1,
+        layer_id: '1.0',
         layer_name: 'AA',
         column_name: 'x',
         display_name: 'X',

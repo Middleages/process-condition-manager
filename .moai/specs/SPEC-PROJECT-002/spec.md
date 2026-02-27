@@ -675,6 +675,52 @@ Algorithm:
 |-----|-------|
 | SPEC-PROJECT-002 | Full SPEC |
 | SPEC-PROJECT-002-M1 | Schema Migration + Backend API |
-| SPEC-PROJECT-002-M2 | Frontend Device Ref Creation Modal |
-| SPEC-PROJECT-002-M3 | Short Product Support |
-| SPEC-PROJECT-002-M4 | Backbone Matching + Empty Tables |
+| SPEC-PROJECT-002-M2 | Frontend: Device Ref Creation Modal + Short Product + Backbone Matching (M2+M3+M4 통합) |
+
+---
+
+## 5. Implementation Notes
+
+### 5.1 M1 Completion Status
+
+M1 (Schema Migration + Backend API) is **COMPLETE** and merged to main (PR #35).
+
+Implemented:
+- Alembic migration 019: device_master_id, process, device_type, header_metadata, line_id, product_name, part_id columns on projects table
+- project_layers.layer_id INT → VARCHAR(10) type change with backfill
+- Partial unique index ix_projects_device_ref_active
+- product_id and main_backbone_id made NULLABLE
+- ProjectLayer denormalization: layer_name, step_seq added directly (removed Layer relationship)
+- device_master_query_service.py (search, get_device_by_ref, get_device_layers, get_device_header)
+- ProjectCreateRequestV2 schema + create_project_v2() service (8-step TDD)
+- Router endpoints: GET /search, POST /check-duplicate, GET /{id}/layers, POST /projects/v2
+- 513 tests passing
+
+### 5.2 M2 Implementation Plan (M2+M3+M4 통합)
+
+**Decision Log:**
+- M2+M3+M4 combined into a single frontend milestone (same modal UI flow)
+- Cascading dropdown: Approach B — reuse existing `GET /api/device-masters?line_id=&product_name=` list API, extract unique values client-side
+- V1 modal preserved as `ProjectCreateModal.tsx` (backward compat), V2 as `ProjectCreateModalV2.tsx`
+- V2 modal is default for new project creation
+
+**Frontend API Client Gaps (to implement):**
+
+| Function | Endpoint | Status |
+|----------|----------|--------|
+| `searchDevices(q, line_id?)` | `GET /api/device-masters/search` | NEW |
+| `checkDuplicate(line_id, product_name, process, part_id)` | `POST /api/device-masters/check-duplicate` | NEW |
+| `createProjectV2(data)` | `POST /api/projects/v2` | NEW |
+| `fetchDeviceLayers(deviceId)` | `GET /api/device-masters/{id}/layers` | EXISTS |
+| `useBackboneProducts(lineId)` | `GET /api/backbones?line_id=` | EXISTS |
+
+**Frontend Type Gaps (to implement):**
+- `ProjectCreateRequestV2` interface in `types/project.ts`
+- V2 fields on `Project` interface (device_master_id, process, device_type, header_metadata, part_id)
+
+**Implementation Steps:**
+1. API client functions + TypeScript types
+2. ProjectCreateModalV2 component (Device-ref cascading dropdowns + header preview)
+3. Full/Short type selector + Layer Selection Panel (checkboxes)
+4. Backbone dropdown with "No backbone" option
+5. ProjectListPage integration (V2 modal default, display name rendering)

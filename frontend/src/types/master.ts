@@ -46,9 +46,10 @@ export interface BackboneProduct extends Product {
 // Returned by GET /api/products/{id}/backbone-layers - layers from the Approved project
 export interface BackboneLayer {
   id: number
-  layer_id: number
+  layer_id: string
   layer_name: string
-  step_seq: number | string
+  step_seq: string
   conditions: Record<string, unknown>
-  backbone_product_id: number | null
+  backbone_conditions: Record<string, unknown>
+  sort_order: number
 }

@@ -6,26 +6,50 @@
   - device_master, layer_master, sync_source_config, device_meta_source (4 tables)
   - Migration 018, 4 services, 2 routers
 
-## Next SPECs (Implementation Queue)
+- **SPEC-PROJECT-002 M1** (Completed) - Schema Migration + Backend API, PR #35
+  - Migration 019: device_master_id, process, device_type, header_metadata on projects
+  - project_layers.layer_id: INT → VARCHAR(10) with backfill + denormalization
+  - create_project_v2() TDD (8 tests), 4 new router endpoints
+  - 17-file refactor: `pl.layer.X` → `pl.X` (Layer relationship removed)
+  - 513 backend tests passing
 
-1. **SPEC-PROJECT-002** (Priority 1 - Depends on DEVICE-001)
-   - Device-ref based project creation (line, product_name, process, part_id)
-   - Short product support (layer selection)
-   - Empty condition table support
-   - UNIQUE(line, product_name, process, part_id, revision)
-   - M1: schema+API, M2: frontend modal, M3: short product, M4: backbone matching
-   - Path: `.moai/specs/SPEC-PROJECT-002/`
+## Current Work: SPEC-PROJECT-002 M2
 
-## Key Architecture Decisions (2026-02-26 Discussion)
+**Status**: READY TO IMPLEMENT (document update session completed)
 
-- **Project = Product**: Creating a project means a new product arrived. Approved project = backbone.
-- **External data**: Loaded into PCM DB (same PostgreSQL), not remote calls. Periodic ETL.
-- **Layer matching**: By layer_id (numeric: 1.0, 2.0...), not step_seq. step_seq varies per product.
-- **Device Ref = project header**: pitch_size, shot_count etc. are header-level, NOT in conditions JSONB.
-- **Empty conditions**: Allowed for products without existing backbone (system built mid-stream).
-- **Dual-path API**: V1 (product_id) and V2 (device-ref) coexist during transition.
-- **Legacy cleanup deferred**: products/product_layers removal is a separate future SPEC after stabilization.
-- **Dynamic Backbone already works**: SPEC-BACKBONE-001 changed backbone source to approved project_layers.
+### Pre-implementation cleanup done:
+- Frontend type migration (layer_id INT→STRING) across all files
+- ProjectCreateRequestV2 type + Project V2 fields added
+- Backend bugs fixed (BackboneLayerResponse, changelog layer_id filter)
+- Tests: Backend 513 pass, Frontend 137 pass, TSC 0 errors
+
+### M2 Implementation Plan (M2+M3+M4 combined):
+1. API client functions (searchDevices, checkDuplicate, createProjectV2)
+2. ProjectCreateModalV2 component (cascading dropdowns + header preview)
+3. Full/Short type selector + Layer Selection Panel
+4. Backbone dropdown + "No backbone" option
+5. ProjectListPage integration
+
+### Key decisions:
+- Cascading dropdown: Approach B (reuse `GET /api/device-masters` list API, extract unique values client-side)
+- V1 modal preserved, V2 as ProjectCreateModalV2.tsx (default)
+- SPEC doc Section 5.2 has full details
+
+## Key Architecture Decisions
+
+- **project_layers.layer_id**: VARCHAR(10), e.g. "1.0", "1.21", "17.31"
+- **Numeric sorting**: `sorted(key=float)` or `CAST(layer_id AS FLOAT)`
+- **V2 projects**: product_id=null, use device_master_id instead
+- **Display name**: `{product_name} | {process} | {part_id}`
+- **Backbone optional**: backbone_product_id=null → empty conditions {}
+- **Layer matching**: By layer_id (VARCHAR), not layer_name
+- **Dynamic Backbone**: SPEC-BACKBONE-001 sources from approved project_layers
+
+## Project Conventions
+
+- conversation_language: ko (Korean)
+- code_comments: en (English)
+- Latest migration: 019 (device ref on projects)
 
 ## Project Structure Quick Reference
 
@@ -35,4 +59,4 @@
 - Frontend pages: `frontend/src/pages/`
 - Frontend components: `frontend/src/components/`
 - Migrations: `backend/alembic/versions/`
-- Latest migration: 018 (device/layer master tables)
+- SPEC: `.moai/specs/SPEC-PROJECT-002/spec.md`

@@ -10,7 +10,7 @@ export type DirtyCellMap = Map<string, DirtyCell> // key: `${projectLayerId}:${c
 
 export interface GridRowData {
   projectLayerId: number
-  layerId: number
+  layerId: string
   layerName: string
   stepSeq: string
   layerNumber: string

@@ -278,7 +278,7 @@ class TestGetChangeLogs:
         )
 
         result = await list_change_logs(
-            db_session, project.id, layer_id=99999,
+            db_session, project.id, layer_id="99999",
         )
 
         assert result.total == 0

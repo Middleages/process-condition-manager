@@ -22,7 +22,7 @@ async def list_change_logs(
     db: AsyncSession,
     project_id: int,
     *,
-    layer_id: int | None = None,
+    layer_id: str | None = None,
     column_name: str | None = None,
     limit: int = 50,
     change_type: str | None = None,
@@ -87,7 +87,7 @@ async def list_timeline(
     *,
     page: int = 1,
     limit: int = 50,
-    layer_id: int | None = None,
+    layer_id: str | None = None,
     change_type: str | None = None,
     changed_by: int | None = None,
 ) -> TimelineResponse:

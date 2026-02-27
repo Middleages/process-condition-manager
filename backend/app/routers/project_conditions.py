@@ -43,7 +43,7 @@ async def validate_project(
 @router.get("/{project_id}/change-logs", response_model=ChangeLogListResponse)
 async def get_change_logs(
     project_id: int,
-    layer_id: int | None = Query(None, description="Filter by layer_id"),
+    layer_id: str | None = Query(None, description="Filter by layer_id (VARCHAR, e.g. '1.0')"),
     column_name: str | None = Query(None, description="Filter by column_name"),
     limit: int = Query(50, ge=1, le=200),
     change_type: str | None = Query(None, description="Filter by change_type (manual/backbone/recipe)"),
@@ -66,7 +66,7 @@ async def get_timeline(
     project_id: int,
     page: int = Query(1, ge=1),
     limit: int = Query(50, ge=1, le=200),
-    layer_id: int | None = Query(None, description="Filter by layer ID"),
+    layer_id: str | None = Query(None, description="Filter by layer_id (VARCHAR, e.g. '1.0')"),
     change_type: str | None = Query(None, description="Filter by change type: manual, backbone, recipe"),
     changed_by: int | None = Query(None, description="Filter by user ID"),
     _current_user: User = Depends(get_current_user),
