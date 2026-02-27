@@ -139,7 +139,17 @@ async def create_project_v2(
     Resolves device_master by (line_id, product_name, process, part_id),
     copies layers from layer_master, and optionally applies backbone conditions.
     """
-    project = await project_service.create_project_v2(db, req, current_user.id)
+    project = await project_service.create_project_v2(
+        db,
+        line_id=req.line_id,
+        product_name=req.product_name,
+        process=req.process,
+        part_id=req.part_id,
+        device_type=req.device_type,
+        selected_layer_ids=req.selected_layer_ids or [],
+        backbone_product_id=req.backbone_product_id,
+        created_by=current_user.id,
+    )
     return _build_project_detail_response(project)
 
 
