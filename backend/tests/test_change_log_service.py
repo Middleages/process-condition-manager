@@ -85,12 +85,10 @@ class TestGetChangeLogs:
         result2 = await bulk_save_conditions(db_session, project.id, request2)
         assert result2.success is True
 
-        # Reload layers with eager loading to ensure relationships are accessible
-        from sqlalchemy.orm import selectinload
+        # Reload layers (layer_name is denormalized on ProjectLayer)
         from app.models import ProjectLayer
         layers_result = await db_session.execute(
             select(ProjectLayer)
-            .options(selectinload(ProjectLayer.layer))
             .where(ProjectLayer.project_id == project.id)
             .order_by(ProjectLayer.sort_order)
         )

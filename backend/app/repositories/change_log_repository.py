@@ -11,7 +11,6 @@ from sqlalchemy import case, func, literal, null, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import ChangeLog, ProjectLayer, ProjectStatusLog, User
-from app.models.product import Layer
 
 
 class ChangeLogRepository:
@@ -36,12 +35,11 @@ class ChangeLogRepository:
             Dict mapping project_layer_id -> layer_name
         """
         query = (
-            select(ProjectLayer.id, Layer.layer_name)
-            .join(Layer, ProjectLayer.layer_id == Layer.id)
+            select(ProjectLayer.id, ProjectLayer.layer_name)
             .where(ProjectLayer.project_id == project_id)
         )
         if layer_id is not None:
-            query = query.where(ProjectLayer.layer_id == layer_id)
+            query = query.where(ProjectLayer.layer_id == str(layer_id))
 
         result = await db.execute(query)
         rows = result.all()
@@ -214,7 +212,7 @@ class ChangeLogRepository:
                     ChangeLog.changed_at.label("timestamp"),
                     User.id.label("user_id"),
                     User.display_name.label("user_name"),
-                    Layer.layer_name.label("layer_name"),
+                    ProjectLayer.layer_name.label("layer_name"),
                     ChangeLog.column_name.label("column_name"),
                     ChangeLog.old_value.label("old_value"),
                     ChangeLog.new_value.label("new_value"),
@@ -225,7 +223,6 @@ class ChangeLogRepository:
                 )
                 .join(User, ChangeLog.changed_by == User.id)
                 .join(ProjectLayer, ChangeLog.project_layer_id == ProjectLayer.id)
-                .join(Layer, ProjectLayer.layer_id == Layer.id)
                 .where(cl_filter)
             )
             branches.append(cl_branch)

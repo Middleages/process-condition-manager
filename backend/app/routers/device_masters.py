@@ -6,7 +6,7 @@ RBAC: require_active_user (모든 인증된 활성 사용자)
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from sqlalchemy import Float, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,12 +14,17 @@ from app.database import get_db
 from app.dependencies.auth import require_active_user
 from app.models.device_master import DeviceMaster, LayerMaster
 from app.models.line import Line
+from app.models.project import Project
 from app.models.user import User
 from app.schemas.device_master import (
     DeviceMasterListResponse,
     DeviceMasterResponse,
+    DeviceLayerItem,
+    DeviceSearchResult,
+    DuplicateCheckResponse,
     LayerMasterResponse,
 )
+from app.services import device_master_query_service
 
 router = APIRouter(prefix="/api/device-masters", tags=["device-masters"])
 
@@ -39,6 +44,92 @@ def _build_device_response(device: DeviceMaster, line_name: str) -> DeviceMaster
         created_at=device.created_at,
         updated_at=device.updated_at,
     )
+
+
+# ---------------------------------------------------------------------------
+# SPEC-PROJECT-002: Search / Layer / Duplicate-check endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.get("/search", response_model=list[DeviceSearchResult])
+async def search_devices(
+    q: str = Query(..., min_length=1, description="검색 키워드 (product_name / process / part_id ILIKE)"),
+    line_id: int | None = Query(None, description="Line ID 필터"),
+    _user: User = Depends(require_active_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[DeviceSearchResult]:
+    """Search device masters by keyword for autocomplete.
+
+    Searches product_name, process, and part_id fields using ILIKE.
+    """
+    devices = await device_master_query_service.search_devices(
+        db, line_id=line_id, product_name=q,
+    )
+    return [DeviceSearchResult.model_validate(d) for d in devices]
+
+
+@router.post("/check-duplicate", response_model=DuplicateCheckResponse)
+async def check_duplicate(
+    line_id: int = Body(...),
+    product_name: str = Body(...),
+    process: str = Body(...),
+    part_id: str = Body(...),
+    _user: User = Depends(require_active_user),
+    db: AsyncSession = Depends(get_db),
+) -> DuplicateCheckResponse:
+    """Check if a project already exists for the given device reference.
+
+    Finds matching device_master by (line_id, product_name, process, part_id),
+    then checks if any Project with that device_master_id has status in ('draft', 'review').
+    """
+    device = await device_master_query_service.get_device_by_ref(
+        db, line_id, product_name, process, part_id,
+    )
+    if device is None:
+        return DuplicateCheckResponse(exists=False)
+
+    result = await db.execute(
+        select(Project)
+        .where(
+            Project.device_master_id == device.id,
+            Project.status.in_(("draft", "review")),
+        )
+        .order_by(Project.created_at.desc())
+        .limit(1)
+    )
+    existing = result.scalars().first()
+    if existing is None:
+        return DuplicateCheckResponse(exists=False)
+
+    return DuplicateCheckResponse(
+        exists=True,
+        existing_project_id=existing.id,
+        existing_project_status=existing.status,
+        existing_project_revision=existing.revision,
+    )
+
+
+@router.get("/{device_master_id}/layers", response_model=list[DeviceLayerItem])
+async def get_device_layers(
+    device_master_id: int,
+    _user: User = Depends(require_active_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[DeviceLayerItem]:
+    """Get layers for a specific device master via query service.
+
+    Uses device_master_query_service for consistent layer retrieval.
+    """
+    device = await db.get(DeviceMaster, device_master_id)
+    if not device:
+        raise HTTPException(status_code=404, detail="Device master not found")
+
+    layers = await device_master_query_service.get_device_layers(db, device_master_id)
+    return [DeviceLayerItem.model_validate(layer) for layer in layers]
+
+
+# ---------------------------------------------------------------------------
+# Original CRUD endpoints
+# ---------------------------------------------------------------------------
 
 
 @router.get("", response_model=DeviceMasterListResponse)
@@ -118,30 +209,5 @@ async def get_device_master(
     return _build_device_response(device, line_name)
 
 
-@router.get("/{device_id}/layers", response_model=list[LayerMasterResponse])
-async def list_device_layers(
-    device_id: int,
-    _user: User = Depends(require_active_user),
-    db: AsyncSession = Depends(get_db),
-) -> list[LayerMasterResponse]:
-    """디바이스에 속한 레이어 마스터 목록 조회.
 
-    layer_id를 숫자로 변환하여 정렬한다 (CAST 가능 시).
-
-    Raises:
-        HTTPException 404: 디바이스 미발견.
-    """
-    # 디바이스 존재 확인
-    device = await db.get(DeviceMaster, device_id)
-    if not device:
-        raise HTTPException(status_code=404, detail="Device master not found")
-
-    # 레이어 조회 (layer_id 숫자 정렬)
-    result = await db.execute(
-        select(LayerMaster)
-        .where(LayerMaster.device_master_id == device_id)
-        .order_by(cast(LayerMaster.layer_id, Float))
-    )
-    layers = result.scalars().all()
-
-    return [LayerMasterResponse.model_validate(layer) for layer in layers]
+# NOTE: /{device_id}/layers is now handled by get_device_layers above (SPEC-PROJECT-002).

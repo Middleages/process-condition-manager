@@ -15,7 +15,7 @@ from app.schemas.recipe import (
     RecipeApplyRequest,
     RecipeApplyResponse,
 )
-from app.models import Layer, Product
+from app.models import Product
 from app.services import backbone_service, recipe_service
 
 router = APIRouter(prefix="/api/projects", tags=["project-layers"])
@@ -67,13 +67,12 @@ async def add_project_layer(
         source_product_id=request.source_product_id,
         source_layer_name=request.source_layer_name,
     )
-    # Eager-load relationships for response
-    layer = await db.get(Layer, pl.layer_id)
+    # Use denormalized fields from project_layer (works for both V1 and V2)
     bb_product = await db.get(Product, pl.backbone_product_id) if pl.backbone_product_id else None
     return LayerAddResponse(
         project_layer_id=pl.id,
         layer_id=pl.layer_id,
-        layer_name=layer.layer_name if layer else "",
+        layer_name=pl.layer_name or "",
         backbone_product_id=pl.backbone_product_id,
         backbone_product_name=bb_product.product_name if bb_product else None,
         conditions=pl.conditions,

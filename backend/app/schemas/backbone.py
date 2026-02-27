@@ -23,7 +23,7 @@ class BackboneReplaceResponse(BaseModel):
 # --- Layer Add/Delete ---
 
 class LayerAddRequest(BaseModel):
-    layer_id: int
+    layer_id: str
     source_product_id: int | None = None  # If provided, copy conditions from this product
     source_layer_name: str | None = None  # If source_product_id set, which layer to copy
     changed_by: int
@@ -31,7 +31,7 @@ class LayerAddRequest(BaseModel):
 
 class LayerAddResponse(BaseModel):
     project_layer_id: int
-    layer_id: int
+    layer_id: str
     layer_name: str
     backbone_product_id: int | None = None
     backbone_product_name: str | None = None

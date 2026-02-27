@@ -67,7 +67,6 @@ class ExportValidationService:
         query = (
             select(ProjectLayer)
             .where(ProjectLayer.project_id == project_id)
-            .options(selectinload(ProjectLayer.layer))
             .order_by(ProjectLayer.sort_order)
         )
         result = await db.execute(query)
@@ -153,7 +152,7 @@ class ExportValidationService:
             is_numeric = column_def.data_type in NUMERIC_DATA_TYPES
 
             for pl in layers:
-                layer_name = pl.layer.layer_name if pl.layer else str(pl.id)
+                layer_name = pl.layer_name or str(pl.id)
                 conditions = pl.conditions or {}
                 raw_value = conditions.get(col_name)
 
@@ -228,7 +227,7 @@ class ExportValidationService:
         # WARNING: per-layer missing data rate > 50% (condition mappings only)
         if condition_mappings:
             for pl in layers:
-                layer_name = pl.layer.layer_name if pl.layer else str(pl.id)
+                layer_name = pl.layer_name or str(pl.id)
                 conditions = pl.conditions or {}
                 empty_count = sum(
                     1

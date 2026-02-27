@@ -47,7 +47,7 @@ async def export_simple(
         select(Project)
         .options(
             selectinload(Project.product),
-            selectinload(Project.layers).selectinload(ProjectLayer.layer),
+            selectinload(Project.layers),
         )
         .where(Project.id == project_id)
     )
@@ -64,7 +64,7 @@ async def export_simple(
     columns = col_result.scalars().all()
 
     # Sort project layers by layer sort_order
-    sorted_layers = sorted(project.layers, key=lambda pl: pl.layer.sort_order)
+    sorted_layers = sorted(project.layers, key=lambda pl: pl.sort_order)
 
     # Build Excel workbook
     wb = Workbook()
@@ -78,7 +78,7 @@ async def export_simple(
     # Data rows
     col_names = [col.column_name for col in columns]
     for pl in sorted_layers:
-        row = [pl.layer.step_seq, pl.layer.layer_name]
+        row = [pl.step_seq, pl.layer_name]
         conditions = pl.conditions or {}
         for cn in col_names:
             val = conditions.get(cn, "")

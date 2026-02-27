@@ -123,7 +123,8 @@ class TestMatchLayerToProject:
             layers.append(layer)
 
             pl = ProjectLayer(
-                project_id=project.id, layer_id=layer.id,
+                project_id=project.id, layer_id=layer.layer_number,
+                layer_name=layer.layer_name, step_seq=layer.step_seq,
                 backbone_product_id=prod.id, conditions={}, backbone_conditions={},
                 sort_order=order,
             )
@@ -183,7 +184,8 @@ class TestParseRecipeXml:
         await db_session.flush()
 
         pl = ProjectLayer(
-            project_id=project.id, layer_id=layer.id,
+            project_id=project.id, layer_id=layer.layer_number,
+            layer_name=layer.layer_name, step_seq=layer.step_seq,
             backbone_product_id=prod.id,
             conditions={
                 "SP_SPIN1_SPEED_rpm": 2000,
@@ -344,7 +346,8 @@ class TestApplyRecipeChanges:
         await db_session.flush()
 
         pl = ProjectLayer(
-            project_id=project.id, layer_id=layer.id,
+            project_id=project.id, layer_id=layer.layer_number,
+            layer_name=layer.layer_name, step_seq=layer.step_seq,
             backbone_product_id=prod.id,
             conditions={"SP_SPIN1_SPEED_rpm": 2000, "SC_EXPOSE_ENERGY_mJ": 35.0},
             backbone_conditions={"SP_SPIN1_SPEED_rpm": 2000, "SC_EXPOSE_ENERGY_mJ": 35.0},

@@ -20,11 +20,6 @@ from app.services.export_service import ExportService
 # ---------------------------------------------------------------------------
 
 
-def make_layer(layer_name: str) -> SimpleNamespace:
-    """Create a mock Layer with a layer_name attribute."""
-    return SimpleNamespace(layer_name=layer_name)
-
-
 def make_col_def(column_name: str) -> SimpleNamespace:
     """Create a mock ColumnDefinition with a column_name attribute."""
     return SimpleNamespace(column_name=column_name)
@@ -54,10 +49,12 @@ def make_project_layer(
     pl_id: int = 1,
     sort_order: int = 0,
 ) -> SimpleNamespace:
-    """Create a mock ProjectLayer with a nested layer."""
+    """Create a mock ProjectLayer with denormalized layer_name."""
     return SimpleNamespace(
         id=pl_id,
-        layer=make_layer(layer_name),
+        layer_name=layer_name,
+        layer_id="1.0",
+        step_seq="ts100000",
         conditions=conditions,
         sort_order=sort_order,
     )

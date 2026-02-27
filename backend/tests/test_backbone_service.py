@@ -114,7 +114,7 @@ class TestBackboneReplace:
         """Should auto-match by layer name when source_layer_name is None."""
         project = await self._create_draft_project(db_session, seed_test_data)
         # LAYER_A -> replace with backbone LAYER_A
-        layer_a_pl = [pl for pl in project.layers if pl.layer.layer_name == "LAYER_A"][0]
+        layer_a_pl = [pl for pl in project.layers if pl.layer_name == "LAYER_A"][0]
 
         updated_pl, _ = await replace_layer_backbone(
             db_session,
@@ -156,7 +156,7 @@ class TestLayerAdd:
             changed_by=seed_test_data["user"].id,
         )
 
-        assert new_pl.layer_id == layer_c.id
+        assert new_pl.layer_id == layer_c.layer_number
         assert new_pl.conditions == {}
         assert new_pl.backbone_product_id is None
 

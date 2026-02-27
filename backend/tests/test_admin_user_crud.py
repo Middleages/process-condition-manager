@@ -255,7 +255,9 @@ async def test_delete_layer_with_project_layers_rejected(
 
     pl = ProjectLayer(
         project_id=project.id,
-        layer_id=layer.id,
+        layer_id=layer.layer_number,
+        layer_name=layer.layer_name,
+        step_seq=layer.step_seq,
         conditions={},
         backbone_conditions={},
     )
@@ -329,7 +331,8 @@ async def test_audit_logs(
     await db_session.flush()
 
     pl = ProjectLayer(
-        project_id=project.id, layer_id=layer.id,
+        project_id=project.id, layer_id=layer.layer_number,
+        layer_name=layer.layer_name, step_seq=layer.step_seq,
         conditions={}, backbone_conditions={},
     )
     db_session.add(pl)

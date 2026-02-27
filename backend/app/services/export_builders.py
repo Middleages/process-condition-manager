@@ -53,7 +53,7 @@ def build_type_a_data(
     rows = []
     for pl in layers:
         row = {
-            "LAYER_ID": pl.layer.layer_name,
+            "LAYER_ID": pl.layer_name,
             "PRODUCT_ID": product_name,
         }
         conditions = pl.conditions or {}
@@ -63,12 +63,12 @@ def build_type_a_data(
                 if m.source_type == "condition" and m.column_definition:
                     logger.warning(
                         "Required column %s is null for layer %s",
-                        m.column_definition.column_name, pl.layer.layer_name
+                        m.column_definition.column_name, pl.layer_name
                     )
                 elif m.source_type == "external":
                     logger.warning(
                         "Required external column %s is null for layer %s",
-                        m.source_column_name, pl.layer.layer_name
+                        m.source_column_name, pl.layer_name
                     )
             row[m.target_column_name] = value if value is not None else ""
         rows.append(row)
@@ -118,7 +118,7 @@ def build_type_b_data(
 
             found_equipment = True
             row = {
-                "LAYER_ID": pl.layer.layer_name,
+                "LAYER_ID": pl.layer_name,
                 "PRODUCT_ID": product_name,
                 "EQUIP_ID": eqp_name,
             }
@@ -139,7 +139,7 @@ def build_type_b_data(
         if not found_equipment:
             # 설비가 없는 레이어는 빈 EQUIP_ID로 단일 행 생성 (기존 fallback 동작 유지)
             row = {
-                "LAYER_ID": pl.layer.layer_name,
+                "LAYER_ID": pl.layer_name,
                 "PRODUCT_ID": product_name,
                 "EQUIP_ID": "",
             }
@@ -181,7 +181,7 @@ def build_type_c_data(
             else:
                 unit = ""
             rows.append({
-                "LAYER_ID": pl.layer.layer_name,
+                "LAYER_ID": pl.layer_name,
                 "PRODUCT_ID": product_name,
                 "PARAM_KEY": m.target_column_name,
                 "PARAM_VALUE": value if value is not None else "",

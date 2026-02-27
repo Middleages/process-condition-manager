@@ -325,7 +325,7 @@ async def delete_layer(db: AsyncSession, layer_id: int) -> None:
         raise HTTPException(status_code=404, detail="Layer not found")
 
     pl_count_result = await db.execute(
-        select(func.count(ProjectLayer.id)).where(ProjectLayer.layer_id == layer_id)
+        select(func.count(ProjectLayer.id)).where(ProjectLayer.layer_id == layer.layer_number)
     )
     if pl_count_result.scalar_one() > 0:
         raise HTTPException(

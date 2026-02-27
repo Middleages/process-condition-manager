@@ -55,9 +55,8 @@ def _validate_reference_exists(
     # 참조 레이어가 프로젝트에 존재하지 않으면 에러 추가
     if str(value) not in lookup_set:
         column_name = source_column
-        layer_id = project_layer.layer.id if project_layer.layer else project_layer.id
         errors.append({
-            "layer_id": layer_id,
+            "layer_id": project_layer.layer_id,
             "layer_name": layer_name,
             "column_name": column_name,
             "display_name": col_by_name.get(column_name, {}).get("display_name", column_name),
@@ -156,10 +155,9 @@ def _validate_compare_layers(
     if not _apply_operator(current_value, operator, threshold):
         column_name = column
         # 참조 레이어의 이름을 에러 메시지에 표시 (step_seq가 아닌 사람이 읽기 쉬운 이름)
-        ref_layer_display = ref_pl.layer.layer_name if ref_pl.layer else str(ref_identifier)
-        layer_id = project_layer.layer.id if project_layer.layer else project_layer.id
+        ref_layer_display = ref_pl.layer_name or str(ref_identifier)
         errors.append({
-            "layer_id": layer_id,
+            "layer_id": project_layer.layer_id,
             "layer_name": layer_name,
             "column_name": column_name,
             "display_name": col_by_name.get(column_name, {}).get("display_name", column_name),
@@ -227,7 +225,7 @@ def _validate_equipment_compatibility(
                 )
                 # 대표 레이어(그룹 첫 번째)에 에러 기록
                 first_pl, first_lname = group_layers[0]
-                first_layer_id = first_pl.layer.id if first_pl.layer else first_pl.id
+                first_layer_id = first_pl.layer_id
                 errors.append({
                     "layer_id": first_layer_id,
                     "layer_name": first_lname,
@@ -262,7 +260,7 @@ def _validate_equipment_compatibility(
                     f"{lname}={val}" for lname, val in layer_values
                 )
                 first_pl, first_lname = group_layers[0]
-                first_layer_id = first_pl.layer.id if first_pl.layer else first_pl.id
+                first_layer_id = first_pl.layer_id
                 errors.append({
                     "layer_id": first_layer_id,
                     "layer_name": first_lname,
@@ -322,15 +320,12 @@ async def validate_cross_layer_rules(
     layer_names: set[str] = set()
 
     for pl in project_layers:
-        layer = pl.layer
-        if not layer:
-            continue
-        if layer.layer_name:
-            layer_name_to_pl[layer.layer_name] = pl
-            layer_names.add(layer.layer_name)
-        if layer.step_seq:
-            step_seq_to_pl[layer.step_seq] = pl
-            step_seqs.add(layer.step_seq)
+        if pl.layer_name:
+            layer_name_to_pl[pl.layer_name] = pl
+            layer_names.add(pl.layer_name)
+        if pl.step_seq:
+            step_seq_to_pl[pl.step_seq] = pl
+            step_seqs.add(pl.step_seq)
 
     # equipment_compatibility 규칙 존재 여부 확인 (lazy loading)
     has_equipment_rules = any(
@@ -344,7 +339,7 @@ async def validate_cross_layer_rules(
         # EQP 컬럼(EQP_01~EQP_20)에서 설비 정보를 읽어 그룹핑
         # EquipmentAssignment 테이블 대신 conditions JSONB의 EQP 슬롯을 직접 사용
         for pl in project_layers:
-            lname = pl.layer.layer_name if pl.layer else None
+            lname = pl.layer_name
             if not lname:
                 continue
             conditions = pl.conditions or {}
@@ -364,7 +359,7 @@ async def validate_cross_layer_rules(
         if check_type == "reference_exists":
             # 모든 레이어에 대해 참조 존재 여부 검증
             for pl in project_layers:
-                lname = pl.layer.layer_name if pl.layer else None
+                lname = pl.layer_name
                 if not lname:
                     continue
                 _validate_reference_exists(
@@ -374,7 +369,7 @@ async def validate_cross_layer_rules(
         elif check_type == "compare_layers":
             # 모든 레이어에 대해 레이어 간 값 비교 검증
             for pl in project_layers:
-                lname = pl.layer.layer_name if pl.layer else None
+                lname = pl.layer_name
                 if not lname:
                     continue
                 _validate_compare_layers(

@@ -64,14 +64,15 @@ class TestBackboneCopy:
         assert exc_info.value.status_code == 409
 
     async def test_create_project_sets_correct_sort_order(self, db_session, seed_test_data):
-        """project_layers.sort_order should match layers.sort_order."""
+        """project_layers.sort_order should match the source layers.sort_order."""
         data = seed_test_data
         project = await create_project(
             db_session, data["target"].id, data["backbone"].id, data["user"].id,
         )
 
-        for pl in project.layers:
-            assert pl.sort_order == pl.layer.sort_order
+        expected_sort_orders = {layer.sort_order for layer in data["layers"]}
+        actual_sort_orders = {pl.sort_order for pl in project.layers}
+        assert actual_sort_orders == expected_sort_orders
 
     async def test_create_project_with_partial_layer_overlap(self, db_session, seed_test_data):
         """Product with only 2 layers should get 2 project_layers, all with backbone conditions."""

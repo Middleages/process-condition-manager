@@ -3,7 +3,6 @@ from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 from fastapi import HTTPException
 
 from app.models import (
@@ -36,7 +35,6 @@ async def replace_layer_backbone(
     # 2. Load the target project_layer
     result = await db.execute(
         select(ProjectLayer)
-        .options(selectinload(ProjectLayer.layer))
         .where(
             ProjectLayer.id == project_layer_id,
             ProjectLayer.project_id == project_id,
@@ -55,13 +53,12 @@ async def replace_layer_backbone(
     approved_project = await BackboneRepository.validate_backbone_source(db, source_product_id)
 
     # 4. Find matching layer in source product's Approved project layers
-    layer_name = source_layer_name or target_pl.layer.layer_name
+    layer_name = source_layer_name or target_pl.layer_name
     result = await db.execute(
         select(ProjectLayer)
-        .join(Layer, ProjectLayer.layer_id == Layer.id)
         .where(
             ProjectLayer.project_id == approved_project.id,
-            Layer.layer_name == layer_name,
+            ProjectLayer.layer_name == layer_name,
         )
     )
     source_pl = result.scalars().first()
@@ -131,11 +128,11 @@ async def add_layer(
     if not layer:
         raise HTTPException(status_code=404, detail="Layer not found")
 
-    # 3. Check not already in project
+    # 3. Check not already in project (compare by layer_number since ProjectLayer.layer_id is VARCHAR)
     result = await db.execute(
         select(ProjectLayer).where(
             ProjectLayer.project_id == project_id,
-            ProjectLayer.layer_id == layer_id,
+            ProjectLayer.layer_id == layer.layer_number,
         )
     )
     if result.scalars().first():
@@ -158,10 +155,9 @@ async def add_layer(
         match_name = source_layer_name or layer.layer_name
         result = await db.execute(
             select(ProjectLayer)
-            .join(Layer, ProjectLayer.layer_id == Layer.id)
             .where(
                 ProjectLayer.project_id == approved_project.id,
-                Layer.layer_name == match_name,
+                ProjectLayer.layer_name == match_name,
             )
         )
         source_pl = result.scalars().first()
@@ -173,7 +169,9 @@ async def add_layer(
     # 5. Create project_layer
     new_pl = ProjectLayer(
         project_id=project_id,
-        layer_id=layer_id,
+        layer_id=layer.layer_number,
+        layer_name=layer.layer_name,
+        step_seq=layer.step_seq,
         backbone_product_id=bb_product_id,
         conditions=conditions,
         backbone_conditions=backbone_conditions,

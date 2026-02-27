@@ -358,30 +358,22 @@ The system SHALL log a summary of backbone matching results: matched layers coun
 
 ### 4.1 DB Schema Changes
 
-#### Alembic Migration: `add_device_ref_columns_to_projects`
+#### Alembic Migration: `add_device_ref_to_projects`
 
 **projects table modifications:**
 
 | Operation | Column | Type | Constraints | Description |
 |-----------|--------|------|-------------|-------------|
 | ADD COLUMN | `device_master_id` | INTEGER | FK -> device_master(id), NULLABLE | Reference to device registry |
-| ADD COLUMN | `process` | VARCHAR(100) | NULLABLE | Process identifier (part of unique key) |
+| ADD COLUMN | `process` | VARCHAR(50) | NULLABLE | Process identifier (matches device_master.process) |
 | ADD COLUMN | `device_type` | VARCHAR(20) | NOT NULL, DEFAULT 'full' | 'full' or 'short' |
-| ADD COLUMN | `header_metadata` | JSONB | NULLABLE | Denormalized device header info |
+| ADD COLUMN | `header_metadata` | JSONB | NULLABLE | Denormalized from device_master.enrichment |
 | ADD COLUMN | `line_id` | INTEGER | FK -> lines(id), NULLABLE | Denormalized for unique constraint |
+| ADD COLUMN | `product_name` | VARCHAR(100) | NULLABLE | Denormalized for unique constraint |
+| ADD COLUMN | `part_id` | VARCHAR(100) | NULLABLE | Denormalized for unique constraint |
 | MODIFY | `product_id` | INTEGER | NULLABLE (was NOT NULL) | Backward compat: old projects keep value |
 | MODIFY | `main_backbone_id` | INTEGER | NULLABLE (was NOT NULL) | Support "No backbone" |
-| CREATE INDEX | `ix_projects_device_ref_unique` | | UNIQUE partial index | `(line_id, product_name_derived, process, part_id_derived, revision) WHERE is_latest = true` |
-
-Note: The unique constraint implementation requires denormalized `line_id` on `projects` and derives product_name/part_id from `device_master`. The exact index implementation will use functional index or denormalized columns.
-
-**Alternative approach (recommended for simplicity):**
-Add denormalized columns `product_name` (VARCHAR(100)) and `part_id` (VARCHAR(100)) directly on `projects` table for the unique constraint:
-
-| Operation | Column | Type | Description |
-|-----------|--------|------|-------------|
-| ADD COLUMN | `product_name` | VARCHAR(100) | Denormalized from device_master for unique constraint |
-| ADD COLUMN | `part_id` | VARCHAR(100) | Denormalized from device_master for unique constraint |
+| CREATE INDEX | `ix_projects_device_ref_active` | | UNIQUE partial index | See below |
 
 ```sql
 -- Partial unique index for active project uniqueness
@@ -390,7 +382,28 @@ ON projects (line_id, product_name, process, part_id, revision)
 WHERE is_latest = true;
 ```
 
+**project_layers table modifications (CRITICAL - layer_id type change):**
+
+| Operation | Column | Type | Description |
+|-----------|--------|------|-------------|
+| DROP FK | `layer_id` | | Drop FK constraint to `layers.id` |
+| ALTER TYPE | `layer_id` | VARCHAR(10) | Change from INT to VARCHAR(10) to store layer numbers ("1.0", "1.21", "17.31") |
+| BACKFILL | `layer_id` | | Convert existing INT values (layers.id) to corresponding `layers.layer_number` (VARCHAR) |
+
+Rationale: layer_id is the backbone matching key. Storing as VARCHAR allows direct comparison with `layer_master.layer_id`. Values like "1.0", "1.21", "17.31" must preserve original format (no zero-padding). Numeric sorting via `CAST(layer_id AS FLOAT)` or Python `sorted(key=float)`.
+
+**device_master table modifications:**
+
+| Operation | Column | Type | Description |
+|-----------|--------|------|-------------|
+| DROP CONSTRAINT | `uq_device_master_line_product` | | Remove 2-field unique |
+| CREATE CONSTRAINT | `uq_device_master_line_product_process_part` | UNIQUE | `(line_id, product_name, process, part_id)` - 4-field unique |
+
+Rationale: Same product_name can have multiple (process, part_id) combinations. The 4-field combination is guaranteed unique per user confirmation.
+
 #### header_metadata JSONB Schema
+
+Sourced from `device_master.enrichment` JSONB. The exact structure depends on enrichment configuration (SPEC-DEVICE-001 DeviceMetaSource). Example:
 
 ```json
 {
@@ -422,7 +435,7 @@ class ProjectCreateRequestV2(BaseModel):
     process: str
     part_id: str
     device_type: str = "full"  # "full" | "short"
-    selected_layer_ids: list[int] | None = None  # Required when device_type="short"
+    selected_layer_ids: list[str] | None = None  # Required when device_type="short", layer_master.layer_id values
 
     # Backbone (optional - None means "no backbone")
     backbone_product_id: int | None = None
@@ -435,8 +448,8 @@ class ProjectCreateRequestV2(BaseModel):
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/device-master/search` | Search device_master by line_id, product_name, process, part_id (autocomplete) |
-| GET | `/api/device-master/{id}/layers` | Get layers from layer_master for a specific device |
+| GET | `/api/device-masters/search` | Search device_master with cascading autocomplete (extends existing router) |
+| GET | `/api/device-masters/{id}/layers` | Get layers from layer_master for a specific device (extends existing router) |
 | GET | `/api/projects/check-duplicate` | Check if active project exists for device-ref combination |
 
 #### New Response Schemas
@@ -448,21 +461,16 @@ class DeviceSearchResult(BaseModel):
     line_id: int
     product_name: str
     process: str
-    part_id: str
-    pitch_size: float | None
-    shot_count: int | None
-    die_size_x: float | None
-    die_size_y: float | None
-    # ... additional header fields
+    part_id: str | None
+    is_active: bool
+    enrichment: dict  # JSONB from device_master.enrichment (pitch_size, shot_count, etc.)
 
 class DeviceLayerItem(BaseModel):
     """Layer from layer_master for a device."""
-    layer_id: int
-    layer_name: str
-    step_seq: str
-    layer_number: str
-    category: str | None = None
-    sort_order: int
+    id: int  # layer_master PK
+    layer_id: str  # VARCHAR(10): "1.0", "1.21", "17.31" - used as matching key
+    step_seq: str | None
+    descript: str | None
 
 class DuplicateCheckResponse(BaseModel):
     """Result of duplicate project check."""
@@ -486,7 +494,7 @@ async def create_project_v2(
     device_type: str,  # "full" | "short"
     created_by: int,
     backbone_product_id: int | None = None,
-    selected_layer_ids: list[int] | None = None,
+    selected_layer_ids: list[str] | None = None,  # layer_master.layer_id values (VARCHAR)
 ) -> Project:
     """Create a project using device-ref based flow.
 
@@ -505,7 +513,7 @@ async def create_project_v2(
 1. **Device validation**: Query `device_master` with (line_id, product_name, process, part_id) to get device_master_id and header info
 2. **Duplicate check**: Query `projects` WHERE same device-ref AND `status IN ('draft', 'review')` AND `is_latest = true`
 3. **Layer resolution**: Query `layer_master` for device layers; filter by `selected_layer_ids` if Short type
-4. **Backbone matching**: Use `layer_id` to match backbone `project_layers.conditions` to target layers
+4. **Backbone matching**: Use VARCHAR `layer_id` (e.g., "1.0", "1.21") to match backbone `project_layers.conditions` to target layers
 5. **Empty init**: For unmatched layers or "No backbone", set `conditions = {}`
 
 ### 4.4 Frontend Changes
@@ -579,24 +587,29 @@ ProjectCreateModal
 
 ```
 Input:
-  - target_layers: list[layer_id] from layer_master (full or subset)
+  - target_layers: list[LayerMaster] from layer_master (full or subset)
   - backbone_product_id: int | None
+
+Note: layer_id is VARCHAR(10) throughout (e.g., "1.0", "1.21", "17.31").
+Both backbone project_layers and new project_layers use the same VARCHAR layer_id format.
+Sorting: CAST(layer_id AS FLOAT) for numeric ordering.
 
 Algorithm:
   IF backbone_product_id is None:
-    FOR each target_layer:
-      create project_layer with conditions={}, backbone_conditions={}
+    FOR each target_layer in target_layers:
+      create project_layer(layer_id=target_layer.layer_id, conditions={}, backbone_conditions={})
     RETURN
 
   backbone_map = BackboneRepository.get_backbone_layer_map(db, backbone_product_id)
-  # backbone_map: {layer_id: conditions_dict}
+  # backbone_map: {layer_id(str): conditions_dict}
+  # e.g., {"1.0": {...}, "2.0": {...}, "17.31": {...}}
 
   matched = 0, project_only = 0, backbone_only = 0
 
-  FOR each target_layer_id in target_layers:
-    IF target_layer_id in backbone_map:
-      conditions = deepcopy(backbone_map[target_layer_id])
-      backbone_conditions = deepcopy(backbone_map[target_layer_id])
+  FOR each target_layer in target_layers:
+    IF target_layer.layer_id in backbone_map:
+      conditions = deepcopy(backbone_map[target_layer.layer_id])
+      backbone_conditions = deepcopy(backbone_map[target_layer.layer_id])
       bb_product_id = backbone_product_id
       matched += 1
     ELSE:
@@ -605,7 +618,7 @@ Algorithm:
       bb_product_id = None
       project_only += 1
 
-    create project_layer(conditions, backbone_conditions, bb_product_id)
+    create project_layer(layer_id=target_layer.layer_id, conditions, backbone_conditions, bb_product_id)
 
   backbone_only = len(backbone_map) - matched
   log(f"Backbone matching: matched={matched}, project_only={project_only}, backbone_only={backbone_only}")
@@ -616,10 +629,9 @@ Algorithm:
 #### New Files
 
 **Backend:**
-- `backend/app/routers/device_master.py` - Device master search + layer list endpoints
-- `backend/app/services/device_master_service.py` - Device master query service
+- `backend/app/services/device_master_service.py` - Device master query service (search, layers, header)
 - `backend/app/schemas/device_master.py` - Pydantic schemas for device-ref requests/responses
-- `backend/alembic/versions/xxx_add_device_ref_to_projects.py` - Migration
+- `backend/alembic/versions/019_add_device_ref_to_projects.py` - Migration
 
 **Frontend:**
 - `frontend/src/api/deviceMaster.ts` - API client for device_master endpoints
@@ -630,10 +642,13 @@ Algorithm:
 #### Modified Files
 
 **Backend:**
-- `backend/app/models/project.py` - Add device_master_id, process, device_type, header_metadata, line_id, product_name, part_id columns
+- `backend/app/models/project.py` - Add device_master_id, process, device_type, header_metadata, line_id, product_name, part_id columns; Change ProjectLayer.layer_id from INT to VARCHAR(10)
+- `backend/app/models/device_master.py` - Update DeviceMaster unique constraint to 4-field
 - `backend/app/services/project_service.py` - Add `create_project_v2()`, keep `create_project()` for backward compat
 - `backend/app/schemas/project.py` - Add `ProjectCreateRequestV2`, update `ProjectResponse` with new fields
-- `backend/app/routers/projects.py` - Update POST /api/projects to accept V2 schema
+- `backend/app/routers/projects.py` - Update POST /api/projects to accept V2 schema, add check-duplicate endpoint
+- `backend/app/routers/device_masters.py` - Add /search and /{id}/layers endpoints (extend existing SPEC-DEVICE-001 router)
+- `backend/app/repositories/backbone_repository.py` - Update get_backbone_layer_map to return {str: dict} (VARCHAR layer_id keys)
 
 **Frontend:**
 - `frontend/src/components/projects/ProjectCreateModal.tsx` - Complete rewrite with device-ref fields

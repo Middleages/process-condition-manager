@@ -103,7 +103,6 @@ async def get_project_conditions(
     result = await db.execute(
         select(ProjectLayer)
         .options(
-            selectinload(ProjectLayer.layer),
             selectinload(ProjectLayer.backbone_product),
         )
         .where(ProjectLayer.project_id == project_id)

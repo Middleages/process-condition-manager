@@ -8,7 +8,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
-from app.models import ReviewComment, ProjectLayer, Layer, ColumnDefinition, User
+from app.models import ReviewComment, ProjectLayer, ColumnDefinition, User
 
 
 class CommentRepository:
@@ -44,7 +44,7 @@ class CommentRepository:
         query = (
             select(
                 ReviewComment,
-                Layer.layer_name,
+                ProjectLayer.layer_name,
                 ColumnDefinition.display_name,
                 creator_user.display_name.label("creator_name"),
                 creator_user.roles.label("creator_roles"),
@@ -52,7 +52,6 @@ class CommentRepository:
             )
             .where(ReviewComment.project_id == project_id)
             .outerjoin(ProjectLayer, ReviewComment.project_layer_id == ProjectLayer.id)
-            .outerjoin(Layer, ProjectLayer.layer_id == Layer.id)
             .outerjoin(
                 ColumnDefinition,
                 ReviewComment.column_name == ColumnDefinition.column_name,
@@ -107,7 +106,7 @@ class CommentRepository:
         query = (
             select(
                 ReviewComment,
-                Layer.layer_name,
+                ProjectLayer.layer_name,
                 ColumnDefinition.display_name,
                 creator_user.display_name.label("creator_name"),
                 creator_user.roles.label("creator_roles"),
@@ -118,7 +117,6 @@ class CommentRepository:
                 ReviewComment.project_id == project_id,
             )
             .outerjoin(ProjectLayer, ReviewComment.project_layer_id == ProjectLayer.id)
-            .outerjoin(Layer, ProjectLayer.layer_id == Layer.id)
             .outerjoin(
                 ColumnDefinition,
                 ReviewComment.column_name == ColumnDefinition.column_name,

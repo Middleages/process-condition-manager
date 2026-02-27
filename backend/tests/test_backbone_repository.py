@@ -94,7 +94,9 @@ async def backbone_repo_data(db_session: AsyncSession):
 
     pl1 = ProjectLayer(
         project_id=approved_project.id,
-        layer_id=layer1.id,
+        layer_id=layer1.layer_number,
+        layer_name=layer1.layer_name,
+        step_seq=layer1.step_seq,
         backbone_product_id=prod_approved.id,
         conditions=cond_l1,
         backbone_conditions=cond_l1,
@@ -102,7 +104,9 @@ async def backbone_repo_data(db_session: AsyncSession):
     )
     pl2 = ProjectLayer(
         project_id=approved_project.id,
-        layer_id=layer2.id,
+        layer_id=layer2.layer_number,
+        layer_name=layer2.layer_name,
+        step_seq=layer2.step_seq,
         backbone_product_id=prod_approved.id,
         conditions=cond_l2,
         backbone_conditions=cond_l2,
@@ -220,8 +224,8 @@ class TestGetBackboneLayerMap:
         )
         assert isinstance(layer_map, dict)
         assert len(layer_map) == 2
-        assert layer_map[data["layer1"].id] == data["cond_l1"]
-        assert layer_map[data["layer2"].id] == data["cond_l2"]
+        assert layer_map[data["layer1"].layer_number] == data["cond_l1"]
+        assert layer_map[data["layer2"].layer_number] == data["cond_l2"]
 
     async def test_returns_empty_dict_when_no_approved_project(self, db_session, backbone_repo_data):
         """Should return empty dict when product has no Approved project."""
@@ -370,15 +374,14 @@ class TestGetBackboneLayers:
         sort_orders = [pl.sort_order for pl in layers]
         assert sort_orders == sorted(sort_orders)
 
-    async def test_layer_relationship_eagerly_loaded(self, db_session, backbone_repo_data):
-        """Each ProjectLayer should have its layer relationship eagerly loaded."""
+    async def test_layer_name_denormalized(self, db_session, backbone_repo_data):
+        """Each ProjectLayer should have layer_name denormalized directly."""
         data = backbone_repo_data
         layers = await BackboneRepository.get_backbone_layers(
             db_session, data["prod_approved"].id
         )
-        # Access layer.layer_name without triggering a lazy load
         for pl in layers:
-            assert pl.layer.layer_name is not None
+            assert pl.layer_name is not None
 
     async def test_returns_empty_when_no_approved_project(self, db_session, backbone_repo_data):
         """Should return empty list when product has no Approved project."""
@@ -395,5 +398,5 @@ class TestGetBackboneLayers:
             db_session, data["prod_approved"].id
         )
         layer_map = {pl.layer_id: pl.conditions for pl in layers}
-        assert layer_map[data["layer1"].id] == data["cond_l1"]
-        assert layer_map[data["layer2"].id] == data["cond_l2"]
+        assert layer_map[data["layer1"].layer_number] == data["cond_l1"]
+        assert layer_map[data["layer2"].layer_number] == data["cond_l2"]
