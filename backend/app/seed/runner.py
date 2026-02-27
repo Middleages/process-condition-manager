@@ -122,6 +122,8 @@ def seed():
 
         # --- Layers ---
         layer_ids = {}
+        # layer_info stores (layer_number, step_seq) per layer_name for project_layers (VARCHAR layer_id)
+        layer_info: dict[str, tuple[str, str]] = {}
         for layer_name, step_seq, layer_number, sort_order in LAYERS:
             session.execute(
                 text("INSERT INTO layers (layer_name, step_seq, layer_number, sort_order) "
@@ -133,6 +135,7 @@ def seed():
                 {"name": layer_name},
             )
             layer_ids[layer_name] = result.scalar()
+            layer_info[layer_name] = (layer_number, step_seq)
         print(f"  Layers: {len(layer_ids)}")
 
         # --- Lines ---
@@ -452,15 +455,18 @@ def seed():
                     # 설비별 포커스: -0.03 ~ 0.03 um 범위 내 랜덤
                     conditions[f"EQP_{slot}_FOCUS"] = round(random.uniform(-0.03, 0.03), 3)
 
+                ln_info = layer_info[layer_name]
                 session.execute(
                     text(
                         "INSERT INTO project_layers "
-                        "(project_id, layer_id, backbone_product_id, conditions, backbone_conditions, sort_order) "
-                        "VALUES (:proj_id, :lid, :bbpid, CAST(:cond AS jsonb), CAST(:bcond AS jsonb), :sort)"
+                        "(project_id, layer_id, layer_name, step_seq, backbone_product_id, conditions, backbone_conditions, sort_order) "
+                        "VALUES (:proj_id, :lid, :lname, :sseq, :bbpid, CAST(:cond AS jsonb), CAST(:bcond AS jsonb), :sort)"
                     ),
                     {
                         "proj_id": proj_id,
-                        "lid": layer_ids[layer_name],
+                        "lid": ln_info[0],
+                        "lname": layer_name,
+                        "sseq": ln_info[1],
                         "bbpid": pid,
                         "cond": json.dumps(conditions),
                         "bcond": json.dumps(conditions),
