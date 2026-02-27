@@ -54,7 +54,7 @@ cd /opt/process-condition-manager
 sudo chown -R appuser:appuser /opt/process-condition-manager
 
 # 스크립트 실행 권한
-chmod +x scripts/backup-db.sh
+chmod +x scripts/backup-db.sh scripts/restore-db.sh scripts/verify-backup.sh scripts/migrate-db.sh scripts/deploy.sh
 ```
 
 ---
@@ -64,7 +64,10 @@ chmod +x scripts/backup-db.sh
 ### 프로덕션용 환경 변수 설정
 
 ```bash
-# .env 파일 생성 (프로덕션용)
+# 템플릿에서 .env 파일 생성 (권장)
+cp .env.prod.example .env
+
+# 또는 직접 생성
 cat > .env << 'EOF'
 # 데이터베이스 설정
 DB_NAME=pcm_prod
@@ -73,6 +76,13 @@ DB_PASSWORD=<강력한 비밀번호 입력>
 
 # FastAPI 설정
 SECRET_KEY=<32자 이상 무작위 문자열>
+ENVIRONMENT=production
+LOG_LEVEL=INFO
+CORS_ORIGINS=http://your-domain.com
+
+# JWT 토큰 만료 (선택, 기본값 사용 가능)
+# ACCESS_TOKEN_EXPIRE_MINUTES=15
+# REFRESH_TOKEN_EXPIRE_DAYS=7
 EOF
 ```
 
@@ -177,6 +187,24 @@ process-condition-manager-nginx-1       "nginx -g 'daemon of…"   nginx        
 
 ### 마이그레이션 적용
 
+**스크립트 사용 (권장)**
+
+```bash
+# 마이그레이션 상태 확인
+./scripts/migrate-db.sh --status
+
+# 적용할 SQL 미리보기
+./scripts/migrate-db.sh --dry-run
+
+# 마이그레이션 적용 (자동 백업 후 실행)
+./scripts/migrate-db.sh
+
+# 문제 발생 시 한 단계 롤백
+./scripts/migrate-db.sh --rollback
+```
+
+**수동 실행**
+
 ```bash
 # 백엔드 컨테이너에 접속
 docker-compose -f docker-compose.prod.yml exec -T backend bash
@@ -231,12 +259,24 @@ docker-compose -f docker-compose.prod.yml exec -T backend python seed/__main__.p
 # API 헬스 체크
 curl -s http://localhost/api/health | jq .
 
-# 성공 응답
+# 정상 응답
 {
   "status": "ok",
-  "timestamp": "2026-02-22T14:00:00Z"
+  "app": "Process Condition Manager",
+  "db": "connected",
+  "environment": "production"
+}
+
+# DB 연결 실패 시 (서비스는 동작하지만 DB가 불안정)
+{
+  "status": "degraded",
+  "app": "Process Condition Manager",
+  "db": "disconnected",
+  "environment": "production"
 }
 ```
+
+> **참고**: `status`가 `"degraded"`이면 서비스는 실행 중이나 DB 연결에 문제가 있습니다. 모니터링 시스템에서 `status == "ok"`를 확인하여 알림을 설정하세요.
 
 ### 데이터베이스 연결 확인
 
@@ -710,17 +750,19 @@ docker-compose -f docker-compose.prod.yml logs | grep -i secret
 
 ### 백업 및 복구 스크립트 준비
 
-두 가지 스크립트가 포함되어 있습니다:
+다음 스크립트가 포함되어 있습니다:
 
-- `scripts/backup-db.sh` - 데이터베이스 자동 백업 (7일 자동 보관)
-- `scripts/restore-db.sh` - 백업 파일에서 복구
+| 스크립트 | 용도 |
+|----------|------|
+| `scripts/backup-db.sh` | 데이터베이스 자동 백업 |
+| `scripts/restore-db.sh` | 백업 파일에서 복구 (복구 전 자동 백업) |
+| `scripts/verify-backup.sh` | 백업 무결성 검증 |
+| `scripts/migrate-db.sh` | Alembic 마이그레이션 자동화 |
+| `scripts/deploy.sh` | 통합 배포 자동화 |
 
 ```bash
-# 스크립트 실행 권한 확인
-ls -la scripts/backup-db.sh scripts/restore-db.sh
-
-# 권한이 없으면 설정
-chmod +x scripts/backup-db.sh scripts/restore-db.sh
+# 스크립트 실행 권한 설정
+chmod +x scripts/backup-db.sh scripts/restore-db.sh scripts/verify-backup.sh scripts/migrate-db.sh scripts/deploy.sh
 
 # 백업 디렉토리 생성
 mkdir -p /backup/pcm
@@ -734,14 +776,24 @@ chmod 750 /backup/pcm
 
 **백업 스크립트 (`backup-db.sh`)**
 - Docker Compose를 사용하여 PostgreSQL 데이터베이스 백업
-- 타임스탐프가 포함된 SQL 파일로 저장 (예: `backup_2026-02-22_120000.sql`)
-- 7일 이상 된 백업 자동 삭제
-- 성공/실패 상태를 명확하게 표시
+- 타임스탬프가 포함된 SQL 파일로 저장 (예: `backup_2026-02-22_120000.sql`)
+- 보관 기간 지난 백업 자동 삭제 (기본 7일, `BACKUP_RETENTION_DAYS` 환경변수로 변경 가능)
+- 백업 디렉토리 변경: `PCM_BACKUP_DIR` 환경변수
 
 **복구 스크립트 (`restore-db.sh`)**
 - 지정된 백업 파일에서 데이터베이스 복구
+- **복구 전 현재 데이터를 자동 백업** (`pre_restore_TIMESTAMP.sql`)
 - 복구 전 확인 메시지 표시 (데이터 손실 경고)
 - 복구 후 테이블 수를 확인하여 정상 여부 검증
+
+**백업 검증 스크립트 (`verify-backup.sh`)**
+- 임시 DB에 백업을 복원하여 무결성 검증
+- 인자 없이 실행하면 가장 최근 백업을 자동 선택: `./scripts/verify-backup.sh`
+
+**통합 배포 스크립트 (`deploy.sh`)**
+- 전체 배포: `./scripts/deploy.sh` (검증 → 백업 → 빌드 → 마이그레이션 → 재시작 → 헬스 체크)
+- 빠른 배포: `./scripts/deploy.sh --quick` (빌드 + 재시작만)
+- 롤백: `./scripts/deploy.sh --rollback`
 
 ### 정기 백업 (Cron)
 
@@ -766,7 +818,17 @@ tail -f /var/log/pcm-backup.log
 
 여러 가지 백업 전략을 선택할 수 있습니다:
 
-**1. 매일 새벽 2시 (권장)**
+**1. 매일 새벽 2시 + 주간 검증 (권장)**
+```bash
+# 매일 02:00 백업
+0 2 * * * /opt/process-condition-manager/scripts/backup-db.sh >> /var/log/pcm-backup.log 2>&1
+# 매주 일요일 03:00 백업 무결성 검증
+0 3 * * 0 /opt/process-condition-manager/scripts/verify-backup.sh >> /var/log/pcm-verify.log 2>&1
+```
+
+> **팁**: `scripts/cron-example.txt` 파일에 바로 복사할 수 있는 크론탭 예시가 준비되어 있습니다.
+
+**2. 매일 새벽 2시 (간단)**
 ```bash
 0 2 * * * /opt/process-condition-manager/scripts/backup-db.sh >> /var/log/pcm-backup.log 2>&1
 ```
@@ -964,4 +1026,4 @@ df -h
 
 ---
 
-**마지막 업데이트**: 2026-02-22
+**마지막 업데이트**: 2026-02-27
