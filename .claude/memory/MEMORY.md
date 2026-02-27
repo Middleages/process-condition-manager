@@ -13,10 +13,11 @@
     - create_project_v2() TDD (8 tests), 4 new router endpoints
   - M2: Frontend Device-Ref Creation Modal (M2+M3+M4 combined)
     - ProjectCreateModalV2: Cascading dropdowns (Approach B), Full/Short selector
-    - Layer checkbox panel, optional Backbone, header preview, duplicate check
+    - Layer checkbox panel, optional Backbone, header preview + enrichment display, duplicate check
     - ProjectListPage: V2 modal default, display name `{name} | {process} | {part_id}`
     - Frontend type migration: layer_id INT→STRING across 15+ files
-    - 513 BE / 137 FE tests passing, TSC 0 errors
+  - Post-fix: V2 router param unpacking, revise_project() V2 duplicate check, enrichment display
+  - 513 BE / 137 FE tests passing, TSC 0 errors
 
 ## Key Architecture Decisions
 
@@ -28,6 +29,7 @@
 - **Layer matching**: By layer_id (VARCHAR), not layer_name
 - **Dynamic Backbone**: SPEC-BACKBONE-001 sources from approved project_layers
 - **Cascading dropdown**: Approach B — fetch all device_masters for line, extract unique values client-side
+- **V2 revise_project**: device-ref 4-field (line_id, product_name, process, part_id) 기반 중복 체크
 
 ## Project Conventions
 
