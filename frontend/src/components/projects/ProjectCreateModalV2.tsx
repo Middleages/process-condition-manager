@@ -489,6 +489,29 @@ export function ProjectCreateModalV2({ open, onOpenChange }: Props) {
                       : '-'}
                   </span>
                 </div>
+
+                {/* Enrichment metadata from device_master (REQ-PROJ-053) */}
+                {resolvedDeviceMaster.enrichment &&
+                  Object.keys(resolvedDeviceMaster.enrichment).length > 0 && (
+                    <div className="mt-2 pt-2 border-t border-border">
+                      <div className="text-xs font-medium text-muted-foreground mb-1">
+                        Header Metadata
+                      </div>
+                      <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-0.5 text-xs">
+                        {Object.entries(resolvedDeviceMaster.enrichment).flatMap(
+                          ([_source, fields]) =>
+                            Object.entries(fields as Record<string, unknown>).map(
+                              ([key, value]) => [
+                                <span key={`${key}-label`} className="text-muted-foreground">
+                                  {key.replace(/_/g, ' ')}
+                                </span>,
+                                <span key={`${key}-value`}>{String(value ?? '-')}</span>,
+                              ]
+                            )
+                        )}
+                      </div>
+                    </div>
+                  )}
               </div>
             )}
 
