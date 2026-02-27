@@ -726,3 +726,14 @@ M2 (Frontend Device-Ref Creation Modal) is **COMPLETE**.
 - layer_id INT→VARCHAR frontend type migration (15+ files, previous session)
 - Backend bug fixes: BackboneLayerResponse, changelog layer_id filter type
 - Tests: Backend 513 pass, Frontend 137 pass, TSC 0 errors
+
+### 5.3 Post-Completion Bug Fixes
+
+**REQ-PROJ-053 enrichment display:**
+- Header preview panel에 device_master.enrichment JSONB 키-값 표시 추가
+
+**V2 project critical fixes (3건):**
+1. `routers/projects.py`: create_project_v2 라우터에서 req 객체를 개별 파라미터로 언패킹 (기존: RuntimeError)
+2. `types/master.ts`: ProductLayerInfo.layer_id 타입 number → string (VARCHAR 마이그레이션 누락)
+3. `services/project_service.py`: revise_project()에서 V2 프로젝트 device-ref 기반 중복 체크 추가
+4. `api/projects.ts`, `hooks/useProjects.ts`: fetchChangeLogs layer_id 타입 number → string

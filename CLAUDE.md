@@ -298,6 +298,7 @@ Draft → Review → Approved → (Revision 생성 시) Archived
     - ProjectListPage: V2 모달 기본, V2 표시명 `{product_name} | {process} | {part_id}`
     - Frontend 타입 마이그레이션: layer_id INT→STRING 전체 15+ 파일
     - 513 BE / 137 FE 테스트 통과, TSC 0 에러
+  - Post-fix: REQ-PROJ-053 enrichment 표시, V2 라우터 파라미터 크래시 수정, revise_project() V2 중복 체크 추가
 
 ## 개발 명령어
 
