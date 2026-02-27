@@ -352,14 +352,29 @@ async def revise_project(
     if original.status != "approved":
         raise HTTPException(status_code=400, detail=f"Can only revise approved projects. Current status: {original.status}")
 
-    # 2. Check no active project exists for same product
-    result = await db.execute(
-        select(Project)
-        .where(
-            Project.product_id == original.product_id,
-            Project.status.in_(["draft", "review"]),
+    # 2. Check no active project exists for same product/device-ref
+    if original.device_master_id:
+        # V2 project: check by device-ref fields
+        result = await db.execute(
+            select(Project)
+            .where(
+                Project.line_id == original.line_id,
+                Project.product_name == original.product_name,
+                Project.process == original.process,
+                Project.part_id == original.part_id,
+                Project.status.in_(["draft", "review"]),
+                Project.is_latest.is_(True),
+            )
         )
-    )
+    else:
+        # V1 project: check by product_id
+        result = await db.execute(
+            select(Project)
+            .where(
+                Project.product_id == original.product_id,
+                Project.status.in_(["draft", "review"]),
+            )
+        )
     existing = result.scalars().first()
     if existing:
         raise HTTPException(status_code=409, detail=f"Active project (status={existing.status}) already exists for this product")
