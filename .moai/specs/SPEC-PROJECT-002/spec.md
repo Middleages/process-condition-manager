@@ -6,7 +6,7 @@
 |------|-------|
 | SPEC ID | SPEC-PROJECT-002 |
 | Title | Device-Ref Based Project Creation |
-| Status | Planned |
+| Status | Completed |
 | Priority | High |
 | Created | 2026-02-26 |
 | Dependencies | SPEC-DEVICE-001 (device_master + layer_master tables) |
@@ -696,7 +696,9 @@ Implemented:
 - Router endpoints: GET /search, POST /check-duplicate, GET /{id}/layers, POST /projects/v2
 - 513 tests passing
 
-### 5.2 M2 Implementation Plan (M2+M3+M4 통합)
+### 5.2 M2 Completion Status (M2+M3+M4 통합)
+
+M2 (Frontend Device-Ref Creation Modal) is **COMPLETE**.
 
 **Decision Log:**
 - M2+M3+M4 combined into a single frontend milestone (same modal UI flow)
@@ -704,23 +706,23 @@ Implemented:
 - V1 modal preserved as `ProjectCreateModal.tsx` (backward compat), V2 as `ProjectCreateModalV2.tsx`
 - V2 modal is default for new project creation
 
-**Frontend API Client Gaps (to implement):**
-
-| Function | Endpoint | Status |
-|----------|----------|--------|
-| `searchDevices(q, line_id?)` | `GET /api/device-masters/search` | NEW |
-| `checkDuplicate(line_id, product_name, process, part_id)` | `POST /api/device-masters/check-duplicate` | NEW |
-| `createProjectV2(data)` | `POST /api/projects/v2` | NEW |
-| `fetchDeviceLayers(deviceId)` | `GET /api/device-masters/{id}/layers` | EXISTS |
-| `useBackboneProducts(lineId)` | `GET /api/backbones?line_id=` | EXISTS |
-
-**Frontend Type Gaps (to implement):**
-- `ProjectCreateRequestV2` interface in `types/project.ts`
-- V2 fields on `Project` interface (device_master_id, process, device_type, header_metadata, part_id)
-
-**Implementation Steps:**
-1. API client functions + TypeScript types
-2. ProjectCreateModalV2 component (Device-ref cascading dropdowns + header preview)
-3. Full/Short type selector + Layer Selection Panel (checkboxes)
-4. Backbone dropdown with "No backbone" option
-5. ProjectListPage integration (V2 modal default, display name rendering)
+**Implemented:**
+- Frontend types: `DeviceSearchResult`, `DeviceLayerItem`, `DuplicateCheckResponse`, `ProjectCreateRequestV2`
+- API client: `searchDevices()`, `checkDuplicate()`, `createProjectV2()`, `fetchDeviceLayers()` (return type updated)
+- React Query hooks: `useCheckDuplicate()`, `useCreateProjectV2()`
+- ProjectCreateModalV2 component (520 lines):
+  - Cascading dropdowns: Line → Product Name → Process → Part ID (Approach B, client-side unique value extraction)
+  - Full/Short device type selector (segmented control)
+  - Layer selection panel with checkboxes, select all/deselect, count indicator (Short mode)
+  - Optional Backbone dropdown with "No backbone" default
+  - Header preview panel (device info + layer count + backbone)
+  - Duplicate project warning (non-blocking)
+  - Error display for failed creation
+- ProjectListPage integration:
+  - V2 modal as default (replaces V1 ProjectCreateModal)
+  - V2 display name: `{product_name} | {process} | {part_id}`
+  - Version history button hidden for V2 projects (product_id=null)
+  - Backbone column shows '-' for null
+- layer_id INT→VARCHAR frontend type migration (15+ files, previous session)
+- Backend bug fixes: BackboneLayerResponse, changelog layer_id filter type
+- Tests: Backend 513 pass, Frontend 137 pass, TSC 0 errors

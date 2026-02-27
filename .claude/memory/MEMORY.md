@@ -6,34 +6,17 @@
   - device_master, layer_master, sync_source_config, device_meta_source (4 tables)
   - Migration 018, 4 services, 2 routers
 
-- **SPEC-PROJECT-002 M1** (Completed) - Schema Migration + Backend API, PR #35
-  - Migration 019: device_master_id, process, device_type, header_metadata on projects
-  - project_layers.layer_id: INT → VARCHAR(10) with backfill + denormalization
-  - create_project_v2() TDD (8 tests), 4 new router endpoints
-  - 17-file refactor: `pl.layer.X` → `pl.X` (Layer relationship removed)
-  - 513 backend tests passing
-
-## Current Work: SPEC-PROJECT-002 M2
-
-**Status**: READY TO IMPLEMENT (document update session completed)
-
-### Pre-implementation cleanup done:
-- Frontend type migration (layer_id INT→STRING) across all files
-- ProjectCreateRequestV2 type + Project V2 fields added
-- Backend bugs fixed (BackboneLayerResponse, changelog layer_id filter)
-- Tests: Backend 513 pass, Frontend 137 pass, TSC 0 errors
-
-### M2 Implementation Plan (M2+M3+M4 combined):
-1. API client functions (searchDevices, checkDuplicate, createProjectV2)
-2. ProjectCreateModalV2 component (cascading dropdowns + header preview)
-3. Full/Short type selector + Layer Selection Panel
-4. Backbone dropdown + "No backbone" option
-5. ProjectListPage integration
-
-### Key decisions:
-- Cascading dropdown: Approach B (reuse `GET /api/device-masters` list API, extract unique values client-side)
-- V1 modal preserved, V2 as ProjectCreateModalV2.tsx (default)
-- SPEC doc Section 5.2 has full details
+- **SPEC-PROJECT-002** (Completed) - Device-Ref Based Project Creation
+  - M1: Schema migration + Backend API (PR #35)
+    - Migration 019: device_master_id, process, device_type, header_metadata on projects
+    - project_layers.layer_id: INT → VARCHAR(10) with backfill + denormalization
+    - create_project_v2() TDD (8 tests), 4 new router endpoints
+  - M2: Frontend Device-Ref Creation Modal (M2+M3+M4 combined)
+    - ProjectCreateModalV2: Cascading dropdowns (Approach B), Full/Short selector
+    - Layer checkbox panel, optional Backbone, header preview, duplicate check
+    - ProjectListPage: V2 modal default, display name `{name} | {process} | {part_id}`
+    - Frontend type migration: layer_id INT→STRING across 15+ files
+    - 513 BE / 137 FE tests passing, TSC 0 errors
 
 ## Key Architecture Decisions
 
@@ -44,6 +27,7 @@
 - **Backbone optional**: backbone_product_id=null → empty conditions {}
 - **Layer matching**: By layer_id (VARCHAR), not layer_name
 - **Dynamic Backbone**: SPEC-BACKBONE-001 sources from approved project_layers
+- **Cascading dropdown**: Approach B — fetch all device_masters for line, extract unique values client-side
 
 ## Project Conventions
 
