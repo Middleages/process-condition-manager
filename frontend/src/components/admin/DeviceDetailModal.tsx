@@ -277,9 +277,7 @@ export function DeviceDetailModal({
                             {layer.step_seq ?? '--'}
                           </td>
                           <td className="px-3 py-2 text-xs text-muted-foreground">
-                            {layer.synced_at
-                              ? new Date(layer.synced_at).toLocaleString('ko-KR')
-                              : '--'}
+                            --
                           </td>
                         </tr>
                       ))}

@@ -3,6 +3,7 @@ import {
   fetchProjects,
   fetchProjectDetail,
   createProject,
+  createProjectV2,
   bulkSaveConditions,
   validateProject,
   fetchChangeLogs,
@@ -21,6 +22,7 @@ import {
 import type {
   ProjectStatus,
   ProjectCreateRequest,
+  ProjectCreateRequestV2,
   BulkSaveRequest,
   BackboneReplaceRequest,
   LayerAddRequest,
@@ -75,6 +77,17 @@ export function useCreateProject() {
 
   return useMutation({
     mutationFn: (req: ProjectCreateRequest) => createProject(req),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: projectKeys.lists() })
+    },
+  })
+}
+
+export function useCreateProjectV2() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (req: ProjectCreateRequestV2) => createProjectV2(req),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: projectKeys.lists() })
     },

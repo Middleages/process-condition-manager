@@ -3,6 +3,7 @@ import type {
   Project,
   ProjectDetail,
   ProjectCreateRequest,
+  ProjectCreateRequestV2,
   BulkSaveRequest,
   BulkSaveResponse,
   ValidationResponse,
@@ -45,6 +46,11 @@ export async function fetchProjectDetail(projectId: number): Promise<ProjectDeta
 
 export async function createProject(req: ProjectCreateRequest): Promise<ProjectDetail> {
   const { data } = await client.post<ProjectDetail>('/projects', req)
+  return data
+}
+
+export async function createProjectV2(req: ProjectCreateRequestV2): Promise<ProjectDetail> {
+  const { data } = await client.post<ProjectDetail>('/projects/v2', req)
   return data
 }
 
