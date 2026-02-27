@@ -119,8 +119,8 @@ class TestValidateReferenceExists:
             errors=errors,
         )
         assert len(errors) == 1
-        assert errors[0]["metadata"]["check_type"] == "reference_exists"
-        assert "ts999999" in errors[0]["message"]
+        assert errors[0].metadata["check_type"] == "reference_exists"
+        assert "ts999999" in errors[0].message
 
     def test_blank_value_skipped(self):
         """Empty string value -> skip validation."""
@@ -242,7 +242,7 @@ class TestValidateCompareLayers:
         errors: list = []
         _validate_compare_layers(rule, pl_a, "LAYER_A", s2p, l2p, COL_BY_NAME, errors)
         assert len(errors) == 1
-        assert errors[0]["metadata"]["check_type"] == "compare_layers"
+        assert errors[0].metadata["check_type"] == "compare_layers"
 
     def test_threshold_ratio(self):
         """100 <= 200*0.4(=80) -> fail (100 > 80)."""
@@ -381,7 +381,7 @@ class TestValidateEquipmentCompatibility:
         errors: list = []
         _validate_equipment_compatibility(rule, groups, COL_BY_NAME, errors)
         assert len(errors) == 1
-        assert "equipment_compatibility" in errors[0]["metadata"]["check_type"]
+        assert "equipment_compatibility" in errors[0].metadata["check_type"]
 
     def test_within_range_pass(self):
         """Values within 10% tolerance of mean -> no error.
@@ -463,4 +463,4 @@ class TestValidateEquipmentCompatibility:
         errors: list = []
         _validate_equipment_compatibility(rule, groups, COL_BY_NAME, errors)
         assert len(errors) == 1
-        assert "EQ-002" in errors[0]["message"]
+        assert "EQ-002" in errors[0].message

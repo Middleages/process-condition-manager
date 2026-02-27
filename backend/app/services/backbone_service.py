@@ -105,7 +105,7 @@ async def replace_layer_backbone(
 async def add_layer(
     db: AsyncSession,
     project_id: int,
-    layer_id: int,
+    layer_id: int | str,
     changed_by: int,
     source_product_id: int | None = None,
     source_layer_name: str | None = None,

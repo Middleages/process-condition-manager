@@ -54,7 +54,7 @@ class ExportService:
         system = await self._get_export_system(db, system_id)
         mappings = await self._get_column_mappings(db, system_id)
         layers_data = await self._get_project_layers(db, project_id)
-        product_name = project.product.product_name
+        product_name = self._resolve_product_name(project)
 
         # Fetch external data if any external-type mappings exist
         external_data: dict[int, dict[str, dict[str, Any]]] = {}
@@ -89,7 +89,7 @@ class ExportService:
         system = await self._get_export_system(db, system_id)
         mappings = await self._get_column_mappings(db, system_id)
         layers_data = await self._get_project_layers(db, project_id)
-        product_name = project.product.product_name
+        product_name = self._resolve_product_name(project)
 
         # Fetch external data if any external-type mappings exist
         external_data: dict[int, dict[str, dict[str, Any]]] = {}
@@ -128,7 +128,7 @@ class ExportService:
         Returns (zip_bytes, filename).
         """
         project = await self._get_project(db, project_id)
-        product_name = project.product.product_name
+        product_name = self._resolve_product_name(project)
 
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -155,6 +155,15 @@ class ExportService:
         if not project:
             raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
         return project
+
+    @staticmethod
+    def _resolve_product_name(project: Project) -> str:
+        """Resolve product name for both V1 (product FK) and V2 (device-ref) projects."""
+        if project.product_name:
+            return project.product_name
+        if project.product:
+            return project.product.product_name
+        return "Unknown"
 
     async def _get_export_system(self, db: AsyncSession, system_id: int) -> ExportSystem:
         """Fetch export system by ID."""

@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.column import ColumnDefinition, ColumnValidation
+from app.schemas.project import ValidationErrorItem
 
 
 # 허용되는 cross_layer check_type 목록
@@ -55,21 +56,21 @@ def _validate_reference_exists(
     # 참조 레이어가 프로젝트에 존재하지 않으면 에러 추가
     if str(value) not in lookup_set:
         column_name = source_column
-        errors.append({
-            "layer_id": project_layer.layer_id,
-            "layer_name": layer_name,
-            "column_name": column_name,
-            "display_name": col_by_name.get(column_name, {}).get("display_name", column_name),
-            "rule_type": "cross_layer",
-            "message": (
+        errors.append(ValidationErrorItem(
+            layer_id=project_layer.layer_id,
+            layer_name=layer_name,
+            column_name=column_name,
+            display_name=col_by_name.get(column_name, {}).get("display_name", column_name),
+            rule_type="cross_layer",
+            message=(
                 f"{layer_name}의 {column_name} 값 '{value}'에 해당하는 "
                 f"레이어가 프로젝트에 존재하지 않습니다"
             ),
-            "metadata": {
+            metadata={
                 "check_type": "reference_exists",
                 "referenced_layer": str(value),
             },
-        })
+        ))
 
 
 def _apply_operator(current_value: float, operator: str, threshold: float) -> bool:
@@ -156,23 +157,23 @@ def _validate_compare_layers(
         column_name = column
         # 참조 레이어의 이름을 에러 메시지에 표시 (step_seq가 아닌 사람이 읽기 쉬운 이름)
         ref_layer_display = ref_pl.layer_name or str(ref_identifier)
-        errors.append({
-            "layer_id": project_layer.layer_id,
-            "layer_name": layer_name,
-            "column_name": column_name,
-            "display_name": col_by_name.get(column_name, {}).get("display_name", column_name),
-            "rule_type": "cross_layer",
-            "message": (
+        errors.append(ValidationErrorItem(
+            layer_id=project_layer.layer_id,
+            layer_name=layer_name,
+            column_name=column_name,
+            display_name=col_by_name.get(column_name, {}).get("display_name", column_name),
+            rule_type="cross_layer",
+            message=(
                 f"{layer_name}의 {column_name} 값({current_value})이 "
                 f"참조 레이어 {ref_layer_display}의 값({ref_value}) "
                 f"대비 기준({operator} {threshold})을 초과합니다"
             ),
-            "metadata": {
+            metadata={
                 "check_type": "compare_layers",
                 "referenced_layer": ref_layer_display,
                 "referenced_value": str(ref_value),
             },
-        })
+        ))
 
 
 def _validate_equipment_compatibility(
@@ -226,20 +227,20 @@ def _validate_equipment_compatibility(
                 # 대표 레이어(그룹 첫 번째)에 에러 기록
                 first_pl, first_lname = group_layers[0]
                 first_layer_id = first_pl.layer_id
-                errors.append({
-                    "layer_id": first_layer_id,
-                    "layer_name": first_lname,
-                    "column_name": column_name,
-                    "display_name": display_name,
-                    "rule_type": "cross_layer",
-                    "message": (
+                errors.append(ValidationErrorItem(
+                    layer_id=first_layer_id,
+                    layer_name=first_lname,
+                    column_name=column_name,
+                    display_name=display_name,
+                    rule_type="cross_layer",
+                    message=(
                         f"설비 {equipment_id}에 배정된 레이어들의 "
                         f"{column_name} 값이 일치하지 않습니다: {layer_values_str}"
                     ),
-                    "metadata": {
+                    metadata={
                         "check_type": "equipment_compatibility",
                     },
-                })
+                ))
 
         elif compatibility == "within_range" and range_tolerance is not None:
             # 모든 값이 mean 기준 range_tolerance 이내여야 함
@@ -261,20 +262,20 @@ def _validate_equipment_compatibility(
                 )
                 first_pl, first_lname = group_layers[0]
                 first_layer_id = first_pl.layer_id
-                errors.append({
-                    "layer_id": first_layer_id,
-                    "layer_name": first_lname,
-                    "column_name": column_name,
-                    "display_name": display_name,
-                    "rule_type": "cross_layer",
-                    "message": (
+                errors.append(ValidationErrorItem(
+                    layer_id=first_layer_id,
+                    layer_name=first_lname,
+                    column_name=column_name,
+                    display_name=display_name,
+                    rule_type="cross_layer",
+                    message=(
                         f"설비 {equipment_id}에 배정된 레이어들의 "
                         f"{column_name} 값이 일치하지 않습니다: {layer_values_str}"
                     ),
-                    "metadata": {
+                    metadata={
                         "check_type": "equipment_compatibility",
                     },
-                })
+                ))
 
 
 async def validate_cross_layer_rules(

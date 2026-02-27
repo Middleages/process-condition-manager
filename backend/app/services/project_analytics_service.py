@@ -76,18 +76,33 @@ async def list_version_history(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    # Get product info
-    product = await db.get(Product, project.product_id)
-    if not product:
-        raise HTTPException(status_code=404, detail="Product not found")
+    # V2 projects use device_master_id, V1 projects use product_id
+    if project.device_master_id:
+        # V2: group by device_master_id
+        result = await db.execute(
+            select(Project)
+            .options(selectinload(Project.creator))
+            .where(Project.device_master_id == project.device_master_id)
+            .order_by(Project.revision.desc())
+        )
+        display_name = project.product_name or "Unknown"
+        display_id = project.device_master_id
+    elif project.product_id:
+        # V1: group by product_id
+        product = await db.get(Product, project.product_id)
+        if not product:
+            raise HTTPException(status_code=404, detail="Product not found")
+        result = await db.execute(
+            select(Project)
+            .options(selectinload(Project.creator))
+            .where(Project.product_id == project.product_id)
+            .order_by(Project.revision.desc())
+        )
+        display_name = product.product_name
+        display_id = product.id
+    else:
+        raise HTTPException(status_code=404, detail="Project has no product or device reference")
 
-    # Query all projects with same product_id, ordered by revision DESC
-    result = await db.execute(
-        select(Project)
-        .options(selectinload(Project.creator))
-        .where(Project.product_id == project.product_id)
-        .order_by(Project.revision.desc())
-    )
     projects = list(result.scalars().all())
 
     versions = [
@@ -105,8 +120,8 @@ async def list_version_history(
     ]
 
     return VersionHistoryResponse(
-        product_id=product.id,
-        product_name=product.product_name,
+        product_id=display_id,
+        product_name=display_name,
         current_project_id=project_id,
         versions=versions,
     )

@@ -32,9 +32,9 @@ export function LayerAddModal({
   const [useSource, setUseSource] = useState(false)
   const [sourceProductId, setSourceProductId] = useState('')
 
-  // Filter out already-existing layers
-  const existingLayerIds = new Set(existingLayers.map((l) => l.layer_id))
-  const availableLayers = allLayers.filter((l) => !existingLayerIds.has(String(l.id)))
+  // Filter out already-existing layers (compare by layer_name, shared by both types)
+  const existingLayerNames = new Set(existingLayers.map((l) => l.layer_name))
+  const availableLayers = allLayers.filter((l) => !existingLayerNames.has(l.layer_name))
 
   // Reset on open
   useEffect(() => {

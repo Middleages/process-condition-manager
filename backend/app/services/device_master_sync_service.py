@@ -256,7 +256,7 @@ class DeviceMasterSyncService:
 
             stmt = pg_insert(DeviceMaster).values(**values)
             stmt = stmt.on_conflict_do_update(
-                constraint="uq_device_master_line_product",
+                constraint="uq_device_master_line_product_process_part",
                 set_={
                     "process": stmt.excluded.process,
                     "part_id": stmt.excluded.part_id,

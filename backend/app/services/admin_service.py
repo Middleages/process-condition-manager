@@ -575,7 +575,11 @@ async def list_audit_logs(
     if project_id is not None:
         base_query = base_query.where(Project.id == project_id)
     if line_id is not None:
-        base_query = base_query.where(Product.line_id == line_id)
+        # V1 projects: filter via Product.line_id; V2 projects: filter via Project.line_id
+        from sqlalchemy import or_
+        base_query = base_query.where(
+            or_(Product.line_id == line_id, Project.line_id == line_id)
+        )
     if changed_by is not None:
         base_query = base_query.where(ChangeLog.changed_by == changed_by)
     if change_type is not None:
