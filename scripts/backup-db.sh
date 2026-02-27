@@ -18,7 +18,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
 # 환경 설정
-BACKUP_DIR="${PROJECT_ROOT}/backup"
+BACKUP_DIR="${PCM_BACKUP_DIR:-${PROJECT_ROOT}/backup}"
 ENV_FILE="${PROJECT_ROOT}/.env"
 DOCKER_COMPOSE_FILE="${PROJECT_ROOT}/docker-compose.prod.yml"
 
@@ -94,7 +94,7 @@ cleanup_old_backups() {
     echo ""
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] 오래된 백업 정리 중..."
 
-    # 7일 이상 된 백업 찾기 및 삭제
+    # 보관 기간 지난 백업 찾기 및 삭제
     DELETED_COUNT=0
 
     if [ -d "$BACKUP_DIR" ]; then
@@ -106,7 +106,8 @@ cleanup_old_backups() {
                 FILE_NAME=$(basename "$old_file")
                 echo "  - 삭제: $FILE_NAME"
             fi
-        done < <(find "$BACKUP_DIR" -name "backup_*.sql" -type f -mtime +7)
+        RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-7}"
+        done < <(find "$BACKUP_DIR" -name "backup_*.sql" -type f -mtime +"$RETENTION_DAYS")
     fi
 
     if [ $DELETED_COUNT -eq 0 ]; then

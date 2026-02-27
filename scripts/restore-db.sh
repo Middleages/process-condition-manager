@@ -103,6 +103,41 @@ check_database() {
 }
 
 ################################################################################
+# 함수: 복구 전 현재 데이터 백업
+################################################################################
+backup_before_restore() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] 복구 전 현재 데이터 백업 중..."
+
+    PRE_RESTORE_DIR="${PROJECT_ROOT}/backup"
+    mkdir -p "$PRE_RESTORE_DIR"
+
+    PRE_RESTORE_FILE="${PRE_RESTORE_DIR}/pre_restore_$(date +"%Y-%m-%d_%H%M%S").sql"
+
+    docker-compose -f "$DOCKER_COMPOSE_FILE" exec -T db \
+        pg_dump -U "$DB_USER" -d "$DB_NAME" \
+        > "$PRE_RESTORE_FILE" 2>/dev/null
+
+    if [ $? -eq 0 ] && [ -s "$PRE_RESTORE_FILE" ]; then
+        PRE_RESTORE_SIZE=$(du -h "$PRE_RESTORE_FILE" | cut -f1)
+        echo "✓ 복구 전 백업 완료"
+        echo "  - 파일: $PRE_RESTORE_FILE"
+        echo "  - 크기: $PRE_RESTORE_SIZE"
+        return 0
+    else
+        rm -f "$PRE_RESTORE_FILE"
+        echo "✗ 복구 전 백업 실패"
+        echo ""
+        read -p "백업 없이 계속 진행하시겠습니까? (yes/no): " CONTINUE_WITHOUT_BACKUP
+        if [ "$CONTINUE_WITHOUT_BACKUP" != "yes" ]; then
+            echo "복구가 취소되었습니다"
+            return 1
+        fi
+        echo "⚠ 백업 없이 계속 진행합니다"
+        return 0
+    fi
+}
+
+################################################################################
 # 함수: 복구 실행
 ################################################################################
 perform_restore() {
@@ -189,6 +224,13 @@ echo ""
 
 # 데이터베이스 연결 확인
 if ! check_database; then
+    exit 1
+fi
+
+echo ""
+
+# 복구 전 현재 데이터 백업
+if ! backup_before_restore; then
     exit 1
 fi
 

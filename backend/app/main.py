@@ -6,8 +6,13 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from app.config import settings
-from app.database import async_session
-from app.routers import (
+from app.logging_config import setup_logging
+
+# 라우터 import 전에 로깅 설정 (로거 초기화 순서 보장)
+setup_logging(environment=settings.ENVIRONMENT, log_level=settings.LOG_LEVEL)
+
+from app.database import async_session  # noqa: E402
+from app.routers import (  # noqa: E402
     users, lines, columns, products, equipments,
     projects, project_conditions, project_layers, project_lifecycle,
     admin, admin_users, admin_master, comments, export, export_admin, export_data_source, auth as auth_router,
@@ -44,7 +49,14 @@ async def health_check():
         db_status = "connected"
     except Exception:
         db_status = "disconnected"
-    return {"status": "ok", "app": settings.APP_NAME, "db": db_status}
+
+    status = "ok" if db_status == "connected" else "degraded"
+    return {
+        "status": status,
+        "app": settings.APP_NAME,
+        "db": db_status,
+        "environment": settings.ENVIRONMENT,
+    }
 
 
 app.include_router(auth_router.router, prefix="/api/auth", tags=["auth"])
