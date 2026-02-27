@@ -6,6 +6,8 @@ from sqlalchemy.orm import selectinload
 from fastapi import HTTPException
 
 from app.models import Project, ProjectLayer
+from app.utils.comparison import values_differ
+
 
 # Helper to parse layer_id (str like "1.0", "17.31") for numeric sorting
 def _layer_sort_key(layer_id: str) -> float:
@@ -13,7 +15,6 @@ def _layer_sort_key(layer_id: str) -> float:
         return float(layer_id)
     except (ValueError, TypeError):
         return float("inf")
-from app.utils.comparison import values_differ
 
 
 async def get_version_diff(

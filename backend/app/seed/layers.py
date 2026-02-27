@@ -121,9 +121,9 @@ def _build_layers() -> list[tuple]:
 # 전체 레이어 목록 (150개 튜플)
 LAYERS = _build_layers()
 # 레이어 이름만 추출한 리스트 (제품 시드에서 사용)
-LAYER_NAMES = [l[0] for l in LAYERS]
+LAYER_NAMES = [lyr[0] for lyr in LAYERS]
 # 레이어 이름 → step_seq 매핑 딕셔너리 (OVL 참조에서 사용)
-_LAYER_STEP_SEQ = {l[0]: l[1] for l in LAYERS}
+_LAYER_STEP_SEQ = {lyr[0]: lyr[1] for lyr in LAYERS}
 
 
 # ---------------------------------------------------------------------------

@@ -9,7 +9,7 @@ All heavy query logic is centralized here. Business logic (validation,
 error messages) remains in the calling service.
 """
 from fastapi import HTTPException
-from sqlalchemy import select, and_, distinct
+from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 

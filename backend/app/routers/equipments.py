@@ -21,7 +21,7 @@ async def list_active_equipments(
     """List active equipments for a given line, ordered by sort_order."""
     query = (
         select(Equipment)
-        .where(Equipment.line_id == line_id, Equipment.is_active == True)
+        .where(Equipment.line_id == line_id, Equipment.is_active == True)  # noqa: E712
         .order_by(Equipment.sort_order)
     )
     result = await db.execute(query)

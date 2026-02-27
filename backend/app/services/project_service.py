@@ -300,7 +300,7 @@ async def list_projects(
     if is_latest is not None:
         query = query.where(Project.is_latest == is_latest)
     elif not include_all_versions:
-        query = query.where(Project.is_latest == True)
+        query = query.where(Project.is_latest == True)  # noqa: E712
     if status:
         query = query.where(Project.status == status)
     if product_id is not None:

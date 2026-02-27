@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException
 
 from app.models import (
-    Product, ProductLayer, Project, ProjectLayer, Layer, ChangeLog,
+    Product, Project, ProjectLayer, Layer, ChangeLog,
 )
 from app.repositories.backbone_repository import BackboneRepository
 from app.utils.comparison import values_differ

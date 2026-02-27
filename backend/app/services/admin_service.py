@@ -17,7 +17,7 @@ from app.schemas.admin import (
     RecipeMappingResponse, RecipeMappingCreate, RecipeMappingUpdate,
     ValidationRuleCreate, BulkUploadResponse,
     ColumnSelectOptionsResponse, SelectOptionsUpdate,
-    AuditLogEntry, AuditLogListResponse,
+    AuditLogEntry,
 )
 
 from app.constants import ALLOWED_VALUE_TRANSFORMS, ALLOWED_RULE_TYPES

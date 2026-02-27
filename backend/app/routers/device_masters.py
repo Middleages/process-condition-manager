@@ -7,12 +7,12 @@ RBAC: require_active_user (모든 인증된 활성 사용자)
 from __future__ import annotations
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
-from sqlalchemy import Float, cast, func, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies.auth import require_active_user
-from app.models.device_master import DeviceMaster, LayerMaster
+from app.models.device_master import DeviceMaster
 from app.models.line import Line
 from app.models.project import Project
 from app.models.user import User
@@ -22,7 +22,6 @@ from app.schemas.device_master import (
     DeviceLayerItem,
     DeviceSearchResult,
     DuplicateCheckResponse,
-    LayerMasterResponse,
 )
 from app.services import device_master_query_service
 
