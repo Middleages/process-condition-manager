@@ -7,6 +7,7 @@ export interface AdminUser {
   email: string | null
   roles: UserRole[]
   is_active: boolean
+  line_id: number | null
   created_at: string
   updated_at: string
 }
@@ -24,6 +25,7 @@ export interface AdminUserUpdate {
   email?: string | null
   roles?: string[]
   is_active?: boolean
+  line_id?: number | null
 }
 
 export interface AdminPasswordReset {

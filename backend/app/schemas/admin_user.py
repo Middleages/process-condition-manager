@@ -39,6 +39,7 @@ class AdminUserUpdate(BaseModel):
     email: str | None = None
     roles: list[str] | None = None
     is_active: bool | None = None
+    line_id: int | None = None
 
     @field_validator("roles")
     @classmethod
@@ -74,6 +75,7 @@ class AdminUserResponse(BaseModel):
     email: str | None = None
     roles: list[str]
     is_active: bool
+    line_id: int | None = None
     created_at: datetime
     updated_at: datetime
 

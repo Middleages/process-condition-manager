@@ -1,8 +1,9 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/useAuthStore'
 import { canAccessAdmin } from '@/lib/permissions'
-import { LogOut, Settings, User, FolderOpen } from 'lucide-react'
+import { LogOut, Settings, User, FolderOpen, FileCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import NotificationBell from '@/components/announcement/NotificationBell'
 
 export default function Header() {
   const { user, logout } = useAuthStore()
@@ -30,6 +31,14 @@ export default function Header() {
         프로젝트
       </Link>
 
+      <Link
+        to="/config-changes"
+        className="flex items-center gap-1.5 text-sm no-underline text-primary-foreground hover:text-primary-foreground/80"
+      >
+        <FileCheck className="h-4 w-4" />
+        변경 요청
+      </Link>
+
       {showAdmin && (
         <Link
           to="/admin"
@@ -44,6 +53,7 @@ export default function Header() {
 
       {user && (
         <div className="flex items-center gap-3">
+          <NotificationBell />
           <div className="flex items-center gap-2 text-sm">
             <User className="h-4 w-4" />
             <span>{user.display_name}</span>

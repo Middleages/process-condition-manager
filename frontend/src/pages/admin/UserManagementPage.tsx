@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { UserFormModal } from '@/components/admin/UserFormModal'
 import { PasswordResetModal } from '@/components/admin/PasswordResetModal'
 import { useAdminUsers, useDeactivateAdminUser } from '@/hooks/useAdminUsers'
+import { useLines } from '@/hooks/useLines'
 import type { AdminUser } from '@/types/adminUser'
 
 // 역할별 배지 스타일 매핑
@@ -32,6 +33,9 @@ export default function UserManagementPage() {
 
   const { data: users = [], isLoading } = useAdminUsers(includeInactive)
   const deactivateMutation = useDeactivateAdminUser()
+  const { data: lines = [] } = useLines()
+
+  const lineMap = new Map(lines.map((l) => [l.id, l.line_name]))
 
   const handleAddUser = () => {
     setSelectedUser(null)
@@ -86,6 +90,7 @@ export default function UserManagementPage() {
               <th className="px-4 py-3 text-left font-medium">표시 이름</th>
               <th className="px-4 py-3 text-left font-medium">이메일</th>
               <th className="px-4 py-3 text-left font-medium">역할</th>
+              <th className="px-4 py-3 text-left font-medium">소속 라인</th>
               <th className="px-4 py-3 text-left font-medium">상태</th>
               <th className="px-4 py-3 text-left font-medium">생성일</th>
               <th className="px-4 py-3 text-right font-medium">작업</th>
@@ -94,14 +99,14 @@ export default function UserManagementPage() {
           <tbody>
             {isLoading && (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+                <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
                   로딩 중...
                 </td>
               </tr>
             )}
             {!isLoading && users.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+                <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
                   사용자가 없습니다.
                 </td>
               </tr>
@@ -128,6 +133,9 @@ export default function UserManagementPage() {
                       </span>
                     ))}
                   </div>
+                </td>
+                <td className="px-4 py-3 text-muted-foreground">
+                  {user.line_id ? lineMap.get(user.line_id) ?? '-' : '-'}
                 </td>
                 <td className="px-4 py-3">
                   {user.is_active ? (

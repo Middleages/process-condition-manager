@@ -9,6 +9,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { useCreateAdminUser, useUpdateAdminUser } from '@/hooks/useAdminUsers'
+import { useLines } from '@/hooks/useLines'
 import type { AdminUser } from '@/types/adminUser'
 
 // 지원 역할 목록 및 한국어 레이블
@@ -34,10 +35,12 @@ export function UserFormModal({ isOpen, onClose, user }: UserFormModalProps) {
   const [selectedRoles, setSelectedRoles] = useState<string[]>(['editor'])
   const [password, setPassword] = useState('')
   const [isActive, setIsActive] = useState(true)
+  const [lineId, setLineId] = useState<number | null>(null)
   const [serverError, setServerError] = useState('')
 
   const createMutation = useCreateAdminUser()
   const updateMutation = useUpdateAdminUser()
+  const { data: lines = [] } = useLines()
 
   useEffect(() => {
     if (user) {
@@ -46,6 +49,7 @@ export function UserFormModal({ isOpen, onClose, user }: UserFormModalProps) {
       setEmail(user.email ?? '')
       setSelectedRoles([...user.roles])
       setIsActive(user.is_active)
+      setLineId(user.line_id ?? null)
     } else {
       setUsername('')
       setDisplayName('')
@@ -53,6 +57,7 @@ export function UserFormModal({ isOpen, onClose, user }: UserFormModalProps) {
       setSelectedRoles(['editor'])
       setPassword('')
       setIsActive(true)
+      setLineId(null)
     }
     setServerError('')
   }, [user, isOpen])
@@ -83,6 +88,7 @@ export function UserFormModal({ isOpen, onClose, user }: UserFormModalProps) {
             email: email || null,
             roles: selectedRoles,
             is_active: isActive,
+            line_id: lineId,
           },
         })
       } else {
@@ -141,6 +147,22 @@ export function UserFormModal({ isOpen, onClose, user }: UserFormModalProps) {
               onChange={(e) => setEmail(e.target.value)}
               placeholder="user@example.com"
             />
+          </div>
+          {/* 소속 라인 선택 */}
+          <div>
+            <label className="block text-sm font-medium mb-1">소속 라인</label>
+            <select
+              value={lineId ?? ''}
+              onChange={(e) => setLineId(e.target.value ? Number(e.target.value) : null)}
+              className="w-full h-9 px-3 rounded-md border border-input bg-background text-sm"
+            >
+              <option value="">미지정</option>
+              {lines.map((line) => (
+                <option key={line.id} value={line.id}>
+                  {line.line_name} ({line.line_code})
+                </option>
+              ))}
+            </select>
           </div>
           {/* 역할 선택: 다중 체크박스 */}
           <div>

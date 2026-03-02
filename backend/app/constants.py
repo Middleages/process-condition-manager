@@ -50,3 +50,26 @@ CATEGORY_CODES = ("SP", "SC", "OVL", "DEV")
 # TYPE_B: 설비 분할 포맷 (설비별로 시트 분리)
 # TYPE_C: 키-값 전치 포맷 (컬럼명이 행, 레이어가 열)
 EXPORT_FORMAT_TYPES = ("TYPE_A", "TYPE_B", "TYPE_C")
+
+# --- 공지사항 카테고리 ---
+# bug_fix: 버그 수정, new_feature: 신규 기능, rule_change: 규칙 변경, general: 일반
+ANNOUNCEMENT_CATEGORIES = ("bug_fix", "new_feature", "rule_change", "general")
+
+# --- 공지사항 우선순위 ---
+# normal: 일반, important: 중요, critical: 긴급
+ANNOUNCEMENT_PRIORITIES = ("normal", "important", "critical")
+
+# --- 설정 변경 합의(Config Change Consensus) ---
+# 변경 유형: column_add(컬럼 추가), column_modify(컬럼 수정), validation_change(검증 규칙 변경)
+CONFIG_CHANGE_TYPES = ("column_add", "column_modify", "validation_change")
+
+# 요청 상태: pending(대기) → approved(승인) / rejected(반려) → in_progress(진행중) → completed(완료)
+# cancelled(취소)는 pending 상태에서만 가능
+CONFIG_CHANGE_STATUSES = ("pending", "approved", "rejected", "in_progress", "completed", "cancelled")
+
+# 상태 전환 규칙: 각 상태에서 이동 가능한 다음 상태를 정의
+VALID_CONFIG_CHANGE_TRANSITIONS: dict[str, list[str]] = {
+    "pending": ["approved", "rejected", "cancelled"],
+    "approved": ["in_progress"],
+    "in_progress": ["completed"],
+}
