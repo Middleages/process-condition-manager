@@ -168,7 +168,9 @@ async def mark_as_read(
     announcement_id: int,
     user_id: int,
 ) -> None:
-    """공지사항을 읽음 처리한다 (INSERT ON CONFLICT DO NOTHING).
+    """공지사항을 읽음 처리한다.
+
+    이미 읽은 경우 중복 삽입 없이 무시한다.
 
     Raises:
         HTTPException 404: 공지사항이 존재하지 않거나 비활성일 때.
@@ -182,26 +184,23 @@ async def mark_as_read(
     if not result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Announcement not found")
 
-    # INSERT ON CONFLICT DO NOTHING (이미 읽은 경우 무시)
-    from sqlalchemy.dialects.postgresql import insert as pg_insert
-
-    insert_stmt = pg_insert(AnnouncementRead).values(
-        announcement_id=announcement_id,
-        user_id=user_id,
-    ).on_conflict_do_nothing(
-        constraint="uq_announcement_read_user",
+    # 이미 읽었는지 확인 후 미읽음일 때만 삽입 (dialect 무관)
+    exists_stmt = select(AnnouncementRead).where(
+        AnnouncementRead.announcement_id == announcement_id,
+        AnnouncementRead.user_id == user_id,
     )
-    await db.execute(insert_stmt)
-    await db.commit()
+    existing = await db.execute(exists_stmt)
+    if not existing.scalar_one_or_none():
+        db.add(AnnouncementRead(announcement_id=announcement_id, user_id=user_id))
+        await db.commit()
+
 
 
 async def mark_all_as_read(db: AsyncSession, user_id: int) -> None:
     """모든 활성 공지사항을 읽음 처리한다.
 
-    읽지 않은 활성 공지만 INSERT 대상이 된다 (ON CONFLICT DO NOTHING).
+    읽지 않은 활성 공지만 INSERT 대상이 된다.
     """
-    from sqlalchemy.dialects.postgresql import insert as pg_insert
-
     # 아직 읽지 않은 활성 공지 ID 조회
     read_exists = (
         select(literal(True))
@@ -227,12 +226,9 @@ async def mark_all_as_read(db: AsyncSession, user_id: int) -> None:
     if not unread_ids:
         return
 
-    # 벌크 INSERT (ON CONFLICT DO NOTHING)
-    values = [{"announcement_id": aid, "user_id": user_id} for aid in unread_ids]
-    insert_stmt = pg_insert(AnnouncementRead).values(values).on_conflict_do_nothing(
-        constraint="uq_announcement_read_user",
-    )
-    await db.execute(insert_stmt)
+    # 벌크 삽입 (dialect 무관)
+    for aid in unread_ids:
+        db.add(AnnouncementRead(announcement_id=aid, user_id=user_id))
     await db.commit()
 
 

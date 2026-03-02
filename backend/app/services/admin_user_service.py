@@ -78,6 +78,8 @@ async def update_user(db: AsyncSession, user_id: int, data: AdminUserUpdate) -> 
         user.roles = data.roles
     if data.is_active is not None:
         user.is_active = data.is_active
+    if "line_id" in data.model_fields_set:
+        user.line_id = data.line_id
 
     await db.commit()
     await db.refresh(user)

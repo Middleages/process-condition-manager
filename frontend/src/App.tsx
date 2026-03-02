@@ -19,6 +19,8 @@ import AuditLogPage from './pages/admin/AuditLogPage'
 import ExportDataSourcesPage from './pages/admin/ExportDataSourcesPage'
 import DeviceMasterPage from './pages/admin/DeviceMasterPage'
 import AnnouncementManagementPage from './pages/admin/AnnouncementManagementPage'
+import ConfigChangeListPage from './pages/config-change/ConfigChangeListPage'
+import ConfigChangeDetailPage from './pages/config-change/ConfigChangeDetailPage'
 import { ToastContainer } from './components/ui/toast'
 import { useAuthStore } from './stores/useAuthStore'
 
@@ -54,6 +56,8 @@ const router = createBrowserRouter([
           { path: '/', element: <DashboardPage /> },
           { path: '/projects', element: <ProjectListPage /> },
           { path: '/projects/:projectId/edit', element: <ConditionEditorPage /> },
+          { path: '/config-changes', element: <ConfigChangeListPage /> },
+          { path: '/config-changes/:id', element: <ConfigChangeDetailPage /> },
           {
             path: '/admin',
             element: <AdminLayout />,

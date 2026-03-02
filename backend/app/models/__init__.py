@@ -10,6 +10,7 @@ from app.models.export_data_source import ExportDataSource
 from app.models.equipment import Equipment
 from app.models.device_master import DeviceMaster, LayerMaster, SyncSourceConfig, DeviceMetaSource
 from app.models.announcement import Announcement, AnnouncementRead
+from app.models.config_change import ConfigChangeRequest, ConfigChangeVote
 
 __all__ = [
     "User",
@@ -24,4 +25,5 @@ __all__ = [
     "Equipment",
     "DeviceMaster", "LayerMaster", "SyncSourceConfig", "DeviceMetaSource",
     "Announcement", "AnnouncementRead",
+    "ConfigChangeRequest", "ConfigChangeVote",
 ]

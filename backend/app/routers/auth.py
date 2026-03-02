@@ -32,6 +32,7 @@ class UserInfo(BaseModel):
     username: str
     display_name: str
     roles: list[str]
+    line_id: int | None = None
 
     model_config = {"from_attributes": True}
 

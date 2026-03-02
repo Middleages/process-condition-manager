@@ -58,3 +58,18 @@ ANNOUNCEMENT_CATEGORIES = ("bug_fix", "new_feature", "rule_change", "general")
 # --- 공지사항 우선순위 ---
 # normal: 일반, important: 중요, critical: 긴급
 ANNOUNCEMENT_PRIORITIES = ("normal", "important", "critical")
+
+# --- 설정 변경 합의(Config Change Consensus) ---
+# 변경 유형: column_add(컬럼 추가), column_modify(컬럼 수정), validation_change(검증 규칙 변경)
+CONFIG_CHANGE_TYPES = ("column_add", "column_modify", "validation_change")
+
+# 요청 상태: pending(대기) → approved(승인) / rejected(반려) → in_progress(진행중) → completed(완료)
+# cancelled(취소)는 pending 상태에서만 가능
+CONFIG_CHANGE_STATUSES = ("pending", "approved", "rejected", "in_progress", "completed", "cancelled")
+
+# 상태 전환 규칙: 각 상태에서 이동 가능한 다음 상태를 정의
+VALID_CONFIG_CHANGE_TRANSITIONS: dict[str, list[str]] = {
+    "pending": ["approved", "rejected", "cancelled"],
+    "approved": ["in_progress"],
+    "in_progress": ["completed"],
+}
