@@ -103,7 +103,8 @@ class ConfigChangeResponse(BaseModel):
 class ConfigChangeVoteResponse(BaseModel):
     """개별 투표 응답 스키마."""
     id: int
-    line_id: int
+    vote_type: str = "line"  # "line" 또는 "admin"
+    line_id: int | None = None
     line_name: str | None = None
     line_code: str | None = None
     vote: str | None = None

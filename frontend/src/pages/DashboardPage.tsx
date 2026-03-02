@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { RefreshCw, Loader2, FileEdit, Eye, CheckCircle, XCircle, Clock, ArrowRight } from 'lucide-react'
+import { RefreshCw, Loader2, FileEdit, Eye, CheckCircle, XCircle, Clock, ArrowRight, FileCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { useDashboardOverview, useRefreshDashboard } from '@/hooks/useDashboard'
 import { useLines } from '@/hooks/useLines'
+import { useConfigChanges } from '@/hooks/useConfigChanges'
 import type { StatusCounts, MyRecentProject, ReviewPendingItem, ActivityItem } from '@/types'
 import { formatDate } from '@/lib/utils'
 
@@ -166,6 +167,40 @@ function ActivityTimeline({ items }: { items: ActivityItem[] }) {
   )
 }
 
+function ConfigChangeSummary({
+  onStatusClick,
+}: {
+  onStatusClick: (status: string) => void
+}) {
+  const pending = useConfigChanges('pending', 0, 1)
+  const approved = useConfigChanges('approved', 0, 1)
+  const inProgress = useConfigChanges('in_progress', 0, 1)
+  const completed = useConfigChanges('completed', 0, 1)
+
+  const items: { status: string; label: string; count: number; dot: string }[] = [
+    { status: 'pending', label: '투표 대기', count: pending.data?.total ?? 0, dot: 'bg-amber-500' },
+    { status: 'approved', label: '승인 완료', count: approved.data?.total ?? 0, dot: 'bg-blue-500' },
+    { status: 'in_progress', label: '작업 진행', count: inProgress.data?.total ?? 0, dot: 'bg-indigo-500' },
+    { status: 'completed', label: '적용 완료', count: completed.data?.total ?? 0, dot: 'bg-green-500' },
+  ]
+
+  return (
+    <div className="flex items-center gap-6">
+      {items.map(({ status, label, count, dot }) => (
+        <button
+          key={status}
+          onClick={() => onStatusClick(status)}
+          className="flex items-center gap-2 hover:opacity-70 transition-opacity"
+        >
+          <span className={`h-2.5 w-2.5 rounded-full ${dot}`} />
+          <span className="text-sm text-muted-foreground">{label}</span>
+          <span className="text-lg font-bold">{count}</span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
 export default function DashboardPage() {
   const [lineFilter, setLineFilter] = useState<number | undefined>(undefined)
   const { data: lines = [] } = useLines()
@@ -222,6 +257,26 @@ export default function DashboardPage() {
       {data && (
         <>
           <StatusCards counts={data.status_counts} onClick={handleStatusClick} />
+
+          {/* 설정 변경 요청 요약 */}
+          <div className="rounded-lg border bg-card p-5">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-base font-semibold flex items-center gap-2">
+                <FileCheck className="h-4 w-4" />
+                설정 변경 요청
+              </h2>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => navigate('/config-changes')}
+                className="text-xs"
+              >
+                전체 보기
+                <ArrowRight className="h-3 w-3 ml-1" />
+              </Button>
+            </div>
+            <ConfigChangeSummary onStatusClick={(s) => navigate(`/config-changes?status=${s}`)} />
+          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="rounded-lg border bg-card p-5">

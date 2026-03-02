@@ -42,7 +42,8 @@ export interface ConfigChangeResponse {
 // 개별 투표
 export interface ConfigChangeVoteResponse {
   id: number
-  line_id: number
+  vote_type: 'line' | 'admin'
+  line_id: number | null
   line_name: string | null
   line_code: string | null
   vote: VoteResult | null

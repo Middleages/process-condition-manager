@@ -19,6 +19,7 @@ from app.routers import (  # noqa: E402
     dashboard, device_masters, admin_device,
     announcements, admin_announcements,
     config_change,
+    uploads,
 )
 
 logger = logging.getLogger(__name__)
@@ -84,4 +85,5 @@ app.include_router(admin_device.router)
 app.include_router(announcements.router)
 app.include_router(admin_announcements.router)
 app.include_router(config_change.router)
+app.include_router(uploads.router)
 app.include_router(dashboard.router)

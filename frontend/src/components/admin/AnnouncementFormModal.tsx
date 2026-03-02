@@ -8,6 +8,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog'
+import RichEditor from '@/components/ui/rich-editor'
 import { useCreateAnnouncement, useUpdateAnnouncement } from '@/hooks/useAnnouncements'
 import type { Announcement, AnnouncementCategory, AnnouncementPriority } from '@/types'
 
@@ -103,7 +104,7 @@ export function AnnouncementFormModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent onClose={onClose}>
+      <DialogContent onClose={onClose} className="w-[55vw] min-w-[600px] max-w-5xl">
         <DialogHeader>
           <DialogTitle>{isEdit ? '공지사항 수정' : '공지사항 추가'}</DialogTitle>
         </DialogHeader>
@@ -119,12 +120,11 @@ export function AnnouncementFormModal({
           </div>
           <div>
             <label className="block text-sm font-medium mb-1">내용 *</label>
-            <textarea
+            <RichEditor
               value={content}
-              onChange={(e) => setContent(e.target.value)}
-              required
-              placeholder="공지사항 내용"
-              className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring min-h-[120px] resize-y"
+              onChange={setContent}
+              placeholder="공지사항 내용을 입력하세요..."
+              minHeight="250px"
             />
           </div>
           <div>

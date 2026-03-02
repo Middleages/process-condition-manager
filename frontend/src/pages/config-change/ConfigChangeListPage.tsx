@@ -11,6 +11,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import RichEditor from '@/components/ui/rich-editor'
 import { useAuthStore } from '@/stores/useAuthStore'
 import { hasAnyRole } from '@/lib/permissions'
 import { useConfigChanges, useCreateConfigChange } from '@/hooks/useConfigChanges'
@@ -228,7 +229,7 @@ export default function ConfigChangeListPage() {
 
       {/* 생성 모달 */}
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-        <DialogContent onClose={() => setIsCreateOpen(false)}>
+        <DialogContent onClose={() => setIsCreateOpen(false)} className="w-[55vw] min-w-[600px] max-w-5xl">
           <DialogHeader>
             <DialogTitle>설정 변경 요청</DialogTitle>
           </DialogHeader>
@@ -257,13 +258,11 @@ export default function ConfigChangeListPage() {
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">설명 *</label>
-              <textarea
+              <RichEditor
                 value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                required
-                placeholder="변경이 필요한 내용을 상세히 기술해 주세요."
-                rows={4}
-                className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm resize-none"
+                onChange={setDescription}
+                placeholder="변경이 필요한 내용을 상세히 기술해 주세요. 이미지도 첨부할 수 있습니다."
+                minHeight="250px"
               />
             </div>
             {createError && <p className="text-red-600 text-sm">{createError}</p>}

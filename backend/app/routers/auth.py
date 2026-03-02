@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -108,6 +108,7 @@ async def login(
             username=user.username,
             display_name=user.display_name,
             roles=user.roles,
+            line_id=user.line_id,
         ),
     )
 
@@ -159,4 +160,47 @@ async def get_me(
         username=current_user.username,
         display_name=current_user.display_name,
         roles=current_user.roles,
+        line_id=current_user.line_id,
+    )
+
+
+# ---------------------------------------------------------------------------
+# 소속 라인 자가 설정 (최초 1회만 허용)
+# ---------------------------------------------------------------------------
+
+class SetMyLineRequest(BaseModel):
+    line_id: int = Field(..., gt=0)
+
+
+@router.patch("/me/line", response_model=UserInfo)
+async def set_my_line(
+    body: SetMyLineRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> UserInfo:
+    """소속 라인을 자가 설정한다. line_id가 이미 설정된 경우 관리자를 통해 변경해야 한다."""
+    if current_user.line_id is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="이미 소속 라인이 설정되어 있습니다. 변경은 관리자에게 요청해 주세요.",
+        )
+
+    from app.models.line import Line
+    line = await db.get(Line, body.line_id)
+    if line is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="해당 라인을 찾을 수 없습니다.",
+        )
+
+    current_user.line_id = body.line_id
+    await db.commit()
+    await db.refresh(current_user)
+
+    return UserInfo(
+        id=current_user.id,
+        username=current_user.username,
+        display_name=current_user.display_name,
+        roles=current_user.roles,
+        line_id=current_user.line_id,
     )
