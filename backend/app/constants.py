@@ -70,6 +70,6 @@ CONFIG_CHANGE_STATUSES = ("pending", "approved", "rejected", "in_progress", "com
 # 상태 전환 규칙: 각 상태에서 이동 가능한 다음 상태를 정의
 VALID_CONFIG_CHANGE_TRANSITIONS: dict[str, list[str]] = {
     "pending": ["approved", "rejected", "cancelled"],
-    "approved": ["in_progress"],
+    "approved": ["in_progress", "rejected"],
     "in_progress": ["completed"],
 }

@@ -4,10 +4,12 @@ import { canAccessAdmin } from '@/lib/permissions'
 import { LogOut, Settings, User, FolderOpen, FileCheck, Megaphone } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import NotificationBell from '@/components/announcement/NotificationBell'
+import { useMyPendingVoteCount } from '@/hooks/useConfigChanges'
 
 export default function Header() {
   const { user, logout } = useAuthStore()
   const navigate = useNavigate()
+  const { data: pendingVoteCount } = useMyPendingVoteCount()
 
   // admin 또는 developer 역할이면 관리자 메뉴 노출
   const showAdmin = canAccessAdmin(user?.roles)
@@ -41,10 +43,15 @@ export default function Header() {
 
       <Link
         to="/config-changes"
-        className="flex items-center gap-1.5 text-sm no-underline text-primary-foreground hover:text-primary-foreground/80"
+        className="relative flex items-center gap-1.5 text-sm no-underline text-primary-foreground hover:text-primary-foreground/80"
       >
         <FileCheck className="h-4 w-4" />
         변경 요청
+        {pendingVoteCount != null && pendingVoteCount > 0 && (
+          <span className="absolute -top-1.5 -right-3.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold px-1">
+            {pendingVoteCount > 99 ? '99+' : pendingVoteCount}
+          </span>
+        )}
       </Link>
 
       {showAdmin && (

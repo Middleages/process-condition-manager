@@ -68,3 +68,19 @@ export async function cancelConfigChange(
   )
   return data
 }
+
+export async function rejectConfigChangeByDeveloper(
+  id: number,
+  payload: { reason: string },
+): Promise<ConfigChangeDetailResponse> {
+  const { data } = await client.patch<ConfigChangeDetailResponse>(
+    `/config-changes/${id}/reject`,
+    payload,
+  )
+  return data
+}
+
+export async function fetchMyPendingVoteCount(): Promise<number> {
+  const { data } = await client.get<{ count: number }>('/config-changes/me/pending-vote-count')
+  return data.count
+}

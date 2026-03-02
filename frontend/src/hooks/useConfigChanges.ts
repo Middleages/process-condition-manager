@@ -7,6 +7,8 @@ import {
   startConfigChange,
   completeConfigChange,
   cancelConfigChange,
+  rejectConfigChangeByDeveloper,
+  fetchMyPendingVoteCount,
 } from '@/api/configChanges'
 import type { ConfigChangeCreateRequest, ConfigChangeVoteRequest } from '@/types'
 
@@ -15,6 +17,7 @@ export const configChangeKeys = {
   list: (status?: string | null, offset?: number, limit?: number) =>
     [...configChangeKeys.all, 'list', status, offset, limit] as const,
   detail: (id: number) => [...configChangeKeys.all, 'detail', id] as const,
+  myPendingCount: ['configChanges', 'myPendingCount'] as const,
 }
 
 export function useConfigChanges(status?: string | null, offset = 0, limit = 20) {
@@ -80,5 +83,24 @@ export function useCancelConfigChange() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: configChangeKeys.all })
     },
+  })
+}
+
+export function useRejectConfigChangeByDeveloper() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: number; reason: string }) =>
+      rejectConfigChangeByDeveloper(id, { reason }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: configChangeKeys.all })
+    },
+  })
+}
+
+export function useMyPendingVoteCount() {
+  return useQuery({
+    queryKey: configChangeKeys.myPendingCount,
+    queryFn: fetchMyPendingVoteCount,
+    refetchInterval: 60_000,
   })
 }
