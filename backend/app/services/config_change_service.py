@@ -40,8 +40,10 @@ def _build_vote_summary(votes: list[ConfigChangeVote]) -> VoteSummary:
 
 def _build_vote_response(vote: ConfigChangeVote) -> ConfigChangeVoteResponse:
     """투표 ORM 객체를 응답 스키마로 변환한다."""
+    vote_type = "admin" if vote.line_id is None else "line"
     return ConfigChangeVoteResponse(
         id=vote.id,
+        vote_type=vote_type,
         line_id=vote.line_id,
         line_name=vote.line.line_name if vote.line else None,
         line_code=vote.line.line_code if vote.line else None,
@@ -114,13 +116,20 @@ async def create_request(
     db.add(request)
     await db.flush()
 
-    # 각 라인에 대한 투표 레코드 생성
+    # 각 라인에 대한 투표 레코드 생성 (라인 reviewer용)
     for line in all_lines:
         vote = ConfigChangeVote(
             request_id=request.id,
             line_id=line.id,
         )
         db.add(vote)
+
+    # 관리자 그룹 투표 레코드 1개 생성 (admin용, line_id=NULL)
+    admin_vote = ConfigChangeVote(
+        request_id=request.id,
+        line_id=None,
+    )
+    db.add(admin_vote)
 
     await db.flush()
     await db.commit()
@@ -140,13 +149,16 @@ async def vote(
     current_user: User,
     data: ConfigChangeVoteRequest,
 ) -> ConfigChangeDetailResponse:
-    """사용자의 소속 라인에 대해 투표한다.
+    """사용자의 역할에 따라 투표한다.
+
+    - admin 역할: 관리자 투표 슬롯(line_id=NULL)에 투표
+    - reviewer 역할: 소속 라인 투표 슬롯에 투표
 
     Raises:
         HTTPException 404: 요청이 존재하지 않을 때.
         HTTPException 400: 요청이 pending 상태가 아닐 때.
-        HTTPException 403: 사용자에게 line_id가 없거나 해당 라인의 투표 레코드가 없을 때.
-        HTTPException 400: 반려 투표에 사유가 없을 때.
+        HTTPException 403: 투표 권한이 없거나 투표 슬롯이 없을 때.
+        HTTPException 400: 이미 투표했거나 반려 사유가 없을 때.
     """
     # 요청 존재 확인
     req = await db.get(ConfigChangeRequest, request_id)
@@ -160,25 +172,46 @@ async def vote(
             detail=f"pending 상태의 요청만 투표할 수 있습니다 (현재: {req.status})",
         )
 
-    # 사용자 소속 라인 확인
-    if not current_user.line_id:
+    # 역할에 따른 투표 슬롯 결정
+    user_roles = current_user.roles or []
+
+    if "admin" in user_roles:
+        # admin → 관리자 투표 슬롯 (line_id IS NULL)
+        vote_stmt = select(ConfigChangeVote).where(
+            ConfigChangeVote.request_id == request_id,
+            ConfigChangeVote.line_id.is_(None),
+        )
+    elif "reviewer" in user_roles:
+        # reviewer → 소속 라인 투표 슬롯
+        if not current_user.line_id:
+            raise HTTPException(
+                status_code=403,
+                detail="소속 라인이 지정되지 않은 검토자는 투표할 수 없습니다",
+            )
+        vote_stmt = select(ConfigChangeVote).where(
+            ConfigChangeVote.request_id == request_id,
+            ConfigChangeVote.line_id == current_user.line_id,
+        )
+    else:
         raise HTTPException(
             status_code=403,
-            detail="소속 라인이 지정되지 않은 사용자는 투표할 수 없습니다",
+            detail="투표 권한이 없습니다 (reviewer 또는 admin 역할 필요)",
         )
 
-    # 해당 라인의 투표 레코드 조회
-    vote_stmt = select(ConfigChangeVote).where(
-        ConfigChangeVote.request_id == request_id,
-        ConfigChangeVote.line_id == current_user.line_id,
-    )
     vote_result = await db.execute(vote_stmt)
     vote_record = vote_result.scalar_one_or_none()
 
     if not vote_record:
         raise HTTPException(
             status_code=403,
-            detail="해당 라인의 투표 레코드가 존재하지 않습니다",
+            detail="투표 레코드가 존재하지 않습니다",
+        )
+
+    # 이미 투표한 경우
+    if vote_record.vote is not None:
+        raise HTTPException(
+            status_code=400,
+            detail="이미 투표하셨습니다",
         )
 
     # 반려 시 사유 필수

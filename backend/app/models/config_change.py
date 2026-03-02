@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
-    DateTime, ForeignKey, String, Text, UniqueConstraint, func,
+    DateTime, ForeignKey, Index, String, Text, func, text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -61,12 +61,25 @@ class ConfigChangeRequest(Base):
 class ConfigChangeVote(Base):
     """설정 변경 투표 테이블.
 
-    요청 생성 시 모든 라인에 대해 자동 생성되며,
-    각 라인의 reviewer/admin 이 승인 또는 반려 투표를 한다.
+    요청 생성 시 라인별 투표 슬롯(라인 reviewer용)과
+    관리자 투표 슬롯(admin용, line_id=NULL) 1개가 자동 생성된다.
     """
     __tablename__ = "config_change_votes"
     __table_args__ = (
-        UniqueConstraint("request_id", "line_id", name="uq_config_change_vote_request_line"),
+        # 라인 투표: (request_id, line_id) 유니크 (line_id가 NOT NULL인 경우)
+        Index(
+            "uq_vote_request_line",
+            "request_id", "line_id",
+            unique=True,
+            postgresql_where=text("line_id IS NOT NULL"),
+        ),
+        # 관리자 투표: request_id당 1개만 (line_id가 NULL인 경우)
+        Index(
+            "uq_vote_request_admin",
+            "request_id",
+            unique=True,
+            postgresql_where=text("line_id IS NULL"),
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -74,8 +87,9 @@ class ConfigChangeVote(Base):
         ForeignKey("config_change_requests.id", ondelete="CASCADE"),
         nullable=False, index=True,
     )
-    line_id: Mapped[int] = mapped_column(
-        ForeignKey("lines.id"), nullable=False,
+    # 라인 투표: line_id 설정 / 관리자 투표: line_id = NULL
+    line_id: Mapped[int | None] = mapped_column(
+        ForeignKey("lines.id"), nullable=True,
     )
     # 투표: approve / reject / null(미투표)
     vote: Mapped[str | None] = mapped_column(String(10), nullable=True)
@@ -90,5 +104,5 @@ class ConfigChangeVote(Base):
 
     # 관계
     request: Mapped["ConfigChangeRequest"] = relationship(back_populates="votes")
-    line: Mapped["Line"] = relationship("Line", foreign_keys=[line_id])
+    line: Mapped["Line | None"] = relationship("Line", foreign_keys=[line_id])
     voter: Mapped["User | None"] = relationship("User", foreign_keys=[voted_by])

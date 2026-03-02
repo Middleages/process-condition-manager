@@ -105,19 +105,23 @@ export default function ConfigChangeDetailPage() {
     )
   }
 
-  const isReviewerOrAdmin = hasAnyRole(user?.roles, ['reviewer', 'admin'])
+  const isAdmin = user?.roles?.includes('admin') ?? false
+  const isReviewer = user?.roles?.includes('reviewer') ?? false
   const isDevOrAdmin = hasAnyRole(user?.roles, ['developer', 'admin'])
   const isRequester = user?.id === detail.requested_by
-  const isAdmin = user?.roles?.includes('admin')
 
-  // 내 라인의 투표 레코드
-  const myVote = detail.votes.find((v) => v.line_id === user?.line_id)
+  // 라인 투표와 관리자 투표 분리
+  const lineVotes = detail.votes.filter((v) => v.vote_type === 'line')
+  const adminVote = detail.votes.find((v) => v.vote_type === 'admin')
+
+  // 역할 기반 투표 가능 여부 판정
+  const myLineVote = lineVotes.find((v) => v.line_id === user?.line_id)
   const canVote =
     detail.status === 'pending' &&
-    isReviewerOrAdmin &&
-    user?.line_id != null &&
-    myVote != null &&
-    myVote.vote === null
+    (
+      (isAdmin && adminVote != null && adminVote.vote === null) ||
+      (isReviewer && !isAdmin && user?.line_id != null && myLineVote != null && myLineVote.vote === null)
+    )
 
   const canStart = detail.status === 'approved' && isDevOrAdmin
   const canComplete = detail.status === 'in_progress' && isDevOrAdmin
@@ -264,27 +268,28 @@ export default function ConfigChangeDetailPage() {
         {/* 설명 */}
         <div>
           <h3 className="text-sm font-medium text-muted-foreground mb-1">설명</h3>
-          <p className="text-sm whitespace-pre-wrap bg-muted/50 rounded-md p-3">
-            {detail.description}
-          </p>
+          <div
+            className="text-sm bg-muted/50 rounded-md p-3 tiptap"
+            dangerouslySetInnerHTML={{ __html: detail.description }}
+          />
         </div>
       </div>
 
       {/* 투표 현황 */}
       <div className="border rounded-lg overflow-hidden">
         <div className="px-4 py-3 bg-muted border-b">
-          <h2 className="text-sm font-semibold">라인별 투표 현황</h2>
+          <h2 className="text-sm font-semibold">투표 현황</h2>
           {detail.vote_summary && (
             <p className="text-xs text-muted-foreground mt-1">
               승인 {detail.vote_summary.approved} / 거부 {detail.vote_summary.rejected} / 미투표{' '}
-              {detail.vote_summary.pending} (총 {detail.vote_summary.total}개 라인)
+              {detail.vote_summary.pending} (라인 {lineVotes.length}개 + 관리자 1)
             </p>
           )}
         </div>
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b text-muted-foreground">
-              <th className="px-4 py-2.5 text-left font-medium">라인</th>
+              <th className="px-4 py-2.5 text-left font-medium">구분</th>
               <th className="px-4 py-2.5 text-left font-medium">상태</th>
               <th className="px-4 py-2.5 text-left font-medium">투표자</th>
               <th className="px-4 py-2.5 text-left font-medium">사유</th>
@@ -292,14 +297,8 @@ export default function ConfigChangeDetailPage() {
             </tr>
           </thead>
           <tbody>
-            {detail.votes.length === 0 && (
-              <tr>
-                <td colSpan={5} className="px-4 py-6 text-center text-muted-foreground">
-                  등록된 라인이 없습니다.
-                </td>
-              </tr>
-            )}
-            {detail.votes.map((vote) => (
+            {/* 라인별 투표 */}
+            {lineVotes.map((vote) => (
               <tr
                 key={vote.id}
                 className={`border-t hover:bg-muted/50 ${
@@ -310,7 +309,7 @@ export default function ConfigChangeDetailPage() {
                   <div className="flex items-center gap-2">
                     <VoteStatusIcon vote={vote} />
                     <span className="font-medium">{vote.line_name ?? vote.line_code ?? '-'}</span>
-                    {vote.line_id === user?.line_id && (
+                    {vote.line_id === user?.line_id && isReviewer && !isAdmin && (
                       <span className="text-xs text-primary">(내 라인)</span>
                     )}
                   </div>
@@ -331,6 +330,45 @@ export default function ConfigChangeDetailPage() {
                 </td>
               </tr>
             ))}
+            {/* 관리자 투표 */}
+            {adminVote && (
+              <tr
+                className={`border-t hover:bg-muted/50 ${
+                  isAdmin ? 'bg-primary/5' : ''
+                }`}
+              >
+                <td className="px-4 py-2.5">
+                  <div className="flex items-center gap-2">
+                    <VoteStatusIcon vote={adminVote} />
+                    <span className="font-medium">관리자</span>
+                    {isAdmin && (
+                      <span className="text-xs text-primary">(내 투표)</span>
+                    )}
+                  </div>
+                </td>
+                <td className="px-4 py-2.5">
+                  <VoteStatusLabel vote={adminVote.vote} />
+                </td>
+                <td className="px-4 py-2.5 text-muted-foreground">
+                  {adminVote.voter_name ?? '-'}
+                </td>
+                <td className="px-4 py-2.5 text-muted-foreground max-w-xs truncate">
+                  {adminVote.reason ?? '-'}
+                </td>
+                <td className="px-4 py-2.5 text-muted-foreground">
+                  {adminVote.voted_at
+                    ? new Date(adminVote.voted_at).toLocaleDateString('ko-KR')
+                    : '-'}
+                </td>
+              </tr>
+            )}
+            {lineVotes.length === 0 && !adminVote && (
+              <tr>
+                <td colSpan={5} className="px-4 py-6 text-center text-muted-foreground">
+                  투표 레코드가 없습니다.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>

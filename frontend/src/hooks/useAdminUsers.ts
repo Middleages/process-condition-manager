@@ -6,6 +6,7 @@ import {
   deactivateAdminUser,
   resetAdminPassword,
 } from '@/api/adminUsers'
+import { useAuthStore } from '@/stores/useAuthStore'
 import type { AdminUserCreate, AdminUserUpdate, AdminPasswordReset } from '@/types/adminUser'
 
 export const adminUserKeys = {
@@ -37,9 +38,14 @@ export function useUpdateAdminUser() {
   return useMutation({
     mutationFn: ({ id, payload }: { id: number; payload: AdminUserUpdate }) =>
       updateAdminUser(id, payload),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: adminUserKeys.all })
       queryClient.invalidateQueries({ queryKey: ['users'] })
+      // 자기 자신의 정보를 수정한 경우 auth store 갱신 (line_id 반영 등)
+      const currentUser = useAuthStore.getState().user
+      if (currentUser && currentUser.id === variables.id) {
+        useAuthStore.getState().fetchCurrentUser()
+      }
     },
   })
 }

@@ -56,9 +56,10 @@ export default function AnnouncementDetailModal({
           </span>
         </div>
 
-        <div className="whitespace-pre-wrap text-sm leading-relaxed border-t pt-4">
-          {announcement.content}
-        </div>
+        <div
+          className="text-sm leading-relaxed border-t pt-4 tiptap"
+          dangerouslySetInnerHTML={{ __html: announcement.content }}
+        />
       </DialogContent>
     </Dialog>
   )
