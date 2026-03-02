@@ -50,3 +50,11 @@ CATEGORY_CODES = ("SP", "SC", "OVL", "DEV")
 # TYPE_B: 설비 분할 포맷 (설비별로 시트 분리)
 # TYPE_C: 키-값 전치 포맷 (컬럼명이 행, 레이어가 열)
 EXPORT_FORMAT_TYPES = ("TYPE_A", "TYPE_B", "TYPE_C")
+
+# --- 공지사항 카테고리 ---
+# bug_fix: 버그 수정, new_feature: 신규 기능, rule_change: 규칙 변경, general: 일반
+ANNOUNCEMENT_CATEGORIES = ("bug_fix", "new_feature", "rule_change", "general")
+
+# --- 공지사항 우선순위 ---
+# normal: 일반, important: 중요, critical: 긴급
+ANNOUNCEMENT_PRIORITIES = ("normal", "important", "critical")

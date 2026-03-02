@@ -17,6 +17,7 @@ from app.routers import (  # noqa: E402
     projects, project_conditions, project_layers, project_lifecycle,
     admin, admin_users, admin_master, comments, export, export_admin, export_data_source, auth as auth_router,
     dashboard, device_masters, admin_device,
+    announcements, admin_announcements,
 )
 
 logger = logging.getLogger(__name__)
@@ -79,4 +80,6 @@ app.include_router(export.router)
 app.include_router(export.project_router)
 app.include_router(device_masters.router)
 app.include_router(admin_device.router)
+app.include_router(announcements.router)
+app.include_router(admin_announcements.router)
 app.include_router(dashboard.router)

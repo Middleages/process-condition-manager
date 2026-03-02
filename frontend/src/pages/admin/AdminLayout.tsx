@@ -22,6 +22,7 @@ export default function AdminLayout() {
     { path: '/admin/data-sources', label: '데이터 소스 관리' },
     { path: '/admin/export-systems', label: '전산 출력 시스템 관리' },
     { path: '/admin/audit-logs', label: '변경 이력 조회' },
+    { path: '/admin/announcements', label: '공지사항 관리' },
   ]
 
   const userRoles = currentUser?.roles as UserRole[] | undefined

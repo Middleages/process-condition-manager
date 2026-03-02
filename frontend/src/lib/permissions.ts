@@ -22,6 +22,8 @@ export function canAccessAdmin(roles: UserRole[] | undefined): boolean {
 export function canAccessTab(roles: UserRole[] | undefined, tabPath: string): boolean {
   // 사용자 관리 탭은 admin 전용
   if (tabPath === '/admin/users') return hasRole(roles, 'admin')
+  // 공지사항 관리 탭은 admin 전용
+  if (tabPath === '/admin/announcements') return hasRole(roles, 'admin')
   // 나머지 탭은 admin 또는 developer
   return canAccessAdmin(roles)
 }

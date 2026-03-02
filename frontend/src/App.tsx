@@ -18,6 +18,7 @@ import EnumManagementPage from './pages/admin/EnumManagementPage'
 import AuditLogPage from './pages/admin/AuditLogPage'
 import ExportDataSourcesPage from './pages/admin/ExportDataSourcesPage'
 import DeviceMasterPage from './pages/admin/DeviceMasterPage'
+import AnnouncementManagementPage from './pages/admin/AnnouncementManagementPage'
 import { ToastContainer } from './components/ui/toast'
 import { useAuthStore } from './stores/useAuthStore'
 
@@ -68,6 +69,7 @@ const router = createBrowserRouter([
               { path: 'data-sources', element: <ExportDataSourcesPage /> },
               { path: 'export-systems', element: <ExportSystemsPage /> },
               { path: 'audit-logs', element: <AuditLogPage /> },
+              { path: 'announcements', element: <AnnouncementManagementPage /> },
             ],
           },
         ],

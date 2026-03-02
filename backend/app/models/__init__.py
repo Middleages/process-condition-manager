@@ -9,6 +9,7 @@ from app.models.export_history import ExportHistory
 from app.models.export_data_source import ExportDataSource
 from app.models.equipment import Equipment
 from app.models.device_master import DeviceMaster, LayerMaster, SyncSourceConfig, DeviceMetaSource
+from app.models.announcement import Announcement, AnnouncementRead
 
 __all__ = [
     "User",
@@ -22,4 +23,5 @@ __all__ = [
     "ExportDataSource",
     "Equipment",
     "DeviceMaster", "LayerMaster", "SyncSourceConfig", "DeviceMetaSource",
+    "Announcement", "AnnouncementRead",
 ]
