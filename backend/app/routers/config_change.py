@@ -16,6 +16,7 @@ from app.schemas.config_change import (
     ConfigChangeCreateRequest,
     ConfigChangeDetailResponse,
     ConfigChangeListResponse,
+    ConfigChangeRejectRequest,
     ConfigChangeVoteRequest,
 )
 from app.services import config_change_service
@@ -52,6 +53,17 @@ async def list_config_change_requests(
     return await config_change_service.list_requests(db, status=status, offset=offset, limit=limit)
 
 
+# /me 경로는 /{request_id} 보다 먼저 등록해야 "me"가 path param으로 파싱되지 않음
+@router.get("/me/pending-vote-count")
+async def get_my_pending_vote_count(
+    current_user: User = Depends(require_active_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """현재 사용자가 투표해야 하는 pending 요청 건수를 반환한다."""
+    count = await config_change_service.get_my_pending_vote_count(db, current_user)
+    return {"count": count}
+
+
 @router.get("/{request_id}", response_model=ConfigChangeDetailResponse)
 async def get_config_change_detail(
     request_id: int,
@@ -71,7 +83,7 @@ async def vote_config_change(
 ):
     """설정 변경 요청에 투표한다.
 
-    reviewer 또는 admin 역할이 필요하며, 사용자의 소속 라인에 대해 투표한다.
+    reviewer 또는 admin 역할이 필요하며, 역할에 따라 라인/관리자 슬롯에 투표한다.
     반려(reject) 투표 시 사유(reason)가 필수이다.
     """
     return await config_change_service.vote(db, request_id, current_user, data)
@@ -114,3 +126,18 @@ async def cancel_config_change_request(
     요청자 본인 또는 admin만 취소할 수 있다.
     """
     return await config_change_service.cancel_request(db, request_id, current_user)
+
+
+@router.patch("/{request_id}/reject", response_model=ConfigChangeDetailResponse)
+async def reject_config_change_by_developer(
+    request_id: int,
+    data: ConfigChangeRejectRequest,
+    current_user: User = Depends(require_admin_or_developer),
+    db: AsyncSession = Depends(get_db),
+):
+    """승인된 요청을 개발자/관리자가 반려한다 (approved -> rejected).
+
+    구현이 기술적으로 불가능하거나 수정이 필요할 때 사용한다.
+    반려 사유(reason) 필수.
+    """
+    return await config_change_service.reject_by_developer(db, request_id, current_user, data)

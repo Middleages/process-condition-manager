@@ -46,6 +46,18 @@ class ConfigChangeCreateRequest(BaseModel):
         return v
 
 
+class ConfigChangeRejectRequest(BaseModel):
+    """개발자 반려 요청 스키마."""
+    reason: str
+
+    @field_validator("reason")
+    @classmethod
+    def reason_not_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("반려 사유는 비어 있을 수 없습니다")
+        return v.strip()
+
+
 class ConfigChangeVoteRequest(BaseModel):
     """설정 변경 투표 스키마."""
     vote: str
@@ -91,6 +103,9 @@ class ConfigChangeResponse(BaseModel):
     requester_name: str | None = None
     implemented_by: int | None = None
     implementer_name: str | None = None
+    rejected_by: int | None = None
+    rejector_name: str | None = None
+    rejection_reason: str | None = None
     created_at: datetime
     updated_at: datetime
     approved_at: datetime | None = None

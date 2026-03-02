@@ -32,6 +32,9 @@ export interface ConfigChangeResponse {
   requester_name: string | null
   implemented_by: number | null
   implementer_name: string | null
+  rejected_by: number | null
+  rejector_name: string | null
+  rejection_reason: string | null
   created_at: string
   updated_at: string
   approved_at: string | null

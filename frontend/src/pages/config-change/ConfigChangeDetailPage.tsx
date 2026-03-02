@@ -26,6 +26,7 @@ import {
   useStartConfigChange,
   useCompleteConfigChange,
   useCancelConfigChange,
+  useRejectConfigChangeByDeveloper,
 } from '@/hooks/useConfigChanges'
 import type {
   ConfigChangeStatus,
@@ -82,12 +83,18 @@ export default function ConfigChangeDetailPage() {
   const startMutation = useStartConfigChange()
   const completeMutation = useCompleteConfigChange()
   const cancelMutation = useCancelConfigChange()
+  const rejectMutation = useRejectConfigChangeByDeveloper()
 
   // 투표 다이얼로그
   const [isVoteOpen, setIsVoteOpen] = useState(false)
   const [voteChoice, setVoteChoice] = useState<VoteResult>('approve')
   const [voteReason, setVoteReason] = useState('')
   const [voteError, setVoteError] = useState('')
+
+  // 개발자 반려 다이얼로그
+  const [isRejectOpen, setIsRejectOpen] = useState(false)
+  const [rejectReason, setRejectReason] = useState('')
+  const [rejectError, setRejectError] = useState('')
 
   if (isLoading) {
     return (
@@ -124,6 +131,7 @@ export default function ConfigChangeDetailPage() {
     )
 
   const canStart = detail.status === 'approved' && isDevOrAdmin
+  const canReject = detail.status === 'approved' && isDevOrAdmin
   const canComplete = detail.status === 'in_progress' && isDevOrAdmin
   const canCancel = detail.status === 'pending' && (isRequester || isAdmin)
 
@@ -160,6 +168,23 @@ export default function ConfigChangeDetailPage() {
   const handleCancel = async () => {
     if (!confirm('이 요청을 취소하시겠습니까?')) return
     await cancelMutation.mutateAsync(requestId)
+  }
+
+  const handleDevReject = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setRejectError('')
+    if (!rejectReason.trim()) {
+      setRejectError('반려 사유를 입력해 주세요.')
+      return
+    }
+    try {
+      await rejectMutation.mutateAsync({ id: requestId, reason: rejectReason })
+      setIsRejectOpen(false)
+      setRejectReason('')
+    } catch (err: unknown) {
+      const axErr = err as { response?: { data?: { detail?: string } } }
+      setRejectError(axErr.response?.data?.detail ?? '반려 중 오류가 발생했습니다.')
+    }
   }
 
   return (
@@ -202,6 +227,18 @@ export default function ConfigChangeDetailPage() {
               >
                 <Play className="h-3.5 w-3.5 mr-1" />
                 작업 시작
+              </Button>
+            )}
+            {canReject && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-red-600 hover:text-red-700"
+                onClick={() => setIsRejectOpen(true)}
+                disabled={rejectMutation.isPending}
+              >
+                <XCircle className="h-3.5 w-3.5 mr-1" />
+                반려
               </Button>
             )}
             {canComplete && (
@@ -264,6 +301,17 @@ export default function ConfigChangeDetailPage() {
             </div>
           )}
         </div>
+
+        {/* 개발자 반려 사유 */}
+        {detail.rejection_reason && (
+          <div className="mb-4 rounded-md border border-red-200 bg-red-50 p-3">
+            <p className="text-sm font-medium text-red-800 mb-1">반려 사유</p>
+            <p className="text-sm text-red-700">{detail.rejection_reason}</p>
+            {detail.rejector_name && (
+              <p className="text-xs text-red-600 mt-1">반려자: {detail.rejector_name}</p>
+            )}
+          </div>
+        )}
 
         {/* 설명 */}
         <div>
@@ -436,6 +484,49 @@ export default function ConfigChangeDetailPage() {
               </Button>
               <Button type="submit" disabled={voteMutation.isPending}>
                 {voteMutation.isPending ? '투표 중...' : '투표 제출'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* 개발자 반려 다이얼로그 */}
+      <Dialog open={isRejectOpen} onOpenChange={setIsRejectOpen}>
+        <DialogContent onClose={() => setIsRejectOpen(false)}>
+          <DialogHeader>
+            <DialogTitle>요청 반려</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleDevReject} className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              이 요청을 반려하면 요청자에게 반려 사유가 전달됩니다.
+            </p>
+            <div>
+              <label className="block text-sm font-medium mb-1">반려 사유 *</label>
+              <textarea
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                required
+                placeholder="기술적 불가 사유, 수정 필요 사항 등을 기술해 주세요."
+                rows={4}
+                className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm resize-none"
+              />
+            </div>
+            {rejectError && <p className="text-red-600 text-sm">{rejectError}</p>}
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsRejectOpen(false)}
+                disabled={rejectMutation.isPending}
+              >
+                취소
+              </Button>
+              <Button
+                type="submit"
+                variant="destructive"
+                disabled={rejectMutation.isPending}
+              >
+                {rejectMutation.isPending ? '반려 중...' : '반려'}
               </Button>
             </DialogFooter>
           </form>

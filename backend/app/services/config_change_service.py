@@ -17,6 +17,7 @@ from app.schemas.config_change import (
     ConfigChangeCreateRequest,
     ConfigChangeDetailResponse,
     ConfigChangeListResponse,
+    ConfigChangeRejectRequest,
     ConfigChangeResponse,
     ConfigChangeVoteRequest,
     ConfigChangeVoteResponse,
@@ -71,6 +72,9 @@ def _build_response(
         requester_name=req.requester.display_name if req.requester else None,
         implemented_by=req.implemented_by,
         implementer_name=req.implementer.display_name if req.implementer else None,
+        rejected_by=req.rejected_by,
+        rejector_name=req.rejector.display_name if req.rejector else None,
+        rejection_reason=req.rejection_reason,
         created_at=req.created_at,
         updated_at=req.updated_at,
         approved_at=req.approved_at,
@@ -416,6 +420,7 @@ async def list_requests(
         .options(
             selectinload(ConfigChangeRequest.requester),
             selectinload(ConfigChangeRequest.implementer),
+            selectinload(ConfigChangeRequest.rejector),
             selectinload(ConfigChangeRequest.votes),
         )
         .order_by(ConfigChangeRequest.created_at.desc())
@@ -451,6 +456,7 @@ async def get_request_detail(
         .options(
             selectinload(ConfigChangeRequest.requester),
             selectinload(ConfigChangeRequest.implementer),
+            selectinload(ConfigChangeRequest.rejector),
             selectinload(ConfigChangeRequest.votes).selectinload(ConfigChangeVote.line),
             selectinload(ConfigChangeRequest.votes).selectinload(ConfigChangeVote.voter),
         )
@@ -463,3 +469,83 @@ async def get_request_detail(
         raise HTTPException(status_code=404, detail="설정 변경 요청을 찾을 수 없습니다")
 
     return _build_response(req, include_votes=True)
+
+
+# ---------------------------------------------------------------------------
+# 개발자 반려
+# ---------------------------------------------------------------------------
+
+
+async def reject_by_developer(
+    db: AsyncSession,
+    request_id: int,
+    current_user: User,
+    data: ConfigChangeRejectRequest,
+) -> ConfigChangeDetailResponse:
+    """승인된 요청을 개발자가 반려한다 (approved → rejected).
+
+    Raises:
+        HTTPException 404: 요청이 존재하지 않을 때.
+        HTTPException 400: 상태 전환이 유효하지 않을 때.
+    """
+    req = await db.get(ConfigChangeRequest, request_id)
+    if not req:
+        raise HTTPException(status_code=404, detail="설정 변경 요청을 찾을 수 없습니다")
+
+    allowed = VALID_CONFIG_CHANGE_TRANSITIONS.get(req.status, [])
+    if "rejected" not in allowed:
+        raise HTTPException(
+            status_code=400,
+            detail=f"현재 상태({req.status})에서 반려할 수 없습니다",
+        )
+
+    req.status = "rejected"
+    req.rejected_by = current_user.id
+    req.rejection_reason = data.reason
+    await db.flush()
+    await db.commit()
+
+    return await get_request_detail(db, request_id)
+
+
+# ---------------------------------------------------------------------------
+# 미투표 건수 조회
+# ---------------------------------------------------------------------------
+
+
+async def get_my_pending_vote_count(
+    db: AsyncSession,
+    current_user: User,
+) -> int:
+    """현재 사용자가 투표해야 하는 pending 요청 건수를 반환한다."""
+    user_roles = current_user.roles or []
+
+    if "admin" in user_roles:
+        # admin → 관리자 슬롯(line_id IS NULL) 중 미투표 건수
+        stmt = (
+            select(func.count())
+            .select_from(ConfigChangeVote)
+            .join(ConfigChangeRequest)
+            .where(
+                ConfigChangeRequest.status == "pending",
+                ConfigChangeVote.line_id.is_(None),
+                ConfigChangeVote.vote.is_(None),
+            )
+        )
+    elif "reviewer" in user_roles and current_user.line_id:
+        # reviewer → 소속 라인 슬롯 중 미투표 건수
+        stmt = (
+            select(func.count())
+            .select_from(ConfigChangeVote)
+            .join(ConfigChangeRequest)
+            .where(
+                ConfigChangeRequest.status == "pending",
+                ConfigChangeVote.line_id == current_user.line_id,
+                ConfigChangeVote.vote.is_(None),
+            )
+        )
+    else:
+        return 0
+
+    result = await db.execute(stmt)
+    return result.scalar_one()

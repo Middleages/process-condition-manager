@@ -49,10 +49,16 @@ class ConfigChangeRequest(Base):
     completed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True,
     )
+    # 개발자 반려 시 사유 및 반려자
+    rejected_by: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True,
+    )
+    rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # 관계
     requester: Mapped["User"] = relationship("User", foreign_keys=[requested_by])
     implementer: Mapped["User | None"] = relationship("User", foreign_keys=[implemented_by])
+    rejector: Mapped["User | None"] = relationship("User", foreign_keys=[rejected_by])
     votes: Mapped[list["ConfigChangeVote"]] = relationship(
         back_populates="request", cascade="all, delete-orphan",
     )
