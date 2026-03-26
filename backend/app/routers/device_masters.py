@@ -25,7 +25,7 @@ from app.schemas.device_master import (
 )
 from app.services import device_master_query_service
 
-router = APIRouter(prefix="/api/device-masters", tags=["device-masters"])
+router = APIRouter(prefix="/device-masters", tags=["device-masters"])
 
 
 def _build_device_response(device: DeviceMaster, line_name: str) -> DeviceMasterResponse:

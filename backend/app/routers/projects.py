@@ -13,7 +13,7 @@ from app.schemas.project import (
 )
 from app.services import project_service
 
-router = APIRouter(prefix="/api/projects", tags=["projects"])
+router = APIRouter(prefix="/projects", tags=["projects"])
 
 
 def _build_project_response(project, *, layer_count: int = 0) -> ProjectResponse:

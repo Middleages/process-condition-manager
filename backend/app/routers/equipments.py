@@ -9,7 +9,7 @@ from app.models.equipment import Equipment
 from app.models.user import User
 from app.schemas.admin_master import EquipmentPublicResponse
 
-router = APIRouter(prefix="/api/equipments", tags=["equipments"])
+router = APIRouter(prefix="/equipments", tags=["equipments"])
 
 
 @router.get("", response_model=list[EquipmentPublicResponse])

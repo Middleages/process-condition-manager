@@ -21,7 +21,7 @@ from app.schemas.config_change import (
 )
 from app.services import config_change_service
 
-router = APIRouter(prefix="/api/config-changes", tags=["config-changes"])
+router = APIRouter(prefix="/config-changes", tags=["config-changes"])
 
 
 @router.post("", response_model=ConfigChangeDetailResponse, status_code=201)

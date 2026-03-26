@@ -30,7 +30,7 @@ from app.schemas.export import ExportHistoryListResponse
 from app.services import admin_service
 from app.services.export_history_service import ExportHistoryService
 
-router = APIRouter(prefix="/api/admin", tags=["admin"])
+router = APIRouter(tags=["admin"])
 
 
 # ---------------------------------------------------------------------------

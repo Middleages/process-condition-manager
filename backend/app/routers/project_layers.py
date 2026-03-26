@@ -18,7 +18,7 @@ from app.schemas.recipe import (
 from app.models import Product
 from app.services import backbone_service, recipe_service
 
-router = APIRouter(prefix="/api/projects", tags=["project-layers"])
+router = APIRouter(prefix="/projects", tags=["project-layers"])
 
 
 # --- Backbone replacement ---

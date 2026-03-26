@@ -22,7 +22,7 @@ from app.schemas.export_admin import (
     MappingReorderRequest,
 )
 
-router = APIRouter(prefix="/api/admin", tags=["export-admin"])
+router = APIRouter(tags=["export-admin"])
 
 
 # ---------------------------------------------------------------------------

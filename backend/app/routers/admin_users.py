@@ -8,7 +8,7 @@ from app.dependencies.auth import require_admin
 from app.schemas.admin_user import AdminUserCreate, AdminUserUpdate, AdminUserResponse, AdminPasswordReset
 from app.services import admin_user_service
 
-router = APIRouter(prefix="/api/admin", tags=["admin-users"])
+router = APIRouter(tags=["admin-users"])
 
 
 @router.get("/users", response_model=list[AdminUserResponse])

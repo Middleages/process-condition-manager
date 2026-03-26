@@ -12,7 +12,7 @@ from app.schemas.announcement import (
 )
 from app.services import announcement_service
 
-router = APIRouter(prefix="/api/announcements", tags=["announcements"])
+router = APIRouter(prefix="/announcements", tags=["announcements"])
 
 
 @router.get("", response_model=AnnouncementListResponse)

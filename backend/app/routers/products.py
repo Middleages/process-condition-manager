@@ -14,7 +14,7 @@ from app.models.user import User
 from app.repositories.backbone_repository import BackboneRepository
 from app.schemas.product import ProductResponse, ProductLayerResponse, LayerResponse
 
-router = APIRouter(prefix="/api/products", tags=["products"])
+router = APIRouter(prefix="/products", tags=["products"])
 
 
 # ---------------------------------------------------------------------------

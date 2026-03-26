@@ -22,7 +22,7 @@ from app.schemas.admin_master import (
 )
 from app.services import admin_master_service
 
-router = APIRouter(prefix="/api/admin", tags=["admin-master"])
+router = APIRouter(tags=["admin-master"])
 
 
 # ---------------------------------------------------------------------------

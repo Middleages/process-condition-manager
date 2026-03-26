@@ -9,7 +9,7 @@ from app.models import ColumnCategory, ColumnDefinition
 from app.models.user import User
 from app.schemas.column import ColumnCategoryResponse
 
-router = APIRouter(prefix="/api/columns", tags=["columns"])
+router = APIRouter(prefix="/columns", tags=["columns"])
 
 
 @router.get("", response_model=list[ColumnCategoryResponse])

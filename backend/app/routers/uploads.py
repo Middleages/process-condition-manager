@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 from app.dependencies.auth import require_active_user
 
-router = APIRouter(prefix="/api/uploads", tags=["uploads"])
+router = APIRouter(prefix="/uploads", tags=["uploads"])
 
 UPLOAD_DIR = Path("/app/uploads")
 ALLOWED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
