@@ -12,15 +12,10 @@ from app.logging_config import setup_logging
 setup_logging(environment=settings.ENVIRONMENT, log_level=settings.LOG_LEVEL)
 
 from app.database import async_session  # noqa: E402
-from app.routers import (  # noqa: E402
-    users, lines, columns, products, equipments,
-    projects, project_conditions, project_layers, project_lifecycle,
-    admin, admin_users, admin_master, comments, export, export_admin, export_data_source, auth as auth_router,
-    dashboard, device_masters, admin_device,
-    announcements, admin_announcements,
-    config_change,
-    uploads,
-)
+from app.routers import auth as auth_router  # noqa: E402
+from app.routers.admin_routes import router as admin_router  # noqa: E402
+from app.routers.api_routes import router as api_router  # noqa: E402
+from app.routers.project_routes import router as project_router  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -63,27 +58,6 @@ async def health_check():
 
 
 app.include_router(auth_router.router, prefix="/api/auth", tags=["auth"])
-app.include_router(users.router)
-app.include_router(lines.router)
-app.include_router(columns.router)
-app.include_router(products.router)
-app.include_router(equipments.router)
-app.include_router(projects.router)
-app.include_router(project_conditions.router)
-app.include_router(project_layers.router)
-app.include_router(project_lifecycle.router)
-app.include_router(comments.router)
-app.include_router(admin.router)
-app.include_router(admin_users.router)
-app.include_router(admin_master.router)
-app.include_router(export_admin.router)
-app.include_router(export_data_source.router)
-app.include_router(export.router)
-app.include_router(export.project_router)
-app.include_router(device_masters.router)
-app.include_router(admin_device.router)
-app.include_router(announcements.router)
-app.include_router(admin_announcements.router)
-app.include_router(config_change.router)
-app.include_router(uploads.router)
-app.include_router(dashboard.router)
+app.include_router(admin_router)
+app.include_router(project_router)
+app.include_router(api_router)

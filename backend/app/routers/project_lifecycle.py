@@ -18,7 +18,7 @@ from app.schemas.project import (
 from app.services import project_service, project_status_service, project_analytics_service, change_log_service
 from app.routers.projects import _build_project_detail_response
 
-router = APIRouter(prefix="/api/projects", tags=["project-lifecycle"])
+router = APIRouter(prefix="/projects", tags=["project-lifecycle"])
 
 
 # --- Revision feature ---

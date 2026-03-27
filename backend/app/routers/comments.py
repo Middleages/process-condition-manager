@@ -13,7 +13,7 @@ from app.schemas.comment import (
 from app.services import comment_service
 
 
-router = APIRouter(prefix="/api/projects/{project_id}/comments", tags=["comments"])
+router = APIRouter(prefix="/projects/{project_id}/comments", tags=["comments"])
 
 
 @router.post("", response_model=CommentResponse, status_code=201)

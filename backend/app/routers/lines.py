@@ -8,7 +8,7 @@ from app.models import Line
 from app.models.user import User
 from app.schemas.line import LineResponse
 
-router = APIRouter(prefix="/api/lines", tags=["lines"])
+router = APIRouter(prefix="/lines", tags=["lines"])
 
 
 @router.get("", response_model=list[LineResponse])

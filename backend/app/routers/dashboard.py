@@ -7,7 +7,7 @@ from app.models.user import User
 from app.schemas.dashboard import DashboardOverviewResponse
 from app.services.dashboard_service import get_dashboard_overview
 
-router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
+router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 
 @router.get("/overview", response_model=DashboardOverviewResponse)

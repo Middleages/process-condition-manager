@@ -31,7 +31,7 @@ from app.services.device_master_sync_service import DeviceMasterSyncService
 from app.services.device_meta_source_service import DeviceMetaSourceService
 from app.services.sync_source_config_service import SyncSourceConfigService
 
-router = APIRouter(prefix="/api/admin", tags=["admin-device"])
+router = APIRouter(tags=["admin-device"])
 
 # ======================================================================
 # Device / Layer Sync

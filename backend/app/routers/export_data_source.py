@@ -21,7 +21,7 @@ from app.schemas.export_data_source import (
 )
 from app.services.export_data_source_service import ExportDataSourceService
 
-router = APIRouter(prefix="/api/admin", tags=["export-data-sources"])
+router = APIRouter(tags=["export-data-sources"])
 
 
 @router.get("/data-sources", response_model=list[ExportDataSourceResponse])
