@@ -26,9 +26,9 @@ from app.schemas.device_master import (
     SyncSourceConfigResponse,
     SyncSourceConfigUpdate,
 )
-from app.services.device_enrichment_service import DeviceEnrichmentService
-from app.services.device_master_sync_service import DeviceMasterSyncService
-from app.services.device_meta_source_service import DeviceMetaSourceService
+from app.services.device.enrichment_service import DeviceEnrichmentService
+from app.services.device.sync_service import DeviceMasterSyncService
+from app.services.device.meta_source_service import DeviceMetaSourceService
 from app.services.sync_source_config_service import SyncSourceConfigService
 
 router = APIRouter(tags=["admin-device"])

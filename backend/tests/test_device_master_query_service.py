@@ -46,7 +46,7 @@ class TestSearchDevices:
     @pytest.mark.asyncio
     async def test_search_by_line_id_only(self):
         """Filter devices by line_id returns matching active devices."""
-        from app.services.device_master_query_service import search_devices
+        from app.services.device.query_service import search_devices
 
         device = SimpleNamespace(
             id=1, line_id=10, product_name="PROD-A", process="PHOTO",
@@ -64,7 +64,7 @@ class TestSearchDevices:
     @pytest.mark.asyncio
     async def test_search_by_product_name_partial(self):
         """ILIKE partial match on product_name returns matching devices."""
-        from app.services.device_master_query_service import search_devices
+        from app.services.device.query_service import search_devices
 
         devices = [
             SimpleNamespace(id=1, product_name="ABC-100", is_active=True),
@@ -81,7 +81,7 @@ class TestSearchDevices:
     @pytest.mark.asyncio
     async def test_search_cascading_filter(self):
         """Filter by line_id + product_name + process returns intersection."""
-        from app.services.device_master_query_service import search_devices
+        from app.services.device.query_service import search_devices
 
         device = SimpleNamespace(
             id=1, line_id=10, product_name="PROD-A", process="PHOTO",
@@ -101,7 +101,7 @@ class TestSearchDevices:
     @pytest.mark.asyncio
     async def test_search_returns_active_only(self):
         """Only active devices are returned (inactive excluded by query)."""
-        from app.services.device_master_query_service import search_devices
+        from app.services.device.query_service import search_devices
 
         # The mock returns only active devices because the service query
         # filters with `is_active == True`. We simulate that the DB
@@ -120,7 +120,7 @@ class TestSearchDevices:
     @pytest.mark.asyncio
     async def test_search_empty_result(self):
         """No matching devices returns empty list."""
-        from app.services.device_master_query_service import search_devices
+        from app.services.device.query_service import search_devices
 
         db = AsyncMock()
         db.execute.return_value = _mock_scalars_all([])
@@ -131,7 +131,7 @@ class TestSearchDevices:
     @pytest.mark.asyncio
     async def test_search_respects_limit(self):
         """Custom limit parameter is accepted without error."""
-        from app.services.device_master_query_service import search_devices
+        from app.services.device.query_service import search_devices
 
         db = AsyncMock()
         db.execute.return_value = _mock_scalars_all([])
@@ -151,7 +151,7 @@ class TestGetDeviceByRef:
     @pytest.mark.asyncio
     async def test_found(self):
         """Exact 4-field match returns DeviceMaster."""
-        from app.services.device_master_query_service import get_device_by_ref
+        from app.services.device.query_service import get_device_by_ref
 
         device = SimpleNamespace(
             id=1, line_id=10, product_name="PROD-A",
@@ -173,7 +173,7 @@ class TestGetDeviceByRef:
     @pytest.mark.asyncio
     async def test_not_found(self):
         """Returns None when no match for 4-field combination."""
-        from app.services.device_master_query_service import get_device_by_ref
+        from app.services.device.query_service import get_device_by_ref
 
         db = AsyncMock()
         db.execute.return_value = _mock_scalars_first(None)
@@ -195,7 +195,7 @@ class TestGetDeviceLayers:
     @pytest.mark.asyncio
     async def test_returns_sorted_layers(self):
         """Layers returned sorted by CAST(layer_id AS FLOAT) numerically."""
-        from app.services.device_master_query_service import get_device_layers
+        from app.services.device.query_service import get_device_layers
 
         # Simulate layers already sorted (DB does the sort via ORDER BY)
         layers = [
@@ -217,7 +217,7 @@ class TestGetDeviceLayers:
     @pytest.mark.asyncio
     async def test_empty_device(self):
         """Device with no layers returns empty list."""
-        from app.services.device_master_query_service import get_device_layers
+        from app.services.device.query_service import get_device_layers
 
         db = AsyncMock()
         db.execute.return_value = _mock_scalars_all([])
@@ -236,7 +236,7 @@ class TestGetDeviceHeader:
     @pytest.mark.asyncio
     async def test_returns_enrichment(self):
         """Returns enrichment dict from device_master."""
-        from app.services.device_master_query_service import get_device_header
+        from app.services.device.query_service import get_device_header
 
         enrichment_data = {"fab_grade": "A", "target_yield": 0.98}
         device = SimpleNamespace(
@@ -255,7 +255,7 @@ class TestGetDeviceHeader:
     @pytest.mark.asyncio
     async def test_device_not_found(self):
         """Returns None when device doesn't exist."""
-        from app.services.device_master_query_service import get_device_header
+        from app.services.device.query_service import get_device_header
 
         db = AsyncMock()
         db.get.return_value = None
@@ -267,7 +267,7 @@ class TestGetDeviceHeader:
     @pytest.mark.asyncio
     async def test_returns_empty_enrichment(self):
         """Returns empty dict when enrichment is empty."""
-        from app.services.device_master_query_service import get_device_header
+        from app.services.device.query_service import get_device_header
 
         device = SimpleNamespace(id=1, enrichment={})
 

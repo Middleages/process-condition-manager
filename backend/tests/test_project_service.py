@@ -1,7 +1,7 @@
 import pytest
 from fastapi import HTTPException
 
-from app.services.project_service import create_project, get_project_detail
+from app.services.project.service import create_project, get_project_detail
 
 
 @pytest.mark.asyncio

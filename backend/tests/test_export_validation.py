@@ -21,7 +21,7 @@ from app.models import (
     Layer, Line, Product, Project, ProjectLayer, User,
 )
 from app.services.auth_service import get_password_hash
-from app.services.export_validation_service import ExportValidationService
+from app.services.export.validation_service import ExportValidationService
 
 
 # ---------------------------------------------------------------------------
