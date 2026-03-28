@@ -104,7 +104,7 @@ class TestCreateProjectV2:
         self, db_session: AsyncSession, device_fixture: dict,
     ):
         """Happy path: create V2 project with backbone -- copies conditions."""
-        from app.services.project_service import create_project_v2
+        from app.services.project.service import create_project_v2
 
         fx = device_fixture
         seed = fx["seed"]
@@ -143,7 +143,7 @@ class TestCreateProjectV2:
         self, db_session: AsyncSession, device_fixture: dict,
     ):
         """V2 project created without backbone has empty conditions."""
-        from app.services.project_service import create_project_v2
+        from app.services.project.service import create_project_v2
 
         fx = device_fixture
         seed = fx["seed"]
@@ -174,7 +174,7 @@ class TestCreateProjectV2:
         self, db_session: AsyncSession, device_fixture: dict,
     ):
         """Non-existent device ref raises 404."""
-        from app.services.project_service import create_project_v2
+        from app.services.project.service import create_project_v2
 
         seed = device_fixture["seed"]
 
@@ -196,7 +196,7 @@ class TestCreateProjectV2:
         self, db_session: AsyncSession, device_fixture: dict,
     ):
         """Invalid device_type raises 400."""
-        from app.services.project_service import create_project_v2
+        from app.services.project.service import create_project_v2
 
         fx = device_fixture
         seed = fx["seed"]
@@ -219,7 +219,7 @@ class TestCreateProjectV2:
         self, db_session: AsyncSession, device_fixture: dict,
     ):
         """Creating a second project for same device_master raises 409."""
-        from app.services.project_service import create_project_v2
+        from app.services.project.service import create_project_v2
 
         fx = device_fixture
         seed = fx["seed"]
@@ -256,7 +256,7 @@ class TestCreateProjectV2:
         self, db_session: AsyncSession, device_fixture: dict,
     ):
         """Selected layers not in device's layer_master raises 400."""
-        from app.services.project_service import create_project_v2
+        from app.services.project.service import create_project_v2
 
         fx = device_fixture
         seed = fx["seed"]
@@ -279,7 +279,7 @@ class TestCreateProjectV2:
         self, db_session: AsyncSession, device_fixture: dict,
     ):
         """header_metadata should be copied from device_master.enrichment."""
-        from app.services.project_service import create_project_v2
+        from app.services.project.service import create_project_v2
 
         fx = device_fixture
         seed = fx["seed"]
@@ -306,7 +306,7 @@ class TestCreateProjectV2:
         self, db_session: AsyncSession, device_fixture: dict,
     ):
         """Only selected layers are created, with correct backbone conditions."""
-        from app.services.project_service import create_project_v2
+        from app.services.project.service import create_project_v2
 
         fx = device_fixture
         seed = fx["seed"]
@@ -343,7 +343,7 @@ class TestReviseProjectV2:
         self, db_session: AsyncSession, device_fixture: dict,
     ):
         """Revising a V2 project should copy device-ref fields and check duplicates."""
-        from app.services.project_service import (
+        from app.services.project.service import (
             create_project_v2,
             revise_project,
         )
@@ -384,7 +384,7 @@ class TestReviseProjectV2:
         self, db_session: AsyncSession, device_fixture: dict,
     ):
         """Cannot revise if a draft/review V2 project already exists for same device-ref."""
-        from app.services.project_service import (
+        from app.services.project.service import (
             create_project_v2,
             revise_project,
         )

@@ -20,9 +20,9 @@ from app.schemas.export import (
     ExportValidationRequest,
     ExportValidationResponse,
 )
-from app.services.export_history_service import ExportHistoryService
-from app.services.export_service import ExportService
-from app.services.export_validation_service import ExportValidationService
+from app.services.export.history_service import ExportHistoryService
+from app.services.export.service import ExportService
+from app.services.export.validation_service import ExportValidationService
 
 router = APIRouter(prefix="/projects", tags=["export"])
 

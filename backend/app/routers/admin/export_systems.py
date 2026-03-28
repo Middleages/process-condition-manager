@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.dependencies.auth import require_admin_or_developer, require_system_write
 from app.models.user import User
-from app.services.export_admin_service import ExportAdminService
+from app.services.export.admin_service import ExportAdminService
 from app.schemas.export_admin import (
     ExportSystemCreate,
     ExportSystemUpdate,

@@ -12,7 +12,7 @@ from types import SimpleNamespace
 import pytest
 from openpyxl import load_workbook
 
-from app.services.export_service import ExportService
+from app.services.export.service import ExportService
 
 
 # ---------------------------------------------------------------------------

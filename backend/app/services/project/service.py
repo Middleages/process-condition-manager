@@ -12,11 +12,11 @@ from fastapi import HTTPException
 
 from app.models import Product, ProductLayer, Project, ProjectLayer
 from app.repositories.backbone_repository import BackboneRepository
-from app.services import device_master_query_service
+from app.services.device import query_service as device_master_query_service
 
 # Re-exports for backward compatibility (used by tests and other modules)
-from app.services.project_status_service import update_project_status  # noqa: F401
-from app.services.project_analytics_service import get_change_summary, list_version_history  # noqa: F401
+from app.services.project.status_service import update_project_status  # noqa: F401
+from app.services.project.analytics_service import get_change_summary, list_version_history  # noqa: F401
 
 
 async def create_project(

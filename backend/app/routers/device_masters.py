@@ -23,7 +23,7 @@ from app.schemas.device_master import (
     DeviceSearchResult,
     DuplicateCheckResponse,
 )
-from app.services import device_master_query_service
+from app.services.device import query_service as device_master_query_service
 
 router = APIRouter(prefix="/device-masters", tags=["device-masters"])
 

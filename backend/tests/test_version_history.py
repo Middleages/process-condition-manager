@@ -5,8 +5,8 @@ Covers: single version, multiple versions, is_current flag, creator name, 404.
 import pytest
 from fastapi import HTTPException
 
-from app.services.project_service import create_project, update_project_status, revise_project
-from app.services.project_analytics_service import list_version_history
+from app.services.project.service import create_project, update_project_status, revise_project
+from app.services.project.analytics_service import list_version_history
 
 
 @pytest.mark.asyncio

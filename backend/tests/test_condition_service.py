@@ -19,7 +19,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 
 from app.models import ChangeLog, Project, ProjectLayer
-from app.services.project_service import create_project
+from app.services.project.service import create_project
 from app.services.condition_service import bulk_save_conditions
 from app.schemas.project import BulkSaveRequest, LayerConditions
 

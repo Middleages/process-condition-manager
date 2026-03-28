@@ -18,7 +18,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 
 from app.models import ChangeLog
-from app.services.project_service import create_project
+from app.services.project.service import create_project
 from app.services.condition_service import bulk_save_conditions
 from app.services.change_log_service import list_change_logs
 from app.schemas.project import BulkSaveRequest, LayerConditions
@@ -35,7 +35,7 @@ class TestGetChangeLogs:
 
         Returns (project, data, layers_sorted).
         """
-        from app.services.project_service import get_project_detail
+        from app.services.project.service import get_project_detail
 
         data = seed_test_data
         project = await create_project(

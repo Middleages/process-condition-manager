@@ -1,7 +1,7 @@
 import pytest
 from fastapi import HTTPException
 
-from app.services.project_service import create_project
+from app.services.project.service import create_project
 from app.services.backbone_service import replace_layer_backbone, add_layer, delete_layer
 from app.models import ChangeLog, ProjectLayer
 from sqlalchemy import select

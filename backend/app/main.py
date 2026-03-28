@@ -13,9 +13,9 @@ setup_logging(environment=settings.ENVIRONMENT, log_level=settings.LOG_LEVEL)
 
 from app.database import async_session  # noqa: E402
 from app.routers import auth as auth_router  # noqa: E402
-from app.routers.admin_routes import router as admin_router  # noqa: E402
-from app.routers.api_routes import router as api_router  # noqa: E402
-from app.routers.project_routes import router as project_router  # noqa: E402
+from app.routers.admin import router as admin_router  # noqa: E402
+from app.routers.api import router as api_router  # noqa: E402
+from app.routers.projects import router as project_router  # noqa: E402
 
 logger = logging.getLogger(__name__)
 

@@ -5,7 +5,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.models import Project, ProjectLayer
-from app.services import project_service
+from app.services.project import service as project_service
 from app.services.comment_service import (
     create_comment, list_comments, update_comment, delete_comment, get_unresolved_count
 )

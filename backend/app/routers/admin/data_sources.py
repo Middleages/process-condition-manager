@@ -19,7 +19,7 @@ from app.schemas.export_data_source import (
     ExportDataSourceResponse,
     ExportDataSourceUpdate,
 )
-from app.services.export_data_source_service import ExportDataSourceService
+from app.services.export.data_source_service import ExportDataSourceService
 
 router = APIRouter(tags=["export-data-sources"])
 

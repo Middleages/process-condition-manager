@@ -5,7 +5,7 @@ Covers: multiple changes, no changes, invalid project_layer_id, missing params, 
 import pytest
 from fastapi import HTTPException
 
-from app.services.project_service import create_project, get_project_detail
+from app.services.project.service import create_project, get_project_detail
 from app.services.condition_service import bulk_save_conditions
 from app.services import change_log_service
 from app.schemas.project import BulkSaveRequest, LayerConditions

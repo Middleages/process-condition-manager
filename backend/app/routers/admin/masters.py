@@ -20,7 +20,7 @@ from app.schemas.admin_master import (
     CategoryCreateRequest, CategoryUpdate, CategoryResponse, CategoryReorderRequest,
     EquipmentCreate, EquipmentUpdate, EquipmentResponse, EquipmentReorderRequest,
 )
-from app.services import admin_master_service
+from app.services.admin import master_service as admin_master_service
 
 router = APIRouter(tags=["admin-master"])
 
