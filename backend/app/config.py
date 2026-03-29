@@ -26,8 +26,26 @@ class Settings(BaseSettings):
     # 로그 레벨 (DEBUG, INFO, WARNING, ERROR, CRITICAL)
     LOG_LEVEL: str = "INFO"
 
+    # SSO / Cookie 설정
+    FRONTEND_URL: str = "https://pcm.fhoto.net"
+    IDP_ENTITY_ID: str = ""
+    IDP_SIGNOUT_URL: str = ""
+    IDP_CLIENT_ID: str = ""
+    SP_REDIRECT_URL: str = ""
+    CERTFILE_NAME: str = ""
+    CERTFILE_PATH: str = ""
+
+    COOKIE_SECURE: bool = False
+    COOKIE_SAMESITE: str = "lax"
+
+
+    # 개발 전용 로그인 우회
+    DEV_LOGIN_ENABLED: bool = False
+    DEV_LOGIN_ALLOWLIST: str = ""
+    DEV_LOGIN_DEFAULT_USERNAME: str = "dev_user"
+
     # JWT 액세스 토큰 만료 시간 (분)
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 480
 
     # JWT 리프레시 토큰 만료 시간 (일)
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
