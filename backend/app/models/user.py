@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Optional
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, String, func
 from sqlalchemy.dialects.postgresql import ARRAY
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, synonym
 
 from app.database import Base
 
@@ -17,8 +17,10 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    # loginid를 username 컬럼에 매칭
     username: Mapped[str] = mapped_column(String(50), unique=True, index=True)
-    display_name: Mapped[str] = mapped_column(String(100))
+    # 레거시 호환: display_name 접근은 username에 매핑 (별도 DB 컬럼 미사용)
+    display_name = synonym("username")
     # 다중 역할 지원: editor / reviewer / admin / developer
     roles: Mapped[list[str]] = mapped_column(
         ARRAY(String(20)), default=["editor"], server_default="{editor}"
@@ -30,6 +32,10 @@ class User(Base):
     line_id: Mapped[int | None] = mapped_column(
         ForeignKey("lines.id", ondelete="SET NULL"), nullable=True, index=True,
     )
+    # SSO 관련 필드
+    department: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    last_login_ip: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
