@@ -11,6 +11,10 @@ export default function LoginPage() {
   const [searchParams] = useSearchParams()
 
   useEffect(() => {
+    if (isLoading) {
+      return
+    }
+
     if (isAuthenticated) {
       const redirect = searchParams.get('redirect') || '/projects'
       navigate(redirect, { replace: true })
@@ -20,7 +24,8 @@ export default function LoginPage() {
     if (!isDevMode) {
       void login()
     }
-  }, [isAuthenticated, login, navigate, searchParams])
+  }, [isAuthenticated, isLoading, login, navigate, searchParams])
+
 
   const handleLoginClick = async () => {
     await login()
