@@ -82,7 +82,7 @@ export function VersionHistoryModal({
                         <td className="px-4 py-3 text-muted-foreground">
                           {rev.revision_reason || '-'}
                         </td>
-                        <td className="px-4 py-3">{rev.created_by || '-'}</td>
+                        <td className="px-4 py-3">{rev.created_by_userid || '-'}</td>
                         <td className="px-4 py-3 text-muted-foreground">
                           {new Date(rev.created_at).toLocaleDateString('ko-KR', {
                             year: 'numeric',

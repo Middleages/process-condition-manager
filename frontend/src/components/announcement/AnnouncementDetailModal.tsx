@@ -52,7 +52,7 @@ export default function AnnouncementDetailModal({
           <CategoryBadge category={announcement.category} />
           <PriorityBadge priority={announcement.priority} />
           <span className="text-sm text-muted-foreground ml-auto">
-            {announcement.creator_name ?? '알 수 없음'} | {formatDate(announcement.created_at)}
+            {announcement.creator_userid ?? '알 수 없음'} | {formatDate(announcement.created_at)}
           </span>
         </div>
 

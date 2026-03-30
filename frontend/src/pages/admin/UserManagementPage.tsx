@@ -53,7 +53,7 @@ export default function UserManagementPage() {
   }
 
   const handleDeactivate = async (user: AdminUser) => {
-    if (!confirm(`'${user.display_name}' 사용자를 비활성화하시겠습니까?`)) return
+    if (!confirm(`'${user.userid}' 사용자를 비활성화하시겠습니까?`)) return
     try {
       await deactivateMutation.mutateAsync(user.id)
     } catch {
@@ -86,8 +86,7 @@ export default function UserManagementPage() {
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-muted text-muted-foreground">
-              <th className="px-4 py-3 text-left font-medium">사용자명</th>
-              <th className="px-4 py-3 text-left font-medium">표시 이름</th>
+              <th className="px-4 py-3 text-left font-medium">아이디</th>
               <th className="px-4 py-3 text-left font-medium">이메일</th>
               <th className="px-4 py-3 text-left font-medium">역할</th>
               <th className="px-4 py-3 text-left font-medium">소속 라인</th>
@@ -99,14 +98,14 @@ export default function UserManagementPage() {
           <tbody>
             {isLoading && (
               <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
+                <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
                   로딩 중...
                 </td>
               </tr>
             )}
             {!isLoading && users.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
+                <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
                   사용자가 없습니다.
                 </td>
               </tr>
@@ -116,8 +115,7 @@ export default function UserManagementPage() {
                 key={user.id}
                 className={`border-t hover:bg-muted/50 ${!user.is_active ? 'opacity-50' : ''}`}
               >
-                <td className="px-4 py-3 font-mono text-xs">{user.username}</td>
-                <td className="px-4 py-3">{user.display_name}</td>
+                <td className="px-4 py-3 font-mono text-xs">{user.userid}</td>
                 <td className="px-4 py-3 text-muted-foreground">{user.email ?? '-'}</td>
                 <td className="px-4 py-3">
                   {/* 다중 역할 배지 표시 */}

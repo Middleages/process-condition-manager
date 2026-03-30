@@ -88,7 +88,7 @@ export function CommentThread({ comment, projectId, onNavigate }: Props) {
       {/* Header */}
       <div className="flex items-center justify-between gap-2 mb-1">
         <div className="flex items-center gap-1.5 min-w-0">
-          <span className="font-medium truncate">{comment.creator_name}</span>
+          <span className="font-medium truncate">{comment.creator_userid}</span>
           {/* 다중 역할 배지 표시 */}
           {comment.creator_roles.map((r) => (
             <Badge key={r} variant="outline" className="text-[10px] px-1 py-0 shrink-0">
@@ -148,7 +148,7 @@ export function CommentThread({ comment, projectId, onNavigate }: Props) {
       {comment.is_resolved && (
         <div className="text-xs text-green-600 mt-2 flex items-center gap-1">
           <Check className="h-3 w-3" />
-          해결됨 {comment.resolver_name && `(${comment.resolver_name})`}
+          해결됨 {comment.resolver_userid && `(${comment.resolver_userid})`}
           {comment.resolved_at && ` · ${formatDate(comment.resolved_at)}`}
         </div>
       )}

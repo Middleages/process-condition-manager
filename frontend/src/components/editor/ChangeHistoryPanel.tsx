@@ -104,7 +104,7 @@ export function ChangeHistoryPanel({
     for (const group of accumulatedGroups) {
       for (const entry of group.entries) {
         if (!userMap.has(entry.user_id)) {
-          userMap.set(entry.user_id, entry.user_name)
+          userMap.set(entry.user_id, entry.userid)
         }
       }
     }

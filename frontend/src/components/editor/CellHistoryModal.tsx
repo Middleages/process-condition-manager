@@ -99,7 +99,7 @@ export function CellHistoryModal({
                     <td className="px-3 py-1.5 text-muted-foreground font-mono">
                       {formatChangedAt(item.changed_at)}
                     </td>
-                    <td className="px-3 py-1.5">{item.changed_by_name}</td>
+                    <td className="px-3 py-1.5">{item.changed_by_userid}</td>
                     <td className="px-3 py-1.5">
                       <span
                         className={`px-1 py-0.5 rounded text-[10px] ${

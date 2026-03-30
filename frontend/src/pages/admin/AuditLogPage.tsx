@@ -134,7 +134,7 @@ export default function AuditLogPage() {
           >
             <option value="">전체</option>
             {users.map((u) => (
-              <option key={u.id} value={u.id.toString()}>{u.display_name}</option>
+              <option key={u.id} value={u.id.toString()}>{u.userid}</option>
             ))}
           </select>
         </div>
@@ -217,7 +217,7 @@ export default function AuditLogPage() {
                     {changeTypeLabel(entry.change_type)}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-muted-foreground">{entry.changed_by_name ?? '-'}</td>
+                <td className="px-4 py-3 text-muted-foreground">{entry.changed_by_userid ?? '-'}</td>
                 <td className="px-4 py-3 text-muted-foreground text-xs">
                   {new Date(entry.changed_at).toLocaleString('ko-KR')}
                 </td>

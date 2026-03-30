@@ -106,7 +106,7 @@ export default function AnnouncementManagementPage() {
                   )}
                 </td>
                 <td className="px-4 py-3 text-muted-foreground">
-                  {item.creator_name ?? '-'}
+                  {item.creator_userid ?? '-'}
                 </td>
                 <td className="px-4 py-3 text-muted-foreground">
                   {new Date(item.created_at).toLocaleDateString('ko-KR')}

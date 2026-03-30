@@ -110,7 +110,7 @@ function ReviewPendingList({ items }: { items: ReviewPendingItem[] }) {
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium truncate">{item.product_name}</p>
             <p className="text-xs text-muted-foreground">
-              {item.creator_name} · {item.changed_cells_count}건 변경
+              {item.creator_userid} · {item.changed_cells_count}건 변경
             </p>
           </div>
           <span className="text-xs text-muted-foreground ml-3 shrink-0">
@@ -136,7 +136,7 @@ function ActivityTimeline({ items }: { items: ActivityItem[] }) {
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-sm">
-              <span className="font-medium">{item.changer_name}</span>
+              <span className="font-medium">{item.changer_userid}</span>
               {' '}
               <span className="text-muted-foreground">님이</span>
               {' '}
