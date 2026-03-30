@@ -29,6 +29,7 @@ describe('ProtectedRoute auth logic (via useAuthStore)', () => {
   })
 
   it('isAuthenticated becomes true after successful login (user should be allowed through)', async () => {
+
     const mockUser = { id: 1, userid: 'admin', roles: ['admin'] }
     mockPost.mockResolvedValueOnce({
       data: { access_token: 'token', token_type: 'bearer', user: mockUser },
@@ -57,6 +58,7 @@ describe('ProtectedRoute auth logic (via useAuthStore)', () => {
   })
 
   it('isLoading is true during login (spinner should be shown)', async () => {
+
     const mockUser = { id: 1, userid: 'admin', roles: ['admin'] }
     let resolveLogin!: (value: unknown) => void
     const loginPromise = new Promise((resolve) => {
@@ -80,6 +82,7 @@ describe('ProtectedRoute auth logic (via useAuthStore)', () => {
   })
 
   it('clearAuth sets isAuthenticated to false (forced logout should redirect)', async () => {
+
     const mockUser = { id: 1, userid: 'admin', roles: ['admin'] }
     mockPost.mockResolvedValueOnce({
       data: { access_token: 'token', token_type: 'bearer', user: mockUser },

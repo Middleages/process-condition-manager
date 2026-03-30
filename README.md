@@ -109,6 +109,12 @@ sequenceDiagram
     B-->>U: 200 User profile JSON
 ```
 
+
+#### 사용자 식별자 필드 명세
+- SSO `loginid`를 시스템 표준 사용자 식별자(`userid`)로 사용합니다.
+- API 응답의 `username`, `display_name`은 모두 `userid`와 동일한 값을 반환합니다.
+- 신규/테스트 데이터 작성 시에도 사용자 식별 문자열은 `userid` 기준으로 통일합니다.
+
 ### 대시보드
 - **상태 카드**: 전체 프로젝트 상태별 현황
 - **내 프로젝트**: 본인이 생성한 프로젝트 목록
