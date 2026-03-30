@@ -16,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Project, ProjectLayer
-from app.services.project_service import (
+from app.services.project.service import (
     create_project,
     get_project_detail,
     revise_project,

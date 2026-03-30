@@ -17,7 +17,7 @@ from fastapi import HTTPException
 from app.models import (
     User, ColumnCategory, ColumnDefinition, ColumnValidation, RecipeXmlMapping
 )
-from app.services import admin_service
+from app.services.admin import service as admin_service
 
 
 # ---------------------------------------------------------------------------

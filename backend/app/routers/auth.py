@@ -1,5 +1,4 @@
 """인증 라우터: 사내 SSO 자동 로그인, 로그아웃, 사용자 정보 엔드포인트."""
-
 from urllib.parse import unquote_plus, urlencode
 from uuid import uuid4
 
@@ -40,7 +39,6 @@ class SSOUserClaims(BaseModel):
     deptname: str | None = None
     forwardedclientip: str | None = None
 
-
 def _set_auth_cookie(response: Response, token: str) -> None:
     response.set_cookie(
         key=APP_COOKIE_NAME,
@@ -64,7 +62,6 @@ def _build_user_info(user: User) -> UserInfo:
         last_login_ip=user.last_login_ip,
     )
 
-
 def _build_auth_url(nonce: str) -> str:
     params = {
         "client_id": settings.IDP_CLIENT_ID,
@@ -75,6 +72,7 @@ def _build_auth_url(nonce: str) -> str:
         "nonce": nonce,
     }
     return f"{settings.IDP_ENTITY_ID}?{urlencode(params)}"
+
 
 def _is_dev_login_available() -> bool:
     return settings.ENVIRONMENT == "development" or settings.DEV_LOGIN_ENABLED
@@ -93,15 +91,12 @@ async def login() -> Response:
     """SSO 로그인 시작: nonce 쿠키 저장 후 IdP로 redirect."""
     nonce_val = uuid4().hex
     response = RedirectResponse(url=_build_auth_url(nonce_val), status_code=302)
-    nonce_samesite = settings.NONCE_COOKIE_SAMESITE.lower()
-    # SameSite=None 쿠키는 브라우저 정책상 Secure가 필수
-    nonce_secure = settings.COOKIE_SECURE or nonce_samesite == "none"
     response.set_cookie(
         key=NONCE_COOKIE_NAME,
         value=nonce_val,
         httponly=True,
-        secure=nonce_secure,
-        samesite=nonce_samesite,
+        secure=settings.COOKIE_SECURE,
+        samesite=settings.COOKIE_SAMESITE,
         max_age=300,
         path="/",
     )

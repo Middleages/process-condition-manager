@@ -15,8 +15,11 @@ from app.schemas.project import (
     StatusHistoryResponse,
     ChangeSummaryResponse,
 )
-from app.services import project_service, project_status_service, project_analytics_service, change_log_service
-from app.routers.projects import _build_project_detail_response
+from app.services.project import service as project_service
+from app.services.project import status_service as project_status_service
+from app.services.project import analytics_service as project_analytics_service
+from app.services import change_log_service
+from app.routers.projects.projects import _build_project_detail_response
 
 router = APIRouter(prefix="/projects", tags=["project-lifecycle"])
 

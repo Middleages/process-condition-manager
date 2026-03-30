@@ -157,7 +157,7 @@ class DeviceMasterSyncService:
         enrichment_summary = None
         if auto_enrich and inserted + updated > 0:
             try:
-                from app.services.device_enrichment_service import DeviceEnrichmentService
+                from app.services.device.enrichment_service import DeviceEnrichmentService
                 enrichment_summary = await DeviceEnrichmentService.enrich_all_devices(db)
             except Exception as exc:
                 errors.append(f"Auto-enrichment failed: {exc}")

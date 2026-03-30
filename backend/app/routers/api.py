@@ -3,11 +3,11 @@ from fastapi import APIRouter
 from app.routers import (
     announcements,
     columns,
-    config_change,
+    config_changes,
     dashboard,
     device_masters,
     equipments,
-    export,
+    exports,
     lines,
     products,
     uploads,
@@ -24,6 +24,6 @@ router.include_router(equipments.router)
 router.include_router(dashboard.router)
 router.include_router(device_masters.router)
 router.include_router(announcements.router)
-router.include_router(config_change.router)
+router.include_router(config_changes.router)
 router.include_router(uploads.router)
-router.include_router(export.router)
+router.include_router(exports.router)

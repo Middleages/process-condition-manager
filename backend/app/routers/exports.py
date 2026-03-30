@@ -5,7 +5,7 @@ from app.database import get_db
 from app.dependencies.auth import require_active_user
 from app.models.user import User
 from app.schemas.export import ExportSystemResponse
-from app.services.export_service import ExportService
+from app.services.export.service import ExportService
 
 router = APIRouter(prefix="/export", tags=["export"])
 

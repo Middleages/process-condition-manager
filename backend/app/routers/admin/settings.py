@@ -27,8 +27,8 @@ from app.schemas.admin import (
 )
 from app.schemas.column import ColumnCategoryResponse
 from app.schemas.export import ExportHistoryListResponse
-from app.services import admin_service
-from app.services.export_history_service import ExportHistoryService
+from app.services.admin import service as admin_service
+from app.services.export.history_service import ExportHistoryService
 
 router = APIRouter(tags=["admin"])
 

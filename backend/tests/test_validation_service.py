@@ -15,7 +15,7 @@ Covers:
 import pytest
 from fastapi import HTTPException
 
-from app.services.project_service import create_project
+from app.services.project.service import create_project
 from app.services.validation_service import validate_project
 
 

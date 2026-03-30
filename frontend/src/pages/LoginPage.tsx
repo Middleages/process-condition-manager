@@ -26,6 +26,7 @@ export default function LoginPage() {
     }
   }, [isAuthenticated, isLoading, login, navigate, searchParams])
 
+
   const handleLoginClick = async () => {
     await login()
   }

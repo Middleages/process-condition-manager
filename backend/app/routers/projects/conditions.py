@@ -16,7 +16,8 @@ from app.schemas.project import (
     VersionDiffResponse,
 )
 from app.services import condition_service, validation_service, change_log_service
-from app.services import project_analytics_service, diff_service
+from app.services.project import analytics_service as project_analytics_service
+from app.services import diff_service
 
 router = APIRouter(prefix="/projects", tags=["project-conditions"])
 

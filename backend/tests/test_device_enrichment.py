@@ -18,7 +18,7 @@ from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.device_master import DeviceMaster, DeviceMetaSource
-from app.services.device_enrichment_service import DeviceEnrichmentService
+from app.services.device.enrichment_service import DeviceEnrichmentService
 
 
 # ---------------------------------------------------------------------------

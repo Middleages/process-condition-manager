@@ -31,16 +31,12 @@ class Settings(BaseSettings):
     IDP_ENTITY_ID: str = ""
     IDP_SIGNOUT_URL: str = ""
     IDP_CLIENT_ID: str = ""
-    IDP_RESPONSE_TYPE: str = "id_token"
-    IDP_SCOPE: str = "openid profile"
     SP_REDIRECT_URL: str = ""
     CERTFILE_NAME: str = ""
     CERTFILE_PATH: str = ""
 
     COOKIE_SECURE: bool = False
     COOKIE_SAMESITE: str = "lax"
-    # form_post callback은 cross-site POST라 nonce 쿠키는 SameSite=None 권장
-    NONCE_COOKIE_SAMESITE: str = "none"
 
 
     # 개발 전용 로그인 우회

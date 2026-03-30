@@ -6,7 +6,7 @@ from app.database import get_db
 from app.models import User
 from app.dependencies.auth import require_admin
 from app.schemas.admin_user import AdminUserCreate, AdminUserUpdate, AdminUserResponse, AdminPasswordReset
-from app.services import admin_user_service
+from app.services.admin import user_service as admin_user_service
 
 router = APIRouter(tags=["admin-users"])
 

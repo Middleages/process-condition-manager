@@ -33,9 +33,9 @@ from app.models.device_master import (
     SyncSourceConfig,
 )
 from app.models.line import Line
-from app.services.device_master_sync_service import DeviceMasterSyncService
+from app.services.device.sync_service import DeviceMasterSyncService
 from app.services.sync_source_config_service import SyncSourceConfigService
-from app.services.device_meta_source_service import DeviceMetaSourceService
+from app.services.device.meta_source_service import DeviceMetaSourceService
 from app.schemas.device_master import (
     DeviceMetaSourceCreate,
     DeviceMetaSourceUpdate,
