@@ -9,5 +9,15 @@ export interface User {
   line_id: number | null
 }
 
-// 인증 세션 컨텍스트에 사용되는 User 부분 타입
 export type AuthUser = Pick<User, 'id' | 'userid' | 'roles' | 'line_id'>
+
+export interface AuthUser {
+  id: number
+  userid: string
+  username?: string
+  display_name: string
+  roles: UserRole[]
+  line_id: number | null
+  department?: string | null
+  last_login_ip?: string | null
+}

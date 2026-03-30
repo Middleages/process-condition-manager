@@ -1,6 +1,5 @@
 """인증 라우터: 사내 SSO 자동 로그인, 로그아웃, 사용자 정보 엔드포인트."""
-
-from urllib.parse import urlencode
+from urllib.parse import unquote_plus, urlencode
 from uuid import uuid4
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Query, Request, Response
@@ -24,8 +23,7 @@ NONCE_COOKIE_NAME = "sso_nonce"
 
 class UserInfo(BaseModel):
     id: int
-    username: str
-    display_name: str
+    userid: str
     roles: list[str]
     line_id: int | None = None
     department: str | None = None
@@ -39,7 +37,6 @@ class SSOUserClaims(BaseModel):
     username: str
     deptname: str | None = None
     forwardedclientip: str | None = None
-
 
 def _set_auth_cookie(response: Response, token: str) -> None:
     response.set_cookie(
@@ -56,25 +53,24 @@ def _set_auth_cookie(response: Response, token: str) -> None:
 def _build_user_info(user: User) -> UserInfo:
     return UserInfo(
         id=user.id,
-        username=user.username,
-        display_name=user.display_name,
+        userid=user.userid,
         roles=user.roles,
         line_id=user.line_id,
         department=user.department,
         last_login_ip=user.last_login_ip,
     )
 
-
 def _build_auth_url(nonce: str) -> str:
     params = {
         "client_id": settings.IDP_CLIENT_ID,
         "redirect_uri": settings.SP_REDIRECT_URL,
         "response_mode": "form_post",
-        "response_type": "code+id_token",
-        "scope": "openid+profile",
+        "response_type": settings.IDP_RESPONSE_TYPE,
+        "scope": settings.IDP_SCOPE,
         "nonce": nonce,
     }
     return f"{settings.IDP_ENTITY_ID}?{urlencode(params)}"
+
 
 def _is_dev_login_available() -> bool:
     return settings.ENVIRONMENT == "development" or settings.DEV_LOGIN_ENABLED
@@ -113,9 +109,23 @@ async def callback(
 ) -> Response:
     """IdP form_post callback 처리: id_token 검증 후 앱 쿠키 로그인."""
     form = await request.form()
-    id_token = form.get("id_token")
+    # ADFS/IdP 구현 편차로 form_post가 아닌 query 전달이 들어올 수 있어 fallback 처리
+    id_token = form.get("id_token") or request.query_params.get("id_token")
+    auth_code = form.get("code") or request.query_params.get("code")
+    idp_error = form.get("error") or request.query_params.get("error")
+    idp_error_description = form.get("error_description") or request.query_params.get("error_description")
+
+    if idp_error:
+        decoded_description = unquote_plus(str(idp_error_description or ""))
+        detail = f"IdP error: {idp_error}"
+        if decoded_description:
+            detail = f"{detail} ({decoded_description})"
+        raise HTTPException(status_code=401, detail=detail)
     if not id_token:
-        raise HTTPException(status_code=400, detail="Missing id_token")
+        detail = "Missing id_token"
+        if auth_code:
+            detail = "Missing id_token (received authorization code only)"
+        raise HTTPException(status_code=400, detail=detail)
 
     if not sso_nonce:
         raise HTTPException(status_code=401, detail="Missing login nonce")
@@ -139,12 +149,12 @@ async def callback(
     if not sso_user.loginid:
         raise HTTPException(status_code=401, detail="Missing loginid claim")
 
-    result = await db.execute(select(User).where(User.username == sso_user.loginid))
+    result = await db.execute(select(User).where(User.userid == sso_user.loginid))
     user = result.scalar_one_or_none()
 
     if user is None:
         user = User(
-            username=sso_user.loginid,
+            userid=sso_user.loginid,
             roles=["editor"],
             is_active=True,
             department=sso_user.deptname,
@@ -158,7 +168,7 @@ async def callback(
     await db.commit()
     await db.refresh(user)
 
-    payload = {"sub": str(user.id), "username": user.username, "roles": user.roles}
+    payload = {"sub": str(user.id), "userid": user.userid, "roles": user.roles}
     app_token = create_access_token(payload)
 
     redirect_response = RedirectResponse(url=settings.FRONTEND_URL, status_code=302)
@@ -169,25 +179,26 @@ async def callback(
 
 @router.get("/dev-login")
 async def dev_login(
-    username: str | None = Query(default=None),
+    userid: str | None = Query(default=None),
+    username: str | None = Query(default=None, deprecated=True),
     db: AsyncSession = Depends(get_db),
 ) -> Response:
     """개발 전용 로그인 우회: 지정 사용자로 app_token 쿠키를 즉시 발급."""
     if not _is_dev_login_available():
         raise HTTPException(status_code=404, detail="Not found")
 
-    selected_username = (username or settings.DEV_LOGIN_DEFAULT_USERNAME).strip()
-    if not selected_username:
-        raise HTTPException(status_code=400, detail="username is required")
-    if not _is_allowed_dev_username(selected_username):
-        raise HTTPException(status_code=403, detail="username is not allowed")
+    selected_userid = (userid or username or settings.DEV_LOGIN_DEFAULT_USERNAME).strip()
+    if not selected_userid:
+        raise HTTPException(status_code=400, detail="userid is required")
+    if not _is_allowed_dev_username(selected_userid):
+        raise HTTPException(status_code=403, detail="userid is not allowed")
 
-    result = await db.execute(select(User).where(User.username == selected_username))
+    result = await db.execute(select(User).where(User.userid == selected_userid))
     user = result.scalar_one_or_none()
 
     if user is None:
         user = User(
-            username=selected_username,
+            userid=selected_userid,
             roles=["editor"],
             is_active=True,
         )
@@ -195,7 +206,7 @@ async def dev_login(
         await db.commit()
         await db.refresh(user)
 
-    payload = {"sub": str(user.id), "username": user.username, "roles": user.roles}
+    payload = {"sub": str(user.id), "userid": user.userid, "roles": user.roles}
     app_token = create_access_token(payload)
 
     response = RedirectResponse(url=settings.FRONTEND_URL, status_code=302)
@@ -214,4 +225,3 @@ async def logout(response: Response) -> dict:
 async def get_me(current_user: User = Depends(get_current_user)) -> UserInfo:
     """현재 인증된 사용자 정보를 반환한다."""
     return _build_user_info(current_user)
-
