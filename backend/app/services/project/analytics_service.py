@@ -112,7 +112,7 @@ async def list_version_history(
             status=p.status,
             is_latest=p.is_latest,
             is_current=(p.id == project_id),
-            created_by_name=p.creator.display_name if p.creator else None,
+            created_by_name=p.creator.userid if p.creator else None,
             created_at=p.created_at,
             revision_reason=p.revision_reason,
         )

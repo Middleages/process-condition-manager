@@ -60,7 +60,7 @@ class ChangeLogRepository:
     ) -> tuple[list[tuple], int]:
         """Fetch change logs with User join. Returns (rows, total_count).
 
-        Each row is a (ChangeLog, display_name) tuple.
+        Each row is a (ChangeLog, userid) tuple.
 
         Args:
             db: Async database session
@@ -74,7 +74,7 @@ class ChangeLogRepository:
             offset: Row offset for pagination
 
         Returns:
-            Tuple of (list of (ChangeLog, display_name) rows, total count)
+            Tuple of (list of (ChangeLog, userid) rows, total count)
         """
         base_filter = ChangeLog.project_layer_id.in_(project_layer_ids)
         if column_name:
@@ -92,7 +92,7 @@ class ChangeLogRepository:
         total = (await db.execute(count_query)).scalar() or 0
 
         items_query = (
-            select(ChangeLog, User.display_name)
+            select(ChangeLog, User.userid)
             .join(User, ChangeLog.changed_by == User.id)
             .where(base_filter)
             .order_by(ChangeLog.changed_at.desc())
@@ -112,7 +112,7 @@ class ChangeLogRepository:
     ) -> list[tuple]:
         """Fetch status logs with User join.
 
-        Each row is a (ProjectStatusLog, display_name, user_id) tuple.
+        Each row is a (ProjectStatusLog, userid, user_id) tuple.
 
         Args:
             db: Async database session
@@ -120,10 +120,10 @@ class ChangeLogRepository:
             changed_by: Optional filter by user ID
 
         Returns:
-            List of (ProjectStatusLog, display_name, user_id) tuples
+            List of (ProjectStatusLog, userid, user_id) tuples
         """
         query = (
-            select(ProjectStatusLog, User.display_name, User.id)
+            select(ProjectStatusLog, User.userid, User.id)
             .join(User, ProjectStatusLog.changed_by == User.id)
             .where(ProjectStatusLog.project_id == project_id)
         )
@@ -141,7 +141,7 @@ class ChangeLogRepository:
     ) -> list[tuple]:
         """Fetch cell change history with User join.
 
-        Each row is a (ChangeLog, display_name) tuple.
+        Each row is a (ChangeLog, userid) tuple.
 
         Args:
             db: Async database session
@@ -149,10 +149,10 @@ class ChangeLogRepository:
             column_name: Column name to fetch history for
 
         Returns:
-            List of (ChangeLog, display_name) tuples ordered by changed_at DESC
+            List of (ChangeLog, userid) tuples ordered by changed_at DESC
         """
         query = (
-            select(ChangeLog, User.display_name)
+            select(ChangeLog, User.userid)
             .join(User, ChangeLog.changed_by == User.id)
             .where(
                 ChangeLog.project_layer_id == project_layer_id,
@@ -211,7 +211,7 @@ class ChangeLogRepository:
                     literal("cell_change").label("entry_type"),
                     ChangeLog.changed_at.label("timestamp"),
                     User.id.label("user_id"),
-                    User.display_name.label("user_name"),
+                    User.userid.label("user_name"),
                     ProjectLayer.layer_name.label("layer_name"),
                     ChangeLog.column_name.label("column_name"),
                     ChangeLog.old_value.label("old_value"),
@@ -238,7 +238,7 @@ class ChangeLogRepository:
                     literal("status_change").label("entry_type"),
                     ProjectStatusLog.changed_at.label("timestamp"),
                     User.id.label("user_id"),
-                    User.display_name.label("user_name"),
+                    User.userid.label("user_name"),
                     null().label("layer_name"),
                     null().label("column_name"),
                     null().label("old_value"),

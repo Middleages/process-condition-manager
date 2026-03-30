@@ -153,7 +153,7 @@ class DashboardRepository:
                 Product.product_name,
                 ProjectStatusLog.from_status,
                 ProjectStatusLog.to_status,
-                User.display_name.label("changer_name"),
+                User.userid.label("changer_name"),
                 ProjectStatusLog.comment,
                 ProjectStatusLog.changed_at,
             )
