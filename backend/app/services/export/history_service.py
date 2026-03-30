@@ -59,7 +59,7 @@ class ExportHistoryService:
         """Return paginated export history for a given project.
 
         Each item is enriched with system_name (from ExportSystem) and
-        exported_by_name (from User.display_name).
+        exported_by_name (from User.userid).
 
         Returns (items, total) tuple.
         """
@@ -79,7 +79,7 @@ class ExportHistoryService:
             select(
                 ExportHistory,
                 ExportSystem.system_name,
-                User.display_name,
+                User.userid,
             )
             .join(ExportSystem, ExportHistory.export_system_id == ExportSystem.id)
             .join(User, ExportHistory.exported_by == User.id)
@@ -98,13 +98,13 @@ class ExportHistoryService:
                 export_system_id=history.export_system_id,
                 system_name=system_name,
                 exported_by=history.exported_by,
-                exported_by_name=display_name,
+                exported_by_name=userid,
                 export_type=history.export_type,
                 file_count=history.file_count,
                 total_rows=history.total_rows,
                 exported_at=history.exported_at,
             )
-            for history, system_name, display_name in rows
+            for history, system_name, userid in rows
         ]
         return items, total
 
@@ -135,7 +135,7 @@ class ExportHistoryService:
             select(
                 ExportHistory,
                 ExportSystem.system_name,
-                User.display_name,
+                User.userid,
             )
             .join(ExportSystem, ExportHistory.export_system_id == ExportSystem.id)
             .join(User, ExportHistory.exported_by == User.id)
@@ -154,12 +154,12 @@ class ExportHistoryService:
                 export_system_id=history.export_system_id,
                 system_name=system_name,
                 exported_by=history.exported_by,
-                exported_by_name=display_name,
+                exported_by_name=userid,
                 export_type=history.export_type,
                 file_count=history.file_count,
                 total_rows=history.total_rows,
                 exported_at=history.exported_at,
             )
-            for history, system_name, display_name in rows
+            for history, system_name, userid in rows
         ]
         return items, total

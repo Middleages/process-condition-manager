@@ -58,6 +58,7 @@ describe('useAuthStore', () => {
 
   describe('login', () => {
     it('sets user and accessToken on successful login', async () => {
+
       const mockUser = { id: 1, userid: 'admin', roles: ['admin'] }
       mockPost.mockResolvedValueOnce({
         data: { access_token: 'mock-token-123', token_type: 'bearer', user: mockUser },
@@ -73,6 +74,7 @@ describe('useAuthStore', () => {
     })
 
     it('sends form-encoded data (not JSON) to login endpoint', async () => {
+
       const mockUser = { id: 1, userid: 'admin', roles: ['admin'] }
       mockPost.mockResolvedValueOnce({
         data: { access_token: 'token', token_type: 'bearer', user: mockUser },
@@ -90,6 +92,7 @@ describe('useAuthStore', () => {
     })
 
     it('posts to /auth/login endpoint', async () => {
+
       const mockUser = { id: 1, userid: 'admin', roles: ['admin'] }
       mockPost.mockResolvedValueOnce({
         data: { access_token: 'token', token_type: 'bearer', user: mockUser },
@@ -159,6 +162,7 @@ describe('useAuthStore', () => {
         mockAuthTokenSet: vi.fn(),
       }))
       // Use the already-mocked authToken.set
+
       const mockUser = { id: 1, userid: 'admin', roles: ['admin'] }
       mockPost.mockResolvedValueOnce({
         data: { access_token: 'sync-token', token_type: 'bearer', user: mockUser },

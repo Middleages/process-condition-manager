@@ -6,8 +6,7 @@ from app.constants import VALID_ROLES
 
 
 class AdminUserCreate(BaseModel):
-    username: str = Field(..., min_length=2, max_length=50)
-    display_name: str = Field(..., min_length=1, max_length=100)
+    userid: str = Field(..., min_length=2, max_length=50)
     email: str | None = Field(None, max_length=255)
     roles: list[str] = Field(default=["editor"])
     password: str = Field(..., min_length=4, max_length=100)
@@ -35,7 +34,6 @@ class AdminUserCreate(BaseModel):
 
 
 class AdminUserUpdate(BaseModel):
-    display_name: str | None = Field(None, max_length=100)
     email: str | None = None
     roles: list[str] | None = None
     is_active: bool | None = None
@@ -70,8 +68,7 @@ class AdminPasswordReset(BaseModel):
 
 class AdminUserResponse(BaseModel):
     id: int
-    username: str
-    display_name: str
+    userid: str
     email: str | None = None
     roles: list[str]
     is_active: bool

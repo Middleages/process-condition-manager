@@ -103,22 +103,21 @@ def seed():
         for u in USERS:
             session.execute(
                 text(
-                    "INSERT INTO users (username, display_name, roles, password_hash, email) "
-                    "VALUES (:un, :dn, CAST(:roles AS VARCHAR(20)[]), :ph, :email)"
+                    "INSERT INTO users (username, roles, password_hash, email) "
+                    "VALUES (:userid, CAST(:roles AS VARCHAR(20)[]), :ph, :email)"
                 ),
                 {
-                    "un": u["username"],
-                    "dn": u["display_name"],
+                    "userid": u["userid"],
                     "roles": u["roles"],
                     "ph": _default_password_hash,
                     "email": u.get("email"),
                 },
             )
             result = session.execute(
-                text("SELECT id FROM users WHERE username = :un"),
-                {"un": u["username"]},
+                text("SELECT id FROM users WHERE username = :userid"),
+                {"userid": u["userid"]},
             )
-            user_ids[u["username"]] = result.scalar()
+            user_ids[u["userid"]] = result.scalar()
         print(f"  Users: {len(user_ids)}")
 
         # --- Layers ---

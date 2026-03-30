@@ -15,11 +15,11 @@
 # 새로운 사용자를 추가하려면 이 리스트에 딕셔너리를 추가
 
 USERS = [
-    {"username": "admin1", "display_name": "관리자", "roles": ["admin"], "email": "admin@pcm.local"},
-    {"username": "engineer1", "display_name": "김엔지니어", "roles": ["editor"], "email": "editor@pcm.local"},
-    {"username": "engineer2", "display_name": "이엔지니어", "roles": ["editor"], "email": "editor2@pcm.local"},
-    {"username": "engineer3", "display_name": "박엔지니어", "roles": ["editor"], "email": "editor3@pcm.local"},
-    {"username": "reviewer1", "display_name": "최검토자", "roles": ["reviewer"], "email": "reviewer@pcm.local"},
-    {"username": "developer1", "display_name": "개발자", "roles": ["developer"], "email": "developer@pcm.local"},
-    {"username": "superuser1", "display_name": "수퍼유저", "roles": ["admin", "developer"], "email": "superuser@pcm.local"},
+    {"userid": "admin1", "roles": ["admin"], "email": "admin@pcm.local"},
+    {"userid": "engineer1", "roles": ["editor"], "email": "editor@pcm.local"},
+    {"userid": "engineer2", "roles": ["editor"], "email": "editor2@pcm.local"},
+    {"userid": "engineer3", "roles": ["editor"], "email": "editor3@pcm.local"},
+    {"userid": "reviewer1", "roles": ["reviewer"], "email": "reviewer@pcm.local"},
+    {"userid": "developer1", "roles": ["developer"], "email": "developer@pcm.local"},
+    {"userid": "superuser1", "roles": ["admin", "developer"], "email": "superuser@pcm.local"},
 ]
