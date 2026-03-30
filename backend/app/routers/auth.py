@@ -24,6 +24,8 @@ NONCE_COOKIE_NAME = "sso_nonce"
 
 class UserInfo(BaseModel):
     id: int
+    userid: str
+    # TODO(compat): remove username alias after 2026-06-30.
     username: str
     display_name: str
     roles: list[str]
@@ -56,6 +58,7 @@ def _set_auth_cookie(response: Response, token: str) -> None:
 def _build_user_info(user: User) -> UserInfo:
     return UserInfo(
         id=user.id,
+        userid=user.username,
         username=user.username,
         display_name=user.display_name,
         roles=user.roles,
@@ -158,7 +161,7 @@ async def callback(
     await db.commit()
     await db.refresh(user)
 
-    payload = {"sub": str(user.id), "username": user.username, "roles": user.roles}
+    payload = {"sub": str(user.id), "userid": user.username, "roles": user.roles}
     app_token = create_access_token(payload)
 
     redirect_response = RedirectResponse(url=settings.FRONTEND_URL, status_code=302)
@@ -195,7 +198,7 @@ async def dev_login(
         await db.commit()
         await db.refresh(user)
 
-    payload = {"sub": str(user.id), "username": user.username, "roles": user.roles}
+    payload = {"sub": str(user.id), "userid": user.username, "roles": user.roles}
     app_token = create_access_token(payload)
 
     response = RedirectResponse(url=settings.FRONTEND_URL, status_code=302)
@@ -214,4 +217,3 @@ async def logout(response: Response) -> dict:
 async def get_me(current_user: User = Depends(get_current_user)) -> UserInfo:
     """현재 인증된 사용자 정보를 반환한다."""
     return _build_user_info(current_user)
-
