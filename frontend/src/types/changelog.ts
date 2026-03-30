@@ -87,7 +87,7 @@ export interface VersionItem {
   status: string
   is_latest: boolean
   is_current: boolean
-  created_by_name: string | null
+  created_by_userid: string | null
   created_at: string
   revision_reason?: string | null
 }

@@ -61,7 +61,7 @@ export function StatusTimeline({ projectId }: Props) {
                 )}
               </div>
               <div className="text-xs text-muted-foreground mt-0.5">
-                {item.changer_name} · {formatDate(item.changed_at)}
+                {item.changer_userid} · {formatDate(item.changed_at)}
               </div>
               {item.comment && (
                 <div className="text-xs mt-1 text-muted-foreground italic">

@@ -49,7 +49,7 @@ async def list_announcements(
         select(
             Announcement,
             read_subq.label("is_read"),
-            User.display_name.label("creator_name"),
+            User.userid.label("creator_name"),
         )
         .outerjoin(User, User.id == Announcement.created_by)
         .where(Announcement.is_active == True)  # noqa: E712
@@ -107,7 +107,7 @@ async def get_announcement(
         select(
             Announcement,
             read_subq.label("is_read"),
-            User.display_name.label("creator_name"),
+            User.userid.label("creator_name"),
         )
         .outerjoin(User, User.id == Announcement.created_by)
         .where(
@@ -311,7 +311,7 @@ async def list_admin_announcements(
     total = total_result.scalar_one()
 
     stmt = (
-        select(Announcement, User.display_name.label("creator_name"))
+        select(Announcement, User.userid.label("creator_name"))
         .outerjoin(User, User.id == Announcement.created_by)
         .order_by(Announcement.created_at.desc())
         .offset(offset)

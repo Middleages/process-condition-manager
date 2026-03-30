@@ -74,7 +74,7 @@ function VersionDiffRow({ version, successorVersion, isCurrent }: VersionDiffRow
         {/* 작성자 + 날짜 + 개정 사유 */}
         <div className="flex-1 min-w-0">
           <div className="truncate text-muted-foreground">
-            {version.created_by_name ?? '-'}
+            {version.created_by_userid ?? '-'}
           </div>
           <div className="text-[10px] text-muted-foreground/70">
             {formatDate(version.created_at)}

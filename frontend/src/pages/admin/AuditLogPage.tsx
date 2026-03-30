@@ -134,7 +134,7 @@ export default function AuditLogPage() {
           >
             <option value="">전체</option>
             {users.map((u) => (
-              <option key={u.id} value={u.id.toString()}>{u.display_name}</option>
+              <option key={u.id} value={u.id.toString()}>{u.userid}</option>
             ))}
           </select>
         </div>
