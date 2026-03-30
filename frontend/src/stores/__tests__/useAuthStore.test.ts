@@ -58,7 +58,7 @@ describe('useAuthStore', () => {
 
   describe('login', () => {
     it('sets user and accessToken on successful login', async () => {
-      const mockUser = { id: 1, username: 'admin', display_name: 'Admin User', roles: ['admin'] }
+      const mockUser = { id: 1, username: 'admin', display_name: 'admin', roles: ['admin'] }
       mockPost.mockResolvedValueOnce({
         data: { access_token: 'mock-token-123', token_type: 'bearer', user: mockUser },
       })
@@ -73,7 +73,7 @@ describe('useAuthStore', () => {
     })
 
     it('sends form-encoded data (not JSON) to login endpoint', async () => {
-      const mockUser = { id: 1, username: 'admin', display_name: 'Admin', roles: ['admin'] }
+      const mockUser = { id: 1, username: 'admin', display_name: 'admin', roles: ['admin'] }
       mockPost.mockResolvedValueOnce({
         data: { access_token: 'token', token_type: 'bearer', user: mockUser },
       })
@@ -90,7 +90,7 @@ describe('useAuthStore', () => {
     })
 
     it('posts to /auth/login endpoint', async () => {
-      const mockUser = { id: 1, username: 'admin', display_name: 'Admin', roles: ['admin'] }
+      const mockUser = { id: 1, username: 'admin', display_name: 'admin', roles: ['admin'] }
       mockPost.mockResolvedValueOnce({
         data: { access_token: 'token', token_type: 'bearer', user: mockUser },
       })
@@ -102,7 +102,7 @@ describe('useAuthStore', () => {
     })
 
     it('sets isLoading to true during login and false after', async () => {
-      const mockUser = { id: 1, username: 'admin', display_name: 'Admin', roles: ['admin'] }
+      const mockUser = { id: 1, username: 'admin', display_name: 'admin', roles: ['admin'] }
       let resolveLogin!: (value: unknown) => void
       const loginPromise = new Promise((resolve) => {
         resolveLogin = resolve
@@ -140,7 +140,7 @@ describe('useAuthStore', () => {
       // The authToken singleton uses in-memory storage (not localStorage).
       // We verify that mockAuthTokenSet was called (in-memory only) and
       // that no localStorage operations occurred.
-      const mockUser = { id: 1, username: 'admin', display_name: 'Admin', roles: ['admin'] }
+      const mockUser = { id: 1, username: 'admin', display_name: 'admin', roles: ['admin'] }
       mockPost.mockResolvedValueOnce({
         data: { access_token: 'secret-token', token_type: 'bearer', user: mockUser },
       })
@@ -159,7 +159,7 @@ describe('useAuthStore', () => {
         mockAuthTokenSet: vi.fn(),
       }))
       // Use the already-mocked authToken.set
-      const mockUser = { id: 1, username: 'admin', display_name: 'Admin', roles: ['admin'] }
+      const mockUser = { id: 1, username: 'admin', display_name: 'admin', roles: ['admin'] }
       mockPost.mockResolvedValueOnce({
         data: { access_token: 'sync-token', token_type: 'bearer', user: mockUser },
       })
@@ -177,7 +177,7 @@ describe('useAuthStore', () => {
 
   describe('logout', () => {
     it('clears auth state on logout', async () => {
-      const mockUser = { id: 1, username: 'admin', display_name: 'Admin', roles: ['admin'] }
+      const mockUser = { id: 1, username: 'admin', display_name: 'admin', roles: ['admin'] }
       mockPost
         .mockResolvedValueOnce({
           data: { access_token: 'token', token_type: 'bearer', user: mockUser },
@@ -197,7 +197,7 @@ describe('useAuthStore', () => {
     })
 
     it('clears auth state even if logout request fails', async () => {
-      const mockUser = { id: 1, username: 'admin', display_name: 'Admin', roles: ['admin'] }
+      const mockUser = { id: 1, username: 'admin', display_name: 'admin', roles: ['admin'] }
       mockPost
         .mockResolvedValueOnce({
           data: { access_token: 'token', token_type: 'bearer', user: mockUser },
@@ -214,7 +214,7 @@ describe('useAuthStore', () => {
     })
 
     it('clears authToken singleton on logout', async () => {
-      const mockUser = { id: 1, username: 'admin', display_name: 'Admin', roles: ['admin'] }
+      const mockUser = { id: 1, username: 'admin', display_name: 'admin', roles: ['admin'] }
       mockPost
         .mockResolvedValueOnce({
           data: { access_token: 'token', token_type: 'bearer', user: mockUser },
@@ -266,7 +266,7 @@ describe('useAuthStore', () => {
 
   describe('fetchCurrentUser', () => {
     it('updates user from /auth/me endpoint', async () => {
-      const mockUser = { id: 2, username: 'editor', display_name: 'Editor User', roles: ['editor'] }
+      const mockUser = { id: 2, username: 'editor', display_name: 'editor', roles: ['editor'] }
       mockGet.mockResolvedValueOnce({ data: mockUser })
 
       const { useAuthStore } = await import('@/stores/useAuthStore')
@@ -303,7 +303,7 @@ describe('useAuthStore', () => {
 
   describe('clearAuth', () => {
     it('clears all auth state', async () => {
-      const mockUser = { id: 1, username: 'admin', display_name: 'Admin', roles: ['admin'] }
+      const mockUser = { id: 1, username: 'admin', display_name: 'admin', roles: ['admin'] }
       mockPost.mockResolvedValueOnce({
         data: { access_token: 'token', token_type: 'bearer', user: mockUser },
       })
@@ -330,7 +330,7 @@ describe('useAuthStore', () => {
     })
 
     it('is true when both user and accessToken are set', async () => {
-      const mockUser = { id: 1, username: 'admin', display_name: 'Admin', roles: ['admin'] }
+      const mockUser = { id: 1, username: 'admin', display_name: 'admin', roles: ['admin'] }
       mockPost.mockResolvedValueOnce({
         data: { access_token: 'token', token_type: 'bearer', user: mockUser },
       })

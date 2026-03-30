@@ -27,6 +27,11 @@
   - 백엔드 문법 컴파일
   - 프론트 빌드
 
+
+- [x] **사용자 식별자 필드 명세 정리**
+  - 표준 식별자는 `userid`(= SSO `loginid`)
+  - `/auth/me` 응답의 `username`, `display_name`은 `userid`와 동일 값으로 유지
+
 ## 비고
 - 테스트 코드 호환을 위해 store 시그니처(`refreshToken`, `setAccessToken`)는 유지하되 동작은 비활성(no-op) 처리.
 
