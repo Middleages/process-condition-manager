@@ -20,8 +20,8 @@ async def _count_active_admins(db: AsyncSession) -> int:
 
 
 async def list_users(db: AsyncSession, include_inactive: bool = False) -> list[AdminUserResponse]:
-    """모든 사용자 목록을 display_name 기준으로 정렬하여 반환한다. 기본적으로 비활성 사용자는 제외."""
-    query = select(User).order_by(User.display_name)
+    """모든 사용자 목록을 userid 기준으로 정렬하여 반환한다. 기본적으로 비활성 사용자는 제외."""
+    query = select(User).order_by(User.userid)
     if not include_inactive:
         query = query.where(User.is_active.is_(True))
     result = await db.execute(query)
@@ -30,11 +30,11 @@ async def list_users(db: AsyncSession, include_inactive: bool = False) -> list[A
 
 
 async def create_user(db: AsyncSession, data: AdminUserCreate) -> AdminUserResponse:
-    """신규 사용자를 생성한다. username/email 중복 시 409 에러."""
-    # username 중복 검사
-    existing = await db.execute(select(User).where(User.username == data.username))
+    """신규 사용자를 생성한다. userid/email 중복 시 409 에러."""
+    # userid 중복 검사
+    existing = await db.execute(select(User).where(User.userid == data.userid))
     if existing.scalar_one_or_none():
-        raise HTTPException(status_code=409, detail=f"Username '{data.username}' already exists")
+        raise HTTPException(status_code=409, detail=f"Userid '{data.userid}' already exists")
 
     # email 중복 검사 (제공된 경우)
     if data.email:
@@ -43,8 +43,7 @@ async def create_user(db: AsyncSession, data: AdminUserCreate) -> AdminUserRespo
             raise HTTPException(status_code=409, detail=f"Email '{data.email}' already exists")
 
     user = User(
-        username=data.username,
-        display_name=data.display_name,
+        userid=data.userid,
         email=data.email,
         roles=data.roles,
         password_hash=get_password_hash(data.password),
@@ -61,9 +60,6 @@ async def update_user(db: AsyncSession, user_id: int, data: AdminUserUpdate) -> 
     user = await db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-
-    if data.display_name is not None:
-        user.display_name = data.display_name
     if data.email is not None:
         user.email = data.email
     if data.roles is not None:

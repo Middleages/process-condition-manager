@@ -17,8 +17,8 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    # loginid를 userid 컬럼에 매칭
     userid: Mapped[str] = mapped_column(String(50), unique=True, index=True)
+
     # 다중 역할 지원: editor / reviewer / admin / developer
     roles: Mapped[list[str]] = mapped_column(
         ARRAY(String(20)), default=["editor"], server_default="{editor}"

@@ -563,7 +563,7 @@ async def list_audit_logs(
             Project.id.label("project_id"),
             Product.product_name.label("project_name"),
             ProjectLayer.layer_name.label("layer_name"),
-            UserAlias.display_name.label("changed_by_name"),
+            UserAlias.userid.label("changed_by_name"),
         )
         .outerjoin(ProjectLayer, ChangeLog.project_layer_id == ProjectLayer.id)
         .outerjoin(Project, ProjectLayer.project_id == Project.id)
