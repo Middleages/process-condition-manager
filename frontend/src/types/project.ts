@@ -28,7 +28,7 @@ export interface Project {
   parent_project_id: number | null
   is_latest: boolean
   created_by: number
-  creator_name: string
+  creator_userid: string
   layer_count: number
   created_at: string
   updated_at: string
@@ -160,7 +160,7 @@ export interface RevisionItem {
   revision: number
   status: string
   revision_reason: string | null
-  created_by: string | null
+  created_by_userid: string | null
   created_at: string
   is_latest: boolean
 }
@@ -201,7 +201,7 @@ export interface StatusHistoryItem {
   from_status: string | null
   to_status: string
   changed_by: number
-  changer_name: string
+  changer_userid: string
   comment: string | null
   changed_at: string
 }
@@ -236,12 +236,12 @@ export interface Comment {
   comment_type: 'rejection' | 'general'
   is_resolved: boolean
   created_by: number
-  creator_name: string
+  creator_userid: string
   creator_roles: string[]
   created_at: string
   resolved_at: string | null
   resolved_by: number | null
-  resolver_name: string | null
+  resolver_userid: string | null
 }
 
 export interface CommentListResponse {

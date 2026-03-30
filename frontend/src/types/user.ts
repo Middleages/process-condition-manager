@@ -3,15 +3,14 @@ export type UserRole = 'editor' | 'reviewer' | 'admin' | 'developer'
 
 export interface User {
   id: number
-  username: string
-  display_name: string
+  userid: string
   roles: UserRole[]
   is_active: boolean
   line_id: number | null
 }
 
-// 인증 세션 컨텍스트(/auth/me) 타입
-// username은 구버전 클라이언트 호환을 위한 읽기 전용 alias(임시)
+export type AuthUser = Pick<User, 'id' | 'userid' | 'roles' | 'line_id'>
+
 export interface AuthUser {
   id: number
   userid: string

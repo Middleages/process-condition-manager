@@ -29,8 +29,7 @@ interface UserFormModalProps {
 export function UserFormModal({ isOpen, onClose, user }: UserFormModalProps) {
   const isEdit = !!user
 
-  const [username, setUsername] = useState('')
-  const [displayName, setDisplayName] = useState('')
+  const [userId, setUserId] = useState('')
   const [email, setEmail] = useState('')
   const [selectedRoles, setSelectedRoles] = useState<string[]>(['editor'])
   const [password, setPassword] = useState('')
@@ -44,15 +43,13 @@ export function UserFormModal({ isOpen, onClose, user }: UserFormModalProps) {
 
   useEffect(() => {
     if (user) {
-      setUsername(user.username)
-      setDisplayName(user.display_name)
+      setUserId(user.userid)
       setEmail(user.email ?? '')
       setSelectedRoles([...user.roles])
       setIsActive(user.is_active)
       setLineId(user.line_id ?? null)
     } else {
-      setUsername('')
-      setDisplayName('')
+      setUserId('')
       setEmail('')
       setSelectedRoles(['editor'])
       setPassword('')
@@ -83,8 +80,8 @@ export function UserFormModal({ isOpen, onClose, user }: UserFormModalProps) {
       if (isEdit && user) {
         await updateMutation.mutateAsync({
           id: user.id,
-          payload: {
-            display_name: displayName,
+            payload: {
+            userid: userId,
             email: email || null,
             roles: selectedRoles,
             is_active: isActive,
@@ -93,8 +90,7 @@ export function UserFormModal({ isOpen, onClose, user }: UserFormModalProps) {
         })
       } else {
         await createMutation.mutateAsync({
-          username,
-          display_name: displayName,
+          userid: userId,
           email: email || null,
           roles: selectedRoles,
           password,
@@ -104,7 +100,7 @@ export function UserFormModal({ isOpen, onClose, user }: UserFormModalProps) {
     } catch (err: unknown) {
       const axiosErr = err as { response?: { status?: number; data?: { detail?: string } } }
       if (axiosErr.response?.status === 409) {
-        setServerError('이미 존재하는 사용자명 또는 이메일입니다.')
+        setServerError('이미 존재하는 아이디 또는 이메일입니다.')
       } else {
         setServerError(axiosErr.response?.data?.detail ?? '저장 중 오류가 발생했습니다.')
       }
@@ -121,22 +117,12 @@ export function UserFormModal({ isOpen, onClose, user }: UserFormModalProps) {
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-1">사용자명 *</label>
+            <label className="block text-sm font-medium mb-1">아이디 *</label>
             <Input
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
+              value={userId}
+              onChange={(e) => setUserId(e.target.value)}
               required
-              disabled={isEdit}
-              placeholder="username"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">표시 이름 *</label>
-            <Input
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              required
-              placeholder="홍길동"
+              placeholder="userid"
             />
           </div>
           <div>

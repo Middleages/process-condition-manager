@@ -71,7 +71,7 @@ export default function Header() {
           <NotificationBell />
           <div className="flex items-center gap-2 text-sm">
             <User className="h-4 w-4" />
-            <span>{user.display_name}</span>
+            <span>{user.userid}</span>
             {/* 다중 역할 배지 표시 */}
             <div className="flex gap-1">
               {user.roles.map((r) => (

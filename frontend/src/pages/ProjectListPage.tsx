@@ -191,7 +191,7 @@ export default function ProjectListPage() {
                   <td className="px-4 py-3">
                     <StatusBadge status={project.status} />
                   </td>
-                  <td className="px-4 py-3">{project.creator_name}</td>
+                  <td className="px-4 py-3">{project.creator_userid}</td>
                   <td className="px-4 py-3 text-muted-foreground">
                     {new Date(project.updated_at).toLocaleDateString('ko-KR', {
                       year: 'numeric',
