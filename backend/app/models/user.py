@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Optional
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, String, func
 from sqlalchemy.dialects.postgresql import ARRAY
-from sqlalchemy.orm import Mapped, mapped_column, relationship, synonym
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 
@@ -17,10 +17,8 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    # loginid를 username 컬럼에 매칭
-    username: Mapped[str] = mapped_column(String(50), unique=True, index=True)
-    # 레거시 호환: display_name 접근은 username에 매핑 (별도 DB 컬럼 미사용)
-    display_name = synonym("username")
+    # loginid를 userid 컬럼에 매칭
+    userid: Mapped[str] = mapped_column(String(50), unique=True, index=True)
     # 다중 역할 지원: editor / reviewer / admin / developer
     roles: Mapped[list[str]] = mapped_column(
         ARRAY(String(20)), default=["editor"], server_default="{editor}"
