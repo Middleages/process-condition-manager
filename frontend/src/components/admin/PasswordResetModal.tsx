@@ -49,7 +49,7 @@ export function PasswordResetModal({ isOpen, onClose, user }: PasswordResetModal
     <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent onClose={handleClose}>
         <DialogHeader>
-          <DialogTitle>비밀번호 초기화 - {user?.display_name}</DialogTitle>
+          <DialogTitle>비밀번호 초기화 - {user?.userid}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>

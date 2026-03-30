@@ -2,8 +2,7 @@ import type { UserRole } from './user'
 
 export interface AdminUser {
   id: number
-  username: string
-  display_name: string
+  userid: string
   email: string | null
   roles: UserRole[]
   is_active: boolean
@@ -13,15 +12,14 @@ export interface AdminUser {
 }
 
 export interface AdminUserCreate {
-  username: string
-  display_name: string
+  userid: string
   email?: string | null
   roles: string[]
   password: string
 }
 
 export interface AdminUserUpdate {
-  display_name?: string
+  userid?: string
   email?: string | null
   roles?: string[]
   is_active?: boolean
