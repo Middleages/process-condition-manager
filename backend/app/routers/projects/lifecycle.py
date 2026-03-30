@@ -62,7 +62,7 @@ async def get_product_revisions(
             revision=p.revision,
             status=p.status,
             revision_reason=p.revision_reason,
-            created_by=p.creator.display_name if p.creator else None,
+            created_by=p.creator.userid if p.creator else None,
             created_at=p.created_at,
             is_latest=p.is_latest,
         )

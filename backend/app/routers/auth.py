@@ -24,8 +24,7 @@ NONCE_COOKIE_NAME = "sso_nonce"
 
 class UserInfo(BaseModel):
     id: int
-    username: str
-    display_name: str
+    userid: str
     roles: list[str]
     line_id: int | None = None
     department: str | None = None
@@ -56,8 +55,7 @@ def _set_auth_cookie(response: Response, token: str) -> None:
 def _build_user_info(user: User) -> UserInfo:
     return UserInfo(
         id=user.id,
-        username=user.username,
-        display_name=user.display_name,
+        userid=user.userid,
         roles=user.roles,
         line_id=user.line_id,
         department=user.department,
@@ -139,12 +137,12 @@ async def callback(
     if not sso_user.loginid:
         raise HTTPException(status_code=401, detail="Missing loginid claim")
 
-    result = await db.execute(select(User).where(User.username == sso_user.loginid))
+    result = await db.execute(select(User).where(User.userid == sso_user.loginid))
     user = result.scalar_one_or_none()
 
     if user is None:
         user = User(
-            username=sso_user.loginid,
+            userid=sso_user.loginid,
             roles=["editor"],
             is_active=True,
             department=sso_user.deptname,
@@ -158,7 +156,7 @@ async def callback(
     await db.commit()
     await db.refresh(user)
 
-    payload = {"sub": str(user.id), "username": user.username, "roles": user.roles}
+    payload = {"sub": str(user.id), "userid": user.userid, "roles": user.roles}
     app_token = create_access_token(payload)
 
     redirect_response = RedirectResponse(url=settings.FRONTEND_URL, status_code=302)
@@ -169,25 +167,26 @@ async def callback(
 
 @router.get("/dev-login")
 async def dev_login(
-    username: str | None = Query(default=None),
+    userid: str | None = Query(default=None),
+    username: str | None = Query(default=None, deprecated=True),
     db: AsyncSession = Depends(get_db),
 ) -> Response:
     """개발 전용 로그인 우회: 지정 사용자로 app_token 쿠키를 즉시 발급."""
     if not _is_dev_login_available():
         raise HTTPException(status_code=404, detail="Not found")
 
-    selected_username = (username or settings.DEV_LOGIN_DEFAULT_USERNAME).strip()
-    if not selected_username:
-        raise HTTPException(status_code=400, detail="username is required")
-    if not _is_allowed_dev_username(selected_username):
-        raise HTTPException(status_code=403, detail="username is not allowed")
+    selected_userid = (userid or username or settings.DEV_LOGIN_DEFAULT_USERNAME).strip()
+    if not selected_userid:
+        raise HTTPException(status_code=400, detail="userid is required")
+    if not _is_allowed_dev_username(selected_userid):
+        raise HTTPException(status_code=403, detail="userid is not allowed")
 
-    result = await db.execute(select(User).where(User.username == selected_username))
+    result = await db.execute(select(User).where(User.userid == selected_userid))
     user = result.scalar_one_or_none()
 
     if user is None:
         user = User(
-            username=selected_username,
+            userid=selected_userid,
             roles=["editor"],
             is_active=True,
         )
@@ -195,7 +194,7 @@ async def dev_login(
         await db.commit()
         await db.refresh(user)
 
-    payload = {"sub": str(user.id), "username": user.username, "roles": user.roles}
+    payload = {"sub": str(user.id), "userid": user.userid, "roles": user.roles}
     app_token = create_access_token(payload)
 
     response = RedirectResponse(url=settings.FRONTEND_URL, status_code=302)
@@ -214,4 +213,3 @@ async def logout(response: Response) -> dict:
 async def get_me(current_user: User = Depends(get_current_user)) -> UserInfo:
     """현재 인증된 사용자 정보를 반환한다."""
     return _build_user_info(current_user)
-

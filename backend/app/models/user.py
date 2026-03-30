@@ -20,6 +20,8 @@ class User(Base):
     # loginid를 username 컬럼에 매칭
     username: Mapped[str] = mapped_column(String(50), unique=True, index=True)
     # 레거시 호환: display_name 접근은 username에 매핑 (별도 DB 컬럼 미사용)
+    userid = synonym("username")
+    # 레거시 호환: display_name 접근은 userid(username)에 매핑
     display_name = synonym("username")
     # 다중 역할 지원: editor / reviewer / admin / developer
     roles: Mapped[list[str]] = mapped_column(
