@@ -1,6 +1,5 @@
 """인증 라우터: 사내 SSO 자동 로그인, 로그아웃, 사용자 정보 엔드포인트."""
-
-from urllib.parse import urlencode
+from urllib.parse import unquote_plus, urlencode
 from uuid import uuid4
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Query, Request, Response
@@ -39,7 +38,6 @@ class SSOUserClaims(BaseModel):
     deptname: str | None = None
     forwardedclientip: str | None = None
 
-
 def _set_auth_cookie(response: Response, token: str) -> None:
     response.set_cookie(
         key=APP_COOKIE_NAME,
@@ -62,17 +60,17 @@ def _build_user_info(user: User) -> UserInfo:
         last_login_ip=user.last_login_ip,
     )
 
-
 def _build_auth_url(nonce: str) -> str:
     params = {
         "client_id": settings.IDP_CLIENT_ID,
         "redirect_uri": settings.SP_REDIRECT_URL,
         "response_mode": "form_post",
-        "response_type": "code+id_token",
-        "scope": "openid+profile",
+        "response_type": settings.IDP_RESPONSE_TYPE,
+        "scope": settings.IDP_SCOPE,
         "nonce": nonce,
     }
     return f"{settings.IDP_ENTITY_ID}?{urlencode(params)}"
+
 
 def _is_dev_login_available() -> bool:
     return settings.ENVIRONMENT == "development" or settings.DEV_LOGIN_ENABLED
@@ -111,9 +109,23 @@ async def callback(
 ) -> Response:
     """IdP form_post callback 처리: id_token 검증 후 앱 쿠키 로그인."""
     form = await request.form()
-    id_token = form.get("id_token")
+    # ADFS/IdP 구현 편차로 form_post가 아닌 query 전달이 들어올 수 있어 fallback 처리
+    id_token = form.get("id_token") or request.query_params.get("id_token")
+    auth_code = form.get("code") or request.query_params.get("code")
+    idp_error = form.get("error") or request.query_params.get("error")
+    idp_error_description = form.get("error_description") or request.query_params.get("error_description")
+
+    if idp_error:
+        decoded_description = unquote_plus(str(idp_error_description or ""))
+        detail = f"IdP error: {idp_error}"
+        if decoded_description:
+            detail = f"{detail} ({decoded_description})"
+        raise HTTPException(status_code=401, detail=detail)
     if not id_token:
-        raise HTTPException(status_code=400, detail="Missing id_token")
+        detail = "Missing id_token"
+        if auth_code:
+            detail = "Missing id_token (received authorization code only)"
+        raise HTTPException(status_code=400, detail=detail)
 
     if not sso_nonce:
         raise HTTPException(status_code=401, detail="Missing login nonce")
