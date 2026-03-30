@@ -70,9 +70,44 @@ PCM은 반도체 제조 공정 중 Photo 공정의 복잡한 공정조건표를 
 - **외부 데이터 소스**: 외부 시스템 연동 Export Pipeline
 
 ### 인증 및 권한
-- **JWT 인증**: Access Token (15분) + Refresh Token (7일) 기반
+- **ADFS/OpenID SSO 인증**: `/api/auth/login` → IdP Redirect → `/api/auth/callback`(form_post)
+- **앱 세션 쿠키 인증**: `app_token`(HttpOnly, SameSite, 환경별 Secure) 기반 세션 유지
 - **역할 기반 접근 제어 (RBAC)**: admin(전체), reviewer(승인/반려), editor(본인 프로젝트)
 - **전체 엔드포인트 보호**: 모든 API에 인증 적용
+
+#### SSO 인증 흐름 (시각화)
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as User Browser
+    participant N as Nginx (pcm.fhoto.net)
+    participant B as FastAPI Backend
+    participant I as ADFS/IdP
+
+    U->>N: GET /
+    N->>B: GET /api/auth/me
+    B-->>N: 401 Not authenticated
+    N-->>U: 401 (frontend detects unauthenticated)
+
+    U->>N: GET /api/auth/login
+    N->>B: /api/auth/login
+    B-->>U: 302 Redirect to IdP + set sso_nonce cookie
+
+    U->>I: GET authorize URL
+    I-->>U: Login page
+    U->>I: Submit AD credentials
+    I-->>U: Auto-submit form_post (id_token)
+
+    U->>N: POST /api/auth/callback (id_token)
+    N->>B: /api/auth/callback
+    B->>B: Verify id_token (PEM public key)
+    B->>B: Verify nonce + upsert user
+    B-->>U: 302 / + set app_token cookie
+
+    U->>N: GET /api/auth/me (with app_token)
+    N->>B: /api/auth/me
+    B-->>U: 200 User profile JSON
+```
 
 ### 대시보드
 - **상태 카드**: 전체 프로젝트 상태별 현황

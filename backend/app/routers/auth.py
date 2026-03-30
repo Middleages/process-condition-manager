@@ -1,30 +1,25 @@
-"""인증 라우터: 로그인, 로그아웃, 토큰 갱신, 사용자 정보 엔드포인트."""
+"""인증 라우터: 사내 SSO 자동 로그인, 로그아웃, 사용자 정보 엔드포인트."""
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
-from fastapi.security import OAuth2PasswordRequestForm
-from pydantic import BaseModel, Field
+from urllib.parse import unquote_plus, urlencode
+from uuid import uuid4
+
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Query, Request, Response
+from fastapi.responses import RedirectResponse
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database import get_db
 from app.dependencies.auth import get_current_user
 from app.models.user import User
-from app.services.auth_service import (
-    create_access_token,
-    create_refresh_token,
-    decode_token,
-    verify_password,
-)
-from jose import JWTError
+from app.services.auth_service import create_access_token
+from app.services.sso_service import SSOValidationError, verify_sso_id_token
 
 router = APIRouter()
 
-# ---------------------------------------------------------------------------
-# Response / Request 스키마
-# ---------------------------------------------------------------------------
-
-REFRESH_COOKIE_NAME = "refresh_token"
-REFRESH_COOKIE_PATH = "/api/auth"
+APP_COOKIE_NAME = "app_token"
+NONCE_COOKIE_NAME = "sso_nonce"
 
 
 class UserInfo(BaseModel):
@@ -33,174 +28,207 @@ class UserInfo(BaseModel):
     display_name: str
     roles: list[str]
     line_id: int | None = None
+    department: str | None = None
+    last_login_ip: str | None = None
 
     model_config = {"from_attributes": True}
 
 
-class LoginResponse(BaseModel):
-    access_token: str
-    token_type: str
-    user: UserInfo
+class SSOUserClaims(BaseModel):
+    loginid: str
+    username: str
+    deptname: str | None = None
+    forwardedclientip: str | None = None
 
 
-class TokenResponse(BaseModel):
-    access_token: str
-    token_type: str
-
-
-# ---------------------------------------------------------------------------
-# 헬퍼: 토큰 페이로드 구성
-# ---------------------------------------------------------------------------
-
-def _build_token_payload(user: User) -> dict:
-    """JWT 페이로드에 사용자 정보를 포함한다. roles 배열로 다중 역할 전달."""
-    return {"sub": str(user.id), "username": user.username, "roles": user.roles}
-
-
-def _set_refresh_cookie(response: Response, refresh_token: str) -> None:
+def _set_auth_cookie(response: Response, token: str) -> None:
     response.set_cookie(
-        key=REFRESH_COOKIE_NAME,
-        value=refresh_token,
+        key=APP_COOKIE_NAME,
+        value=token,
         httponly=True,
-        samesite="lax",
-        path=REFRESH_COOKIE_PATH,
+        secure=settings.COOKIE_SECURE,
+        samesite=settings.COOKIE_SAMESITE,
+        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        path="/",
     )
 
 
-# ---------------------------------------------------------------------------
-# 엔드포인트
-# ---------------------------------------------------------------------------
+def _build_user_info(user: User) -> UserInfo:
+    return UserInfo(
+        id=user.id,
+        username=user.username,
+        display_name=user.display_name,
+        roles=user.roles,
+        line_id=user.line_id,
+        department=user.department,
+        last_login_ip=user.last_login_ip,
+    )
 
-@router.post("/login", response_model=LoginResponse)
-async def login(
-    response: Response,
-    form_data: OAuth2PasswordRequestForm = Depends(),
+
+def _build_auth_url(nonce: str) -> str:
+    params = {
+        "client_id": settings.IDP_CLIENT_ID,
+        "redirect_uri": settings.SP_REDIRECT_URL,
+        "response_mode": "form_post",
+        "response_type": settings.IDP_RESPONSE_TYPE,
+        "scope": settings.IDP_SCOPE,
+        "nonce": nonce,
+    }
+    return f"{settings.IDP_ENTITY_ID}?{urlencode(params)}"
+
+def _is_dev_login_available() -> bool:
+    return settings.ENVIRONMENT == "development" or settings.DEV_LOGIN_ENABLED
+
+
+def _is_allowed_dev_username(username: str) -> bool:
+    allowlist = [item.strip() for item in settings.DEV_LOGIN_ALLOWLIST.split(",") if item.strip()]
+    if not allowlist:
+        return True
+    return username in allowlist
+
+
+
+@router.get("/login")
+async def login() -> Response:
+    """SSO 로그인 시작: nonce 쿠키 저장 후 IdP로 redirect."""
+    nonce_val = uuid4().hex
+    response = RedirectResponse(url=_build_auth_url(nonce_val), status_code=302)
+    nonce_samesite = settings.NONCE_COOKIE_SAMESITE.lower()
+    # SameSite=None 쿠키는 브라우저 정책상 Secure가 필수
+    nonce_secure = settings.COOKIE_SECURE or nonce_samesite == "none"
+    response.set_cookie(
+        key=NONCE_COOKIE_NAME,
+        value=nonce_val,
+        httponly=True,
+        secure=nonce_secure,
+        samesite=nonce_samesite,
+        max_age=300,
+        path="/",
+    )
+    return response
+
+
+@router.post("/callback")
+async def callback(
+    request: Request,
     db: AsyncSession = Depends(get_db),
-) -> LoginResponse:
-    """사용자 인증 후 access token 발급 + refresh cookie 설정.
+    sso_nonce: str | None = Cookie(default=None, alias=NONCE_COOKIE_NAME),
+) -> Response:
+    """IdP form_post callback 처리: id_token 검증 후 앱 쿠키 로그인."""
+    form = await request.form()
+    # ADFS/IdP 구현 편차로 form_post가 아닌 query 전달이 들어올 수 있어 fallback 처리
+    id_token = form.get("id_token") or request.query_params.get("id_token")
+    auth_code = form.get("code") or request.query_params.get("code")
+    idp_error = form.get("error") or request.query_params.get("error")
+    idp_error_description = form.get("error_description") or request.query_params.get("error_description")
 
-    OAuth2 form fields (username, password)를 받는다.
-    """
-    result = await db.execute(select(User).where(User.username == form_data.username))
-    user: User | None = result.scalar_one_or_none()
+    if idp_error:
+        decoded_description = unquote_plus(str(idp_error_description or ""))
+        detail = f"IdP error: {idp_error}"
+        if decoded_description:
+            detail = f"{detail} ({decoded_description})"
+        raise HTTPException(status_code=401, detail=detail)
+    if not id_token:
+        detail = "Missing id_token"
+        if auth_code:
+            detail = "Missing id_token (received authorization code only)"
+        raise HTTPException(status_code=400, detail=detail)
 
-    if user is None or not verify_password(form_data.password, user.password_hash):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-        )
-    if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User account is inactive",
-        )
+    if not sso_nonce:
+        raise HTTPException(status_code=401, detail="Missing login nonce")
 
-    payload = _build_token_payload(user)
-    access_token = create_access_token(payload)
-    refresh_token = create_refresh_token(payload)
-    _set_refresh_cookie(response, refresh_token)
+    try:
+        claims = verify_sso_id_token(str(id_token))
+    except SSOValidationError as exc:
+        raise HTTPException(status_code=401, detail="Token verification failed") from exc
 
-    return LoginResponse(
-        access_token=access_token,
-        token_type="bearer",
-        user=UserInfo(
-            id=user.id,
-            username=user.username,
-            display_name=user.display_name,
-            roles=user.roles,
-            line_id=user.line_id,
-        ),
+    claim_nonce = claims.get("nonce")
+    if claim_nonce != sso_nonce:
+        raise HTTPException(status_code=401, detail="Invalid nonce")
+
+    sso_user = SSOUserClaims(
+        loginid=claims.get("loginid", ""),
+        username=claims.get("username", ""),
+        deptname=claims.get("deptname"),
+        forwardedclientip=claims.get("forwardedclientip"),
     )
+
+    if not sso_user.loginid:
+        raise HTTPException(status_code=401, detail="Missing loginid claim")
+
+    result = await db.execute(select(User).where(User.username == sso_user.loginid))
+    user = result.scalar_one_or_none()
+
+    if user is None:
+        user = User(
+            username=sso_user.loginid,
+            roles=["editor"],
+            is_active=True,
+            department=sso_user.deptname,
+            last_login_ip=sso_user.forwardedclientip,
+        )
+        db.add(user)
+    else:
+        user.department = sso_user.deptname
+        user.last_login_ip = sso_user.forwardedclientip
+
+    await db.commit()
+    await db.refresh(user)
+
+    payload = {"sub": str(user.id), "username": user.username, "roles": user.roles}
+    app_token = create_access_token(payload)
+
+    redirect_response = RedirectResponse(url=settings.FRONTEND_URL, status_code=302)
+    _set_auth_cookie(redirect_response, app_token)
+    redirect_response.delete_cookie(key=NONCE_COOKIE_NAME, path="/")
+    return redirect_response
+
+
+@router.get("/dev-login")
+async def dev_login(
+    username: str | None = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """개발 전용 로그인 우회: 지정 사용자로 app_token 쿠키를 즉시 발급."""
+    if not _is_dev_login_available():
+        raise HTTPException(status_code=404, detail="Not found")
+
+    selected_username = (username or settings.DEV_LOGIN_DEFAULT_USERNAME).strip()
+    if not selected_username:
+        raise HTTPException(status_code=400, detail="username is required")
+    if not _is_allowed_dev_username(selected_username):
+        raise HTTPException(status_code=403, detail="username is not allowed")
+
+    result = await db.execute(select(User).where(User.username == selected_username))
+    user = result.scalar_one_or_none()
+
+    if user is None:
+        user = User(
+            username=selected_username,
+            roles=["editor"],
+            is_active=True,
+        )
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+
+    payload = {"sub": str(user.id), "username": user.username, "roles": user.roles}
+    app_token = create_access_token(payload)
+
+    response = RedirectResponse(url=settings.FRONTEND_URL, status_code=302)
+    _set_auth_cookie(response, app_token)
+    return response
 
 
 @router.post("/logout", status_code=200)
 async def logout(response: Response) -> dict:
-    """Refresh token 쿠키를 삭제하여 로그아웃 처리."""
-    response.delete_cookie(key=REFRESH_COOKIE_NAME, path=REFRESH_COOKIE_PATH)
+    """앱 쿠키 삭제로 로그아웃 처리."""
+    response.delete_cookie(key=APP_COOKIE_NAME, path="/")
     return {"message": "Logged out successfully"}
 
 
-@router.post("/refresh", response_model=TokenResponse)
-async def refresh_token(
-    db: AsyncSession = Depends(get_db),
-    refresh_token: str | None = Cookie(default=None, alias=REFRESH_COOKIE_NAME),
-) -> TokenResponse:
-    """HTTP-only 쿠키의 refresh token으로 새 access token 발급."""
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Invalid or expired refresh token",
-    )
-    if refresh_token is None:
-        raise credentials_exception
-
-    try:
-        payload = decode_token(refresh_token)
-        user_id: str | None = payload.get("sub")
-        if user_id is None:
-            raise credentials_exception
-    except JWTError:
-        raise credentials_exception
-
-    user = await db.get(User, int(user_id))
-    if user is None or not user.is_active:
-        raise credentials_exception
-
-    new_payload = _build_token_payload(user)
-    access_token = create_access_token(new_payload)
-    return TokenResponse(access_token=access_token, token_type="bearer")
-
-
 @router.get("/me", response_model=UserInfo)
-async def get_me(
-    current_user: User = Depends(get_current_user),
-) -> UserInfo:
-    """현재 인증된 사용자의 정보를 반환."""
-    return UserInfo(
-        id=current_user.id,
-        username=current_user.username,
-        display_name=current_user.display_name,
-        roles=current_user.roles,
-        line_id=current_user.line_id,
-    )
+async def get_me(current_user: User = Depends(get_current_user)) -> UserInfo:
+    """현재 인증된 사용자 정보를 반환한다."""
+    return _build_user_info(current_user)
 
-
-# ---------------------------------------------------------------------------
-# 소속 라인 자가 설정 (최초 1회만 허용)
-# ---------------------------------------------------------------------------
-
-class SetMyLineRequest(BaseModel):
-    line_id: int = Field(..., gt=0)
-
-
-@router.patch("/me/line", response_model=UserInfo)
-async def set_my_line(
-    body: SetMyLineRequest,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> UserInfo:
-    """소속 라인을 자가 설정한다. line_id가 이미 설정된 경우 관리자를 통해 변경해야 한다."""
-    if current_user.line_id is not None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="이미 소속 라인이 설정되어 있습니다. 변경은 관리자에게 요청해 주세요.",
-        )
-
-    from app.models.line import Line
-    line = await db.get(Line, body.line_id)
-    if line is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="해당 라인을 찾을 수 없습니다.",
-        )
-
-    current_user.line_id = body.line_id
-    await db.commit()
-    await db.refresh(current_user)
-
-    return UserInfo(
-        id=current_user.id,
-        username=current_user.username,
-        display_name=current_user.display_name,
-        roles=current_user.roles,
-        line_id=current_user.line_id,
-    )
