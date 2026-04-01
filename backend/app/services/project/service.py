@@ -4,19 +4,24 @@ Project core CRUD service.
 Handles project creation, retrieval, listing, revision, and product revisions.
 """
 import copy
+import logging
 
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from fastapi import HTTPException
 
+from app.config import settings
 from app.models import Product, ProductLayer, Project, ProjectLayer
 from app.repositories.backbone_repository import BackboneRepository
 from app.services.device import query_service as device_master_query_service
+from app.services.step_master import query_service as step_master_query_service
 
 # Re-exports for backward compatibility (used by tests and other modules)
 from app.services.project.status_service import update_project_status  # noqa: F401
 from app.services.project.analytics_service import get_change_summary, list_version_history  # noqa: F401
+
+logger = logging.getLogger(__name__)
 
 
 async def create_project(
@@ -123,6 +128,7 @@ async def create_project_v2(
     selected_layer_ids: list[str],
     backbone_product_id: int | None,
     created_by: int,
+    selected_layer_refs: list[tuple[str, str]] | None = None,
 ) -> Project:
     """Create a V2 project using DeviceMaster references (SPEC-PROJECT-002).
 
@@ -139,6 +145,8 @@ async def create_project_v2(
         part_id: Part identifier for the device.
         device_type: "full" or "short".
         selected_layer_ids: Layer numbers to include (e.g. ["1.0", "2.0"]).
+        selected_layer_refs: Optional explicit refs [(layer_id, step_seq), ...]
+            for ambiguous step_current(layer_id duplicates) cases.
         backbone_product_id: Optional product whose Approved project provides
             backbone conditions. If None, project is created without backbone.
         created_by: User FK for the creator.
@@ -190,15 +198,73 @@ async def create_project_v2(
         await BackboneRepository.validate_backbone_source(db, backbone_product_id)
         backbone_map = await BackboneRepository.get_backbone_layer_map(db, backbone_product_id)
 
-    # 5. Validate selected_layer_ids against device's layers
-    device_layers = await device_master_query_service.get_device_layers(db, device.id)
-    device_layer_map = {lm.layer_id: lm for lm in device_layers}
-    invalid_ids = set(selected_layer_ids) - set(device_layer_map.keys())
-    if invalid_ids:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid layer IDs not in device: {sorted(invalid_ids)}",
-        )
+    # 5. Validate selected_layer_ids against source layers
+    #    - USE_STEP_CURRENT=True: step_current(line_id + process) 우선
+    #    - fallback: device layer_master
+    layer_source = "layer_master"
+    step_layers = []
+    if settings.USE_STEP_CURRENT:
+        step_layers = await step_master_query_service.get_step_layers(db, line_id, process)
+        if step_layers:
+            layer_source = "step_current"
+        else:
+            logger.warning(
+                "USE_STEP_CURRENT enabled but no rows in step_current. "
+                "Fallback to layer_master. line_id=%s process=%s",
+                line_id,
+                process,
+            )
+
+    selected_layer_refs = selected_layer_refs or []
+
+    if layer_source == "step_current":
+        step_ref_map = {
+            (sl.layer_id, sl.step_seq): sl
+            for sl in step_layers
+            if sl.layer_id and sl.step_seq
+        }
+        layer_id_counts: dict[str, int] = {}
+        for sl in step_layers:
+            if sl.layer_id:
+                layer_id_counts[sl.layer_id] = layer_id_counts.get(sl.layer_id, 0) + 1
+        duplicate_layer_ids = sorted([layer_id for layer_id, cnt in layer_id_counts.items() if cnt > 1])
+        if duplicate_layer_ids and not selected_layer_refs:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Ambiguous step_current rows by layer_id. "
+                    f"Duplicate layer IDs: {duplicate_layer_ids}. "
+                    "Use selected_layer_refs(layer_id, step_seq) or deduplicate source."
+                ),
+            )
+
+        step_layer_map = {sl.layer_id: sl for sl in step_layers if sl.layer_id}
+        if selected_layer_refs:
+            invalid_refs = sorted([f"{layer}/{step}" for layer, step in selected_layer_refs if (layer, step) not in step_ref_map])
+            if invalid_refs:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid layer refs not in step_current: {invalid_refs}",
+                )
+            selected_entries: list[tuple[str, str | None]] = [(layer, step) for layer, step in selected_layer_refs]
+        else:
+            invalid_ids = set(selected_layer_ids) - set(step_layer_map.keys())
+            if invalid_ids:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid layer IDs not in {layer_source}: {sorted(invalid_ids)}",
+                )
+            selected_entries = [(layer_id, None) for layer_id in selected_layer_ids]
+    else:
+        device_layers = await device_master_query_service.get_device_layers(db, device.id)
+        device_layer_map = {lm.layer_id: lm for lm in device_layers}
+        invalid_ids = set(selected_layer_ids) - set(device_layer_map.keys())
+        if invalid_ids:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid layer IDs not in {layer_source}: {sorted(invalid_ids)}",
+            )
+        selected_entries = [(layer_id, None) for layer_id in selected_layer_ids]
 
     # 6. Create Project
     project = Project(
@@ -218,8 +284,7 @@ async def create_project_v2(
     await db.flush()
 
     # 7. Create ProjectLayers for selected layers
-    for layer_id_str in selected_layer_ids:
-        lm = device_layer_map[layer_id_str]
+    for sort_order, (layer_id_str, step_seq_ref) in enumerate(selected_entries):
         bb_cond = backbone_map.get(layer_id_str)
 
         if bb_cond is not None:
@@ -229,15 +294,27 @@ async def create_project_v2(
             conditions = {}
             backbone_conditions = {}
 
+        if layer_source == "step_current":
+            if step_seq_ref is not None:
+                src = step_ref_map[(layer_id_str, step_seq_ref)]
+            else:
+                src = step_layer_map[layer_id_str]
+            layer_name = src.descript or src.step_name or layer_id_str
+            step_seq = src.step_seq
+        else:
+            src = device_layer_map[layer_id_str]
+            layer_name = src.descript
+            step_seq = src.step_seq
+
         project_layer = ProjectLayer(
             project_id=project.id,
             layer_id=layer_id_str,
-            layer_name=lm.descript,
-            step_seq=lm.step_seq,
+            layer_name=layer_name,
+            step_seq=step_seq,
             backbone_product_id=backbone_product_id if bb_cond is not None else None,
             conditions=conditions,
             backbone_conditions=backbone_conditions,
-            sort_order=0,  # LayerMaster does not have sort_order; use index-based
+            sort_order=sort_order,
         )
         db.add(project_layer)
 
