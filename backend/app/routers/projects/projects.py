@@ -147,6 +147,7 @@ async def create_project_v2(
         part_id=req.part_id,
         device_type=req.device_type,
         selected_layer_ids=req.selected_layer_ids or [],
+        selected_layer_refs=[(ref.layer_id, ref.step_seq) for ref in (req.selected_layer_refs or [])],
         backbone_product_id=req.backbone_product_id,
         created_by=current_user.id,
     )

@@ -20,7 +20,13 @@ class ProjectCreateRequestV2(BaseModel):
     part_id: str = Field(..., min_length=1, max_length=100)
     device_type: str = Field("full", pattern=r"^(full|short)$")
     selected_layer_ids: list[str] | None = None  # layer_master.layer_id values, required when device_type="short"
+    selected_layer_refs: list["LayerStepRef"] | None = None  # step_current 중복 layer_id 대응 (layer_id + step_seq)
     backbone_product_id: int | None = None  # None = "no backbone"
+
+
+class LayerStepRef(BaseModel):
+    layer_id: str = Field(..., min_length=1, max_length=50)
+    step_seq: str = Field(..., min_length=1, max_length=50)
 
 
 class LayerConditions(BaseModel):

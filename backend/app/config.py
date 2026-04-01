@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     COOKIE_SECURE: bool = False
     COOKIE_SAMESITE: str = "lax"
 
+    # Step Master 최신 스냅샷(step_current) 기반 레이어 조회 전환 플래그
+    USE_STEP_CURRENT: bool = False
+
 
     # 개발 전용 로그인 우회
     DEV_LOGIN_ENABLED: bool = False
