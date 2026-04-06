@@ -115,7 +115,7 @@ export default function AnnouncementListPage() {
                   <CategoryBadge category={a.category as AnnouncementCategory} />
                   <PriorityBadge priority={a.priority} />
                   <span className="text-xs text-muted-foreground ml-auto">
-                    {a.creator_name ?? ''} · {formatDate(a.created_at)}
+                    {a.creator_userid ?? ''} · {formatDate(a.created_at)}
                   </span>
                 </div>
               </div>

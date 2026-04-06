@@ -47,7 +47,7 @@ export function ChangeHistoryEntry({ entry, onClick }: ChangeHistoryEntryProps) 
         {/* Time and user row */}
         <div className="flex items-center gap-1.5 text-muted-foreground mb-0.5">
           <span className="font-mono">{formatTime(entry.timestamp)}</span>
-          <span>{entry.user_name}</span>
+          <span>{entry.userid}</span>
         </div>
 
         {/* Action type row */}
@@ -81,7 +81,7 @@ export function ChangeHistoryEntry({ entry, onClick }: ChangeHistoryEntryProps) 
       {/* Time and user row */}
       <div className="flex items-center gap-1.5 text-muted-foreground mb-0.5">
         <span className="font-mono">{formatTime(entry.timestamp)}</span>
-        <span>{entry.user_name}</span>
+        <span>{entry.userid}</span>
       </div>
 
       {/* Action type row */}

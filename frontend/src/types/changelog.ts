@@ -8,7 +8,7 @@ export interface ChangeLogItem {
   new_value: string | null
   change_type: 'manual' | 'backbone' | 'recipe'
   changed_by: number
-  changed_by_name: string
+  changed_by_userid: string
   changed_at: string
 }
 
@@ -37,7 +37,7 @@ export interface TimelineEntry {
   entry_type: 'cell_change' | 'status_change'
   timestamp: string
   user_id: number
-  user_name: string
+  userid: string
   details: TimelineEntryDetails
 }
 
@@ -68,7 +68,7 @@ export interface CellHistoryItem {
   new_value: string | null
   change_type: string
   changed_by: number
-  changed_by_name: string
+  changed_by_userid: string
   changed_at: string
 }
 

@@ -10,7 +10,7 @@ export interface AuditLogEntry {
   new_value: string | null
   change_type: 'manual' | 'backbone' | 'recipe'
   changed_by: number
-  changed_by_name: string | null
+  changed_by_userid: string | null
   changed_at: string
 }
 

@@ -16,7 +16,7 @@ export interface Announcement {
   created_at: string
   updated_at: string
   is_read: boolean
-  creator_name: string | null
+  creator_userid: string | null
 }
 
 export interface AnnouncementListResponse {

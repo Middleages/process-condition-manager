@@ -17,7 +17,7 @@ export interface MyRecentProject {
 export interface ReviewPendingItem {
   id: number
   product_name: string
-  creator_name: string
+  creator_userid: string
   changed_cells_count: number
   review_requested_at: string | null
 }
@@ -28,7 +28,7 @@ export interface ActivityItem {
   product_name: string
   from_status: string
   to_status: string
-  changer_name: string
+  changer_userid: string
   comment: string | null
   changed_at: string
 }
