@@ -5,6 +5,7 @@ Handles project creation, retrieval, listing, revision, and product revisions.
 """
 import copy
 import logging
+from datetime import datetime, timezone
 
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -206,6 +207,29 @@ async def create_project_v2(
     if settings.USE_STEP_CURRENT:
         step_layers = await step_master_query_service.get_step_layers(db, line_id, process)
         if step_layers:
+            if settings.STEP_CURRENT_ENFORCE_FRESHNESS:
+                last_success_at = await step_master_query_service.get_last_successful_full_sync_at(db)
+                is_fresh = step_master_query_service.is_within_freshness_sla(
+                    last_success_at=last_success_at,
+                    now_utc=datetime.now(timezone.utc),
+                    sla_minutes=settings.STEP_CURRENT_FRESHNESS_SLA_MINUTES,
+                )
+                if not is_fresh:
+                    logger.warning(
+                        "step_current freshness SLA breached. line_id=%s process=%s last_success_at=%s sla_minutes=%s",
+                        line_id,
+                        process,
+                        last_success_at.isoformat() if last_success_at else None,
+                        settings.STEP_CURRENT_FRESHNESS_SLA_MINUTES,
+                    )
+                    raise HTTPException(
+                        status_code=503,
+                        detail=(
+                            "step_current is stale. "
+                            f"last_success_at={last_success_at.isoformat() if last_success_at else 'none'}, "
+                            f"sla_minutes={settings.STEP_CURRENT_FRESHNESS_SLA_MINUTES}"
+                        ),
+                    )
             layer_source = "step_current"
         else:
             logger.warning(
