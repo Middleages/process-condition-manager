@@ -64,7 +64,7 @@ A unified operational model is needed for:
 
 ## 8. Success Metrics
 - 99%+ hourly runs complete with no manual intervention.
-- End-to-end freshness of latest table under 90 minutes.
+- End-to-end freshness of latest table under 120 minutes.
 - Recovery from single-line failure within one rerun cycle.
 - Data quality checks detect key collisions/null-key anomalies.
 

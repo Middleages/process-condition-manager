@@ -40,6 +40,10 @@ class Settings(BaseSettings):
 
     # Step Master 최신 스냅샷(step_current) 기반 레이어 조회 전환 플래그
     USE_STEP_CURRENT: bool = False
+    # step_current freshness SLA (분): 마지막 full_to_current_hourly 성공 시각 기준
+    STEP_CURRENT_FRESHNESS_SLA_MINUTES: int = 120
+    # stale 시 step_current 사용을 차단할지 여부 (True면 503)
+    STEP_CURRENT_ENFORCE_FRESHNESS: bool = True
 
 
     # 개발 전용 로그인 우회
