@@ -528,7 +528,9 @@ export function ProjectCreateModalV2({ open, onOpenChange }: Props) {
                 {(() => {
                   const err = createProjectV2.error as { response?: { status?: number; data?: { detail?: string } } }
                   const status = err?.response?.status
-                  if (status === 409) return '동일한 디바이스 조합의 활성 프로젝트가 이미 존재합니다.'
+                  if (status === 409) {
+                    return err?.response?.data?.detail || '동일한 디바이스 조합의 활성 프로젝트가 이미 존재합니다.'
+                  }
                   if (status === 404) return '디바이스 정보를 찾을 수 없습니다. 입력값을 확인해주세요.'
                   if (status === 400) return err?.response?.data?.detail || '입력값이 올바르지 않습니다.'
                   return '프로젝트 생성에 실패했습니다. 다시 시도해주세요.'
