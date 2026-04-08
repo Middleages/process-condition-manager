@@ -77,7 +77,6 @@ export function useCheckDuplicate() {
   return useMutation({
     mutationFn: (params: {
       line_id: number
-      product_name: string
       process: string
       part_id: string
     }) => checkDuplicate(params),

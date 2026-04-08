@@ -70,7 +70,6 @@ async def search_devices(
 @router.post("/check-duplicate", response_model=DuplicateCheckResponse)
 async def check_duplicate(
     line_id: int = Body(..., gt=0),
-    product_name: str = Body(..., min_length=1, max_length=100),
     process: str = Body(..., min_length=1, max_length=50),
     part_id: str = Body(..., min_length=1, max_length=100),
     _user: User = Depends(require_active_user),
@@ -78,12 +77,13 @@ async def check_duplicate(
 ) -> DuplicateCheckResponse:
     """Check if a project already exists for the given device reference.
 
-    Finds matching device_master by (line_id, product_name, process, part_id),
+    Finds matching device_master by (line_id, process, part_id),
     then checks if any Project with that device_master_id has status in ('draft', 'review').
     """
-    device = await device_master_query_service.get_device_by_ref(
-        db, line_id, product_name, process, part_id,
-    )
+    try:
+        device = await device_master_query_service.get_device_by_ref(db, line_id, process, part_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     if device is None:
         return DuplicateCheckResponse(exists=False)
 

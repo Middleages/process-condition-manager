@@ -47,11 +47,10 @@ export interface ProjectDetail extends Project {
 // ========== API Requests ==========
 export interface ProjectCreateRequestV2 {
   line_id: number
-  product_name: string
   process: string
   part_id: string
   device_type: 'full' | 'short'
-  selected_layer_ids?: string[]
+  selected_layer_refs: Array<{ layer_id: string; step_seq: string }>
   backbone_product_id?: number | null
 }
 

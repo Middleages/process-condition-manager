@@ -71,25 +71,19 @@ export function ProjectCreateModalV2({ open, onOpenChange }: Props) {
     const uniquePartIds = [
       ...new Set(filtered.map((dm) => dm.part_id).filter((pid): pid is string => pid !== null)),
     ].sort()
-    // Include a "N/A" entry if any device_master has null part_id
-    const hasNullPartId = filtered.some((dm) => dm.part_id === null)
     const options = uniquePartIds.map((pid) => ({ value: pid, label: pid }))
-    if (hasNullPartId) {
-      options.unshift({ value: '__NULL__', label: 'N/A' })
-    }
     return options
   }, [selectedProductName, selectedProcess, deviceMasters])
 
   // ========== Resolve device master ==========
   const resolvedDeviceMaster: DeviceMaster | null = useMemo(() => {
     if (!selectedProductName || !selectedProcess || !selectedPartId) return null
-    const partIdToMatch = selectedPartId === '__NULL__' ? null : selectedPartId
     return (
       deviceMasters.find(
         (dm) =>
           dm.product_name === selectedProductName &&
           dm.process === selectedProcess &&
-          dm.part_id === partIdToMatch
+          dm.part_id === selectedPartId
       ) ?? null
     )
   }, [selectedProductName, selectedProcess, selectedPartId, deviceMasters])
@@ -120,12 +114,10 @@ export function ProjectCreateModalV2({ open, onOpenChange }: Props) {
 
   useEffect(() => {
     if (selectedLineId && selectedProductName && selectedProcess && selectedPartId) {
-      const partId = selectedPartId === '__NULL__' ? '' : selectedPartId
       checkDuplicate.mutate({
         line_id: selectedLineId,
-        product_name: selectedProductName,
         process: selectedProcess,
-        part_id: partId,
+        part_id: selectedPartId,
       })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -182,6 +174,7 @@ export function ProjectCreateModalV2({ open, onOpenChange }: Props) {
   // ========== Computed display values ==========
   const duplicateData = checkDuplicate.data
   const hasDuplicate = duplicateData?.exists === true
+  const selectableLayerRefs = deviceLayers.filter((layer) => !!layer.step_seq)
 
   // ========== Submission ==========
   const isSubmitDisabled =
@@ -190,6 +183,7 @@ export function ProjectCreateModalV2({ open, onOpenChange }: Props) {
     !selectedProcess ||
     !selectedPartId ||
     (deviceType === 'short' && selectedLayerIds.length === 0) ||
+    selectableLayerRefs.length === 0 ||
     hasDuplicate ||
     checkDuplicate.isPending ||
     createProjectV2.isPending
@@ -200,11 +194,16 @@ export function ProjectCreateModalV2({ open, onOpenChange }: Props) {
 
     const req: ProjectCreateRequestV2 = {
       line_id: selectedLineId,
-      product_name: selectedProductName,
       process: selectedProcess,
-      part_id: selectedPartId === '__NULL__' ? '' : selectedPartId,
+      part_id: selectedPartId,
       device_type: deviceType,
-      selected_layer_ids: deviceType === 'short' ? selectedLayerIds : undefined,
+      selected_layer_refs:
+        deviceType === 'short'
+          ? selectableLayerRefs
+              .filter((layer) => selectedLayerIds.includes(layer.layer_id) && !!layer.step_seq)
+              .map((layer) => ({ layer_id: layer.layer_id, step_seq: layer.step_seq! }))
+          : selectableLayerRefs
+              .map((layer) => ({ layer_id: layer.layer_id, step_seq: layer.step_seq! })),
       backbone_product_id: backboneProductId ? Number(backboneProductId) : null,
     }
 

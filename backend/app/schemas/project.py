@@ -15,12 +15,10 @@ class ProjectCreateRequest(BaseModel):
 class ProjectCreateRequestV2(BaseModel):
     """V2 device-ref based project creation request (SPEC-PROJECT-002)."""
     line_id: int
-    product_name: str = Field(..., min_length=1, max_length=100)
     process: str = Field(..., min_length=1, max_length=50)
     part_id: str = Field(..., min_length=1, max_length=100)
     device_type: str = Field("full", pattern=r"^(full|short)$")
-    selected_layer_ids: list[str] | None = None  # layer_master.layer_id values, required when device_type="short"
-    selected_layer_refs: list["LayerStepRef"] | None = None  # step_current 중복 layer_id 대응 (layer_id + step_seq)
+    selected_layer_refs: list["LayerStepRef"] = Field(..., min_length=1)
     backbone_product_id: int | None = None  # None = "no backbone"
 
 
