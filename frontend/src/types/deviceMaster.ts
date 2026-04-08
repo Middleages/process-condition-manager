@@ -176,3 +176,24 @@ export interface DuplicateCheckResponse {
   existing_project_status?: string | null
   existing_project_revision?: number | null
 }
+
+export interface StepCurrentProcessOptionsResponse {
+  line_id: number
+  process_ids: string[]
+}
+
+export interface StepCurrentLayerItem {
+  step_seq: string
+  layer_id: string
+  descript: string | null
+}
+
+export interface StepCurrentLayersResponse {
+  line_id: number
+  process_id: string
+  part_id: string
+  layers: StepCurrentLayerItem[]
+  last_successful_sync_at: string | null
+  stale: boolean
+  stale_reason: string | null
+}
