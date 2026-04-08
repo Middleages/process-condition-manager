@@ -162,37 +162,13 @@ async def create_project_v2(
             detail=f"Invalid device_type '{device_type}'. Must be 'full' or 'short'.",
         )
 
-    # 2. Check no active (draft/review) project for same step-current refs
-    result = await db.execute(
-        select(Project).where(
-            Project.line_id == line_id,
-            Project.process == process,
-            Project.part_id == part_id,
-            Project.status.in_(["draft", "review"]),
-        )
-    )
-    existing = result.scalars().first()
-    if existing:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Active project (status={existing.status}) already exists for this reference.",
-        )
-
-    # 3. Determine backbone source and build layer map
-    backbone_map: dict[str, dict] = {}
-    if backbone_product_id is not None:
-        await BackboneRepository.validate_backbone_source(db, backbone_product_id)
-        backbone_map = await BackboneRepository.get_backbone_layer_map(db, backbone_product_id)
-
-    # 4. Validate selected_layer_refs against step_current only
+    # 2. step_current 기반 검증/선택 수행 (device_master 비의존)
+    layer_source = "step_current"
     step_layers = await step_master_query_service.get_step_layers(db, line_id, process)
-    if not step_layers:
-        raise HTTPException(
-            status_code=404,
-            detail=f"No step_current rows for line_id={line_id}, process='{process}'.",
-        )
+    selected_layer_refs = selected_layer_refs or []
+    selected_layer_ids = selected_layer_ids or []
 
-    if settings.STEP_CURRENT_ENFORCE_FRESHNESS:
+    if settings.STEP_CURRENT_ENFORCE_FRESHNESS and step_layers:
         last_success_at = await step_master_query_service.get_last_successful_full_sync_at(db)
         is_fresh = step_master_query_service.is_within_freshness_sla(
             last_success_at=last_success_at,
@@ -216,22 +192,100 @@ async def create_project_v2(
                 ),
             )
 
+    if not step_layers:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "선택한 line/process에 대한 step_current 데이터가 없습니다. "
+                "동기화 완료 후 다시 시도해주세요."
+            ),
+        )
+
+    # 3. Resolve product_id from (line_id, product_name) for duplicate check/project 저장
+    resolved_product_id: int | None = None
+    product_id_result = await db.execute(
+        select(Product.id).where(
+            Product.line_id == line_id,
+            Product.product_name == product_name,
+        )
+    )
+    resolved_product_id = product_id_result.scalar_one_or_none()
+
+    # 4. Check no active (draft/review) project for same natural key
+    result = await db.execute(
+        select(Project).where(
+            Project.line_id == line_id,
+            Project.product_id == resolved_product_id,
+            Project.part_id == part_id,
+            Project.status.in_(["draft", "review"]),
+        )
+    )
+    existing = result.scalars().first()
+    if existing:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Active project (status={existing.status}) already exists for this reference.",
+        )
+
+    # 5. Determine backbone source and build layer map
+    backbone_map: dict[str, dict] = {}
+    if backbone_product_id is not None:
+        await BackboneRepository.validate_backbone_source(db, backbone_product_id)
+        backbone_map = await BackboneRepository.get_backbone_layer_map(db, backbone_product_id)
+
+    # 6. Validate selection against step_current layers
     step_ref_map = {
         (sl.layer_id, sl.step_seq): sl
         for sl in step_layers
         if sl.layer_id and sl.step_seq
     }
-    invalid_refs = sorted([f"{layer}/{step}" for layer, step in selected_layer_refs if (layer, step) not in step_ref_map])
-    if invalid_refs:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid layer refs not in step_current: {invalid_refs}",
-        )
-    selected_entries: list[tuple[str, str | None]] = [(layer, step) for layer, step in selected_layer_refs]
+    layer_id_counts: dict[str, int] = {}
+    for sl in step_layers:
+        if sl.layer_id:
+            layer_id_counts[sl.layer_id] = layer_id_counts.get(sl.layer_id, 0) + 1
+    duplicate_layer_ids = sorted([layer_id for layer_id, cnt in layer_id_counts.items() if cnt > 1])
+    should_auto_fill_full = (
+        device_type == "full"
+        and not selected_layer_ids
+        and not selected_layer_refs
+    )
 
-    # 5. Create Project
+    step_layer_map = {sl.layer_id: sl for sl in step_layers if sl.layer_id}
+    if selected_layer_refs:
+        invalid_refs = sorted([f"{layer}/{step}" for layer, step in selected_layer_refs if (layer, step) not in step_ref_map])
+        if invalid_refs:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid layer refs not in step_current: {invalid_refs}",
+            )
+        selected_entries: list[tuple[str, str | None]] = [(layer, step) for layer, step in selected_layer_refs]
+    elif should_auto_fill_full:
+        selected_entries = [
+            (sl.layer_id, sl.step_seq)
+            for sl in step_layers
+            if sl.layer_id and sl.step_seq
+        ]
+    elif duplicate_layer_ids:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "선택한 공정에 동일한 layer_id가 여러 개 있습니다. "
+                f"중복 layer_id: {duplicate_layer_ids}. "
+                "각 레이어의 step_seq를 함께 선택해 다시 시도해주세요."
+            ),
+        )
+    else:
+        invalid_ids = set(selected_layer_ids) - set(step_layer_map.keys())
+        if invalid_ids:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid layer IDs not in {layer_source}: {sorted(invalid_ids)}",
+            )
+        selected_entries = [(layer_id, None) for layer_id in selected_layer_ids]
+
+    # 7. Create Project
     project = Project(
-        product_id=None,
+        product_id=resolved_product_id,
         device_master_id=None,
         process=process,
         device_type=device_type,
@@ -246,7 +300,7 @@ async def create_project_v2(
     db.add(project)
     await db.flush()
 
-    # 6. Create ProjectLayers for selected layers
+    # 8. Create ProjectLayers for selected layers
     for sort_order, (layer_id_str, step_seq_ref) in enumerate(selected_entries):
         bb_cond = backbone_map.get(layer_id_str)
 
@@ -257,7 +311,10 @@ async def create_project_v2(
             conditions = {}
             backbone_conditions = {}
 
-        src = step_ref_map[(layer_id_str, step_seq_ref)]
+        if step_seq_ref is not None:
+            src = step_ref_map[(layer_id_str, step_seq_ref)]
+        else:
+            src = step_layer_map[layer_id_str]
         layer_name = src.descript or src.step_name or layer_id_str
         step_seq = src.step_seq
 
