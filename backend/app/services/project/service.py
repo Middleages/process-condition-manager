@@ -121,27 +121,27 @@ async def create_project(
 async def create_project_v2(
     db: AsyncSession,
     line_id: int,
-    product_name: str,
     process: str,
     part_id: str,
     device_type: str,
-    selected_layer_ids: list[str],
+    selected_layer_refs: list[tuple[str, str]],
     backbone_product_id: int | None,
     created_by: int,
-    selected_layer_refs: list[tuple[str, str]] | None = None,
 ) -> Project:
-    """Create a V2 project using step_current layers (SPEC-PROJECT-002).
+    """Create a V2 project using step_current references (SPEC-PROJECT-002).
+
+    V2 flow replaces the legacy product/backbone selection with a step-centric
+    approach: the user selects line/process/part refs and explicit step_current
+    layer refs(layer_id + step_seq), then optionally provides a backbone source
+    for condition copy.
 
     Args:
         db: Async database session.
-        line_id: Line FK for device lookup.
-        product_name: Device product name.
+        line_id: Line FK for step_current lookup.
         process: Process identifier (e.g. "PHOTO").
-        part_id: Part identifier for the device.
+        part_id: Part identifier for project identity.
         device_type: "full" or "short".
-        selected_layer_ids: Layer numbers to include (e.g. ["1.0", "2.0"]).
-        selected_layer_refs: Optional explicit refs [(layer_id, step_seq), ...]
-            for ambiguous step_current(layer_id duplicates) cases.
+        selected_layer_refs: Explicit refs [(layer_id, step_seq), ...].
         backbone_product_id: Optional product whose Approved project provides
             backbone conditions. If None, project is created without backbone.
         created_by: User FK for the creator.
@@ -150,8 +150,9 @@ async def create_project_v2(
         Newly created Project with layers eagerly loaded.
 
     Raises:
+        HTTPException(404): step_current source not found.
         HTTPException(400): Invalid device_type or invalid layer IDs.
-        HTTPException(409): Active project already exists for this device key.
+        HTTPException(409): Active project already exists for this ref.
     """
 
     # 1. Validate device_type
@@ -223,7 +224,7 @@ async def create_project_v2(
     if existing:
         raise HTTPException(
             status_code=409,
-            detail=f"Active project (status={existing.status}) already exists for this device.",
+            detail=f"Active project (status={existing.status}) already exists for this reference.",
         )
 
     # 5. Determine backbone source and build layer map
@@ -289,7 +290,7 @@ async def create_project_v2(
         process=process,
         device_type=device_type,
         line_id=line_id,
-        product_name=product_name,
+        product_name="",
         part_id=part_id,
         main_backbone_id=backbone_product_id,
         header_metadata=None,
@@ -331,7 +332,7 @@ async def create_project_v2(
 
     await db.commit()
 
-    # 8. Re-query with eager loading
+    # 7. Re-query with eager loading
     return await get_project_detail(db, project.id)
 
 

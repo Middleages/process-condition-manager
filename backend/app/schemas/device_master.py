@@ -275,5 +275,32 @@ class DuplicateCheckResponse(BaseModel):
     existing_project_revision: int | None = None
 
 
+class StepCurrentProcessOptionsResponse(BaseModel):
+    """line_id 기준 step_current process_id 목록."""
+
+    line_id: int
+    process_ids: list[str]
+
+
+class StepCurrentLayerItem(BaseModel):
+    """step_current 기반 레이어 응답 아이템."""
+
+    step_seq: str
+    layer_id: str
+    descript: str | None = None
+
+
+class StepCurrentLayersResponse(BaseModel):
+    """line/process/part 기반 step_current 레이어 응답."""
+
+    line_id: int
+    process_id: str
+    part_id: str
+    layers: list[StepCurrentLayerItem]
+    last_successful_sync_at: datetime | None = None
+    stale: bool
+    stale_reason: str | None = None
+
+
 # Pydantic v2 모델 재빌드 (forward reference 해소)
 DeviceSyncResult.model_rebuild()

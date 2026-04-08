@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 
-from sqlalchemy import select
+from sqlalchemy import distinct, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.step_master import EtlRunLog, StepCurrent
@@ -41,6 +41,17 @@ async def get_step_layers(
     rows = list(result.scalars().all())
     rows.sort(key=lambda r: (_natural_sort_key(r.layer_id), _natural_sort_key(r.step_seq)))
     return rows
+
+
+async def list_process_ids(db: AsyncSession, line_id: int) -> list[str]:
+    """step_current에서 line_id 기준 process_id 목록 조회."""
+    result = await db.execute(
+        select(distinct(StepCurrent.process_id))
+        .where(StepCurrent.line_id == line_id)
+    )
+    process_ids = [row[0] for row in result.all() if row[0]]
+    process_ids.sort()
+    return process_ids
 
 
 async def get_last_successful_full_sync_at(db: AsyncSession) -> datetime | None:
