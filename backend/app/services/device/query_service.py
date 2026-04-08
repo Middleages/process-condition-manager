@@ -49,23 +49,26 @@ async def search_devices(
 async def get_device_by_ref(
     db: AsyncSession,
     line_id: int,
-    product_name: str,
     process: str,
     part_id: str,
 ) -> DeviceMaster | None:
-    """Get a device by exact device-ref combination."""
+    """Get a device by exact step-current aligned refs (line/process/part)."""
     result = await db.execute(
         select(DeviceMaster).where(
             and_(
                 DeviceMaster.line_id == line_id,
-                DeviceMaster.product_name == product_name,
                 DeviceMaster.process == process,
                 DeviceMaster.part_id == part_id,
                 DeviceMaster.is_active == True,  # noqa: E712
             )
         )
     )
-    return result.scalars().first()
+    rows = result.scalars().all()
+    if not rows:
+        return None
+    if len(rows) > 1:
+        raise ValueError("Ambiguous device reference for (line_id, process, part_id)")
+    return rows[0]
 
 
 async def get_device_layers(

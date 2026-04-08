@@ -74,11 +74,10 @@ export function ProjectCreateModalV2({ open, onOpenChange }: Props) {
   const checkDuplicate = useCheckDuplicate()
 
   useEffect(() => {
-    if (selectedLineId && selectedProcessId && selectedPartId) {
+    if (selectedLineId && selectedProductName && selectedProcess && selectedPartId) {
       checkDuplicate.mutate({
         line_id: selectedLineId,
-        product_name: selectedProcessId,
-        process: selectedProcessId,
+        process: selectedProcess,
         part_id: selectedPartId,
       })
     }
@@ -129,6 +128,7 @@ export function ProjectCreateModalV2({ open, onOpenChange }: Props) {
   // ========== Computed display values ==========
   const duplicateData = checkDuplicate.data
   const hasDuplicate = duplicateData?.exists === true
+  const selectableLayerRefs = deviceLayers.filter((layer) => !!layer.step_seq)
 
   // ========== Submission ==========
   const isSubmitDisabled =
@@ -136,6 +136,7 @@ export function ProjectCreateModalV2({ open, onOpenChange }: Props) {
     !selectedProcessId ||
     !selectedPartId ||
     (deviceType === 'short' && selectedLayerIds.length === 0) ||
+    selectableLayerRefs.length === 0 ||
     hasDuplicate ||
     checkDuplicate.isPending ||
     createProjectV2.isPending
@@ -146,11 +147,16 @@ export function ProjectCreateModalV2({ open, onOpenChange }: Props) {
 
     const req: ProjectCreateRequestV2 = {
       line_id: selectedLineId,
-      product_name: selectedProcessId,
-      process: selectedProcessId,
+      process: selectedProcess,
       part_id: selectedPartId,
       device_type: deviceType,
-      selected_layer_ids: deviceType === 'short' ? selectedLayerIds : undefined,
+      selected_layer_refs:
+        deviceType === 'short'
+          ? selectableLayerRefs
+              .filter((layer) => selectedLayerIds.includes(layer.layer_id) && !!layer.step_seq)
+              .map((layer) => ({ layer_id: layer.layer_id, step_seq: layer.step_seq! }))
+          : selectableLayerRefs
+              .map((layer) => ({ layer_id: layer.layer_id, step_seq: layer.step_seq! })),
       backbone_product_id: backboneProductId ? Number(backboneProductId) : null,
     }
 

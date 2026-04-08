@@ -73,7 +73,6 @@ export async function searchDevices(params: {
 
 export async function checkDuplicate(params: {
   line_id: number
-  product_name: string
   process: string
   part_id: string
 }): Promise<DuplicateCheckResponse> {
