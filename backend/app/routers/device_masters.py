@@ -6,12 +6,15 @@ RBAC: require_active_user (모든 인증된 활성 사용자)
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies.auth import require_active_user
+from app.config import settings
 from app.models.device_master import DeviceMaster
 from app.models.line import Line
 from app.models.project import Project
@@ -20,10 +23,14 @@ from app.schemas.device_master import (
     DeviceMasterListResponse,
     DeviceMasterResponse,
     DeviceLayerItem,
+    StepCurrentLayerItem,
+    StepCurrentLayersResponse,
+    StepCurrentProcessOptionsResponse,
     DeviceSearchResult,
     DuplicateCheckResponse,
 )
 from app.services.device import query_service as device_master_query_service
+from app.services.step_master import query_service as step_master_query_service
 
 router = APIRouter(prefix="/device-masters", tags=["device-masters"])
 
@@ -119,6 +126,58 @@ async def get_device_layers(
 
     layers = await device_master_query_service.get_device_layers(db, device_master_id)
     return [DeviceLayerItem.model_validate(layer) for layer in layers]
+
+
+@router.get("/step-current/processes", response_model=StepCurrentProcessOptionsResponse)
+async def list_step_current_process_ids(
+    line_id: int = Query(..., gt=0),
+    _user: User = Depends(require_active_user),
+    db: AsyncSession = Depends(get_db),
+) -> StepCurrentProcessOptionsResponse:
+    """프로젝트 생성용 step_current process_id 옵션 조회."""
+    process_ids = await step_master_query_service.list_process_ids(db, line_id)
+    return StepCurrentProcessOptionsResponse(line_id=line_id, process_ids=process_ids)
+
+
+@router.get("/step-current/layers", response_model=StepCurrentLayersResponse)
+async def list_step_current_layers(
+    line_id: int = Query(..., gt=0),
+    process_id: str = Query(..., min_length=1, max_length=100),
+    part_id: str | None = Query(None, min_length=1, max_length=100, description="사용자 입력 Part 값(프로젝트 헤더용)"),
+    _user: User = Depends(require_active_user),
+    db: AsyncSession = Depends(get_db),
+) -> StepCurrentLayersResponse:
+    """프로젝트 생성용 step_current 레이어 조회."""
+    layers = await step_master_query_service.get_step_layers(db, line_id=line_id, process_id=process_id)
+    last_success = await step_master_query_service.get_last_successful_full_sync_at(db)
+    is_fresh = step_master_query_service.is_within_freshness_sla(
+        last_success_at=last_success,
+        now_utc=datetime.now(timezone.utc),
+        sla_minutes=settings.STEP_CURRENT_FRESHNESS_SLA_MINUTES,
+    ) if last_success is not None else False
+    stale = not is_fresh
+    stale_reason = (
+        "step_current 동기화 최신성이 SLA를 초과했습니다."
+        if stale
+        else None
+    )
+    return StepCurrentLayersResponse(
+        line_id=line_id,
+        process_id=process_id,
+        part_id=(part_id or "").strip(),
+        layers=[
+            StepCurrentLayerItem(
+                step_seq=row.step_seq,
+                layer_id=row.layer_id or "",
+                descript=row.descript,
+            )
+            for row in layers
+            if row.layer_id
+        ],
+        last_successful_sync_at=last_success,
+        stale=stale,
+        stale_reason=stale_reason,
+    )
 
 
 # ---------------------------------------------------------------------------

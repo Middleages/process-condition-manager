@@ -8,13 +8,15 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Combobox } from '@/components/ui/combobox'
-import { useDeviceMasters, useDeviceLayers, useCheckDuplicate } from '@/hooks/useDeviceMaster'
+import { useCheckDuplicate } from '@/hooks/useDeviceMaster'
+import { useStepCurrentLayers, useStepCurrentProcesses } from '@/hooks/useStepCurrent'
 import { useCreateProjectV2 } from '@/hooks/useProjects'
 import { useBackboneProducts } from '@/hooks/useProducts'
 import { useLines } from '@/hooks/useLines'
 import { Loader2, AlertTriangle, Info } from 'lucide-react'
-import type { DeviceMaster, DeviceLayerItem } from '@/types/deviceMaster'
+import type { StepCurrentLayerItem } from '@/types/deviceMaster'
 import type { ProjectCreateRequestV2 } from '@/types/project'
 
 interface Props {
@@ -28,8 +30,7 @@ export function ProjectCreateModalV2({ open, onOpenChange }: Props) {
 
   // ========== Cascading dropdown state ==========
   const [selectedLineId, setSelectedLineId] = useState<number | undefined>(undefined)
-  const [selectedProductName, setSelectedProductName] = useState('')
-  const [selectedProcess, setSelectedProcess] = useState('')
+  const [selectedProcessId, setSelectedProcessId] = useState('')
   const [selectedPartId, setSelectedPartId] = useState('')
 
   // ========== Device type & layer selection ==========
@@ -42,57 +43,17 @@ export function ProjectCreateModalV2({ open, onOpenChange }: Props) {
   // ========== Data fetching ==========
   const { data: lines = [] } = useLines()
 
-  const { data: deviceMastersResponse } = useDeviceMasters({
-    line_id: selectedLineId,
-    size: 1000,
-  })
-
-  const deviceMasters: DeviceMaster[] = deviceMastersResponse?.items ?? []
-
-  // ========== Cascading filter logic ==========
-  const productNameOptions = useMemo(() => {
-    if (!selectedLineId) return []
-    const uniqueNames = [...new Set(deviceMasters.map((dm) => dm.product_name))].sort()
-    return uniqueNames.map((name) => ({ value: name, label: name }))
-  }, [selectedLineId, deviceMasters])
-
+  const { data: processOptionsResponse } = useStepCurrentProcesses(selectedLineId)
+  const processIds = processOptionsResponse?.process_ids ?? []
   const processOptions = useMemo(() => {
-    if (!selectedProductName) return []
-    const filtered = deviceMasters.filter((dm) => dm.product_name === selectedProductName)
-    const uniqueProcesses = [...new Set(filtered.map((dm) => dm.process))].sort()
-    return uniqueProcesses.map((p) => ({ value: p, label: p }))
-  }, [selectedProductName, deviceMasters])
+    return processIds.map((pid) => ({ value: pid, label: pid }))
+  }, [processIds])
 
-  const partIdOptions = useMemo(() => {
-    if (!selectedProductName || !selectedProcess) return []
-    const filtered = deviceMasters.filter(
-      (dm) => dm.product_name === selectedProductName && dm.process === selectedProcess
-    )
-    const uniquePartIds = [
-      ...new Set(filtered.map((dm) => dm.part_id).filter((pid): pid is string => pid !== null)),
-    ].sort()
-    const options = uniquePartIds.map((pid) => ({ value: pid, label: pid }))
-    return options
-  }, [selectedProductName, selectedProcess, deviceMasters])
-
-  // ========== Resolve device master ==========
-  const resolvedDeviceMaster: DeviceMaster | null = useMemo(() => {
-    if (!selectedProductName || !selectedProcess || !selectedPartId) return null
-    return (
-      deviceMasters.find(
-        (dm) =>
-          dm.product_name === selectedProductName &&
-          dm.process === selectedProcess &&
-          dm.part_id === selectedPartId
-      ) ?? null
-    )
-  }, [selectedProductName, selectedProcess, selectedPartId, deviceMasters])
-
-  const resolvedDeviceMasterId = resolvedDeviceMaster?.id ?? null
-
-  // ========== Layer data ==========
-  const { data: deviceLayers = [], isLoading: layersLoading } =
-    useDeviceLayers(resolvedDeviceMasterId)
+  const { data: stepCurrentLayersResponse, isLoading: layersLoading } = useStepCurrentLayers({
+    line_id: selectedLineId,
+    process_id: selectedProcessId,
+  })
+  const deviceLayers = stepCurrentLayersResponse?.layers ?? []
 
   // ========== Backbone data ==========
   const { data: backboneProducts = [], isLoading: backboneLoading } =
@@ -121,7 +82,7 @@ export function ProjectCreateModalV2({ open, onOpenChange }: Props) {
       })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedLineId, selectedProductName, selectedProcess, selectedPartId])
+  }, [selectedLineId, selectedProcessId, selectedPartId])
 
   // ========== Mutation ==========
   const createProjectV2 = useCreateProjectV2()
@@ -130,22 +91,15 @@ export function ProjectCreateModalV2({ open, onOpenChange }: Props) {
   const handleLineChange = useCallback((value: string) => {
     const lineId = value ? Number(value) : undefined
     setSelectedLineId(lineId)
-    setSelectedProductName('')
-    setSelectedProcess('')
+    setSelectedProcessId('')
     setSelectedPartId('')
     setDeviceType('full')
     setSelectedLayerIds([])
     setBackboneProductId('')
   }, [])
 
-  const handleProductNameChange = useCallback((value: string) => {
-    setSelectedProductName(value)
-    setSelectedProcess('')
-    setSelectedPartId('')
-  }, [])
-
-  const handleProcessChange = useCallback((value: string) => {
-    setSelectedProcess(value)
+  const handleProcessIdChange = useCallback((value: string) => {
+    setSelectedProcessId(value)
     setSelectedPartId('')
   }, [])
 
@@ -161,7 +115,7 @@ export function ProjectCreateModalV2({ open, onOpenChange }: Props) {
   }, [])
 
   const handleToggleAll = useCallback(
-    (layers: DeviceLayerItem[]) => {
+    (layers: StepCurrentLayerItem[]) => {
       if (selectedLayerIds.length === layers.length) {
         setSelectedLayerIds([])
       } else {
@@ -179,8 +133,7 @@ export function ProjectCreateModalV2({ open, onOpenChange }: Props) {
   // ========== Submission ==========
   const isSubmitDisabled =
     !selectedLineId ||
-    !selectedProductName ||
-    !selectedProcess ||
+    !selectedProcessId ||
     !selectedPartId ||
     (deviceType === 'short' && selectedLayerIds.length === 0) ||
     selectableLayerRefs.length === 0 ||
@@ -217,7 +170,7 @@ export function ProjectCreateModalV2({ open, onOpenChange }: Props) {
   }
 
   const lineSelected = selectedLineId != null
-  const allCascadingSelected = !!(selectedProductName && selectedProcess && selectedPartId)
+  const allCascadingSelected = !!(selectedProcessId && selectedPartId)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -249,54 +202,32 @@ export function ProjectCreateModalV2({ open, onOpenChange }: Props) {
               </select>
             </div>
 
-            {/* ===== Product Name Combobox ===== */}
+            {/* ===== 제품명(process_id) Combobox ===== */}
             <div>
               <label className="text-sm font-medium mb-1.5 block">
                 제품명 <span className="text-destructive">*</span>
               </label>
               <Combobox
-                options={productNameOptions}
-                value={selectedProductName}
-                onChange={handleProductNameChange}
-                placeholder={lineSelected ? '제품명을 선택하세요' : '라인을 먼저 선택하세요'}
-                searchPlaceholder="제품명 검색..."
+                options={processOptions}
+                value={selectedProcessId}
+                onChange={handleProcessIdChange}
+                placeholder={lineSelected ? '제품명(process_id)을 선택하세요' : '라인을 먼저 선택하세요'}
+                searchPlaceholder="제품명(process_id) 검색..."
                 disabled={!lineSelected}
                 required
               />
             </div>
 
-            {/* ===== Process Combobox ===== */}
-            <div>
-              <label className="text-sm font-medium mb-1.5 block">
-                공정 <span className="text-destructive">*</span>
-              </label>
-              <Combobox
-                options={processOptions}
-                value={selectedProcess}
-                onChange={handleProcessChange}
-                placeholder={
-                  selectedProductName ? '공정을 선택하세요' : '제품명을 먼저 선택하세요'
-                }
-                searchPlaceholder="공정 검색..."
-                disabled={!selectedProductName}
-                required
-              />
-            </div>
-
-            {/* ===== Part ID Combobox ===== */}
+            {/* ===== Part ID Input ===== */}
             <div>
               <label className="text-sm font-medium mb-1.5 block">
                 Part ID <span className="text-destructive">*</span>
               </label>
-              <Combobox
-                options={partIdOptions}
+              <Input
                 value={selectedPartId}
-                onChange={handlePartIdChange}
-                placeholder={
-                  selectedProcess ? 'Part ID를 선택하세요' : '공정을 먼저 선택하세요'
-                }
-                searchPlaceholder="Part ID 검색..."
-                disabled={!selectedProcess}
+                onChange={(e) => handlePartIdChange(e.target.value)}
+                placeholder={selectedProcessId ? 'Part ID를 입력하세요' : '제품명을 먼저 선택하세요'}
+                disabled={!selectedProcessId}
                 required
               />
             </div>
@@ -375,9 +306,14 @@ export function ProjectCreateModalV2({ open, onOpenChange }: Props) {
                     레이어 로딩 중...
                   </div>
                 ) : deviceLayers.length === 0 ? (
-                  <p className="text-sm text-muted-foreground py-2">
-                    등록된 레이어가 없습니다.
-                  </p>
+                  <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+                    조회 결과가 없습니다. step_current 동기화 지연 또는 데이터 stale 상태일 수 있습니다.
+                    {stepCurrentLayersResponse?.last_successful_sync_at && (
+                      <span className="block mt-1 text-xs opacity-80">
+                        마지막 동기화 성공 시각: {new Date(stepCurrentLayersResponse.last_successful_sync_at).toLocaleString('ko-KR')}
+                      </span>
+                    )}
+                  </div>
                 ) : (
                   <>
                     <div className="flex items-center justify-between mb-2">
@@ -404,7 +340,7 @@ export function ProjectCreateModalV2({ open, onOpenChange }: Props) {
                         const isChecked = selectedLayerIds.includes(layer.layer_id)
                         return (
                           <label
-                            key={layer.id}
+                            key={`${layer.step_seq}-${layer.layer_id}`}
                             className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-accent/50"
                           >
                             <input
@@ -455,7 +391,7 @@ export function ProjectCreateModalV2({ open, onOpenChange }: Props) {
             )}
 
             {/* ===== Header Preview ===== */}
-            {resolvedDeviceMaster && (
+            {allCascadingSelected && (
               <div className="rounded-md border border-border bg-muted/30 p-3 text-sm">
                 <div className="flex items-center gap-1.5 font-medium mb-2 text-muted-foreground">
                   <Info className="h-4 w-4" />
@@ -463,13 +399,13 @@ export function ProjectCreateModalV2({ open, onOpenChange }: Props) {
                 </div>
                 <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
                   <span className="text-muted-foreground">제품명</span>
-                  <span>{resolvedDeviceMaster.product_name}</span>
+                  <span>{selectedProcessId}</span>
 
                   <span className="text-muted-foreground">공정</span>
-                  <span>{resolvedDeviceMaster.process}</span>
+                  <span>-</span>
 
                   <span className="text-muted-foreground">Part ID</span>
-                  <span>{resolvedDeviceMaster.part_id ?? 'N/A'}</span>
+                  <span>{selectedPartId}</span>
 
                   <span className="text-muted-foreground">Device Type</span>
                   <span className="capitalize">{deviceType}</span>
@@ -491,28 +427,11 @@ export function ProjectCreateModalV2({ open, onOpenChange }: Props) {
                   </span>
                 </div>
 
-                {/* Enrichment metadata from device_master (REQ-PROJ-053) */}
-                {resolvedDeviceMaster.enrichment &&
-                  Object.keys(resolvedDeviceMaster.enrichment).length > 0 && (
-                    <div className="mt-2 pt-2 border-t border-border">
-                      <div className="text-xs font-medium text-muted-foreground mb-1">
-                        Header Metadata
-                      </div>
-                      <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-0.5 text-xs">
-                        {Object.entries(resolvedDeviceMaster.enrichment).flatMap(
-                          ([_source, fields]) =>
-                            Object.entries(fields as Record<string, unknown>).map(
-                              ([key, value]) => [
-                                <span key={`${key}-label`} className="text-muted-foreground">
-                                  {key.replace(/_/g, ' ')}
-                                </span>,
-                                <span key={`${key}-value`}>{String(value ?? '-')}</span>,
-                              ]
-                            )
-                        )}
-                      </div>
-                    </div>
-                  )}
+                {stepCurrentLayersResponse?.stale && (
+                  <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
+                    운영 안내: step_current 최신성(SLA) 기준이 초과되어 결과가 오래되었을 수 있습니다.
+                  </p>
+                )}
               </div>
             )}
 
