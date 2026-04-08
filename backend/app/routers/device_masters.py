@@ -77,20 +77,15 @@ async def check_duplicate(
 ) -> DuplicateCheckResponse:
     """Check if a project already exists for the given device reference.
 
-    Finds matching device_master by (line_id, process, part_id),
-    then checks if any Project with that device_master_id has status in ('draft', 'review').
+    Checks if any Project for (line_id, process, part_id)
+    has status in ('draft', 'review').
     """
-    try:
-        device = await device_master_query_service.get_device_by_ref(db, line_id, process, part_id)
-    except ValueError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    if device is None:
-        return DuplicateCheckResponse(exists=False)
-
     result = await db.execute(
         select(Project)
         .where(
-            Project.device_master_id == device.id,
+            Project.line_id == line_id,
+            Project.process == process,
+            Project.part_id == part_id,
             Project.status.in_(("draft", "review")),
         )
         .order_by(Project.created_at.desc())

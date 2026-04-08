@@ -134,10 +134,10 @@ async def create_project_v2(
     current_user: User = Depends(require_active_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Create a project using device-ref based V2 flow (SPEC-PROJECT-002).
+    """Create a project using step-current-ref based V2 flow (SPEC-PROJECT-002).
 
-    Resolves device_master by (line_id, process, part_id),
-    copies layers from layer_master, and optionally applies backbone conditions.
+    Uses (line_id, process, part_id) + selected_layer_refs to validate against step_current,
+    then optionally applies backbone conditions.
     """
     project = await project_service.create_project_v2(
         db,

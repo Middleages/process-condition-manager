@@ -15,7 +15,6 @@ from fastapi import HTTPException
 from app.config import settings
 from app.models import Product, ProductLayer, Project, ProjectLayer
 from app.repositories.backbone_repository import BackboneRepository
-from app.services.device import query_service as device_master_query_service
 from app.services.step_master import query_service as step_master_query_service
 
 # Re-exports for backward compatibility (used by tests and other modules)
@@ -129,18 +128,18 @@ async def create_project_v2(
     backbone_product_id: int | None,
     created_by: int,
 ) -> Project:
-    """Create a V2 project using DeviceMaster references (SPEC-PROJECT-002).
+    """Create a V2 project using step_current references (SPEC-PROJECT-002).
 
-    V2 flow replaces the legacy product/backbone selection with a device-centric
-    approach: the user selects a device (line + process + part_id),
-    picks layers from step_current refs(layer_id + step_seq), and optionally provides a
-    backbone source for condition copy.
+    V2 flow replaces the legacy product/backbone selection with a step-centric
+    approach: the user selects line/process/part refs and explicit step_current
+    layer refs(layer_id + step_seq), then optionally provides a backbone source
+    for condition copy.
 
     Args:
         db: Async database session.
-        line_id: Line FK for device lookup.
+        line_id: Line FK for step_current lookup.
         process: Process identifier (e.g. "PHOTO").
-        part_id: Part identifier for the device.
+        part_id: Part identifier for project identity.
         device_type: "full" or "short".
         selected_layer_refs: Explicit refs [(layer_id, step_seq), ...].
         backbone_product_id: Optional product whose Approved project provides
@@ -151,9 +150,9 @@ async def create_project_v2(
         Newly created Project with layers eagerly loaded.
 
     Raises:
-        HTTPException(404): Device not found.
+        HTTPException(404): step_current source not found.
         HTTPException(400): Invalid device_type or invalid layer IDs.
-        HTTPException(409): Active project already exists for this device.
+        HTTPException(409): Active project already exists for this ref.
     """
 
     # 1. Validate device_type
@@ -163,21 +162,12 @@ async def create_project_v2(
             detail=f"Invalid device_type '{device_type}'. Must be 'full' or 'short'.",
         )
 
-    # 2. Find device_master by composite key
-    try:
-        device = await device_master_query_service.get_device_by_ref(db, line_id, process, part_id)
-    except ValueError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    if device is None:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Device not found for line_id={line_id}, process='{process}', part_id='{part_id}'.",
-        )
-
-    # 3. Check no active (draft/review) project for same device_master_id
+    # 2. Check no active (draft/review) project for same step-current refs
     result = await db.execute(
         select(Project).where(
-            Project.device_master_id == device.id,
+            Project.line_id == line_id,
+            Project.process == process,
+            Project.part_id == part_id,
             Project.status.in_(["draft", "review"]),
         )
     )
@@ -185,105 +175,78 @@ async def create_project_v2(
     if existing:
         raise HTTPException(
             status_code=409,
-            detail=f"Active project (status={existing.status}) already exists for this device.",
+            detail=f"Active project (status={existing.status}) already exists for this reference.",
         )
 
-    # 4. Determine backbone source and build layer map
+    # 3. Determine backbone source and build layer map
     backbone_map: dict[str, dict] = {}
     if backbone_product_id is not None:
         await BackboneRepository.validate_backbone_source(db, backbone_product_id)
         backbone_map = await BackboneRepository.get_backbone_layer_map(db, backbone_product_id)
 
-    # 5. Validate selected_layer_refs against source layers
-    #    - USE_STEP_CURRENT=True: step_current(line_id + process) 우선
-    #    - fallback: device layer_master
-    layer_source = "layer_master"
-    step_layers = []
-    if settings.USE_STEP_CURRENT:
-        step_layers = await step_master_query_service.get_step_layers(db, line_id, process)
-        if step_layers:
-            if settings.STEP_CURRENT_ENFORCE_FRESHNESS:
-                last_success_at = await step_master_query_service.get_last_successful_full_sync_at(db)
-                is_fresh = step_master_query_service.is_within_freshness_sla(
-                    last_success_at=last_success_at,
-                    now_utc=datetime.now(timezone.utc),
-                    sla_minutes=settings.STEP_CURRENT_FRESHNESS_SLA_MINUTES,
-                )
-                if not is_fresh:
-                    logger.warning(
-                        "step_current freshness SLA breached. line_id=%s process=%s last_success_at=%s sla_minutes=%s",
-                        line_id,
-                        process,
-                        last_success_at.isoformat() if last_success_at else None,
-                        settings.STEP_CURRENT_FRESHNESS_SLA_MINUTES,
-                    )
-                    raise HTTPException(
-                        status_code=503,
-                        detail=(
-                            "step_current is stale. "
-                            f"last_success_at={last_success_at.isoformat() if last_success_at else 'none'}, "
-                            f"sla_minutes={settings.STEP_CURRENT_FRESHNESS_SLA_MINUTES}"
-                        ),
-                    )
-            layer_source = "step_current"
-        else:
+    # 4. Validate selected_layer_refs against step_current only
+    step_layers = await step_master_query_service.get_step_layers(db, line_id, process)
+    if not step_layers:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No step_current rows for line_id={line_id}, process='{process}'.",
+        )
+
+    if settings.STEP_CURRENT_ENFORCE_FRESHNESS:
+        last_success_at = await step_master_query_service.get_last_successful_full_sync_at(db)
+        is_fresh = step_master_query_service.is_within_freshness_sla(
+            last_success_at=last_success_at,
+            now_utc=datetime.now(timezone.utc),
+            sla_minutes=settings.STEP_CURRENT_FRESHNESS_SLA_MINUTES,
+        )
+        if not is_fresh:
             logger.warning(
-                "USE_STEP_CURRENT enabled but no rows in step_current. "
-                "Fallback to layer_master. line_id=%s process=%s",
+                "step_current freshness SLA breached. line_id=%s process=%s last_success_at=%s sla_minutes=%s",
                 line_id,
                 process,
+                last_success_at.isoformat() if last_success_at else None,
+                settings.STEP_CURRENT_FRESHNESS_SLA_MINUTES,
             )
-
-    if layer_source == "step_current":
-        step_ref_map = {
-            (sl.layer_id, sl.step_seq): sl
-            for sl in step_layers
-            if sl.layer_id and sl.step_seq
-        }
-        layer_id_counts: dict[str, int] = {}
-        for sl in step_layers:
-            if sl.layer_id:
-                layer_id_counts[sl.layer_id] = layer_id_counts.get(sl.layer_id, 0) + 1
-        duplicate_layer_ids = sorted([layer_id for layer_id, cnt in layer_id_counts.items() if cnt > 1])
-        if duplicate_layer_ids:
-            logger.info("step_current duplicate layer_id detected, refs will disambiguate: %s", duplicate_layer_ids)
-
-        invalid_refs = sorted([f"{layer}/{step}" for layer, step in selected_layer_refs if (layer, step) not in step_ref_map])
-        if invalid_refs:
             raise HTTPException(
-                status_code=400,
-                detail=f"Invalid layer refs not in step_current: {invalid_refs}",
+                status_code=503,
+                detail=(
+                    "step_current is stale. "
+                    f"last_success_at={last_success_at.isoformat() if last_success_at else 'none'}, "
+                    f"sla_minutes={settings.STEP_CURRENT_FRESHNESS_SLA_MINUTES}"
+                ),
             )
-        selected_entries: list[tuple[str, str | None]] = [(layer, step) for layer, step in selected_layer_refs]
-    else:
-        device_layers = await device_master_query_service.get_device_layers(db, device.id)
-        device_ref_map = {(lm.layer_id, lm.step_seq): lm for lm in device_layers if lm.layer_id and lm.step_seq}
-        invalid_refs = sorted([f"{layer}/{step}" for layer, step in selected_layer_refs if (layer, step) not in device_ref_map])
-        if invalid_refs:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid layer refs not in {layer_source}: {invalid_refs}",
-            )
-        selected_entries = [(layer, step) for layer, step in selected_layer_refs]
 
-    # 6. Create Project
+    step_ref_map = {
+        (sl.layer_id, sl.step_seq): sl
+        for sl in step_layers
+        if sl.layer_id and sl.step_seq
+    }
+    invalid_refs = sorted([f"{layer}/{step}" for layer, step in selected_layer_refs if (layer, step) not in step_ref_map])
+    if invalid_refs:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid layer refs not in step_current: {invalid_refs}",
+        )
+    selected_entries: list[tuple[str, str | None]] = [(layer, step) for layer, step in selected_layer_refs]
+
+    # 5. Create Project
     project = Project(
         product_id=None,
-        device_master_id=device.id,
+        device_master_id=None,
         process=process,
         device_type=device_type,
         line_id=line_id,
-        product_name=device.product_name,
+        product_name="",
         part_id=part_id,
         main_backbone_id=backbone_product_id,
-        header_metadata=copy.deepcopy(device.enrichment) if device.enrichment else None,
+        header_metadata=None,
         status="draft",
         created_by=created_by,
     )
     db.add(project)
     await db.flush()
 
-    # 7. Create ProjectLayers for selected layers
+    # 6. Create ProjectLayers for selected layers
     for sort_order, (layer_id_str, step_seq_ref) in enumerate(selected_entries):
         bb_cond = backbone_map.get(layer_id_str)
 
@@ -294,14 +257,9 @@ async def create_project_v2(
             conditions = {}
             backbone_conditions = {}
 
-        if layer_source == "step_current":
-            src = step_ref_map[(layer_id_str, step_seq_ref)]
-            layer_name = src.descript or src.step_name or layer_id_str
-            step_seq = src.step_seq
-        else:
-            src = device_ref_map[(layer_id_str, step_seq_ref)]
-            layer_name = src.descript
-            step_seq = src.step_seq
+        src = step_ref_map[(layer_id_str, step_seq_ref)]
+        layer_name = src.descript or src.step_name or layer_id_str
+        step_seq = src.step_seq
 
         project_layer = ProjectLayer(
             project_id=project.id,
@@ -317,7 +275,7 @@ async def create_project_v2(
 
     await db.commit()
 
-    # 8. Re-query with eager loading
+    # 7. Re-query with eager loading
     return await get_project_detail(db, project.id)
 
 
