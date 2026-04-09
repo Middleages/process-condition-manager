@@ -22,6 +22,7 @@
 4. 공정조건표 정체성을 `(line_id, process_id, part_id)` natural key로 관리한다.
 5. 리비전 체계를 natural key 기반으로 단일화한다.
 6. 전 계층 명칭을 `process_condition`으로 통일한다.
+7. 사용하지 않을 구 코드(모델/라우터/서비스/프론트 경로)는 즉시 삭제한다.
 
 ## 4. 비목표(Non-Goals)
 - 외부 원천 시스템 스키마 변경.
@@ -59,6 +60,10 @@
 ### FR-5. 도메인 리네이밍
 - 테이블/모델/API/UI에서 project 용어를 process_condition으로 교체.
 - 사용자 노출 문구는 "프로젝트" 대신 "공정 조건표" 사용.
+
+### FR-6. 코드베이스 단순화
+- 미사용 경로(`/projects`, product/device_master 의존 생성 경로, legacy 타입/훅)는 유지하지 않는다.
+- dual-path, 임시 alias, dead code를 남기지 않는다.
 
 ## 7. 데이터 요구사항
 - `step_current`에 `part_id` 컬럼이 존재해야 한다.

@@ -3,7 +3,7 @@
 ## Epic 0 — 준비/정렬
 - [ ] T0-1. 기존 `project`/`product`/`device_master` 의존 지점 인벤토리 확정.
 - [ ] T0-2. 무호환 직접 전환 정책 확정 (`/projects` 제거, `/process-conditions` 단일화).
-- [ ] T0-3. feature flag 이름/기본값 확정 (`USE_PROCESS_CONDITION_API` 등).
+- [ ] T0-3. 미사용 코드 삭제 기준 확정(라우터/서비스/모델/타입/훅/컴포넌트).
 
 ## Epic 1 — Step Current 조회 체인 강화
 - [ ] T1-1. `StepCurrent` 모델에 `part_id` 필드 반영.
@@ -40,16 +40,22 @@
 ## Epic 6 — 전환/디버깅 운영
 - [ ] T6-1. 모니터링 지표를 신 경로 기준으로 추가(성공률, 4xx/5xx, 생성 지연).
 - [ ] T6-2. 전환 체크리스트 문서화(배포 전/중/후 확인 항목).
-- [ ] T6-3. 롤백 절차 문서화(같은 도메인 내 이전 커밋 복귀 + 데이터 검증).
+- [ ] T6-3. 롤백 절차 문서화(같은 도메인 내 이전 커밋 복귀 + 데이터 검증, legacy 복구 금지).
 
-## Epic 7 — 테스트/검증
-- [ ] T7-1. 백엔드 단위테스트: process/part/layer 옵션 조회.
-- [ ] T7-2. 백엔드 통합테스트: 생성(create), 중복(409), 리비전(revise) 시나리오.
-- [ ] T7-3. 프론트 컴포넌트 테스트: 생성 모달 cascading + part 드롭다운 강제.
-- [ ] T7-4. E2E: "라인 선택 -> 공정 선택 -> Part 선택 -> 생성 -> 편집 진입".
-- [ ] T7-5. 제거 검증: `/projects` 호출 시 미노출/404, `/process-conditions`만 동작 검증.
+## Epic 7 — 미사용 코드 제거(필수)
+- [ ] T7-1. 백엔드에서 `/projects` 라우터 및 project 네이밍 전용 코드 삭제.
+- [ ] T7-2. 백엔드에서 product/device_master 기반 생성/중복/리비전 분기 삭제.
+- [ ] T7-3. 프론트에서 project 전용 API/hook/type/component 경로 삭제 또는 process_condition으로 완전 교체.
+- [ ] T7-4. dead import, dead type, dead query key 정리 및 빌드 경고 0건 확인.
+
+## Epic 8 — 테스트/검증
+- [ ] T8-1. 백엔드 단위테스트: process/part/layer 옵션 조회.
+- [ ] T8-2. 백엔드 통합테스트: 생성(create), 중복(409), 리비전(revise) 시나리오.
+- [ ] T8-3. 프론트 컴포넌트 테스트: 생성 모달 cascading + part 드롭다운 강제.
+- [ ] T8-4. E2E: "라인 선택 -> 공정 선택 -> Part 선택 -> 생성 -> 편집 진입".
+- [ ] T8-5. 제거 검증: `/projects` 호출 시 미노출/404, `/process-conditions`만 동작 검증.
 
 ## 마일스톤 제안
 - [ ] M1: Epic 1~2 완료 (생성 안정화)
 - [ ] M2: Epic 3~4 완료 (도메인 핵심 로직 전환)
-- [ ] M3: Epic 5~7 완료 (리네이밍 + 즉시 전환 + 디버깅 안정화)
+- [ ] M3: Epic 5~8 완료 (리네이밍 + 즉시 전환 + 미사용 코드 삭제 + 디버깅 안정화)

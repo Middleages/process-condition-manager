@@ -5,6 +5,7 @@
 2. **Natural-Key First**: 도메인 식별은 `(line_id, process_id, part_id)`.
 3. **Backbone by Approved Document**: Backbone 소스는 승인된 공정조건표.
 4. **Direct Cutover**: 미배포 서비스 전제에서 구 경로 호환 없이 신 도메인으로 즉시 전환.
+5. **No Dead Code**: 전환 후 미사용 코드/경로/타입/분기(feature flag 포함)는 즉시 삭제.
 
 ## 2. 대상 컴포넌트
 - Backend
@@ -121,6 +122,7 @@
 - API/스키마/서비스/프론트를 `process_condition` 기준으로 일괄 변경.
 - product/device_master 의존 코드 제거.
 - `/projects` 엔드포인트와 project 명칭 코드를 즉시 제거.
+- feature flag 분기 없이 단일 경로로 정리.
 
 ### Phase B (안정화)
 - 문서/운영 스크립트/모니터링 명칭 정리.
@@ -135,6 +137,6 @@
 6. `/process-conditions` 단일 경로에서 생성/조회/상태전이/리비전 일관 동작.
 
 ## 9. 롤백 전략
-- 기능 단위 feature flag로 신규 로직 on/off 가능하게 구성하되, 구 project API 복구는 전제하지 않는다.
-- 장애 발생 시 동일 도메인(`process_condition`) 내에서 이전 커밋 롤백 및 디버깅으로 복구한다.
+- 장애 발생 시 동일 도메인(`process_condition`) 내에서 이전 커밋 단위 롤백 + 결함 수정으로 복구한다.
+- 구 project 경로를 되살리는 롤백은 허용하지 않는다(코드 복잡도 방지).
 - 스키마/코드 불일치 방지를 위해 DB 모델과 API 계약을 한 번에 맞춰 배포한다.
