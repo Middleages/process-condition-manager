@@ -4,7 +4,7 @@
 1. **Single Source of Truth**: 생성 후보(공정/Part/레이어)는 `step_current`만 사용.
 2. **Natural-Key First**: 도메인 식별은 `(line_id, process_id, part_id)`.
 3. **Backbone by Approved Document**: Backbone 소스는 승인된 공정조건표.
-4. **Safe Cutover**: 구 경로와 신 경로를 병행 운영 후 제거.
+4. **Direct Cutover**: 미배포 서비스 전제에서 구 경로 호환 없이 신 도메인으로 즉시 전환.
 
 ## 2. 대상 컴포넌트
 - Backend
@@ -65,7 +65,7 @@
 
 ### 4.2 공정조건표 생성/조회
 - 신규 canonical prefix: `/process-conditions`
-- 기존 `/projects`는 호환 alias로 유지 후 제거
+- 기존 `/projects` 경로는 유지하지 않고 제거
 
 생성 요청 예시:
 ```json
@@ -117,17 +117,14 @@
 
 ## 7. 전환 전략
 
-### Phase A (호환 모드)
-- 신 API/신 스키마 추가.
-- 구 API(`/projects`) 유지, 내부적으로 신 서비스 호출 가능.
-
-### Phase B (기본 전환)
-- 프론트 기본 경로를 `/process-conditions`로 전환.
+### Phase A (즉시 전환 구현)
+- API/스키마/서비스/프론트를 `process_condition` 기준으로 일괄 변경.
 - product/device_master 의존 코드 제거.
+- `/projects` 엔드포인트와 project 명칭 코드를 즉시 제거.
 
-### Phase C (정리)
-- 구 엔드포인트/구 필드 완전 제거.
+### Phase B (안정화)
 - 문서/운영 스크립트/모니터링 명칭 정리.
+- 생성/리비전/승인 핵심 시나리오 디버깅 및 결함 수정.
 
 ## 8. 검증 항목
 1. 생성 E2E: line->process->part->create 성공.
@@ -135,9 +132,9 @@
 3. Backbone 후보가 approved+latest 문서만 반환되는지 검증.
 4. 동일 natural key의 active 중복 생성 방지(409).
 5. revise 시 revision 증가 및 latest 단일성 보장.
-6. 구 `/projects` 호환 경로 동작(전환 기간).
+6. `/process-conditions` 단일 경로에서 생성/조회/상태전이/리비전 일관 동작.
 
 ## 9. 롤백 전략
-- Feature flag로 생성 경로를 구 V2(`/projects/v2`)로 즉시 전환 가능하게 유지.
-- 신 API 문제 시 프론트에서 구 API fallback 허용.
-- 스키마 변경은 단계적 적용(읽기 호환 우선)으로 역호환성 확보.
+- 기능 단위 feature flag로 신규 로직 on/off 가능하게 구성하되, 구 project API 복구는 전제하지 않는다.
+- 장애 발생 시 동일 도메인(`process_condition`) 내에서 이전 커밋 롤백 및 디버깅으로 복구한다.
+- 스키마/코드 불일치 방지를 위해 DB 모델과 API 계약을 한 번에 맞춰 배포한다.

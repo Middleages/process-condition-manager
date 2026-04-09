@@ -2,7 +2,7 @@
 
 ## Epic 0 — 준비/정렬
 - [ ] T0-1. 기존 `project`/`product`/`device_master` 의존 지점 인벤토리 확정.
-- [ ] T0-2. 호환 기간 정책 확정 (`/projects` 유지 기간, 제거 일정).
+- [ ] T0-2. 무호환 직접 전환 정책 확정 (`/projects` 제거, `/process-conditions` 단일화).
 - [ ] T0-3. feature flag 이름/기본값 확정 (`USE_PROCESS_CONDITION_API` 등).
 
 ## Epic 1 — Step Current 조회 체인 강화
@@ -34,23 +34,22 @@
 - [ ] T5-1. 테이블명 리네이밍: `projects` -> `process_condition`.
 - [ ] T5-2. 테이블명 리네이밍: `project_layers` -> `process_condition_layers`.
 - [ ] T5-3. 테이블명 리네이밍: `project_status_logs` -> `process_condition_status_logs`.
-- [ ] T5-4. 백엔드 라우터 prefix `/projects` -> `/process-conditions` (호환 alias 제공).
+- [ ] T5-4. 백엔드 라우터 prefix `/projects` -> `/process-conditions` (구 경로 즉시 제거).
 - [ ] T5-5. 프론트 화면/컴포넌트/문구에서 "프로젝트" -> "공정 조건표" 일괄 교체.
 
-## Epic 6 — 호환/전환 운영
-- [ ] T6-1. 구 API alias + deprecation header 추가.
-- [ ] T6-2. 모니터링 지표를 신 경로 기준으로 추가(성공률, 4xx/5xx, 생성 지연).
-- [ ] T6-3. 컷오버 체크리스트 문서화(배포 전/중/후 확인 항목).
-- [ ] T6-4. 롤백 절차 문서화(플래그 되돌림 + 트래픽 우회).
+## Epic 6 — 전환/디버깅 운영
+- [ ] T6-1. 모니터링 지표를 신 경로 기준으로 추가(성공률, 4xx/5xx, 생성 지연).
+- [ ] T6-2. 전환 체크리스트 문서화(배포 전/중/후 확인 항목).
+- [ ] T6-3. 롤백 절차 문서화(같은 도메인 내 이전 커밋 복귀 + 데이터 검증).
 
 ## Epic 7 — 테스트/검증
 - [ ] T7-1. 백엔드 단위테스트: process/part/layer 옵션 조회.
 - [ ] T7-2. 백엔드 통합테스트: 생성(create), 중복(409), 리비전(revise) 시나리오.
 - [ ] T7-3. 프론트 컴포넌트 테스트: 생성 모달 cascading + part 드롭다운 강제.
 - [ ] T7-4. E2E: "라인 선택 -> 공정 선택 -> Part 선택 -> 생성 -> 편집 진입".
-- [ ] T7-5. 호환테스트: `/projects`와 `/process-conditions` 동시 운영 검증.
+- [ ] T7-5. 제거 검증: `/projects` 호출 시 미노출/404, `/process-conditions`만 동작 검증.
 
 ## 마일스톤 제안
 - [ ] M1: Epic 1~2 완료 (생성 안정화)
 - [ ] M2: Epic 3~4 완료 (도메인 핵심 로직 전환)
-- [ ] M3: Epic 5~7 완료 (리네이밍 + 컷오버)
+- [ ] M3: Epic 5~7 완료 (리네이밍 + 즉시 전환 + 디버깅 안정화)
