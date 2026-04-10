@@ -44,7 +44,7 @@ export function RevisionCreateModal({ open, onOpenChange, project }: RevisionCre
 
       addToast(`개정판 v${newProject.revision}이(가) 생성되었습니다.`, 'success')
       onOpenChange(false)
-      navigate(`/projects/${newProject.id}/edit`)
+      navigate(`/process-conditions/${newProject.id}/edit`)
     } catch {
       // Error handled by interceptor
     }

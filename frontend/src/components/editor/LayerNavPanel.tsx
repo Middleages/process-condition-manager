@@ -143,9 +143,9 @@ export function LayerNavPanel({
             >
               <div className="flex-1 min-w-0">
                 <div className="truncate">{layer.layer_name}</div>
-                {layer.backbone_product_name && (
+                {layer.backbone_condition_name && (
                   <div className="text-[10px] text-muted-foreground truncate">
-                    &larr; {layer.backbone_product_name}
+                    &larr; {layer.backbone_condition_name}
                   </div>
                 )}
               </div>

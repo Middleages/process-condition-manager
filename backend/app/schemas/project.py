@@ -5,21 +5,14 @@ from typing import Any
 
 # --- Request schemas ---
 
-class ProjectCreateRequest(BaseModel):
-    """V1 backward-compatible: product_id + backbone_product_id based creation."""
-    product_id: int
-    backbone_product_id: int
-    created_by: int
-
-
 class ProjectCreateRequestV2(BaseModel):
     """V2 device-ref based project creation request (SPEC-PROJECT-002)."""
     line_id: int
     process: str = Field(..., min_length=1, max_length=50)
     part_id: str = Field(..., min_length=1, max_length=100)
     device_type: str = Field("full", pattern=r"^(full|short)$")
-    selected_layer_refs: list["LayerStepRef"] = Field(..., min_length=1)
-    backbone_product_id: int | None = None  # None = "no backbone"
+    selected_layer_refs: list["LayerStepRef"] = Field(default_factory=list)
+    backbone_condition_id: int | None = None  # None = "no backbone"
 
 
 class LayerStepRef(BaseModel):
@@ -46,8 +39,8 @@ class ProjectLayerResponse(BaseModel):
     layer_name: str
     step_seq: str
     layer_number: str
-    backbone_product_id: int | None = None
-    backbone_product_name: str | None = None
+    backbone_condition_id: int | None = None
+    backbone_condition_name: str | None = None
     conditions: dict[str, Any]
     backbone_conditions: dict[str, Any]
     sort_order: int
@@ -58,12 +51,11 @@ class ProjectLayerResponse(BaseModel):
 
 class ProjectResponse(BaseModel):
     id: int
-    product_id: int | None = None
-    product_name: str
+    condition_name: str
     line_id: int | None = None
     line_name: str | None = None
-    main_backbone_id: int | None = None
-    backbone_name: str | None = None
+    main_backbone_condition_id: int | None = None
+    backbone_condition_name: str | None = None
     status: str
     revision: int = 1
     parent_project_id: int | None = None
@@ -73,8 +65,6 @@ class ProjectResponse(BaseModel):
     layer_count: int = 0
     created_at: datetime
     updated_at: datetime
-    # SPEC-PROJECT-002 V2 fields
-    device_master_id: int | None = None
     process: str | None = None
     device_type: str = "full"
     header_metadata: dict | None = None
@@ -233,8 +223,9 @@ class RevisionItem(BaseModel):
 
 
 class RevisionListResponse(BaseModel):
-    product_id: int
-    product_name: str
+    line_id: int
+    process: str
+    part_id: str
     revisions: list[RevisionItem]
 
 

@@ -34,17 +34,52 @@ export async function fetchProjects(params?: {
   line_id?: number
   is_latest?: boolean
 }): Promise<Project[]> {
-  const { data } = await client.get<Project[]>('/projects', { params })
+  const { data } = await client.get<Project[]>('/process-conditions', { params })
   return data
 }
 
 export async function fetchProjectDetail(projectId: number): Promise<ProjectDetail> {
-  const { data } = await client.get<ProjectDetail>(`/projects/${projectId}`)
+  const { data } = await client.get<ProjectDetail>(`/process-conditions/${projectId}`)
+  return data
+}
+
+export interface BackboneConditionOption {
+  id: number
+  line_id: number
+  process_id: string
+  part_id: string
+  revision: number
+  approved_at: string | null
+}
+
+export interface BackboneConditionLayerOption {
+  id: number
+  project_id: number
+  layer_id: string
+  layer_name: string
+  step_seq: string
+  conditions: Record<string, unknown>
+  backbone_conditions: Record<string, unknown>
+  sort_order: number
+}
+
+export async function fetchBackboneConditions(lineId?: number): Promise<BackboneConditionOption[]> {
+  const params = lineId ? { line_id: lineId } : undefined
+  const { data } = await client.get<BackboneConditionOption[]>('/process-conditions/backbones', { params })
+  return data
+}
+
+export async function fetchBackboneConditionLayers(
+  conditionId: number
+): Promise<BackboneConditionLayerOption[]> {
+  const { data } = await client.get<BackboneConditionLayerOption[]>(
+    `/process-conditions/backbones/${conditionId}/layers`
+  )
   return data
 }
 
 export async function createProjectV2(req: ProjectCreateRequestV2): Promise<ProjectDetail> {
-  const { data } = await client.post<ProjectDetail>('/projects/v2', req)
+  const { data } = await client.post<ProjectDetail>('/process-conditions/v2', req)
   return data
 }
 
@@ -53,7 +88,7 @@ export async function bulkSaveConditions(
   req: BulkSaveRequest
 ): Promise<BulkSaveResponse> {
   const { data } = await client.put<BulkSaveResponse>(
-    `/projects/${projectId}/conditions`,
+    `/process-conditions/${projectId}/conditions`,
     req
   )
   return data
@@ -61,7 +96,7 @@ export async function bulkSaveConditions(
 
 export async function validateProject(projectId: number): Promise<ValidationResponse> {
   const { data } = await client.post<ValidationResponse>(
-    `/projects/${projectId}/validate`
+    `/process-conditions/${projectId}/validate`
   )
   return data
 }
@@ -76,7 +111,7 @@ export async function fetchChangeLogs(
   }
 ): Promise<ChangeLogListResponse> {
   const { data } = await client.get<ChangeLogListResponse>(
-    `/projects/${projectId}/change-logs`,
+    `/process-conditions/${projectId}/change-logs`,
     { params }
   )
   return data
@@ -91,7 +126,7 @@ export async function replaceLayerBackbone(
   req: BackboneReplaceRequest
 ): Promise<BackboneReplaceResponse> {
   const { data } = await client.put<BackboneReplaceResponse>(
-    `/projects/${projectId}/layers/${projectLayerId}/backbone`,
+    `/process-conditions/${projectId}/layers/${projectLayerId}/backbone`,
     req
   )
   return data
@@ -105,7 +140,7 @@ export async function addProjectLayer(
   req: LayerAddRequest
 ): Promise<LayerAddResponse> {
   const { data } = await client.post<LayerAddResponse>(
-    `/projects/${projectId}/layers`,
+    `/process-conditions/${projectId}/layers`,
     req
   )
   return data
@@ -115,7 +150,7 @@ export async function deleteProjectLayer(
   projectId: number,
   projectLayerId: number
 ): Promise<void> {
-  await client.delete(`/projects/${projectId}/layers/${projectLayerId}`)
+  await client.delete(`/process-conditions/${projectId}/layers/${projectLayerId}`)
 }
 
 
@@ -134,7 +169,7 @@ export async function uploadRecipeXml(
     formData.append('project_layer_id', String(projectLayerId))
   }
   const { data } = await client.post<RecipeUploadResponse>(
-    `/projects/${projectId}/recipe/upload`,
+    `/process-conditions/${projectId}/recipe/upload`,
     formData,
     { headers: { 'Content-Type': 'multipart/form-data' } }
   )
@@ -146,7 +181,7 @@ export async function applyRecipeChanges(
   req: RecipeApplyRequest
 ): Promise<RecipeApplyResponse> {
   const { data } = await client.post<RecipeApplyResponse>(
-    `/projects/${projectId}/recipe/apply`,
+    `/process-conditions/${projectId}/recipe/apply`,
     req
   )
   return data
@@ -160,15 +195,20 @@ export async function reviseProject(
   request?: ReviseProjectRequest
 ): Promise<ProjectDetail> {
   const { data } = await client.post<ProjectDetail>(
-    `/projects/${projectId}/revise`,
+    `/process-conditions/${projectId}/revise`,
     request ?? {}
   )
   return data
 }
 
-export async function getProductRevisions(productId: number): Promise<RevisionListResponse> {
+export async function getNaturalKeyRevisions(params: {
+  line_id: number
+  process: string
+  part_id: string
+}): Promise<RevisionListResponse> {
   const { data } = await client.get<RevisionListResponse>(
-    `/projects/by-product/${productId}/revisions`
+    `/process-conditions/by-key/revisions`,
+    { params }
   )
   return data
 }
@@ -181,7 +221,7 @@ export async function updateProjectStatus(
   req: StatusTransitionRequest
 ): Promise<StatusTransitionResponse> {
   const { data } = await client.patch<StatusTransitionResponse>(
-    `/projects/${projectId}/status`,
+    `/process-conditions/${projectId}/status`,
     req
   )
   return data
@@ -191,7 +231,7 @@ export async function fetchChangeSummary(
   projectId: number
 ): Promise<ChangeSummaryResponse> {
   const { data } = await client.get<ChangeSummaryResponse>(
-    `/projects/${projectId}/change-summary`
+    `/process-conditions/${projectId}/change-summary`
   )
   return data
 }
@@ -200,7 +240,7 @@ export async function fetchStatusHistory(
   projectId: number
 ): Promise<StatusHistoryResponse> {
   const { data } = await client.get<StatusHistoryResponse>(
-    `/projects/${projectId}/status-history`
+    `/process-conditions/${projectId}/status-history`
   )
   return data
 }
@@ -213,7 +253,7 @@ export async function fetchTimeline(
   params: TimelineParams = {}
 ): Promise<TimelineResponse> {
   const { data } = await client.get<TimelineResponse>(
-    `/projects/${projectId}/changelog/timeline`,
+    `/process-conditions/${projectId}/changelog/timeline`,
     { params }
   )
   return data
@@ -225,7 +265,7 @@ export async function fetchCellHistory(
   columnName: string
 ): Promise<CellHistoryResponse> {
   const { data } = await client.get<CellHistoryResponse>(
-    `/projects/${projectId}/changelog/cell`,
+    `/process-conditions/${projectId}/changelog/cell`,
     { params: { project_layer_id: projectLayerId, column_name: columnName } }
   )
   return data
@@ -235,7 +275,7 @@ export async function fetchVersionHistory(
   projectId: number
 ): Promise<VersionHistoryResponse> {
   const { data } = await client.get<VersionHistoryResponse>(
-    `/projects/${projectId}/versions`
+    `/process-conditions/${projectId}/versions`
   )
   return data
 }
@@ -247,7 +287,7 @@ export const getVersionDiff = async (
   compareProjectId: number
 ): Promise<VersionDiffResponse> => {
   const { data } = await client.get<VersionDiffResponse>(
-    `/projects/${projectId}/versions/${compareProjectId}/diff`
+    `/process-conditions/${projectId}/versions/${compareProjectId}/diff`
   )
   return data
 }

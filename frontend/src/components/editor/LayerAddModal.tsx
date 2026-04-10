@@ -1,12 +1,11 @@
 import { useState, useEffect } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { useBackboneProducts } from '@/hooks/useProducts'
-import { useAddLayer } from '@/hooks/useProjects'
+import { useAddLayer, useBackboneConditions } from '@/hooks/useProjects'
 import { useAuthStore } from '@/stores/useAuthStore'
 import { useToastStore } from '@/stores/useToastStore'
 import { Loader2 } from 'lucide-react'
-import type { ProjectLayerData, LayerInfo, BackboneProduct } from '@/types'
+import type { ProjectLayerData, LayerInfo } from '@/types'
 
 interface Props {
   open: boolean
@@ -25,12 +24,12 @@ export function LayerAddModal({
 }: Props) {
   const currentUserId = useAuthStore((s) => s.user?.id ?? null)
   const addToast = useToastStore((s) => s.addToast)
-  const { data: backboneProducts = [] } = useBackboneProducts()
+  const { data: backboneConditions = [] } = useBackboneConditions()
   const addLayer = useAddLayer(projectId)
 
   const [layerId, setLayerId] = useState('')
   const [useSource, setUseSource] = useState(false)
-  const [sourceProductId, setSourceProductId] = useState('')
+  const [sourceConditionId, setSourceConditionId] = useState('')
 
   // Filter out already-existing layers (compare by layer_name, shared by both types)
   const existingLayerNames = new Set(existingLayers.map((l) => l.layer_name))
@@ -41,7 +40,7 @@ export function LayerAddModal({
     if (open) {
       setLayerId('')
       setUseSource(false)
-      setSourceProductId('')
+      setSourceConditionId('')
     }
   }, [open])
 
@@ -52,7 +51,7 @@ export function LayerAddModal({
     try {
       await addLayer.mutateAsync({
         layer_id: layerId,
-        source_product_id: useSource && sourceProductId ? Number(sourceProductId) : undefined,
+        source_condition_id: useSource && sourceConditionId ? Number(sourceConditionId) : undefined,
         changed_by: currentUserId,
       })
       addToast('레이어가 추가되었습니다.', 'success')
@@ -62,12 +61,9 @@ export function LayerAddModal({
     }
   }
 
-  // Build product option label with version info
-  const getProductLabel = (p: BackboneProduct) => {
-    const versionSuffix = p.revision
-      ? ` (v${p.revision}${p.approved_at ? ', ' + new Date(p.approved_at).toLocaleDateString('ko-KR') : ''})`
-      : ''
-    return `${p.product_name}${versionSuffix}`
+  const getConditionLabel = (c: { process_id: string; part_id: string; revision: number; approved_at: string | null }) => {
+    const approved = c.approved_at ? new Date(c.approved_at).toLocaleDateString('ko-KR') : '-'
+    return `${c.process_id} | ${c.part_id} (v${c.revision}, ${approved})`
   }
 
   return (
@@ -115,16 +111,16 @@ export function LayerAddModal({
 
             {useSource && (
               <div>
-                <label className="text-sm font-medium mb-1.5 block">소스 Backbone 제품</label>
+                <label className="text-sm font-medium mb-1.5 block">소스 Backbone 조건표</label>
                 <select
                   className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                  value={sourceProductId}
-                  onChange={(e) => setSourceProductId(e.target.value)}
+                  value={sourceConditionId}
+                  onChange={(e) => setSourceConditionId(e.target.value)}
                 >
-                  <option value="">Backbone 제품을 선택하세요</option>
-                  {backboneProducts.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {getProductLabel(p)}
+                  <option value="">Backbone 조건표를 선택하세요</option>
+                  {backboneConditions.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {getConditionLabel(c)}
                     </option>
                   ))}
                 </select>

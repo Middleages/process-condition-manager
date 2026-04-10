@@ -15,7 +15,7 @@ class ExportHistory(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     project_id: Mapped[int] = mapped_column(
-        ForeignKey("projects.id", ondelete="CASCADE"),
+        ForeignKey("process_conditions.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )

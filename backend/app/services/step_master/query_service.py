@@ -29,13 +29,15 @@ async def get_step_layers(
     db: AsyncSession,
     line_id: int,
     process_id: str,
+    part_id: str,
 ) -> list[StepCurrent]:
-    """step_current에서 (line_id, process_id) 기준 레이어 목록 조회."""
+    """step_current에서 (line_id, process_id, part_id) 기준 레이어 목록 조회."""
     result = await db.execute(
         select(StepCurrent)
         .where(
             StepCurrent.line_id == line_id,
             StepCurrent.process_id == process_id,
+            StepCurrent.part_id == part_id,
         )
     )
     rows = list(result.scalars().all())
@@ -52,6 +54,22 @@ async def list_process_ids(db: AsyncSession, line_id: int) -> list[str]:
     process_ids = [row[0] for row in result.all() if row[0]]
     process_ids.sort()
     return process_ids
+
+
+
+
+async def list_part_ids(db: AsyncSession, line_id: int, process_id: str) -> list[str]:
+    """step_current에서 (line_id, process_id) 기준 part_id 목록 조회."""
+    result = await db.execute(
+        select(distinct(StepCurrent.part_id))
+        .where(
+            StepCurrent.line_id == line_id,
+            StepCurrent.process_id == process_id,
+        )
+    )
+    part_ids = [row[0].strip() for row in result.all() if isinstance(row[0], str) and row[0].strip()]
+    part_ids = sorted(set(part_ids))
+    return part_ids
 
 
 async def get_last_successful_full_sync_at(db: AsyncSession) -> datetime | None:

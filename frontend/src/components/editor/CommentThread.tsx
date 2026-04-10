@@ -38,7 +38,7 @@ export function CommentThread({ comment, projectId, onNavigate }: Props) {
     ? comment.column_name
       ? `${comment.layer_name} > ${comment.column_display_name ?? comment.column_name}`
       : comment.layer_name
-    : '프로젝트 전체'
+    : '공정 조건표 전체'
 
   const handleResolve = async () => {
     if (!currentUserId) return

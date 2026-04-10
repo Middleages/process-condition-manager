@@ -97,7 +97,7 @@ function VersionDiffRow({ version, successorVersion, isCurrent }: VersionDiffRow
           <button
             type="button"
             className="text-[10px] text-blue-600 hover:text-blue-800 hover:underline shrink-0"
-            onClick={() => navigate(`/projects/${version.project_id}/edit`)}
+            onClick={() => navigate(`/process-conditions/${version.project_id}/edit`)}
           >
             보기
           </button>

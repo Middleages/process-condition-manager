@@ -19,7 +19,7 @@ from app.services import condition_service, validation_service, change_log_servi
 from app.services.project import analytics_service as project_analytics_service
 from app.services import diff_service
 
-router = APIRouter(prefix="/projects", tags=["project-conditions"])
+router = APIRouter(prefix="/process-conditions", tags=["project-conditions"])
 
 
 @router.put("/{project_id}/conditions", response_model=BulkSaveResponse)

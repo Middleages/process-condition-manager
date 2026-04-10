@@ -7,6 +7,7 @@ from app.services.step_master.query_service import (
     get_last_successful_full_sync_at,
     get_step_layers,
     is_within_freshness_sla,
+    list_part_ids,
 )
 
 
@@ -73,6 +74,7 @@ async def test_get_step_layers_serves_step_current_rows_sorted(db_session) -> No
             StepCurrent(
                 line_id=line.id,
                 process_id="PHOTO",
+                part_id="P-001",
                 step_seq="ts200000",
                 layer_id="2.0",
                 step_name="S2",
@@ -82,6 +84,7 @@ async def test_get_step_layers_serves_step_current_rows_sorted(db_session) -> No
             StepCurrent(
                 line_id=line.id,
                 process_id="PHOTO",
+                part_id="P-001",
                 step_seq="ts100000",
                 layer_id="1.0",
                 step_name="S1",
@@ -92,6 +95,23 @@ async def test_get_step_layers_serves_step_current_rows_sorted(db_session) -> No
     )
     await db_session.commit()
 
-    rows = await get_step_layers(db_session, line.id, "PHOTO")
+    rows = await get_step_layers(db_session, line.id, "PHOTO", "P-001")
     assert [r.layer_id for r in rows] == ["1.0", "2.0"]
     assert [r.step_seq for r in rows] == ["ts100000", "ts200000"]
+
+
+@pytest.mark.asyncio
+async def test_list_part_ids_distinct_sorted(db_session) -> None:
+    line = Line(line_code="L-PART", line_name="Part Line")
+    db_session.add(line)
+    await db_session.flush()
+
+    db_session.add_all([
+        StepCurrent(line_id=line.id, process_id="PHOTO", part_id="P-002", step_seq="1", layer_id="1.0", raw_payload={}),
+        StepCurrent(line_id=line.id, process_id="PHOTO", part_id="P-001", step_seq="2", layer_id="2.0", raw_payload={}),
+        StepCurrent(line_id=line.id, process_id="PHOTO", part_id="P-001", step_seq="3", layer_id="3.0", raw_payload={}),
+    ])
+    await db_session.commit()
+
+    part_ids = await list_part_ids(db_session, line.id, "PHOTO")
+    assert part_ids == ["P-001", "P-002"]

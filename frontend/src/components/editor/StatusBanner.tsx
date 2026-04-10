@@ -65,7 +65,7 @@ export function StatusBanner({ status, revision, projectId }: Props) {
     if (!versionData) return
     const latestVersion = versionData.versions.find((v) => v.is_latest)
     if (latestVersion) {
-      navigate(`/projects/${latestVersion.project_id}/edit`)
+      navigate(`/process-conditions/${latestVersion.project_id}/edit`)
     }
   }
 

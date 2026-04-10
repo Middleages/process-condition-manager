@@ -3,6 +3,8 @@ import {
   fetchProjects,
   fetchProjectDetail,
   createProjectV2,
+  fetchBackboneConditions,
+  fetchBackboneConditionLayers,
   bulkSaveConditions,
   validateProject,
   fetchChangeLogs,
@@ -12,7 +14,7 @@ import {
   uploadRecipeXml,
   applyRecipeChanges,
   reviseProject,
-  getProductRevisions,
+  getNaturalKeyRevisions,
   fetchTimeline,
   fetchCellHistory,
   fetchVersionHistory,
@@ -45,9 +47,13 @@ export const projectKeys = {
     [...projectKeys.detail(projectId), 'cellHistory', projectLayerId, columnName] as const,
   versionHistory: (projectId: number) =>
     [...projectKeys.detail(projectId), 'versionHistory'] as const,
-  productRevisions: (productId: number) => ['projects', 'productRevisions', productId] as const,
+  naturalKeyRevisions: (params: { line_id: number; process: string; part_id: string }) =>
+    ['projects', 'naturalKeyRevisions', params] as const,
   versionDiff: (projectId: number, compareProjectId: number) =>
     ['projects', 'versionDiff', projectId, compareProjectId] as const,
+  backboneConditions: (lineId?: number) => ['projects', 'backboneConditions', lineId ?? null] as const,
+  backboneConditionLayers: (conditionId?: number) =>
+    ['projects', 'backboneConditionLayers', conditionId ?? null] as const,
 }
 
 export function useProjects(status?: ProjectStatus, lineId?: number) {
@@ -181,11 +187,28 @@ export function useReviseProject() {
   })
 }
 
-export function useProductRevisions(productId: number | null) {
+export function useNaturalKeyRevisions(params: {
+  line_id?: number | null
+  process?: string | null
+  part_id?: string | null
+}) {
+  const lineId = params.line_id ?? null
+  const process = params.process?.trim() ?? ''
+  const partId = params.part_id?.trim() ?? ''
+
   return useQuery({
-    queryKey: projectKeys.productRevisions(productId!),
-    queryFn: () => getProductRevisions(productId!),
-    enabled: !!productId,
+    queryKey: projectKeys.naturalKeyRevisions({
+      line_id: lineId ?? 0,
+      process,
+      part_id: partId,
+    }),
+    queryFn: () =>
+      getNaturalKeyRevisions({
+        line_id: lineId!,
+        process,
+        part_id: partId,
+      }),
+    enabled: !!lineId && process.length > 0 && partId.length > 0,
   })
 }
 
@@ -226,5 +249,21 @@ export function useVersionDiff(
     queryKey: projectKeys.versionDiff(projectId, compareProjectId),
     queryFn: () => getVersionDiff(projectId, compareProjectId),
     enabled: enabled && !!projectId && !!compareProjectId,
+  })
+}
+
+
+export function useBackboneConditions(lineId?: number) {
+  return useQuery({
+    queryKey: projectKeys.backboneConditions(lineId),
+    queryFn: () => fetchBackboneConditions(lineId),
+  })
+}
+
+export function useBackboneConditionLayers(conditionId?: number) {
+  return useQuery({
+    queryKey: projectKeys.backboneConditionLayers(conditionId),
+    queryFn: () => fetchBackboneConditionLayers(conditionId!),
+    enabled: !!conditionId,
   })
 }

@@ -141,15 +141,15 @@ async def seed_test_data(db_session: AsyncSession):
 
     # -- Users --
     user = User(
-        username="tester1", display_name="tester1", roles=["editor"],
+        userid="tester1", roles=["editor"],
         password_hash=_default_hash, email="editor@test.local",
     )
     admin_user = User(
-        username="admin1", display_name="admin1", roles=["admin"],
+        userid="admin1", roles=["admin"],
         password_hash=_default_hash, email="admin@test.local",
     )
     reviewer_user = User(
-        username="reviewer1", display_name="reviewer1", roles=["reviewer"],
+        userid="reviewer1", roles=["reviewer"],
         password_hash=_default_hash, email="reviewer@test.local",
     )
     db_session.add_all([user, admin_user, reviewer_user])

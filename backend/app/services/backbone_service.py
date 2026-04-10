@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException
 
 from app.models import (
-    Product, Project, ProjectLayer, Layer, ChangeLog,
+    Project, ProjectLayer, Layer, ChangeLog,
 )
 from app.repositories.backbone_repository import BackboneRepository
 from app.utils.comparison import values_differ
@@ -16,11 +16,11 @@ async def replace_layer_backbone(
     db: AsyncSession,
     project_id: int,
     project_layer_id: int,
-    source_product_id: int,
+    source_condition_id: int,
     source_layer_name: str | None,
     changed_by: int,
 ) -> tuple[ProjectLayer, int]:
-    """Replace a layer's backbone with conditions from another product.
+    """Replace a layer's backbone with conditions from another approved condition.
 
     Returns (updated_project_layer, changed_column_count).
     """
@@ -44,13 +44,8 @@ async def replace_layer_backbone(
     if not target_pl:
         raise HTTPException(status_code=404, detail="Project layer not found")
 
-    # 3. Validate source product exists and has an Approved project (backbone source)
-    source_product = await db.get(Product, source_product_id)
-    if not source_product:
-        raise HTTPException(status_code=404, detail="Source product not found")
-
-    # validate_backbone_source raises 400 if no Approved project found
-    approved_project = await BackboneRepository.validate_backbone_source(db, source_product_id)
+    # 3. Validate source condition exists and is approved/latest
+    approved_project = await BackboneRepository.validate_backbone_source(db, source_condition_id)
 
     # 4. Find matching layer in source product's Approved project layers
     layer_name = source_layer_name or target_pl.layer_name
@@ -65,7 +60,7 @@ async def replace_layer_backbone(
     if not source_pl:
         raise HTTPException(
             status_code=404,
-            detail=f"Layer '{layer_name}' not found in approved project for '{source_product.product_name}'"
+            detail=f"Layer '{layer_name}' not found in approved backbone condition id={source_condition_id}"
         )
 
     # 5. Compute diff and create change_logs
@@ -91,7 +86,8 @@ async def replace_layer_backbone(
     # 6. Update project_layer
     target_pl.conditions = new_conditions
     target_pl.backbone_conditions = copy.deepcopy(new_conditions)
-    target_pl.backbone_product_id = source_product_id
+    target_pl.backbone_product_id = source_condition_id
+    target_pl.backbone_source_condition_id = source_condition_id
 
     # 7. Touch project.updated_at
     project.updated_at = datetime.now(timezone.utc)
@@ -107,12 +103,12 @@ async def add_layer(
     project_id: int,
     layer_id: int | str,
     changed_by: int,
-    source_product_id: int | None = None,
+    source_condition_id: int | None = None,
     source_layer_name: str | None = None,
 ) -> ProjectLayer:
     """Add a new layer to a project.
 
-    If source_product_id is provided, copies conditions from that product's matching layer.
+    If source_condition_id is provided, copies conditions from that approved condition's matching layer.
     Otherwise creates an empty layer.
     """
 
@@ -141,15 +137,11 @@ async def add_layer(
     # 4. Get conditions from source if provided
     conditions = {}
     backbone_conditions = {}
-    bb_product_id = None
+    bb_condition_id = None
 
-    if source_product_id is not None:
-        source_product = await db.get(Product, source_product_id)
-        if not source_product:
-            raise HTTPException(status_code=404, detail="Source product not found")
-
-        # validate_backbone_source raises 400 if no Approved project found
-        approved_project = await BackboneRepository.validate_backbone_source(db, source_product_id)
+    if source_condition_id is not None:
+        # validate_backbone_source raises 400 if no approved/latest condition found
+        approved_project = await BackboneRepository.validate_backbone_source(db, source_condition_id)
 
         # Find the matching layer in the Approved project
         match_name = source_layer_name or layer.layer_name
@@ -164,7 +156,7 @@ async def add_layer(
         if source_pl:
             conditions = copy.deepcopy(source_pl.conditions or {})
             backbone_conditions = copy.deepcopy(source_pl.conditions or {})
-            bb_product_id = source_product_id
+            bb_condition_id = source_condition_id
 
     # 5. Create project_layer
     new_pl = ProjectLayer(
@@ -172,7 +164,8 @@ async def add_layer(
         layer_id=layer.layer_number,
         layer_name=layer.layer_name,
         step_seq=layer.step_seq,
-        backbone_product_id=bb_product_id,
+        backbone_product_id=bb_condition_id,
+        backbone_source_condition_id=bb_condition_id,
         conditions=conditions,
         backbone_conditions=backbone_conditions,
         sort_order=layer.sort_order,

@@ -1,8 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models import Product
 from app.models.user import User
 from app.dependencies.auth import get_current_user, require_active_user
 from app.schemas.project import (
@@ -21,7 +20,7 @@ from app.services.project import analytics_service as project_analytics_service
 from app.services import change_log_service
 from app.routers.projects.projects import _build_project_detail_response
 
-router = APIRouter(prefix="/projects", tags=["project-lifecycle"])
+router = APIRouter(prefix="/process-conditions", tags=["project-lifecycle"])
 
 
 # --- Revision feature ---
@@ -44,18 +43,23 @@ async def revise_project(
     return _build_project_detail_response(project)
 
 
-@router.get("/by-product/{product_id}/revisions", response_model=RevisionListResponse)
-async def get_product_revisions(
-    product_id: int,
+@router.get("/by-key/revisions", response_model=RevisionListResponse)
+async def get_natural_key_revisions(
+    line_id: int = Query(..., gt=0),
+    process: str = Query(..., min_length=1, max_length=50),
+    part_id: str = Query(..., min_length=1, max_length=100),
     _current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get revision history for a product."""
-    product = await db.get(Product, product_id)
-    if not product:
-        raise HTTPException(status_code=404, detail="Product not found")
-
-    projects = await project_service.list_product_revisions(db, product_id)
+    """Get revision history for a natural key (line_id, process, part_id)."""
+    projects = await project_service.list_natural_key_revisions(
+        db,
+        line_id=line_id,
+        process=process,
+        part_id=part_id,
+    )
+    if not projects:
+        raise HTTPException(status_code=404, detail="No revisions found for the given natural key")
     revisions = [
         RevisionItem(
             id=p.id,
@@ -70,8 +74,9 @@ async def get_product_revisions(
     ]
 
     return RevisionListResponse(
-        product_id=product_id,
-        product_name=product.product_name,
+        line_id=line_id,
+        process=process,
+        part_id=part_id,
         revisions=revisions,
     )
 

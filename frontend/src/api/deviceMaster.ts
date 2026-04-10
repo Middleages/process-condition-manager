@@ -16,6 +16,7 @@ import type {
   DeviceLayerItem,
   DuplicateCheckResponse,
   StepCurrentLayersResponse,
+  StepCurrentPartOptionsResponse,
   StepCurrentProcessOptionsResponse,
 } from '@/types/deviceMaster'
 
@@ -52,9 +53,23 @@ export async function fetchStepCurrentProcessOptions(
   return data
 }
 
+
+
+export async function fetchStepCurrentPartOptions(
+  lineId: number,
+  processId: string
+): Promise<StepCurrentPartOptionsResponse> {
+  const { data } = await client.get<StepCurrentPartOptionsResponse>(
+    '/device-masters/step-current/parts',
+    { params: { line_id: lineId, process_id: processId } }
+  )
+  return data
+}
+
 export async function fetchStepCurrentLayers(params: {
   line_id: number
   process_id: string
+  part_id: string
 }): Promise<StepCurrentLayersResponse> {
   const { data } = await client.get<StepCurrentLayersResponse>('/device-masters/step-current/layers', {
     params,

@@ -27,6 +27,7 @@ async def test_create_project_v2_rejects_stale_step_current(db_session, caplog) 
         StepCurrent(
             line_id=line.id,
             process_id="PHOTO",
+            part_id="P1",
             step_seq="ts100000",
             layer_id="1.0",
             step_name="S1",
@@ -56,12 +57,11 @@ async def test_create_project_v2_rejects_stale_step_current(db_session, caplog) 
             await create_project_v2(
                 db_session,
                 line_id=line.id,
-                product_name="DEV-PROD",
                 process="PHOTO",
                 part_id="P1",
                 device_type="full",
-                selected_layer_ids=["1.0"],
-                backbone_product_id=None,
+                selected_layer_refs=[],
+                backbone_condition_id=None,
                 created_by=user.id,
             )
         assert exc_info.value.status_code == 503
@@ -90,6 +90,7 @@ async def test_create_project_v2_uses_step_current_even_when_flag_off(db_session
         StepCurrent(
             line_id=line.id,
             process_id="PHOTO",
+            part_id="P1",
             step_seq="ts100000",
             layer_id="1.0",
             step_name="S1",
@@ -107,12 +108,11 @@ async def test_create_project_v2_uses_step_current_even_when_flag_off(db_session
         project = await create_project_v2(
             db_session,
             line_id=line.id,
-            product_name="DEV-OFF",
             process="PHOTO",
             part_id="P1",
             device_type="full",
-            selected_layer_ids=["1.0"],
-            backbone_product_id=None,
+            selected_layer_refs=[],
+            backbone_condition_id=None,
             created_by=user.id,
         )
         assert len(project.layers) == 1
@@ -149,6 +149,7 @@ async def test_create_project_v2_uses_step_current_when_flag_on_and_fresh(db_ses
         StepCurrent(
             line_id=line.id,
             process_id="PHOTO",
+            part_id="P1",
             step_seq="ts100000",
             layer_id="1.0",
             step_name="S1",
@@ -177,12 +178,11 @@ async def test_create_project_v2_uses_step_current_when_flag_on_and_fresh(db_ses
         project = await create_project_v2(
             db_session,
             line_id=line.id,
-            product_name="DEV-ON",
             process="PHOTO",
             part_id="P1",
             device_type="full",
-            selected_layer_ids=["1.0"],
-            backbone_product_id=None,
+            selected_layer_refs=[],
+            backbone_condition_id=None,
             created_by=user.id,
         )
         assert len(project.layers) == 1
@@ -213,6 +213,7 @@ async def test_create_project_v2_full_auto_selects_all_step_current_layers_when_
             StepCurrent(
                 line_id=line.id,
                 process_id="PHOTO",
+                part_id="P1",
                 step_seq="ts100000",
                 layer_id="1.0",
                 step_name="S1",
@@ -222,6 +223,7 @@ async def test_create_project_v2_full_auto_selects_all_step_current_layers_when_
             StepCurrent(
                 line_id=line.id,
                 process_id="PHOTO",
+                part_id="P1",
                 step_seq="ts200000",
                 layer_id="2.0",
                 step_name="S2",
@@ -249,13 +251,11 @@ async def test_create_project_v2_full_auto_selects_all_step_current_layers_when_
         project = await create_project_v2(
             db_session,
             line_id=line.id,
-            product_name="DEV-AUTO",
             process="PHOTO",
             part_id="P1",
             device_type="full",
-            selected_layer_ids=[],
             selected_layer_refs=[],
-            backbone_product_id=None,
+            backbone_condition_id=None,
             created_by=user.id,
         )
         assert sorted([pl.layer_id for pl in project.layers]) == ["1.0", "2.0"]
@@ -283,6 +283,7 @@ async def test_create_project_v2_uses_selected_layer_refs_as_primary_for_duplica
             StepCurrent(
                 line_id=line.id,
                 process_id="PHOTO",
+                part_id="P1",
                 step_seq="ts100000",
                 layer_id="1.0",
                 step_name="S1",
@@ -292,6 +293,7 @@ async def test_create_project_v2_uses_selected_layer_refs_as_primary_for_duplica
             StepCurrent(
                 line_id=line.id,
                 process_id="PHOTO",
+                part_id="P1",
                 step_seq="ts100001",
                 layer_id="1.0",
                 step_name="S1b",
@@ -310,13 +312,11 @@ async def test_create_project_v2_uses_selected_layer_refs_as_primary_for_duplica
         project = await create_project_v2(
             db_session,
             line_id=line.id,
-            product_name="DEV-DUP",
             process="PHOTO",
             part_id="P1",
             device_type="short",
-            selected_layer_ids=["1.0"],
             selected_layer_refs=[("1.0", "ts100001")],
-            backbone_product_id=None,
+            backbone_condition_id=None,
             created_by=user.id,
         )
         assert len(project.layers) == 1
@@ -329,7 +329,7 @@ async def test_create_project_v2_uses_selected_layer_refs_as_primary_for_duplica
 
 
 @pytest.mark.asyncio
-async def test_create_project_v2_duplicate_layer_ids_without_refs_returns_friendly_409(db_session) -> None:
+async def test_create_project_v2_short_requires_selected_layer_refs(db_session) -> None:
     line = Line(line_code="L-DUP-ERR", line_name="Line Dup Err")
     user = User(userid="u-dup-err", roles=["editor"], password_hash="", email="u-dup-err@test.local")
     device = DeviceMaster(
@@ -347,6 +347,7 @@ async def test_create_project_v2_duplicate_layer_ids_without_refs_returns_friend
             StepCurrent(
                 line_id=line.id,
                 process_id="PHOTO",
+                part_id="P1",
                 step_seq="ts100000",
                 layer_id="1.0",
                 step_name="S1",
@@ -356,6 +357,7 @@ async def test_create_project_v2_duplicate_layer_ids_without_refs_returns_friend
             StepCurrent(
                 line_id=line.id,
                 process_id="PHOTO",
+                part_id="P1",
                 step_seq="ts100001",
                 layer_id="1.0",
                 step_name="S1b",
@@ -375,17 +377,15 @@ async def test_create_project_v2_duplicate_layer_ids_without_refs_returns_friend
             await create_project_v2(
                 db_session,
                 line_id=line.id,
-                product_name="DEV-DUP-ERR",
                 process="PHOTO",
                 part_id="P1",
                 device_type="short",
-                selected_layer_ids=["1.0"],
                 selected_layer_refs=[],
-                backbone_product_id=None,
+                backbone_condition_id=None,
                 created_by=user.id,
             )
-        assert exc_info.value.status_code == 409
-        assert "동일한 layer_id가 여러 개" in str(exc_info.value.detail)
+        assert exc_info.value.status_code == 422
+        assert "selected_layer_refs" in str(exc_info.value.detail)
     finally:
         settings.USE_STEP_CURRENT = prev_use
         settings.STEP_CURRENT_ENFORCE_FRESHNESS = prev_enforce

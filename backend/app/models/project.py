@@ -17,14 +17,15 @@ if TYPE_CHECKING:
 
 
 class Project(Base):
-    __tablename__ = "projects"
+    __tablename__ = "process_conditions"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     product_id: Mapped[int | None] = mapped_column(ForeignKey("products.id"), nullable=True, index=True)
     main_backbone_id: Mapped[int | None] = mapped_column(ForeignKey("products.id"), nullable=True)
+    main_backbone_condition_id: Mapped[int | None] = mapped_column(ForeignKey("process_conditions.id"), nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="draft")  # draft / review / approved / rejected / archived
     revision: Mapped[int] = mapped_column(Integer, default=1)
-    parent_project_id: Mapped[int | None] = mapped_column(ForeignKey("projects.id"), nullable=True)
+    parent_project_id: Mapped[int | None] = mapped_column(ForeignKey("process_conditions.id"), nullable=True)
     is_latest: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     created_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
     reviewed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
@@ -44,6 +45,7 @@ class Project(Base):
 
     product: Mapped["Product | None"] = relationship(foreign_keys=[product_id])
     backbone: Mapped["Product | None"] = relationship(foreign_keys=[main_backbone_id])
+    backbone_condition: Mapped["Project | None"] = relationship(foreign_keys=[main_backbone_condition_id], remote_side="Project.id")
     line: Mapped["Line | None"] = relationship(foreign_keys=[line_id])
     device_master: Mapped["DeviceMaster | None"] = relationship(foreign_keys=[device_master_id])
     parent_project: Mapped["Project | None"] = relationship(
@@ -51,24 +53,30 @@ class Project(Base):
     )
     creator: Mapped["User"] = relationship(foreign_keys=[created_by])
     reviewer: Mapped["User | None"] = relationship(foreign_keys=[reviewed_by])
-    layers: Mapped[list["ProjectLayer"]] = relationship(back_populates="project", cascade="all, delete-orphan")
+    layers: Mapped[list["ProjectLayer"]] = relationship(
+        back_populates="project",
+        cascade="all, delete-orphan",
+        foreign_keys="ProjectLayer.project_id",
+    )
 
 
 class ProjectLayer(Base):
-    __tablename__ = "project_layers"
+    __tablename__ = "process_condition_layers"
     __table_args__ = (UniqueConstraint("project_id", "layer_id"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("process_conditions.id", ondelete="CASCADE"), index=True)
     layer_id: Mapped[str] = mapped_column(String(10))
     layer_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     step_seq: Mapped[str | None] = mapped_column(String(20), nullable=True)
     backbone_product_id: Mapped[int | None] = mapped_column(ForeignKey("products.id"), nullable=True)
+    backbone_source_condition_id: Mapped[int | None] = mapped_column(ForeignKey("process_conditions.id"), nullable=True)
     conditions: Mapped[dict] = mapped_column(JSONB, default=dict)
     backbone_conditions: Mapped[dict] = mapped_column(JSONB, default=dict)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
-    project: Mapped["Project"] = relationship(back_populates="layers")
+    project: Mapped["Project"] = relationship(back_populates="layers", foreign_keys=[project_id])
     backbone_product: Mapped["Product | None"] = relationship(foreign_keys=[backbone_product_id])
+    backbone_source_condition: Mapped["Project | None"] = relationship(foreign_keys=[backbone_source_condition_id])

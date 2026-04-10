@@ -1,12 +1,11 @@
 import { useState, useEffect } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { useBackboneProducts, useBackboneLayers } from '@/hooks/useProducts'
-import { useReplaceBackbone } from '@/hooks/useProjects'
+import { useBackboneConditionLayers, useBackboneConditions, useReplaceBackbone } from '@/hooks/useProjects'
 import { useAuthStore } from '@/stores/useAuthStore'
 import { useToastStore } from '@/stores/useToastStore'
 import { Loader2 } from 'lucide-react'
-import type { ProjectLayerData, BackboneProduct } from '@/types'
+import type { ProjectLayerData } from '@/types'
 
 interface Props {
   open: boolean
@@ -18,15 +17,15 @@ interface Props {
 export function BackboneReplaceModal({ open, onOpenChange, projectId, layer }: Props) {
   const currentUserId = useAuthStore((s) => s.user?.id ?? null)
   const addToast = useToastStore((s) => s.addToast)
-  const { data: backboneProducts = [] } = useBackboneProducts()
+  const { data: backboneConditions = [] } = useBackboneConditions()
   const replaceBackbone = useReplaceBackbone(projectId)
 
-  const [sourceProductId, setSourceProductId] = useState('')
+  const [sourceConditionId, setSourceConditionId] = useState('')
   const [sourceLayerName, setSourceLayerName] = useState('')
 
-  // Fetch layers from the Approved project of the selected backbone product
-  const { data: sourceLayers = [], isLoading: loadingLayers } = useBackboneLayers(
-    sourceProductId ? Number(sourceProductId) : undefined
+  // Fetch layers from the selected backbone condition
+  const { data: sourceLayers = [], isLoading: loadingLayers } = useBackboneConditionLayers(
+    sourceConditionId ? Number(sourceConditionId) : undefined
   )
 
   // Auto-match layer by name when layers are loaded
@@ -39,25 +38,25 @@ export function BackboneReplaceModal({ open, onOpenChange, projectId, layer }: P
   // Reset source layer name when product selection changes
   useEffect(() => {
     setSourceLayerName('')
-  }, [sourceProductId])
+  }, [sourceConditionId])
 
   // Reset state when modal opens
   useEffect(() => {
     if (open) {
-      setSourceProductId('')
+      setSourceConditionId('')
       setSourceLayerName('')
     }
   }, [open])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!layer || !sourceProductId || !currentUserId) return
+    if (!layer || !sourceConditionId || !currentUserId) return
 
     try {
       const result = await replaceBackbone.mutateAsync({
         projectLayerId: layer.id,
         req: {
-          source_product_id: Number(sourceProductId),
+          source_condition_id: Number(sourceConditionId),
           source_layer_name: sourceLayerName || null,
           changed_by: currentUserId,
         },
@@ -72,12 +71,9 @@ export function BackboneReplaceModal({ open, onOpenChange, projectId, layer }: P
     }
   }
 
-  // Build product option label with version info
-  const getProductLabel = (p: BackboneProduct) => {
-    const versionSuffix = p.revision
-      ? ` (v${p.revision}${p.approved_at ? ', ' + new Date(p.approved_at).toLocaleDateString('ko-KR') : ''})`
-      : ''
-    return `${p.product_name}${versionSuffix}`
+  const getConditionLabel = (c: { process_id: string; part_id: string; revision: number; approved_at: string | null }) => {
+    const approved = c.approved_at ? new Date(c.approved_at).toLocaleDateString('ko-KR') : '-'
+    return `${c.process_id} | ${c.part_id} (v${c.revision}, ${approved})`
   }
 
   return (
@@ -91,31 +87,31 @@ export function BackboneReplaceModal({ open, onOpenChange, projectId, layer }: P
             <div className="bg-muted/50 rounded-md px-3 py-2 text-sm">
               <span className="text-muted-foreground">대상 레이어:</span>{' '}
               <span className="font-medium">{layer?.layer_name}</span>
-              {layer?.backbone_product_name && (
+              {layer?.backbone_condition_name && (
                 <span className="text-muted-foreground ml-2">
-                  (현재: {layer.backbone_product_name})
+                  (현재: {layer.backbone_condition_name})
                 </span>
               )}
             </div>
 
             <div>
-              <label className="text-sm font-medium mb-1.5 block">소스 Backbone 제품</label>
+              <label className="text-sm font-medium mb-1.5 block">소스 Backbone 조건표</label>
               <select
                 className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                value={sourceProductId}
-                onChange={(e) => setSourceProductId(e.target.value)}
+                value={sourceConditionId}
+                onChange={(e) => setSourceConditionId(e.target.value)}
                 required
               >
-                <option value="">Backbone 제품을 선택하세요</option>
-                {backboneProducts.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {getProductLabel(p)}
+                <option value="">Backbone 조건표를 선택하세요</option>
+                {backboneConditions.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {getConditionLabel(c)}
                   </option>
                 ))}
               </select>
             </div>
 
-            {sourceProductId && (
+            {sourceConditionId && (
               <div>
                 <label className="text-sm font-medium mb-1.5 block">
                   소스 레이어
@@ -150,7 +146,7 @@ export function BackboneReplaceModal({ open, onOpenChange, projectId, layer }: P
                 )}
                 {!loadingLayers && sourceLayers.length === 0 && (
                   <p className="text-xs text-muted-foreground mt-1">
-                    이 제품의 Approved 프로젝트에 레이어가 없습니다.
+                    이 조건표에 레이어가 없습니다.
                   </p>
                 )}
               </div>
@@ -170,7 +166,7 @@ export function BackboneReplaceModal({ open, onOpenChange, projectId, layer }: P
             <Button
               type="submit"
               disabled={
-                !sourceProductId ||
+                !sourceConditionId ||
                 !sourceLayerName ||
                 !currentUserId ||
                 replaceBackbone.isPending

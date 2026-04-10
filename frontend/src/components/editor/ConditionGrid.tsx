@@ -59,7 +59,7 @@ function buildRowData(layers: ProjectLayerData[]): GridRowData[] {
     stepSeq: layer.step_seq,
     layerNumber: layer.layer_number,
     sortOrder: layer.sort_order,
-    backboneProductName: layer.backbone_product_name,
+    backboneProductName: layer.backbone_condition_name,
     ...layer.conditions,
   }))
 }

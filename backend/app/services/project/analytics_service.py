@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from fastapi import HTTPException
 
-from app.models import Product, Project, ProjectLayer
+from app.models import Project, ProjectLayer
 from app.repositories import ChangeLogRepository
 from app.services import validation_service
 
@@ -68,40 +68,28 @@ async def list_version_history(
     db: AsyncSession,
     project_id: int,
 ):
-    """Get version history for all projects sharing the same product as the given project."""
+    """Get version history for all projects sharing the same natural key."""
     from app.schemas.project import VersionItem, VersionHistoryResponse
 
-    # Get project with product relationship
     project = await db.get(Project, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    # V2 projects use device_master_id, V1 projects use product_id
-    if project.device_master_id:
-        # V2: group by device_master_id
-        result = await db.execute(
-            select(Project)
-            .options(selectinload(Project.creator))
-            .where(Project.device_master_id == project.device_master_id)
-            .order_by(Project.revision.desc())
+    if not (project.line_id and project.process and project.part_id):
+        raise HTTPException(status_code=404, detail="Project has no natural-key reference")
+
+    result = await db.execute(
+        select(Project)
+        .options(selectinload(Project.creator))
+        .where(
+            Project.line_id == project.line_id,
+            Project.process == project.process,
+            Project.part_id == project.part_id,
         )
-        display_name = project.product_name or "Unknown"
-        display_id = project.device_master_id
-    elif project.product_id:
-        # V1: group by product_id
-        product = await db.get(Product, project.product_id)
-        if not product:
-            raise HTTPException(status_code=404, detail="Product not found")
-        result = await db.execute(
-            select(Project)
-            .options(selectinload(Project.creator))
-            .where(Project.product_id == project.product_id)
-            .order_by(Project.revision.desc())
-        )
-        display_name = product.product_name
-        display_id = product.id
-    else:
-        raise HTTPException(status_code=404, detail="Project has no product or device reference")
+        .order_by(Project.revision.desc())
+    )
+    display_name = f"{project.process} | {project.part_id}"
+    display_id = project.line_id
 
     projects = list(result.scalars().all())
 

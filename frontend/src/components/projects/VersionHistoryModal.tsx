@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom'
-import { useProductRevisions } from '@/hooks/useProjects'
+import { useNaturalKeyRevisions } from '@/hooks/useProjects'
 import { StatusBadge } from './StatusBadge'
 import type { ProjectStatus } from '@/types'
 import {
@@ -13,29 +13,37 @@ import { Loader2 } from 'lucide-react'
 interface VersionHistoryModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  productId: number | null
+  lineId: number | null
+  process: string | null
+  partId: string | null
   currentProjectId: number
 }
 
 export function VersionHistoryModal({
   open,
   onOpenChange,
-  productId,
+  lineId,
+  process,
+  partId,
   currentProjectId,
 }: VersionHistoryModalProps) {
   const navigate = useNavigate()
-  const { data, isLoading } = useProductRevisions(productId)
+  const { data, isLoading } = useNaturalKeyRevisions({
+    line_id: lineId,
+    process,
+    part_id: partId,
+  })
 
   const handleVersionClick = (projectId: number) => {
     onOpenChange(false)
-    navigate(`/projects/${projectId}/edit`)
+    navigate(`/process-conditions/${projectId}/edit`)
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl">
         <DialogHeader>
-          <DialogTitle>버전 히스토리 - {data?.product_name || '...'}</DialogTitle>
+          <DialogTitle>버전 히스토리 - {data ? `${data.process} | ${data.part_id}` : '...'}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-3">

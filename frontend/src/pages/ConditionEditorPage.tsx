@@ -231,7 +231,7 @@ export default function ConditionEditorPage() {
   if (!project) {
     return (
       <div className="h-full flex items-center justify-center text-muted-foreground">
-        프로젝트를 찾을 수 없습니다.
+        공정 조건표를 찾을 수 없습니다.
       </div>
     )
   }

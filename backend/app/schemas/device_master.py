@@ -282,6 +282,14 @@ class StepCurrentProcessOptionsResponse(BaseModel):
     process_ids: list[str]
 
 
+class StepCurrentPartOptionsResponse(BaseModel):
+    """(line_id, process_id) 기준 step_current part_id 목록."""
+
+    line_id: int
+    process_id: str
+    part_ids: list[str]
+
+
 class StepCurrentLayerItem(BaseModel):
     """step_current 기반 레이어 응답 아이템."""
 

@@ -45,7 +45,7 @@ export function useEditorCellEdit({
   const handleCellChanged = useCallback(
     (projectLayerId: number, columnName: string, newValue: unknown, _oldValue: unknown) => {
       if (isArchived) {
-        addToast('보관된 프로젝트는 수정할 수 없습니다.', 'error')
+        addToast('보관된 공정 조건표는 수정할 수 없습니다.', 'error')
         return
       }
 

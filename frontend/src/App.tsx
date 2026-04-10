@@ -55,8 +55,8 @@ const router = createBrowserRouter([
         element: <Layout />,
         children: [
           { path: '/', element: <DashboardPage /> },
-          { path: '/projects', element: <ProjectListPage /> },
-          { path: '/projects/:projectId/edit', element: <ConditionEditorPage /> },
+          { path: '/process-conditions', element: <ProjectListPage /> },
+          { path: '/process-conditions/:projectId/edit', element: <ConditionEditorPage /> },
           { path: '/announcements', element: <AnnouncementListPage /> },
           { path: '/config-changes', element: <ConfigChangeListPage /> },
           { path: '/config-changes/:id', element: <ConfigChangeDetailPage /> },

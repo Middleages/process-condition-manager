@@ -182,6 +182,12 @@ export interface StepCurrentProcessOptionsResponse {
   process_ids: string[]
 }
 
+export interface StepCurrentPartOptionsResponse {
+  line_id: number
+  process_id: string
+  part_ids: string[]
+}
+
 export interface StepCurrentLayerItem {
   step_seq: string
   layer_id: string

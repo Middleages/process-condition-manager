@@ -14,35 +14,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.project import Project, ProjectLayer
-from app.models.product import Product
 
 
 class BackboneRepository:
     """Data access layer for backbone-related queries using Approved projects."""
 
     @staticmethod
-    async def get_approved_project_for_product(
+    async def get_approved_condition(
         db: AsyncSession,
-        product_id: int,
+        condition_id: int,
     ) -> Project | None:
-        """Find the latest Approved project for a product.
-
-        An Approved project with is_latest=True is the canonical backbone
-        source for the given product.
-
-        Args:
-            db: Async database session
-            product_id: Product to find the Approved project for
-
-        Returns:
-            Project instance with project_layers eagerly loaded, or None
-        """
+        """Find a specific approved/latest process-condition by id."""
         result = await db.execute(
             select(Project)
             .options(selectinload(Project.layers))
             .where(
                 and_(
-                    Project.product_id == product_id,
+                    Project.id == condition_id,
                     Project.status == "approved",
                     Project.is_latest == True,  # noqa: E712
                 )
@@ -53,20 +41,19 @@ class BackboneRepository:
     @staticmethod
     async def get_backbone_layer_map(
         db: AsyncSession,
-        product_id: int,
+        condition_id: int,
     ) -> dict[str, dict]:
-        """Return {layer_id: conditions} from the Approved project for a product.
+        """Return {layer_id: conditions} from an approved backbone condition.
 
         Args:
             db: Async database session
-            product_id: Product whose Approved project's layers to retrieve
+            condition_id: Approved backbone process-condition ID.
 
         Returns:
-            Dict mapping layer_id (str, e.g. "1.0") to the conditions dict
-            from the Approved project. Returns empty dict if no Approved project exists.
+            Dict mapping layer_id to conditions dict.
         """
-        approved_project = await BackboneRepository.get_approved_project_for_product(
-            db, product_id
+        approved_project = await BackboneRepository.get_approved_condition(
+            db, condition_id
         )
         if approved_project is None:
             return {}
@@ -76,113 +63,80 @@ class BackboneRepository:
     @staticmethod
     async def validate_backbone_source(
         db: AsyncSession,
-        product_id: int,
+        condition_id: int,
     ) -> Project:
-        """Validate that a product has an Approved project usable as backbone.
+        """Validate that an approved/latest process-condition can be used as backbone.
 
         Combines get + validation into one call. Raises HTTPException(400)
         if no Approved project exists for the product.
 
         Args:
             db: Async database session
-            product_id: Product to validate as backbone source
+            condition_id: process-condition id to validate as backbone source
 
         Returns:
-            The Approved Project instance with layers eagerly loaded
+            The approved/latest Project instance with layers eagerly loaded
 
         Raises:
             HTTPException: 400 if no Approved project found for the product
         """
-        approved_project = await BackboneRepository.get_approved_project_for_product(
-            db, product_id
+        approved_project = await BackboneRepository.get_approved_condition(
+            db, condition_id
         )
         if approved_project is None:
-            result = await db.execute(
-                select(Product).where(Product.id == product_id)
-            )
-            product = result.scalars().first()
-            product_name = product.product_name if product else f"id={product_id}"
             raise HTTPException(
                 status_code=400,
-                detail=f"No approved project found for product '{product_name}'. "
-                       "A product must have an Approved project to be used as backbone.",
+                detail=(
+                    f"No approved/latest process-condition found for backbone_condition_id={condition_id}."
+                ),
             )
         return approved_project
 
     @staticmethod
-    async def list_backbone_products(
+    async def list_backbone_conditions(
         db: AsyncSession,
         line_id: int | None = None,
     ) -> list[dict]:
-        """List products that have an Approved project (usable as backbone).
-
-        Returns product info including the revision number and approved_at
-        from the Approved project.
-
-        Args:
-            db: Async database session
-            line_id: Optional filter to restrict results to a specific line
-
-        Returns:
-            List of dicts with product info + revision + approved_at
-        """
+        """List approved/latest process-conditions eligible as backbone."""
         query = (
-            select(
-                Product,
-                Project.revision,
-                Project.approved_at,
-            )
-            .join(Project, Project.product_id == Product.id)
+            select(Project)
             .where(
                 and_(
                     Project.status == "approved",
                     Project.is_latest == True,  # noqa: E712
                 )
             )
-            .order_by(Product.product_name)
+            .order_by(Project.updated_at.desc())
         )
 
         if line_id is not None:
-            query = query.where(Product.line_id == line_id)
+            query = query.where(Project.line_id == line_id)
 
         result = await db.execute(query)
-        rows = result.all()
+        rows = result.scalars().all()
 
         return [
             {
-                "id": row.Product.id,
-                "product_name": row.Product.product_name,
-                "description": row.Product.description,
-                "line_id": row.Product.line_id,
-                "part_id": row.Product.part_id,
+                "id": row.id,
+                "line_id": row.line_id,
+                "process_id": row.process,
+                "part_id": row.part_id,
                 "revision": row.revision,
                 "approved_at": row.approved_at,
             }
             for row in rows
+            if row.line_id is not None and row.process and row.part_id
         ]
 
     @staticmethod
-    async def get_backbone_layers(
+    async def get_backbone_layers_by_condition(
         db: AsyncSession,
-        product_id: int,
+        condition_id: int,
     ) -> list[ProjectLayer]:
-        """Return the Approved project's project_layers for a product.
-
-        Args:
-            db: Async database session
-            product_id: Product whose Approved project's layers to retrieve
-
-        Returns:
-            List of ProjectLayer instances from the Approved project,
-            with layer relationship eagerly loaded. Empty list if no Approved project.
-        """
-        approved_project = await BackboneRepository.get_approved_project_for_product(
-            db, product_id
-        )
+        """Return project_layers from the selected approved/latest backbone condition."""
+        approved_project = await BackboneRepository.get_approved_condition(db, condition_id)
         if approved_project is None:
             return []
-
-        # Re-query project layers (layer_name/step_seq are denormalized on ProjectLayer)
         result = await db.execute(
             select(ProjectLayer)
             .where(ProjectLayer.project_id == approved_project.id)
