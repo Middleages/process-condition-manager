@@ -24,7 +24,7 @@ from app.services.export.history_service import ExportHistoryService
 from app.services.export.service import ExportService
 from app.services.export.validation_service import ExportValidationService
 
-router = APIRouter(prefix="/projects", tags=["export"])
+router = APIRouter(prefix="/process-conditions", tags=["export"])
 
 _export_service = ExportService()
 

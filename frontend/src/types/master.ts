@@ -33,23 +33,3 @@ export interface Product {
 export interface ProductDetail extends Product {
   layers: ProductLayerInfo[]
 }
-
-// ========== Backbone-specific types (dynamic backbone API) ==========
-
-// Returned by GET /api/products/backbones - product enriched with Approved project metadata
-// Backbone eligibility is determined dynamically by Approved project existence
-export interface BackboneProduct extends Product {
-  revision: number
-  approved_at: string | null
-}
-
-// Returned by GET /api/products/{id}/backbone-layers - layers from the Approved project
-export interface BackboneLayer {
-  id: number
-  layer_id: string
-  layer_name: string
-  step_seq: string
-  conditions: Record<string, unknown>
-  backbone_conditions: Record<string, unknown>
-  sort_order: number
-}

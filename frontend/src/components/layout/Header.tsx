@@ -26,11 +26,11 @@ export default function Header() {
       </Link>
 
       <Link
-        to="/projects"
+        to="/process-conditions"
         className="flex items-center gap-1.5 text-sm no-underline text-primary-foreground hover:text-primary-foreground/80"
       >
         <FolderOpen className="h-4 w-4" />
-        프로젝트
+        공정 조건표
       </Link>
 
       <Link

@@ -13,7 +13,7 @@ export async function fetchExportPreview(
   systemId: number
 ): Promise<ExportPreview> {
   const { data } = await client.get<ExportPreview>(
-    `/projects/${projectId}/export/preview/${systemId}`
+    `/process-conditions/${projectId}/export/preview/${systemId}`
   )
   return data
 }
@@ -25,7 +25,7 @@ export async function fetchExportHistory(
   limit: number = 5
 ): Promise<ExportHistoryList> {
   const { data } = await client.get<ExportHistoryList>(
-    `/projects/${projectId}/export/history`,
+    `/process-conditions/${projectId}/export/history`,
     { params: { offset, limit } }
   )
   return data
@@ -37,7 +37,7 @@ export async function downloadExport(
   systemIds: number[]
 ): Promise<{ blob: Blob; filename: string }> {
   const response = await client.post(
-    `/projects/${projectId}/export`,
+    `/process-conditions/${projectId}/export`,
     { system_ids: systemIds },
     { responseType: 'blob' }
   )
@@ -52,7 +52,7 @@ export async function downloadExport(
 
 // Simple Excel export (full condition table, all statuses)
 export async function downloadSimpleExport(projectId: number): Promise<void> {
-  const response = await client.get(`/projects/${projectId}/export/simple`, {
+  const response = await client.get(`/process-conditions/${projectId}/export/simple`, {
     responseType: 'blob',
   })
 
@@ -81,7 +81,7 @@ export async function validateExport(
   systemIds: number[]
 ): Promise<ExportValidationResponse> {
   const { data } = await client.post<ExportValidationResponse>(
-    `/projects/${projectId}/export/validate`,
+    `/process-conditions/${projectId}/export/validate`,
     { system_ids: systemIds }
   )
   return data

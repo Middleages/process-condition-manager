@@ -24,7 +24,7 @@ export function LayerManagementPanel() {
   }
 
   const handleDelete = async (layer: LayerResponse) => {
-    if (!confirm(`'${layer.layer_name}' 레이어를 삭제하시겠습니까?\n연결된 프로젝트 레이어가 있으면 삭제할 수 없습니다.`)) return
+    if (!confirm(`'${layer.layer_name}' 레이어를 삭제하시겠습니까?\n연결된 공정 조건표 레이어가 있으면 삭제할 수 없습니다.`)) return
     try {
       await deleteMutation.mutateAsync(layer.id)
     } catch (err: unknown) {

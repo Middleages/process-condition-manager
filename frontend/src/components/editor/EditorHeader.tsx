@@ -76,16 +76,16 @@ export function EditorHeader({
       <Button
         variant="ghost"
         size="icon"
-        onClick={() => navigate('/projects')}
+        onClick={() => navigate('/process-conditions')}
       >
         <ArrowLeft className="h-4 w-4" />
       </Button>
 
       <div className="flex items-center gap-3">
-        <h1 className="text-sm font-semibold">{project.product_name}</h1>
+        <h1 className="text-sm font-semibold">{project.condition_name}</h1>
         <StatusBadge status={project.status} />
         <span className="text-xs text-muted-foreground">
-          Backbone: {project.backbone_name}
+          Backbone: {project.backbone_condition_name}
         </span>
       </div>
 

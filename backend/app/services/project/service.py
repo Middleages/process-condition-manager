@@ -1,8 +1,4 @@
-"""
-Project core CRUD service.
-
-Handles project creation, retrieval, listing, revision, and product revisions.
-"""
+"""Process-condition core CRUD service."""
 import copy
 import logging
 from datetime import datetime, timezone
@@ -13,7 +9,7 @@ from sqlalchemy.orm import selectinload
 from fastapi import HTTPException
 
 from app.config import settings
-from app.models import Product, ProductLayer, Project, ProjectLayer
+from app.models import Product, Project, ProjectLayer
 from app.repositories.backbone_repository import BackboneRepository
 from app.services.step_master import query_service as step_master_query_service
 
@@ -24,100 +20,6 @@ from app.services.project.analytics_service import get_change_summary, list_vers
 logger = logging.getLogger(__name__)
 
 
-async def create_project(
-    db: AsyncSession,
-    product_id: int,
-    backbone_product_id: int,
-    created_by: int,
-) -> Project:
-    """Create a project by copying backbone conditions from the source Approved project.
-
-    The backbone source is now the Approved project for backbone_product_id
-    (instead of product_layers). This allows dynamic backbone updates as
-    backbone products get revised and re-approved.
-    """
-
-    # 1. Validate target product exists and load its product_layers
-    product = await db.get(Product, product_id)
-    if not product:
-        raise HTTPException(status_code=404, detail="Product not found")
-
-    result = await db.execute(
-        select(ProductLayer)
-        .options(selectinload(ProductLayer.layer))
-        .where(ProductLayer.product_id == product_id)
-    )
-    target_product_layers = result.scalars().all()
-    if not target_product_layers:
-        raise HTTPException(status_code=400, detail="Product has no layers assigned")
-
-    # 2. Validate backbone source: must have an Approved project (raises 400 if not)
-    backbone_product = await db.get(Product, backbone_product_id)
-    if not backbone_product:
-        raise HTTPException(status_code=404, detail="Backbone product not found")
-
-    # validate_backbone_source raises 400 if no Approved project found
-    await BackboneRepository.validate_backbone_source(db, backbone_product_id)
-
-    # 3. Build backbone lookup: {layer_id: conditions} from Approved project's layers
-    backbone_map: dict[str, dict] = await BackboneRepository.get_backbone_layer_map(
-        db, backbone_product_id
-    )
-
-    # 4. Check no active (draft/review) project for same product
-    result = await db.execute(
-        select(Project)
-        .where(
-            Project.product_id == product_id,
-            Project.status.in_(["draft", "review"]),
-        )
-    )
-    existing = result.scalars().first()
-    if existing:
-        raise HTTPException(status_code=409, detail="Active project already exists for this product")
-
-    # 5. Create Project
-    project = Project(
-        product_id=product_id,
-        main_backbone_id=backbone_product_id,
-        status="draft",
-        created_by=created_by,
-    )
-    db.add(project)
-    await db.flush()
-
-    # 6. Create ProjectLayers with backbone copy
-    for tpl in target_product_layers:
-        layer_number = tpl.layer.layer_number
-        bb_cond = backbone_map.get(layer_number)
-
-        if bb_cond is not None:
-            conditions = copy.deepcopy(bb_cond)
-            backbone_conditions = copy.deepcopy(bb_cond)
-            bb_product_id = backbone_product_id
-        else:
-            conditions = {}
-            backbone_conditions = {}
-            bb_product_id = None
-
-        project_layer = ProjectLayer(
-            project_id=project.id,
-            layer_id=tpl.layer.layer_number,
-            layer_name=tpl.layer.layer_name,
-            step_seq=tpl.layer.step_seq,
-            backbone_product_id=bb_product_id,
-            conditions=conditions,
-            backbone_conditions=backbone_conditions,
-            sort_order=tpl.layer.sort_order,
-        )
-        db.add(project_layer)
-
-    await db.commit()
-
-    # 7. Re-query with eager loading
-    return await get_project_detail(db, project.id)
-
-
 async def create_project_v2(
     db: AsyncSession,
     line_id: int,
@@ -125,7 +27,7 @@ async def create_project_v2(
     part_id: str,
     device_type: str,
     selected_layer_refs: list[tuple[str, str]],
-    backbone_product_id: int | None,
+    backbone_condition_id: int | None,
     created_by: int,
 ) -> Project:
     """Create a V2 project using step_current references (SPEC-PROJECT-002).
@@ -142,8 +44,8 @@ async def create_project_v2(
         part_id: Part identifier for project identity.
         device_type: "full" or "short".
         selected_layer_refs: Explicit refs [(layer_id, step_seq), ...].
-        backbone_product_id: Optional product whose Approved project provides
-            backbone conditions. If None, project is created without backbone.
+        backbone_condition_id: Optional approved process-condition id whose layers
+            provide backbone conditions. If None, project is created without backbone.
         created_by: User FK for the creator.
 
     Returns:
@@ -163,10 +65,9 @@ async def create_project_v2(
         )
 
     # 2. step_current 기반 검증/선택 수행 (device_master 비의존)
-    layer_source = "step_current"
-    step_layers = await step_master_query_service.get_step_layers(db, line_id, process)
+    normalized_part_id = part_id.strip()
+    step_layers = await step_master_query_service.get_step_layers(db, line_id, process, normalized_part_id)
     selected_layer_refs = selected_layer_refs or []
-    selected_layer_ids = selected_layer_ids or []
 
     if settings.STEP_CURRENT_ENFORCE_FRESHNESS and step_layers:
         last_success_at = await step_master_query_service.get_last_successful_full_sync_at(db)
@@ -201,23 +102,14 @@ async def create_project_v2(
             ),
         )
 
-    # 3. Resolve product_id from (line_id, product_name) for duplicate check/project 저장
-    resolved_product_id: int | None = None
-    product_id_result = await db.execute(
-        select(Product.id).where(
-            Product.line_id == line_id,
-            Product.product_name == product_name,
-        )
-    )
-    resolved_product_id = product_id_result.scalar_one_or_none()
-
-    # 4. Check no active (draft/review) project for same natural key
+    # 3. Check no active (draft/review) project for same natural key
     result = await db.execute(
         select(Project).where(
             Project.line_id == line_id,
-            Project.product_id == resolved_product_id,
-            Project.part_id == part_id,
+            Project.process == process,
+            Project.part_id == normalized_part_id,
             Project.status.in_(["draft", "review"]),
+            Project.is_latest.is_(True),
         )
     )
     existing = result.scalars().first()
@@ -227,72 +119,46 @@ async def create_project_v2(
             detail=f"Active project (status={existing.status}) already exists for this reference.",
         )
 
-    # 5. Determine backbone source and build layer map
+    # 4. Determine backbone source and build layer map
     backbone_map: dict[str, dict] = {}
-    if backbone_product_id is not None:
-        await BackboneRepository.validate_backbone_source(db, backbone_product_id)
-        backbone_map = await BackboneRepository.get_backbone_layer_map(db, backbone_product_id)
+    if backbone_condition_id is not None:
+        await BackboneRepository.validate_backbone_source(db, backbone_condition_id)
+        backbone_map = await BackboneRepository.get_backbone_layer_map(db, backbone_condition_id)
 
-    # 6. Validate selection against step_current layers
+    # 5. Create entries from step_current layers
     step_ref_map = {
         (sl.layer_id, sl.step_seq): sl
         for sl in step_layers
         if sl.layer_id and sl.step_seq
     }
-    layer_id_counts: dict[str, int] = {}
-    for sl in step_layers:
-        if sl.layer_id:
-            layer_id_counts[sl.layer_id] = layer_id_counts.get(sl.layer_id, 0) + 1
-    duplicate_layer_ids = sorted([layer_id for layer_id, cnt in layer_id_counts.items() if cnt > 1])
-    should_auto_fill_full = (
-        device_type == "full"
-        and not selected_layer_ids
-        and not selected_layer_refs
-    )
+    if not step_ref_map:
+        raise HTTPException(status_code=400, detail="step_current에서 생성 가능한 레이어가 없습니다.")
 
-    step_layer_map = {sl.layer_id: sl for sl in step_layers if sl.layer_id}
+    if device_type == "short" and not selected_layer_refs:
+        raise HTTPException(status_code=422, detail="short 모드에서는 selected_layer_refs가 필요합니다.")
+
     if selected_layer_refs:
         invalid_refs = sorted([f"{layer}/{step}" for layer, step in selected_layer_refs if (layer, step) not in step_ref_map])
         if invalid_refs:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid layer refs not in step_current: {invalid_refs}",
-            )
-        selected_entries: list[tuple[str, str | None]] = [(layer, step) for layer, step in selected_layer_refs]
-    elif should_auto_fill_full:
-        selected_entries = [
-            (sl.layer_id, sl.step_seq)
-            for sl in step_layers
-            if sl.layer_id and sl.step_seq
-        ]
-    elif duplicate_layer_ids:
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                "선택한 공정에 동일한 layer_id가 여러 개 있습니다. "
-                f"중복 layer_id: {duplicate_layer_ids}. "
-                "각 레이어의 step_seq를 함께 선택해 다시 시도해주세요."
-            ),
-        )
+            raise HTTPException(status_code=400, detail=f"Invalid layer refs not in step_current: {invalid_refs}")
+        selected_entries: list[tuple[str, str]] = [(layer, step) for layer, step in selected_layer_refs]
     else:
-        invalid_ids = set(selected_layer_ids) - set(step_layer_map.keys())
-        if invalid_ids:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid layer IDs not in {layer_source}: {sorted(invalid_ids)}",
-            )
-        selected_entries = [(layer_id, None) for layer_id in selected_layer_ids]
+        selected_entries = sorted(
+            [(sl.layer_id, sl.step_seq) for sl in step_layers if sl.layer_id and sl.step_seq],
+            key=lambda it: (it[0], it[1]),
+        )
 
-    # 7. Create Project
+    # 6. Create Project
     project = Project(
-        product_id=resolved_product_id,
+        product_id=None,
         device_master_id=None,
         process=process,
         device_type=device_type,
         line_id=line_id,
-        product_name="",
-        part_id=part_id,
-        main_backbone_id=backbone_product_id,
+        product_name=None,
+        part_id=normalized_part_id,
+        main_backbone_id=backbone_condition_id,
+        main_backbone_condition_id=backbone_condition_id,
         header_metadata=None,
         status="draft",
         created_by=created_by,
@@ -300,7 +166,7 @@ async def create_project_v2(
     db.add(project)
     await db.flush()
 
-    # 8. Create ProjectLayers for selected layers
+    # 7. Create ProjectLayers for selected layers
     for sort_order, (layer_id_str, step_seq_ref) in enumerate(selected_entries):
         bb_cond = backbone_map.get(layer_id_str)
 
@@ -311,10 +177,7 @@ async def create_project_v2(
             conditions = {}
             backbone_conditions = {}
 
-        if step_seq_ref is not None:
-            src = step_ref_map[(layer_id_str, step_seq_ref)]
-        else:
-            src = step_layer_map[layer_id_str]
+        src = step_ref_map[(layer_id_str, step_seq_ref)]
         layer_name = src.descript or src.step_name or layer_id_str
         step_seq = src.step_seq
 
@@ -323,7 +186,8 @@ async def create_project_v2(
             layer_id=layer_id_str,
             layer_name=layer_name,
             step_seq=step_seq,
-            backbone_product_id=backbone_product_id if bb_cond is not None else None,
+            backbone_product_id=backbone_condition_id if bb_cond is not None else None,
+            backbone_source_condition_id=backbone_condition_id if bb_cond is not None else None,
             conditions=conditions,
             backbone_conditions=backbone_conditions,
             sort_order=sort_order,
@@ -358,14 +222,13 @@ async def get_project_detail(db: AsyncSession, project_id: int) -> Project:
 async def list_projects(
     db: AsyncSession,
     status: str | None = None,
-    product_id: int | None = None,
     include_all_versions: bool = False,
     is_latest: bool | None = None,
     line_id: int | None = None,
 ) -> list[tuple[Project, int]]:
     """List projects with optional filters, returning (project, layer_count) tuples.
 
-    By default, only returns the latest version per product (is_latest=True).
+    By default, only returns the latest version per natural-key (is_latest=True).
     Set include_all_versions=True to return all versions.
     Explicit is_latest filter overrides include_all_versions.
     """
@@ -392,17 +255,8 @@ async def list_projects(
         query = query.where(Project.is_latest == True)  # noqa: E712
     if status:
         query = query.where(Project.status == status)
-    if product_id is not None:
-        query = query.where(Project.product_id == product_id)
     if line_id is not None:
-        # Support both V1 (product-based) and V2 (direct line_id) projects
-        from sqlalchemy import or_
-        query = query.outerjoin(Product, Project.product_id == Product.id).where(
-            or_(
-                Product.line_id == line_id,
-                Project.line_id == line_id,
-            )
-        )
+        query = query.where(Project.line_id == line_id)
 
     result = await db.execute(query)
     return list(result.unique().all())
@@ -416,10 +270,10 @@ async def revise_project(
     """Create a new revision (Draft) from an Approved project.
 
     1. Validates project exists and status == "approved"
-    2. Checks no active (draft/review) project exists for the same product_id
+    2. Checks no active (draft/review) project exists for the same natural key
     3. In single transaction:
        a. Archive original: status="archived", is_latest=False
-       b. Create new project: same product_id, status="draft", revision=original.revision+1,
+       b. Create new project: same natural key, status="draft", revision=original.revision+1,
           parent_project_id=original.id, is_latest=True
        c. Deep-copy project_layers: conditions from original,
           backbone_conditions = original's conditions (important: use approved conditions as new baseline)
@@ -441,29 +295,19 @@ async def revise_project(
     if original.status != "approved":
         raise HTTPException(status_code=400, detail=f"Can only revise approved projects. Current status: {original.status}")
 
-    # 2. Check no active project exists for same product/device-ref
-    if original.device_master_id:
-        # V2 project: check by device-ref fields
-        result = await db.execute(
-            select(Project)
-            .where(
-                Project.line_id == original.line_id,
-                Project.product_name == original.product_name,
-                Project.process == original.process,
-                Project.part_id == original.part_id,
-                Project.status.in_(["draft", "review"]),
-                Project.is_latest.is_(True),
-            )
+    # 2. Check no active project exists for same natural key
+    if not (original.line_id and original.process and original.part_id):
+        raise HTTPException(status_code=400, detail="Natural key fields are required for revise")
+    result = await db.execute(
+        select(Project)
+        .where(
+            Project.line_id == original.line_id,
+            Project.process == original.process,
+            Project.part_id == original.part_id,
+            Project.status.in_(["draft", "review"]),
+            Project.is_latest.is_(True),
         )
-    else:
-        # V1 project: check by product_id
-        result = await db.execute(
-            select(Project)
-            .where(
-                Project.product_id == original.product_id,
-                Project.status.in_(["draft", "review"]),
-            )
-        )
+    )
     existing = result.scalars().first()
     if existing:
         raise HTTPException(status_code=409, detail=f"Active project (status={existing.status}) already exists for this product")
@@ -474,15 +318,20 @@ async def revise_project(
 
     # 4. Create new project
     new_project = Project(
-        product_id=original.product_id,
+        product_id=None,
         main_backbone_id=original.main_backbone_id,
+        main_backbone_condition_id=(
+            original.main_backbone_condition_id
+            if original.main_backbone_condition_id is not None
+            else original.main_backbone_id
+        ),
         status="draft",
         revision=original.revision + 1,
         parent_project_id=original.id,
         is_latest=True,
         created_by=original.created_by,
-        # SPEC-PROJECT-002 V2 fields (copy from original)
-        device_master_id=original.device_master_id,
+        # Natural-key path only: do not carry legacy device master reference.
+        device_master_id=None,
         process=original.process,
         device_type=original.device_type,
         header_metadata=copy.deepcopy(original.header_metadata) if original.header_metadata else None,
@@ -503,6 +352,11 @@ async def revise_project(
             layer_name=original_layer.layer_name,
             step_seq=original_layer.step_seq,
             backbone_product_id=original_layer.backbone_product_id,
+            backbone_source_condition_id=(
+                original_layer.backbone_source_condition_id
+                if original_layer.backbone_source_condition_id is not None
+                else original_layer.backbone_product_id
+            ),
             conditions=copy.deepcopy(original_layer.conditions),
             backbone_conditions=copy.deepcopy(original_layer.conditions),
             sort_order=original_layer.sort_order,
@@ -515,17 +369,22 @@ async def revise_project(
     return await get_project_detail(db, new_project.id)
 
 
-async def list_product_revisions(
+async def list_natural_key_revisions(
     db: AsyncSession,
-    product_id: int,
+    *,
+    line_id: int,
+    process: str,
+    part_id: str,
 ) -> list[Project]:
-    """Get all revision history for a product, ordered by revision DESC."""
+    """Get all revision history for a natural key, ordered by revision DESC."""
     result = await db.execute(
         select(Project)
-        .options(
-            selectinload(Project.creator),
+        .options(selectinload(Project.creator))
+        .where(
+            Project.line_id == line_id,
+            Project.process == process,
+            Project.part_id == part_id,
         )
-        .where(Project.product_id == product_id)
         .order_by(Project.revision.desc())
     )
     return list(result.scalars().all())

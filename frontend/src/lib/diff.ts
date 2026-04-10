@@ -101,7 +101,7 @@ export interface LayerComparisonDetail {
   layerId: string
   layerName: string
   stepSeq: string
-  backboneProductName: string | null
+  backboneConditionName: string | null
   changes: CellChange[]
 }
 
@@ -138,7 +138,7 @@ export function getLayerComparisonDetail(layer: ProjectLayerData): LayerComparis
     layerId: layer.layer_id,
     layerName: layer.layer_name,
     stepSeq: layer.step_seq,
-    backboneProductName: layer.backbone_product_name,
+    backboneConditionName: layer.backbone_condition_name,
     changes,
   }
 }

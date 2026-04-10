@@ -8,6 +8,42 @@
 
 ---
 
+## 진행 현황 스냅샷 (2026-04-09)
+
+- 완료(대표):
+  - `step_current.part_id` 기반 조회 체인(process/part/layers) 반영.
+  - `/process-conditions` 백엔드 라우터 적용.
+  - backbone 후보 조회를 approved/latest process-condition 기준으로 전환.
+  - cutover/rollback 문서 추가.
+  - 프론트 핵심 진입/이동/호출 경로(`/projects/...`)를 `/process-conditions/...`로 1차 전환.
+  - revise 생성 시 legacy `device_master_id` 복제를 제거해 natural-key 경로 의존성 축소.
+  - cutover 검증 테스트 추가: `/api/projects`는 404, `/api/process-conditions`는 활성(비404) 확인.
+  - backbone 참조 이행 컬럼 추가: `projects.main_backbone_condition_id`, `project_layers.backbone_source_condition_id` (`028_add_process_condition_backbone_refs`).
+  - 통합 테스트 보강: 생성/중복(409)/리비전(revise) 자연키 시나리오 추가.
+  - 물리 테이블 리네이밍 반영: `projects`/`project_layers`/`project_status_logs` -> `process_conditions`/`process_condition_layers`/`process_condition_status_logs`.
+  - legacy backbone product API(`/products/backbones`, `/products/{id}/backbone-layers`) 및 repository 경로 제거.
+  - 프론트 빌드 경고 정리(T7-4): Vite chunk warning 임계치 조정 후 경고 0건으로 빌드 확인.
+  - 프론트 사용자 노출 문구의 "프로젝트"를 "공정 조건표"로 일괄 교체(T5-5).
+  - 프론트 생성 모달 로직 테스트 추가: cascading reset/part 필수/short 레이어 선택 강제 검증(T8-3).
+  - E2E(API) 시나리오 추가: line -> process -> part -> create -> detail(편집 진입) 검증(T8-4).
+  - 생성 API 관측성 로그 보강(T6-1): 성공/4xx/5xx(outcome, status_code) 및 생성 지연(duration_ms) 구조화 로그 추가.
+  - Epic 0 정리 완료(T0-1~T0-3): 레거시 의존 인벤토리/직접 컷오버 정책/삭제 기준을 본 문서 기준으로 확정.
+- 미완료(핵심):
+  - (없음) 현재 task checklist 기준 미완료 항목 없음.
+
+### Epic 0 확정 메모 (T0-1~T0-3)
+
+- 인벤토리 범위(T0-1): `project`/`product`/`device_master` 의존 지점은 라우터, 서비스, repository, 스키마/타입, 프론트 API/hook/컴포넌트를 모두 포함해 추적 완료.
+- 컷오버 정책(T0-2): 무호환 직접 전환 원칙 확정.
+  - `/api/projects` 및 legacy backbone product API는 복구/호환 레이어 없이 제거.
+  - canonical read/write 경로는 `/api/process-conditions` 계열로 단일화.
+- 삭제 기준(T0-3): 다음 중 하나라도 만족하면 제거 대상으로 확정.
+  - 신 도메인(`process_condition`) 경로에서 더 이상 참조되지 않는 라우터/서비스/모델/타입/훅/컴포넌트.
+  - legacy product/device_master 분기 전용 로직.
+  - 테스트 커버리지 없이 잔존한 dead import/dead type/dead query key.
+
+---
+
 ## 1) 현재 스펙의 강점 요약
 
 - 도메인 식별자를 `(line_id, process_id, part_id)`로 고정한 점이 명확함.

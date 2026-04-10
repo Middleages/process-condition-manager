@@ -422,7 +422,7 @@ def seed():
 
             session.execute(
                 text(
-                    "INSERT INTO projects (product_id, main_backbone_id, status, revision, is_latest, created_by) "
+                    "INSERT INTO process_conditions (product_id, main_backbone_id, status, revision, is_latest, created_by) "
                     "VALUES (:pid, :bbid, 'approved', 1, TRUE, :uid)"
                 ),
                 {
@@ -432,13 +432,13 @@ def seed():
                 },
             )
             result = session.execute(
-                text("SELECT id FROM projects WHERE product_id = :pid AND status = 'approved'"),
+                text("SELECT id FROM process_conditions WHERE product_id = :pid AND status = 'approved'"),
                 {"pid": pid},
             )
             proj_id = result.scalar()
             backbone_project_ids[prod_name] = proj_id
 
-            # Copy all product_layers -> project_layers for this approved project
+            # Copy all product_layers -> process_condition_layers for this approved project
             # EQP 컬럼(EQP_01~EQP_05, ET, FOCUS)을 conditions에 포함하여 삽입
             for layer_name in LAYER_NAMES:
                 conditions = generate_conditions(layer_name, prod_name)
@@ -458,7 +458,7 @@ def seed():
                 ln_info = layer_info[layer_name]
                 session.execute(
                     text(
-                        "INSERT INTO project_layers "
+                        "INSERT INTO process_condition_layers "
                         "(project_id, layer_id, layer_name, step_seq, backbone_product_id, conditions, backbone_conditions, sort_order) "
                         "VALUES (:proj_id, :lid, :lname, :sseq, :bbpid, CAST(:cond AS jsonb), CAST(:bcond AS jsonb), :sort)"
                     ),

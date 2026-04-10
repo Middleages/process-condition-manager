@@ -7,8 +7,8 @@ export interface ProjectLayerData {
   layer_name: string
   step_seq: string
   layer_number: string
-  backbone_product_id: number | null
-  backbone_product_name: string | null
+  backbone_condition_id: number | null
+  backbone_condition_name: string | null
   conditions: Record<string, unknown>
   backbone_conditions: Record<string, unknown>
   sort_order: number
@@ -17,23 +17,20 @@ export interface ProjectLayerData {
 
 export interface Project {
   id: number
-  product_id: number | null
-  product_name: string
+  condition_name: string
   line_id: number | null
   line_name: string | null
-  main_backbone_id: number | null
-  backbone_name: string | null
+  main_backbone_condition_id: number | null
+  backbone_condition_name: string | null
   status: ProjectStatus
   revision: number
   parent_project_id: number | null
   is_latest: boolean
   created_by: number
-  creator_userid: string
+  creator_name: string
   layer_count: number
   created_at: string
   updated_at: string
-  // SPEC-PROJECT-002 V2 fields
-  device_master_id: number | null
   process: string | null
   device_type: 'full' | 'short'
   header_metadata: Record<string, unknown> | null
@@ -50,8 +47,8 @@ export interface ProjectCreateRequestV2 {
   process: string
   part_id: string
   device_type: 'full' | 'short'
-  selected_layer_refs: Array<{ layer_id: string; step_seq: string }>
-  backbone_product_id?: number | null
+  selected_layer_refs?: Array<{ layer_id: string; step_seq: string }>
+  backbone_condition_id?: number | null
 }
 
 export interface LayerConditions {
@@ -67,15 +64,15 @@ export interface BulkSaveRequest {
 
 // ========== Backbone Replacement ==========
 export interface BackboneReplaceRequest {
-  source_product_id: number
+  source_condition_id: number
   source_layer_name?: string | null
   changed_by: number
 }
 
 export interface BackboneReplaceResponse {
   project_layer_id: number
-  backbone_product_id: number
-  backbone_product_name: string
+  backbone_condition_id: number
+  backbone_condition_name: string
   changed_columns: number
   conditions: Record<string, unknown>
   backbone_conditions: Record<string, unknown>
@@ -84,7 +81,7 @@ export interface BackboneReplaceResponse {
 // ========== Layer Add/Delete ==========
 export interface LayerAddRequest {
   layer_id: string
-  source_product_id?: number | null
+  source_condition_id?: number | null
   source_layer_name?: string | null
   changed_by: number
 }
@@ -93,8 +90,8 @@ export interface LayerAddResponse {
   project_layer_id: number
   layer_id: string
   layer_name: string
-  backbone_product_id: number | null
-  backbone_product_name: string | null
+  backbone_condition_id: number | null
+  backbone_condition_name: string | null
   conditions: Record<string, unknown>
   sort_order: number
 }
@@ -165,8 +162,9 @@ export interface RevisionItem {
 }
 
 export interface RevisionListResponse {
-  product_id: number
-  product_name: string
+  line_id: number
+  process: string
+  part_id: string
   revisions: RevisionItem[]
 }
 

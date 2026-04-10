@@ -25,6 +25,7 @@ from app.schemas.device_master import (
     DeviceLayerItem,
     StepCurrentLayerItem,
     StepCurrentLayersResponse,
+    StepCurrentPartOptionsResponse,
     StepCurrentProcessOptionsResponse,
     DeviceSearchResult,
     DuplicateCheckResponse,
@@ -94,6 +95,7 @@ async def check_duplicate(
             Project.process == process,
             Project.part_id == part_id,
             Project.status.in_(("draft", "review")),
+            Project.is_latest.is_(True),
         )
         .order_by(Project.created_at.desc())
         .limit(1)
@@ -110,24 +112,6 @@ async def check_duplicate(
     )
 
 
-@router.get("/{device_master_id}/layers", response_model=list[DeviceLayerItem])
-async def get_device_layers(
-    device_master_id: int,
-    _user: User = Depends(require_active_user),
-    db: AsyncSession = Depends(get_db),
-) -> list[DeviceLayerItem]:
-    """Get layers for a specific device master via query service.
-
-    Uses device_master_query_service for consistent layer retrieval.
-    """
-    device = await db.get(DeviceMaster, device_master_id)
-    if not device:
-        raise HTTPException(status_code=404, detail="Device master not found")
-
-    layers = await device_master_query_service.get_device_layers(db, device_master_id)
-    return [DeviceLayerItem.model_validate(layer) for layer in layers]
-
-
 @router.get("/step-current/processes", response_model=StepCurrentProcessOptionsResponse)
 async def list_step_current_process_ids(
     line_id: int = Query(..., gt=0),
@@ -139,16 +123,36 @@ async def list_step_current_process_ids(
     return StepCurrentProcessOptionsResponse(line_id=line_id, process_ids=process_ids)
 
 
+
+
+@router.get("/step-current/parts", response_model=StepCurrentPartOptionsResponse)
+async def list_step_current_part_ids(
+    line_id: int = Query(..., gt=0),
+    process_id: str = Query(..., min_length=1, max_length=100),
+    _user: User = Depends(require_active_user),
+    db: AsyncSession = Depends(get_db),
+) -> StepCurrentPartOptionsResponse:
+    """공정조건표 생성용 step_current part_id 옵션 조회."""
+    part_ids = await step_master_query_service.list_part_ids(db, line_id, process_id)
+    return StepCurrentPartOptionsResponse(line_id=line_id, process_id=process_id, part_ids=part_ids)
+
+
 @router.get("/step-current/layers", response_model=StepCurrentLayersResponse)
 async def list_step_current_layers(
     line_id: int = Query(..., gt=0),
     process_id: str = Query(..., min_length=1, max_length=100),
-    part_id: str | None = Query(None, min_length=1, max_length=100, description="사용자 입력 Part 값(프로젝트 헤더용)"),
+    part_id: str = Query(..., min_length=1, max_length=100, description="step_current 조회용 Part ID"),
     _user: User = Depends(require_active_user),
     db: AsyncSession = Depends(get_db),
 ) -> StepCurrentLayersResponse:
     """프로젝트 생성용 step_current 레이어 조회."""
-    layers = await step_master_query_service.get_step_layers(db, line_id=line_id, process_id=process_id)
+    normalized_part_id = part_id.strip()
+    layers = await step_master_query_service.get_step_layers(
+        db,
+        line_id=line_id,
+        process_id=process_id,
+        part_id=normalized_part_id,
+    )
     last_success = await step_master_query_service.get_last_successful_full_sync_at(db)
     is_fresh = step_master_query_service.is_within_freshness_sla(
         last_success_at=last_success,
@@ -164,7 +168,7 @@ async def list_step_current_layers(
     return StepCurrentLayersResponse(
         line_id=line_id,
         process_id=process_id,
-        part_id=(part_id or "").strip(),
+        part_id=normalized_part_id,
         layers=[
             StepCurrentLayerItem(
                 step_seq=row.step_seq,
@@ -178,6 +182,26 @@ async def list_step_current_layers(
         stale=stale,
         stale_reason=stale_reason,
     )
+
+
+@router.get("/{device_master_id}/layers", response_model=list[DeviceLayerItem])
+async def get_device_layers(
+    device_master_id: int,
+    _user: User = Depends(require_active_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[DeviceLayerItem]:
+    """Get layers for a specific device master via query service.
+
+    NOTE:
+    This dynamic route must be declared after `/step-current/...` routes.
+    Otherwise `step-current` can be parsed as `{device_master_id}` and return 422.
+    """
+    device = await db.get(DeviceMaster, device_master_id)
+    if not device:
+        raise HTTPException(status_code=404, detail="Device master not found")
+
+    layers = await device_master_query_service.get_device_layers(db, device_master_id)
+    return [DeviceLayerItem.model_validate(layer) for layer in layers]
 
 
 # ---------------------------------------------------------------------------

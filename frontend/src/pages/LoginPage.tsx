@@ -16,7 +16,7 @@ export default function LoginPage() {
     }
 
     if (isAuthenticated) {
-      const redirect = searchParams.get('redirect') || '/projects'
+      const redirect = searchParams.get('redirect') || '/process-conditions'
       navigate(redirect, { replace: true })
       return
     }

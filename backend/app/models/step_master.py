@@ -35,9 +35,11 @@ class StepCurrent(Base):
     __tablename__ = "step_current"
     __table_args__ = (
         UniqueConstraint(
-            "line_id", "process_id", "step_seq", name="uq_step_current_line_process_step",
+            "line_id", "process_id", "part_id", "step_seq", name="uq_step_current_line_process_part_step",
         ),
         Index("idx_step_current_line_process", "line_id", "process_id"),
+        Index("idx_step_current_line_process_part", "line_id", "process_id", "part_id"),
+        Index("idx_step_current_line_process_part_layer_step", "line_id", "process_id", "part_id", "layer_id", "step_seq"),
         Index("idx_step_current_updated_at", "updated_at"),
     )
 
@@ -46,6 +48,7 @@ class StepCurrent(Base):
         ForeignKey("lines.id", ondelete="RESTRICT"), nullable=False,
     )
     process_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    part_id: Mapped[str] = mapped_column(String(100), nullable=False)
     step_seq: Mapped[str] = mapped_column(String(50), nullable=False)
     step_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     layer_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
@@ -76,6 +79,7 @@ class StepEventAudit(Base):
         ForeignKey("lines.id", ondelete="RESTRICT"), nullable=False,
     )
     process_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    part_id: Mapped[str] = mapped_column(String(100), nullable=False)
     step_seq: Mapped[str] = mapped_column(String(50), nullable=False)
     del_yn: Mapped[str | None] = mapped_column(String(1), nullable=True)
     sys_key_vals: Mapped[str | None] = mapped_column(String(255), nullable=True)

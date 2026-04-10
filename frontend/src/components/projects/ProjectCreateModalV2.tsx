@@ -8,12 +8,10 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Combobox } from '@/components/ui/combobox'
 import { useCheckDuplicate } from '@/hooks/useDeviceMaster'
-import { useStepCurrentLayers, useStepCurrentProcesses } from '@/hooks/useStepCurrent'
-import { useCreateProjectV2 } from '@/hooks/useProjects'
-import { useBackboneProducts } from '@/hooks/useProducts'
+import { useStepCurrentLayers, useStepCurrentParts, useStepCurrentProcesses } from '@/hooks/useStepCurrent'
+import { useBackboneConditions, useCreateProjectV2 } from '@/hooks/useProjects'
 import { useLines } from '@/hooks/useLines'
 import { Loader2, AlertTriangle, Info } from 'lucide-react'
 import type { StepCurrentLayerItem } from '@/types/deviceMaster'
@@ -22,6 +20,69 @@ import type { ProjectCreateRequestV2 } from '@/types/project'
 interface Props {
   open: boolean
   onOpenChange: (open: boolean) => void
+}
+
+export interface CreateModalSelectionState {
+  selectedLineId?: number
+  selectedProcessId: string
+  selectedPartId: string
+  deviceType: 'full' | 'short'
+  selectedLayerIds: string[]
+  backboneConditionId: string
+}
+
+interface SubmitGuardInput {
+  state: CreateModalSelectionState
+  selectableLayerRefCount: number
+  hasDuplicate: boolean
+  isCheckingDuplicate: boolean
+  isCreating: boolean
+}
+
+export function getStateAfterLineChange(
+  value: string,
+  prev: CreateModalSelectionState
+): CreateModalSelectionState {
+  const lineId = value ? Number(value) : undefined
+  return {
+    ...prev,
+    selectedLineId: lineId,
+    selectedProcessId: '',
+    selectedPartId: '',
+    deviceType: 'full',
+    selectedLayerIds: [],
+    backboneConditionId: '',
+  }
+}
+
+export function getStateAfterProcessChange(
+  value: string,
+  prev: CreateModalSelectionState
+): CreateModalSelectionState {
+  return {
+    ...prev,
+    selectedProcessId: value,
+    selectedPartId: '',
+  }
+}
+
+export function isCreateSubmitDisabled({
+  state,
+  selectableLayerRefCount,
+  hasDuplicate,
+  isCheckingDuplicate,
+  isCreating,
+}: SubmitGuardInput): boolean {
+  return (
+    !state.selectedLineId ||
+    !state.selectedProcessId ||
+    !state.selectedPartId ||
+    (state.deviceType === 'short' && state.selectedLayerIds.length === 0) ||
+    selectableLayerRefCount === 0 ||
+    hasDuplicate ||
+    isCheckingDuplicate ||
+    isCreating
+  )
 }
 
 // @MX:NOTE: [AUTO] V2 project creation modal using device-ref based cascading dropdowns (SPEC-PROJECT-002 M2)
@@ -38,7 +99,7 @@ export function ProjectCreateModalV2({ open, onOpenChange }: Props) {
   const [selectedLayerIds, setSelectedLayerIds] = useState<string[]>([])
 
   // ========== Backbone ==========
-  const [backboneProductId, setBackboneProductId] = useState('')
+  const [backboneConditionId, setBackboneConditionId] = useState('')
 
   // ========== Data fetching ==========
   const { data: lines = [] } = useLines()
@@ -49,35 +110,40 @@ export function ProjectCreateModalV2({ open, onOpenChange }: Props) {
     return processIds.map((pid) => ({ value: pid, label: pid }))
   }, [processIds])
 
+  const { data: partOptionsResponse } = useStepCurrentParts({
+    line_id: selectedLineId,
+    process_id: selectedProcessId,
+  })
+  const partOptions = (partOptionsResponse?.part_ids ?? []).map((partId) => ({ value: partId, label: partId }))
+
   const { data: stepCurrentLayersResponse, isLoading: layersLoading } = useStepCurrentLayers({
     line_id: selectedLineId,
     process_id: selectedProcessId,
+    part_id: selectedPartId,
   })
   const deviceLayers = stepCurrentLayersResponse?.layers ?? []
 
   // ========== Backbone data ==========
-  const { data: backboneProducts = [], isLoading: backboneLoading } =
-    useBackboneProducts(selectedLineId)
+  const { data: backboneConditions = [], isLoading: backboneLoading } =
+    useBackboneConditions(selectedLineId)
 
   const backboneOptions = useMemo(() => {
     const opts = [{ value: '', label: 'Backbone 없음 (빈 조건표)' }]
-    backboneProducts.forEach((p) => {
-      const versionSuffix = p.revision
-        ? ` (v${p.revision}${p.approved_at ? ', ' + new Date(p.approved_at).toLocaleDateString('ko-KR') : ''})`
-        : ''
-      opts.push({ value: String(p.id), label: `${p.product_name}${versionSuffix}` })
+    backboneConditions.forEach((c) => {
+      const approvedDate = c.approved_at ? new Date(c.approved_at).toLocaleDateString('ko-KR') : '-'
+      opts.push({ value: String(c.id), label: `${c.process_id} | ${c.part_id} (v${c.revision}, ${approvedDate})` })
     })
     return opts
-  }, [backboneProducts])
+  }, [backboneConditions])
 
   // ========== Duplicate check ==========
   const checkDuplicate = useCheckDuplicate()
 
   useEffect(() => {
-    if (selectedLineId && selectedProductName && selectedProcess && selectedPartId) {
+    if (selectedLineId && selectedProcessId && selectedPartId) {
       checkDuplicate.mutate({
         line_id: selectedLineId,
-        process: selectedProcess,
+        process: selectedProcessId,
         part_id: selectedPartId,
       })
     }
@@ -89,19 +155,34 @@ export function ProjectCreateModalV2({ open, onOpenChange }: Props) {
 
   // ========== Reset handlers ==========
   const handleLineChange = useCallback((value: string) => {
-    const lineId = value ? Number(value) : undefined
-    setSelectedLineId(lineId)
-    setSelectedProcessId('')
-    setSelectedPartId('')
-    setDeviceType('full')
-    setSelectedLayerIds([])
-    setBackboneProductId('')
-  }, [])
+    const nextState = getStateAfterLineChange(value, {
+      selectedLineId,
+      selectedProcessId,
+      selectedPartId,
+      deviceType,
+      selectedLayerIds,
+      backboneConditionId,
+    })
+    setSelectedLineId(nextState.selectedLineId)
+    setSelectedProcessId(nextState.selectedProcessId)
+    setSelectedPartId(nextState.selectedPartId)
+    setDeviceType(nextState.deviceType)
+    setSelectedLayerIds(nextState.selectedLayerIds)
+    setBackboneConditionId(nextState.backboneConditionId)
+  }, [backboneConditionId, deviceType, selectedLayerIds, selectedLineId, selectedPartId, selectedProcessId])
 
   const handleProcessIdChange = useCallback((value: string) => {
-    setSelectedProcessId(value)
-    setSelectedPartId('')
-  }, [])
+    const nextState = getStateAfterProcessChange(value, {
+      selectedLineId,
+      selectedProcessId,
+      selectedPartId,
+      deviceType,
+      selectedLayerIds,
+      backboneConditionId,
+    })
+    setSelectedProcessId(nextState.selectedProcessId)
+    setSelectedPartId(nextState.selectedPartId)
+  }, [backboneConditionId, deviceType, selectedLayerIds, selectedLineId, selectedPartId, selectedProcessId])
 
   const handlePartIdChange = useCallback((value: string) => {
     setSelectedPartId(value)
@@ -131,15 +212,20 @@ export function ProjectCreateModalV2({ open, onOpenChange }: Props) {
   const selectableLayerRefs = deviceLayers.filter((layer) => !!layer.step_seq)
 
   // ========== Submission ==========
-  const isSubmitDisabled =
-    !selectedLineId ||
-    !selectedProcessId ||
-    !selectedPartId ||
-    (deviceType === 'short' && selectedLayerIds.length === 0) ||
-    selectableLayerRefs.length === 0 ||
-    hasDuplicate ||
-    checkDuplicate.isPending ||
-    createProjectV2.isPending
+  const isSubmitDisabled = isCreateSubmitDisabled({
+    state: {
+      selectedLineId,
+      selectedProcessId,
+      selectedPartId,
+      deviceType,
+      selectedLayerIds,
+      backboneConditionId,
+    },
+    selectableLayerRefCount: selectableLayerRefs.length,
+    hasDuplicate,
+    isCheckingDuplicate: checkDuplicate.isPending,
+    isCreating: createProjectV2.isPending,
+  })
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -147,7 +233,7 @@ export function ProjectCreateModalV2({ open, onOpenChange }: Props) {
 
     const req: ProjectCreateRequestV2 = {
       line_id: selectedLineId,
-      process: selectedProcess,
+      process: selectedProcessId,
       part_id: selectedPartId,
       device_type: deviceType,
       selected_layer_refs:
@@ -155,15 +241,14 @@ export function ProjectCreateModalV2({ open, onOpenChange }: Props) {
           ? selectableLayerRefs
               .filter((layer) => selectedLayerIds.includes(layer.layer_id) && !!layer.step_seq)
               .map((layer) => ({ layer_id: layer.layer_id, step_seq: layer.step_seq! }))
-          : selectableLayerRefs
-              .map((layer) => ({ layer_id: layer.layer_id, step_seq: layer.step_seq! })),
-      backbone_product_id: backboneProductId ? Number(backboneProductId) : null,
+          : [],
+      backbone_condition_id: backboneConditionId ? Number(backboneConditionId) : null,
     }
 
     try {
       const result = await createProjectV2.mutateAsync(req)
       onOpenChange(false)
-      navigate(`/projects/${result.id}/edit`)
+      navigate(`/process-conditions/${result.id}/edit`)
     } catch {
       // Error handled by TanStack Query
     }
@@ -176,7 +261,7 @@ export function ProjectCreateModalV2({ open, onOpenChange }: Props) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-xl" onClose={() => onOpenChange(false)}>
         <DialogHeader>
-          <DialogTitle>새 프로젝트 생성 (V2)</DialogTitle>
+          <DialogTitle>새 공정 조건표 생성 (V2)</DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit}>
@@ -205,28 +290,30 @@ export function ProjectCreateModalV2({ open, onOpenChange }: Props) {
             {/* ===== 제품명(process_id) Combobox ===== */}
             <div>
               <label className="text-sm font-medium mb-1.5 block">
-                제품명 <span className="text-destructive">*</span>
+                공정 ID <span className="text-destructive">*</span>
               </label>
               <Combobox
                 options={processOptions}
                 value={selectedProcessId}
                 onChange={handleProcessIdChange}
-                placeholder={lineSelected ? '제품명(process_id)을 선택하세요' : '라인을 먼저 선택하세요'}
-                searchPlaceholder="제품명(process_id) 검색..."
+                placeholder={lineSelected ? '공정(process_id)을 선택하세요' : '라인을 먼저 선택하세요'}
+                searchPlaceholder="공정(process_id) 검색..."
                 disabled={!lineSelected}
                 required
               />
             </div>
 
-            {/* ===== Part ID Input ===== */}
+            {/* ===== Part ID Select ===== */}
             <div>
               <label className="text-sm font-medium mb-1.5 block">
                 Part ID <span className="text-destructive">*</span>
               </label>
-              <Input
+              <Combobox
+                options={partOptions}
                 value={selectedPartId}
-                onChange={(e) => handlePartIdChange(e.target.value)}
-                placeholder={selectedProcessId ? 'Part ID를 입력하세요' : '제품명을 먼저 선택하세요'}
+                onChange={handlePartIdChange}
+                placeholder={selectedProcessId ? 'Part ID를 선택하세요' : '공정을 먼저 선택하세요'}
+                searchPlaceholder="Part ID 검색..."
                 disabled={!selectedProcessId}
                 required
               />
@@ -237,7 +324,7 @@ export function ProjectCreateModalV2({ open, onOpenChange }: Props) {
               <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
                 <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
                 <span>
-                  동일 참조의 프로젝트가 이미 존재합니다
+                  동일 참조의 공정 조건표가 이미 존재합니다
                   {duplicateData?.existing_project_id != null && (
                     <>
                       {' '}
@@ -370,8 +457,8 @@ export function ProjectCreateModalV2({ open, onOpenChange }: Props) {
                 <label className="text-sm font-medium mb-1.5 block">Backbone</label>
                 <Combobox
                   options={backboneOptions}
-                  value={backboneProductId}
-                  onChange={setBackboneProductId}
+                  value={backboneConditionId}
+                  onChange={setBackboneConditionId}
                   placeholder={
                     !lineSelected
                       ? '라인을 먼저 선택하세요'
@@ -382,9 +469,9 @@ export function ProjectCreateModalV2({ open, onOpenChange }: Props) {
                   searchPlaceholder="Backbone 검색..."
                   disabled={!lineSelected || backboneLoading}
                 />
-                {lineSelected && !backboneLoading && backboneProducts.length === 0 && (
+                {lineSelected && !backboneLoading && backboneConditions.length === 0 && (
                   <p className="text-xs text-muted-foreground mt-1">
-                    이 라인에 Approved 상태의 Backbone 프로젝트가 없습니다.
+                    이 라인에 Approved 상태의 Backbone 공정 조건표가 없습니다.
                   </p>
                 )}
               </div>
@@ -395,7 +482,7 @@ export function ProjectCreateModalV2({ open, onOpenChange }: Props) {
               <div className="rounded-md border border-border bg-muted/30 p-3 text-sm">
                 <div className="flex items-center gap-1.5 font-medium mb-2 text-muted-foreground">
                   <Info className="h-4 w-4" />
-                  프로젝트 헤더 미리보기
+                  공정 조건표 헤더 미리보기
                 </div>
                 <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
                   <span className="text-muted-foreground">제품명</span>
@@ -421,8 +508,8 @@ export function ProjectCreateModalV2({ open, onOpenChange }: Props) {
 
                   <span className="text-muted-foreground">Backbone</span>
                   <span>
-                    {backboneProductId
-                      ? backboneOptions.find((o) => o.value === backboneProductId)?.label ?? '-'
+                    {backboneConditionId
+                      ? backboneOptions.find((o) => o.value === backboneConditionId)?.label ?? '-'
                       : '-'}
                   </span>
                 </div>
@@ -447,11 +534,11 @@ export function ProjectCreateModalV2({ open, onOpenChange }: Props) {
                   const err = createProjectV2.error as { response?: { status?: number; data?: { detail?: string } } }
                   const status = err?.response?.status
                   if (status === 409) {
-                    return err?.response?.data?.detail || '동일한 디바이스 조합의 활성 프로젝트가 이미 존재합니다.'
+                    return err?.response?.data?.detail || '동일한 디바이스 조합의 활성 공정 조건표가 이미 존재합니다.'
                   }
                   if (status === 404) return '디바이스 정보를 찾을 수 없습니다. 입력값을 확인해주세요.'
                   if (status === 400) return err?.response?.data?.detail || '입력값이 올바르지 않습니다.'
-                  return '프로젝트 생성에 실패했습니다. 다시 시도해주세요.'
+                  return '공정 조건표 생성에 실패했습니다. 다시 시도해주세요.'
                 })()}
               </p>
             )}

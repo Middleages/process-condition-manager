@@ -31,7 +31,7 @@ export function ProductManagementPanel({ readOnly = false }: ProductManagementPa
   }
 
   const handleDelete = async (product: ProductResponse) => {
-    if (!confirm(`'${product.product_name}' 제품을 삭제하시겠습니까?\n연결된 프로젝트가 있으면 삭제할 수 없습니다.`)) return
+    if (!confirm(`'${product.product_name}' 제품을 삭제하시겠습니까?\n연결된 공정 조건표가 있으면 삭제할 수 없습니다.`)) return
     try {
       await deleteMutation.mutateAsync(product.id)
     } catch (err: unknown) {

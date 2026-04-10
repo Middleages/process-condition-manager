@@ -97,9 +97,9 @@ function LayerSection({ detail, categories, onCellClick, defaultExpanded = false
 
         <span className="flex-1 truncate text-foreground">{detail.layerName}</span>
 
-        {detail.backboneProductName && (
+        {detail.backboneConditionName && (
           <span className="text-[10px] text-muted-foreground truncate max-w-[120px]">
-            BB: {detail.backboneProductName}
+            BB: {detail.backboneConditionName}
           </span>
         )}
 

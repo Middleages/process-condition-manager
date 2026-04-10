@@ -60,7 +60,7 @@ function MyRecentProjects({ projects }: { projects: MyRecentProject[] }) {
   const navigate = useNavigate()
 
   if (projects.length === 0) {
-    return <p className="text-sm text-muted-foreground py-6 text-center">프로젝트가 없습니다.</p>
+    return <p className="text-sm text-muted-foreground py-6 text-center">공정 조건표가 없습니다.</p>
   }
 
   return (
@@ -70,8 +70,8 @@ function MyRecentProjects({ projects }: { projects: MyRecentProject[] }) {
           key={p.id}
           role="button"
           tabIndex={0}
-          onClick={() => navigate(`/projects/${p.id}/edit`)}
-          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/projects/${p.id}/edit`) } }}
+          onClick={() => navigate(`/process-conditions/${p.id}/edit`)}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/process-conditions/${p.id}/edit`) } }}
           className="flex items-center justify-between p-3 rounded-md hover:bg-muted/50 cursor-pointer transition-colors"
         >
           <div className="min-w-0 flex-1">
@@ -103,8 +103,8 @@ function ReviewPendingList({ items }: { items: ReviewPendingItem[] }) {
           key={item.id}
           role="button"
           tabIndex={0}
-          onClick={() => navigate(`/projects/${item.id}/edit`)}
-          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/projects/${item.id}/edit`) } }}
+          onClick={() => navigate(`/process-conditions/${item.id}/edit`)}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/process-conditions/${item.id}/edit`) } }}
           className="flex items-center justify-between p-3 rounded-md hover:bg-muted/50 cursor-pointer transition-colors"
         >
           <div className="min-w-0 flex-1">
@@ -142,7 +142,7 @@ function ActivityTimeline({ items }: { items: ActivityItem[] }) {
               {' '}
               <span className="font-medium">{item.product_name}</span>
               {' '}
-              <span className="text-muted-foreground">프로젝트를</span>
+              <span className="text-muted-foreground">공정 조건표를</span>
               {' '}
               <Badge variant={item.from_status as 'draft' | 'review' | 'approved' | 'rejected'} className="text-[10px] px-1.5 py-0">
                 {STATUS_LABELS[item.from_status] || item.from_status}
@@ -211,7 +211,7 @@ export default function DashboardPage() {
   const handleStatusClick = (status: string) => {
     const params = new URLSearchParams({ status })
     if (lineFilter) params.set('line_id', String(lineFilter))
-    navigate(`/projects?${params.toString()}`)
+    navigate(`/process-conditions?${params.toString()}`)
   }
 
   return (
@@ -280,7 +280,7 @@ export default function DashboardPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="rounded-lg border bg-card p-5">
-              <h2 className="text-base font-semibold mb-3">내 최근 프로젝트</h2>
+              <h2 className="text-base font-semibold mb-3">내 최근 공정 조건표</h2>
               <MyRecentProjects projects={data.my_recent_projects} />
             </div>
 

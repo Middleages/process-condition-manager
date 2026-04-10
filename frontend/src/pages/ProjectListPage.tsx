@@ -48,7 +48,9 @@ export default function ProjectListPage() {
   const [searchText, setSearchText] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
   const [isLatestOnly, setIsLatestOnly] = useState(true)
-  const [historyProductId, setHistoryProductId] = useState<number | null>(null)
+  const [historyLineId, setHistoryLineId] = useState<number | null>(null)
+  const [historyProcess, setHistoryProcess] = useState<string | null>(null)
+  const [historyPartId, setHistoryPartId] = useState<string | null>(null)
   const [historyProjectId, setHistoryProjectId] = useState<number>(0)
 
   const { data: lines = [] } = useLines()
@@ -57,7 +59,7 @@ export default function ProjectListPage() {
 
   const filtered = searchText
     ? projects.filter((p) =>
-        p.product_name.toLowerCase().includes(searchText.toLowerCase())
+        p.condition_name.toLowerCase().includes(searchText.toLowerCase())
       )
     : projects
 
@@ -118,7 +120,7 @@ export default function ProjectListPage() {
           </div>
           <Button onClick={() => setCreateOpen(true)}>
             <Plus className="mr-1.5 h-4 w-4" />
-            새 프로젝트
+            새 공정 조건표
           </Button>
         </div>
       </div>
@@ -149,7 +151,7 @@ export default function ProjectListPage() {
             ) : displayProjects.length === 0 ? (
               <tr>
                 <td colSpan={9} className="text-center py-12 text-muted-foreground">
-                  프로젝트가 없습니다.
+                  공정 조건표가 없습니다.
                 </td>
               </tr>
             ) : (
@@ -161,23 +163,23 @@ export default function ProjectListPage() {
                   <td className="px-4 py-3 text-muted-foreground">{project.id}</td>
                   <td
                     className="px-4 py-3 font-medium cursor-pointer hover:text-blue-600"
-                    onClick={() => navigate(`/projects/${project.id}/edit`)}
+                    onClick={() => navigate(`/process-conditions/${project.id}/edit`)}
                   >
-                    {project.device_master_id
-                      ? `${project.product_name} | ${project.process ?? ''} | ${project.part_id ?? ''}`
-                      : project.product_name}
+                    {project.condition_name}
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">{project.line_name ?? '-'}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{project.backbone_name ?? '-'}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{project.backbone_condition_name ?? '-'}</td>
                   <td className="px-4 py-3 text-center text-muted-foreground">{project.layer_count}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       <span className="font-medium">v{project.revision}</span>
-                      {project.revision > 1 && project.product_id != null && (
+                      {project.revision > 1 && project.line_id != null && project.process && project.part_id && (
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
-                            setHistoryProductId(project.product_id)
+                            setHistoryLineId(project.line_id)
+                            setHistoryProcess(project.process)
+                            setHistoryPartId(project.part_id)
                             setHistoryProjectId(project.id)
                           }}
                           className="text-blue-600 hover:text-blue-800"
@@ -191,7 +193,7 @@ export default function ProjectListPage() {
                   <td className="px-4 py-3">
                     <StatusBadge status={project.status} />
                   </td>
-                  <td className="px-4 py-3">{project.creator_userid}</td>
+                  <td className="px-4 py-3">{project.creator_name}</td>
                   <td className="px-4 py-3 text-muted-foreground">
                     {new Date(project.updated_at).toLocaleDateString('ko-KR', {
                       year: 'numeric',
@@ -211,14 +213,18 @@ export default function ProjectListPage() {
       <ProjectCreateModalV2 open={createOpen} onOpenChange={setCreateOpen} />
 
       <VersionHistoryModal
-        open={historyProductId !== null}
+        open={historyLineId !== null}
         onOpenChange={(open) => {
           if (!open) {
-            setHistoryProductId(null)
+            setHistoryLineId(null)
+            setHistoryProcess(null)
+            setHistoryPartId(null)
             setHistoryProjectId(0)
           }
         }}
-        productId={historyProductId}
+        lineId={historyLineId}
+        process={historyProcess}
+        partId={historyPartId}
         currentProjectId={historyProjectId}
       />
     </div>

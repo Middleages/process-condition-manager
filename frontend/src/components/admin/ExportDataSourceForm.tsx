@@ -24,7 +24,7 @@ interface ExportDataSourceFormProps {
 }
 
 const PCM_FIELD_OPTIONS: { value: JoinKeyMapping['pcm_field']; label: string }[] = [
-  { value: 'project.product_id', label: 'project.product_id — 프로젝트 제품 ID' },
+  { value: 'project.product_id', label: 'project.product_id — 공정 조건표 제품 ID' },
   { value: 'layer.step_seq', label: 'layer.step_seq — 레이어 Step Seq' },
   { value: 'layer.layer_name', label: 'layer.layer_name — 레이어명' },
   { value: 'layer.layer_number', label: 'layer.layer_number — 레이어 번호' },

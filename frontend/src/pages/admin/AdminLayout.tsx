@@ -7,9 +7,9 @@ export default function AdminLayout() {
   const currentUser = useAuthStore((s) => s.user)
   const location = useLocation()
 
-  // 인증 사용자가 admin/developer 역할이 아니면 프로젝트 목록으로 리다이렉트
+  // 인증 사용자가 admin/developer 역할이 아니면 공정 조건표 목록으로 리다이렉트
   if (currentUser && !canAccessAdmin(currentUser.roles)) {
-    return <Navigate to="/projects" replace />
+    return <Navigate to="/process-conditions" replace />
   }
 
   const tabs = [

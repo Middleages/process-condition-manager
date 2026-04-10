@@ -11,7 +11,7 @@ export async function createComment(
   req: CommentCreate
 ): Promise<Comment> {
   const { data } = await client.post<Comment>(
-    `/projects/${projectId}/comments/`,
+    `/process-conditions/${projectId}/comments/`,
     req
   )
   return data
@@ -26,7 +26,7 @@ export async function fetchComments(
   }
 ): Promise<CommentListResponse> {
   const { data } = await client.get<CommentListResponse>(
-    `/projects/${projectId}/comments/`,
+    `/process-conditions/${projectId}/comments/`,
     { params }
   )
   return data
@@ -38,7 +38,7 @@ export async function updateComment(
   req: CommentUpdate
 ): Promise<Comment> {
   const { data } = await client.patch<Comment>(
-    `/projects/${projectId}/comments/${commentId}`,
+    `/process-conditions/${projectId}/comments/${commentId}`,
     req
   )
   return data
@@ -48,5 +48,5 @@ export async function deleteComment(
   projectId: number,
   commentId: number
 ): Promise<void> {
-  await client.delete(`/projects/${projectId}/comments/${commentId}`)
+  await client.delete(`/process-conditions/${projectId}/comments/${commentId}`)
 }

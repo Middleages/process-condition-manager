@@ -53,7 +53,7 @@ export default function AuditLogPage() {
       { value: '', label: '전체' },
       ...filtered.map((p) => ({
         value: p.id.toString(),
-        label: `${p.product_name} (v${p.revision})`,
+        label: `${p.condition_name} (v${p.revision})`,
       })),
     ]
   }, [projects, lineIdInput])
@@ -115,13 +115,13 @@ export default function AuditLogPage() {
           </select>
         </div>
         <div className="flex flex-col gap-1">
-          <label className="text-xs text-muted-foreground">프로젝트</label>
+          <label className="text-xs text-muted-foreground">공정 조건표</label>
           <Combobox
             options={projectOptions}
             value={projectIdInput}
             onChange={setProjectIdInput}
             placeholder="전체"
-            searchPlaceholder="프로젝트 검색..."
+            searchPlaceholder="공정 조건표 검색..."
             className="w-[220px]"
           />
         </div>
@@ -180,7 +180,7 @@ export default function AuditLogPage() {
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-muted text-muted-foreground">
-              <th className="px-4 py-3 text-left font-medium">프로젝트</th>
+              <th className="px-4 py-3 text-left font-medium">공정 조건표</th>
               <th className="px-4 py-3 text-left font-medium">레이어</th>
               <th className="px-4 py-3 text-left font-medium">컬럼</th>
               <th className="px-4 py-3 text-left font-medium">이전 값</th>

@@ -11,6 +11,9 @@ export default defineConfig({
     },
   },
   build: {
+    // Keep CI/build logs warning-free after manual chunking.
+    // Current largest chunk (ag-grid) is intentionally close to 900kB.
+    chunkSizeWarningLimit: 1000,
     rollupOptions: {
       output: {
         manualChunks: {

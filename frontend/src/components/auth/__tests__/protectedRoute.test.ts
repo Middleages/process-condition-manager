@@ -1,97 +1,70 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 
-// ---------------------------------------------------------------------------
-// Tests for ProtectedRoute logic via useAuthStore state
-// Since vitest environment is 'node', we test the store logic
-// that drives ProtectedRoute behavior.
-// ---------------------------------------------------------------------------
-
-const mockPost = vi.fn()
 const mockGet = vi.fn()
+const mockPost = vi.fn()
 
 vi.mock('@/api/client', () => ({
   default: {
-    post: mockPost,
     get: mockGet,
+    post: mockPost,
   },
 }))
 
-describe('ProtectedRoute auth logic (via useAuthStore)', () => {
+describe('ProtectedRoute auth logic (cookie-only store behavior)', () => {
   beforeEach(async () => {
     vi.clearAllMocks()
     vi.resetModules()
   })
 
-  it('isAuthenticated is false by default (unauthenticated user should be redirected)', async () => {
+  it('defaults to unauthenticated', async () => {
     const { useAuthStore } = await import('@/stores/useAuthStore')
     expect(useAuthStore.getState().isAuthenticated).toBe(false)
     expect(useAuthStore.getState().isLoading).toBe(false)
   })
 
-  it('isAuthenticated becomes true after successful login (user should be allowed through)', async () => {
-
-    const mockUser = { id: 1, userid: 'admin', roles: ['admin'] }
-    mockPost.mockResolvedValueOnce({
-      data: { access_token: 'token', token_type: 'bearer', user: mockUser },
+  it('becomes authenticated after successful fetchCurrentUser', async () => {
+    mockGet.mockResolvedValueOnce({
+      data: { id: 1, userid: 'admin', roles: ['admin'] },
     })
 
     const { useAuthStore } = await import('@/stores/useAuthStore')
-    await useAuthStore.getState().login('admin', 'pass')
-
+    await useAuthStore.getState().fetchCurrentUser()
     expect(useAuthStore.getState().isAuthenticated).toBe(true)
   })
 
-  it('isAuthenticated becomes false after logout (user should be redirected)', async () => {
-    const mockUser = { id: 1, userid: 'admin', roles: ['admin'] }
-    mockPost
-      .mockResolvedValueOnce({
-        data: { access_token: 'token', token_type: 'bearer', user: mockUser },
-      })
-      .mockResolvedValueOnce({ data: { message: 'Logged out' } })
+  it('becomes unauthenticated when fetchCurrentUser fails', async () => {
+    mockGet.mockRejectedValueOnce(new Error('unauthorized'))
 
     const { useAuthStore } = await import('@/stores/useAuthStore')
-    await useAuthStore.getState().login('admin', 'pass')
-    expect(useAuthStore.getState().isAuthenticated).toBe(true)
-
-    await useAuthStore.getState().logout()
+    useAuthStore.setState({
+      user: { id: 1, userid: 'admin', roles: ['admin'], line_id: null },
+      accessToken: null,
+      isAuthenticated: true,
+      isLoading: false,
+    })
+    await useAuthStore.getState().fetchCurrentUser()
     expect(useAuthStore.getState().isAuthenticated).toBe(false)
   })
 
-  it('isLoading is true during login (spinner should be shown)', async () => {
-
-    const mockUser = { id: 1, userid: 'admin', roles: ['admin'] }
-    let resolveLogin!: (value: unknown) => void
-    const loginPromise = new Promise((resolve) => {
-      resolveLogin = resolve
+  it('restoreSession toggles loading and resolves to authenticated when /auth/me succeeds', async () => {
+    mockGet.mockResolvedValueOnce({
+      data: { id: 2, userid: 'editor', roles: ['editor'] },
     })
-    mockPost.mockReturnValueOnce(loginPromise)
 
     const { useAuthStore } = await import('@/stores/useAuthStore')
-    const loginAction = useAuthStore.getState().login('admin', 'pass')
-
-    // While login is in-flight, isLoading should be true
-    expect(useAuthStore.getState().isLoading).toBe(true)
-
-    resolveLogin({
-      data: { access_token: 'token', token_type: 'bearer', user: mockUser },
-    })
-    await loginAction
-
-    // After login completes, isLoading should be false
+    await useAuthStore.getState().restoreSession()
     expect(useAuthStore.getState().isLoading).toBe(false)
+    expect(useAuthStore.getState().isAuthenticated).toBe(true)
   })
 
-  it('clearAuth sets isAuthenticated to false (forced logout should redirect)', async () => {
-
-    const mockUser = { id: 1, userid: 'admin', roles: ['admin'] }
-    mockPost.mockResolvedValueOnce({
-      data: { access_token: 'token', token_type: 'bearer', user: mockUser },
-    })
-
+  it('clearAuth forces unauthenticated state', async () => {
     const { useAuthStore } = await import('@/stores/useAuthStore')
-    await useAuthStore.getState().login('admin', 'pass')
-    expect(useAuthStore.getState().isAuthenticated).toBe(true)
-
+    useAuthStore.setState({
+      user: { id: 10, userid: 'reviewer', roles: ['reviewer'], line_id: null },
+      accessToken: null,
+      isAuthenticated: true,
+      isLoading: false,
+    })
     useAuthStore.getState().clearAuth()
     expect(useAuthStore.getState().isAuthenticated).toBe(false)
   })

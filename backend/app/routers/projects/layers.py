@@ -15,10 +15,10 @@ from app.schemas.recipe import (
     RecipeApplyRequest,
     RecipeApplyResponse,
 )
-from app.models import Product
+from app.models import Project
 from app.services import backbone_service, recipe_service
 
-router = APIRouter(prefix="/projects", tags=["project-layers"])
+router = APIRouter(prefix="/process-conditions", tags=["project-layers"])
 
 
 # --- Backbone replacement ---
@@ -35,15 +35,25 @@ async def replace_layer_backbone(
         db,
         project_id=project_id,
         project_layer_id=project_layer_id,
-        source_product_id=request.source_product_id,
+        source_condition_id=request.source_condition_id,
         source_layer_name=request.source_layer_name,
         changed_by=current_user.id,
     )
-    bb_product = await db.get(Product, pl.backbone_product_id) if pl.backbone_product_id else None
+    bb_condition_id = (
+        pl.backbone_source_condition_id
+        if pl.backbone_source_condition_id is not None
+        else pl.backbone_product_id
+    )
+    bb_condition = await db.get(Project, bb_condition_id) if bb_condition_id else None
+    bb_name = (
+        f"{bb_condition.process} | {bb_condition.part_id} (v{bb_condition.revision})"
+        if bb_condition and bb_condition.process and bb_condition.part_id
+        else ""
+    )
     return BackboneReplaceResponse(
         project_layer_id=pl.id,
-        backbone_product_id=pl.backbone_product_id,
-        backbone_product_name=bb_product.product_name if bb_product else "",
+        backbone_condition_id=bb_condition_id,
+        backbone_condition_name=bb_name,
         changed_columns=changed_count,
         conditions=pl.conditions,
         backbone_conditions=pl.backbone_conditions,
@@ -64,17 +74,27 @@ async def add_project_layer(
         project_id=project_id,
         layer_id=request.layer_id,
         changed_by=current_user.id,
-        source_product_id=request.source_product_id,
+        source_condition_id=request.source_condition_id,
         source_layer_name=request.source_layer_name,
     )
     # Use denormalized fields from project_layer (works for both V1 and V2)
-    bb_product = await db.get(Product, pl.backbone_product_id) if pl.backbone_product_id else None
+    bb_condition_id = (
+        pl.backbone_source_condition_id
+        if pl.backbone_source_condition_id is not None
+        else pl.backbone_product_id
+    )
+    bb_condition = await db.get(Project, bb_condition_id) if bb_condition_id else None
+    bb_name = (
+        f"{bb_condition.process} | {bb_condition.part_id} (v{bb_condition.revision})"
+        if bb_condition and bb_condition.process and bb_condition.part_id
+        else None
+    )
     return LayerAddResponse(
         project_layer_id=pl.id,
         layer_id=pl.layer_id,
         layer_name=pl.layer_name or "",
-        backbone_product_id=pl.backbone_product_id,
-        backbone_product_name=bb_product.product_name if bb_product else None,
+        backbone_condition_id=bb_condition_id,
+        backbone_condition_name=bb_name,
         conditions=pl.conditions,
         sort_order=pl.sort_order,
     )
