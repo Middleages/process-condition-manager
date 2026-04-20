@@ -7,6 +7,8 @@ interface UseEditorNavigationProps {
   categories: ColumnCategory[]
 }
 
+const makeLayerKey = (layerId: string, stepSeq: string | null | undefined) => `${layerId}::${stepSeq ?? ''}`
+
 export function useEditorNavigation({ project, categories }: UseEditorNavigationProps) {
   const setActiveLayerId = useEditorStore((s) => s.setActiveLayerId)
   const setActiveColumnName = useEditorStore((s) => s.setActiveColumnName)
@@ -22,17 +24,23 @@ export function useEditorNavigation({ project, categories }: UseEditorNavigation
   const handleErrorClick = useCallback(
     (error: ValidationError) => {
       setActiveColumnName(null)
+      const targetLayer = project?.layers.find(
+        (l) => l.layer_id === error.layer_id && l.layer_name === error.layer_name
+      ) ?? project?.layers.find((l) => l.layer_id === error.layer_id)
+
       for (const cat of categories) {
         const col = cat.columns.find((c: ColumnDefinition) => c.column_name === error.column_name)
         if (col) {
           useEditorStore.getState().setActiveCategory(cat.category_code)
-          setActiveLayerId(error.layer_id)
+          if (targetLayer) {
+            setActiveLayerId(makeLayerKey(targetLayer.layer_id, targetLayer.step_seq))
+          }
           requestAnimationFrame(() => setActiveColumnName(error.column_name))
           break
         }
       }
     },
-    [categories, setActiveLayerId, setActiveColumnName]
+    [categories, project?.layers, setActiveLayerId, setActiveColumnName]
   )
 
   const handleNavigateToCell = useCallback(
@@ -47,7 +55,7 @@ export function useEditorNavigation({ project, categories }: UseEditorNavigation
             break
           }
         }
-        setActiveLayerId(layer.layer_id)
+        setActiveLayerId(makeLayerKey(layer.layer_id, layer.step_seq))
         requestAnimationFrame(() => setActiveColumnName(columnName))
       }
     },

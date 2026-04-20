@@ -81,6 +81,7 @@ export function ConditionGrid({
   onCellRightClick,
   onViewHistory,
 }: Props) {
+  const makeLayerKey = (layerId: string, stepSeq: string | null | undefined) => `${layerId}::${stepSeq ?? ''}`
   const gridRef = useRef<GridApi | null>(null)
   const [contextMenu, setContextMenu] = useState<{
     x: number
@@ -211,7 +212,7 @@ export function ConditionGrid({
   // Scroll to layer (and optionally column) when active selection changes
   useEffect(() => {
     if (!gridRef.current || !scrollToLayerId) return
-    const layer = layers.find((l) => l.layer_id === scrollToLayerId)
+    const layer = layers.find((l) => makeLayerKey(l.layer_id, l.step_seq) === scrollToLayerId)
     if (!layer) return
     const rowNode = gridRef.current.getRowNode(String(layer.id))
     if (rowNode?.rowIndex != null) {
@@ -258,7 +259,10 @@ export function ConditionGrid({
   // Apply persistent highlight class to the active layer row
   const getRowClass = useCallback(
     (params: RowClassParams) => {
-      if (scrollToLayerId != null && params.data?.layerId === scrollToLayerId) {
+      if (
+        scrollToLayerId != null
+        && makeLayerKey(params.data?.layerId, params.data?.stepSeq) === scrollToLayerId
+      ) {
         return 'ag-row-active-layer'
       }
       return undefined

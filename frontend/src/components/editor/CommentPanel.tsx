@@ -15,6 +15,7 @@ interface Props {
 }
 
 export function CommentPanel({ projectId, categories, layers, onToggle, isOpen = true }: Props) {
+  const makeLayerKey = (layerId: string, stepSeq: string | null | undefined) => `${layerId}::${stepSeq ?? ''}`
   const { data, isLoading } = useComments(projectId)
   const [filterUnresolved, setFilterUnresolved] = useState(false)
 
@@ -57,7 +58,7 @@ export function CommentPanel({ projectId, categories, layers, onToggle, isOpen =
     // Map project_layer_id -> layer_id for correct grid scroll
     const layer = layers.find(l => l.id === comment.project_layer_id)
     if (layer) {
-      setActiveLayerId(layer.layer_id)
+      setActiveLayerId(makeLayerKey(layer.layer_id, layer.step_seq))
       requestAnimationFrame(() => setActiveColumnName(comment.column_name!))
     }
   }

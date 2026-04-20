@@ -1,5 +1,5 @@
 // ========== Column ==========
-export type CategoryCode = 'SP' | 'SC' | 'OVL' | 'DEV' | 'EQP'
+export type CategoryCode = 'ALL' | 'SP' | 'SC' | 'OVL' | 'DEV' | 'EQP'
 
 export interface ColumnValidation {
   id: number

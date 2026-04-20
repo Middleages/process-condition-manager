@@ -35,6 +35,8 @@ import { ExportPanel } from '@/components/export/ExportPanel'
 import { fetchEquipments } from '@/api/equipments'
 import type { EquipmentOption } from '@/components/editor/EquipmentAutocompleteEditor'
 
+const makeLayerKey = (layerId: string, stepSeq: string | null | undefined) => `${layerId}::${stepSeq ?? ''}`
+
 export default function ConditionEditorPage() {
   const { projectId } = useParams()
   const pid = Number(projectId)
@@ -101,7 +103,9 @@ export default function ConditionEditorPage() {
 
 
   const activeCategoryData = categories.find((c) => c.category_code === activeCategory)
-  const activeColumns = activeCategoryData?.columns ?? []
+  const activeColumns = activeCategory === 'ALL'
+    ? categories.flatMap((c) => c.columns)
+    : activeCategoryData?.columns ?? []
 
   // --- Custom hooks ---
   const { handleCellChanged, handleSave, lastSavedAt } = useEditorCellEdit({
@@ -178,9 +182,9 @@ export default function ConditionEditorPage() {
 
   useEffect(() => {
     if (project?.layers?.length) {
-      const currentExists = project.layers.some(l => l.layer_id === activeLayerId)
+      const currentExists = project.layers.some((l) => makeLayerKey(l.layer_id, l.step_seq) === activeLayerId)
       if (!currentExists) {
-        setActiveLayerId(project.layers[0].layer_id)
+        setActiveLayerId(makeLayerKey(project.layers[0].layer_id, project.layers[0].step_seq))
       }
     }
   }, [project, setActiveLayerId, activeLayerId])

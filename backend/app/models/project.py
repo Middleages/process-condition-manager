@@ -62,7 +62,7 @@ class Project(Base):
 
 class ProjectLayer(Base):
     __tablename__ = "process_condition_layers"
-    __table_args__ = (UniqueConstraint("project_id", "layer_id"),)
+    __table_args__ = (UniqueConstraint("project_id", "step_seq"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     project_id: Mapped[int] = mapped_column(ForeignKey("process_conditions.id", ondelete="CASCADE"), index=True)

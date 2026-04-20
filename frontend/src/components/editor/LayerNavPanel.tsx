@@ -16,7 +16,7 @@ interface Props {
   layers: ProjectLayerData[]
   validationErrors: ValidationError[]
   isDraft: boolean
-  onLayerClick: (layerId: string) => void
+  onLayerClick: (layerKey: string) => void
   onBackboneReplace?: (layer: ProjectLayerData) => void
   onLayerAdd?: () => void
   onLayerDelete?: (layer: ProjectLayerData) => void
@@ -31,6 +31,7 @@ export function LayerNavPanel({
   onLayerAdd,
   onLayerDelete,
 }: Props) {
+  const makeLayerKey = (layer: ProjectLayerData) => `${layer.layer_id}::${layer.step_seq}`
   const activeLayerId = useEditorStore((s) => s.activeLayerId)
   const dirtyCells = useEditorStore((s) => s.dirtyCells)
   const panelRef = useRef<HTMLDivElement>(null)
@@ -127,7 +128,8 @@ export function LayerNavPanel({
           const errCount = errorsByLayer.get(layer.layer_id) ?? 0
           const dirtyCount = dirtyByLayer.get(layer.layer_id) ?? 0
           const bbDiffCount = backboneDiffByLayer.get(layer.layer_id) ?? 0
-          const isActive = activeLayerId === layer.layer_id
+          const layerKey = makeLayerKey(layer)
+          const isActive = activeLayerId === layerKey
 
           return (
             <button
@@ -138,11 +140,14 @@ export function LayerNavPanel({
                   ? 'bg-primary/10 text-primary font-medium'
                   : 'hover:bg-muted/50'
               )}
-              onClick={() => onLayerClick(layer.layer_id)}
+              onClick={() => onLayerClick(layerKey)}
               onContextMenu={(e) => handleContextMenu(e, layer)}
             >
               <div className="flex-1 min-w-0">
                 <div className="truncate">{layer.layer_name}</div>
+                <div className="text-[10px] text-muted-foreground truncate">
+                  {layer.layer_id} · {layer.step_seq}
+                </div>
                 {layer.backbone_condition_name && (
                   <div className="text-[10px] text-muted-foreground truncate">
                     &larr; {layer.backbone_condition_name}
