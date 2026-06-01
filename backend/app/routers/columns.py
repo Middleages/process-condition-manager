@@ -18,10 +18,11 @@ async def list_columns(
     _user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    # 사용자 노출용: use_yn=True 인 컬럼만 반환 (비공개 컬럼은 테스트 단계로 간주)
     query = (
         select(ColumnCategory)
         .options(
-            selectinload(ColumnCategory.columns)
+            selectinload(ColumnCategory.columns.and_(ColumnDefinition.use_yn.is_(True)))
             .selectinload(ColumnDefinition.validations)
         )
         .order_by(ColumnCategory.sort_order)

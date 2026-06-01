@@ -55,8 +55,8 @@ def seed():
             session.execute(
                 text(
                     "INSERT INTO column_definitions "
-                    "(column_name, display_name, category_id, data_type, select_options, unit, sort_order, is_required) "
-                    "VALUES (:name, :display, :cat_id, :dtype, CAST(:sel AS jsonb), :unit, :order, :req)"
+                    "(column_name, display_name, category_id, data_type, select_options, unit, sort_order, is_required, use_yn) "
+                    "VALUES (:name, :display, :cat_id, :dtype, CAST(:sel AS jsonb), :unit, :order, :req, TRUE)"
                 ),
                 {
                     "name": col_name,

@@ -19,6 +19,7 @@ export interface ColumnDefinition {
   unit: string | null
   sort_order: number
   is_required: boolean
+  use_yn: boolean
   validations: ColumnValidation[]
 }
 

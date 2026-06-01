@@ -13,6 +13,7 @@ import {
   updateLayer,
   deleteLayer,
   reorderLayers,
+  fetchAdminColumns,
   createColumn,
   updateColumnMetadata,
   deleteColumn,
@@ -189,6 +190,14 @@ export function useReorderLayers() {
 }
 
 // ========== Columns ==========
+
+export function useAdminColumns() {
+  // 관리자 화면용: use_yn 무관 전체 컬럼 조회
+  return useQuery({
+    queryKey: adminMasterKeys.columns(),
+    queryFn: fetchAdminColumns,
+  })
+}
 
 export function useCreateColumn() {
   const queryClient = useQueryClient()

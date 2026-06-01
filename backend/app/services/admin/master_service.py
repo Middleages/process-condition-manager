@@ -360,7 +360,7 @@ async def reorder_layers(db: AsyncSession, data: LayerReorderRequest) -> list[La
 async def update_column_metadata(
     db: AsyncSession, column_id: int, data: ColumnMetadataUpdate
 ) -> ColumnMetadataResponse:
-    """Update column metadata fields (display_name, unit, is_required)."""
+    """Update column metadata fields (display_name, unit, is_required, use_yn)."""
     col = await db.get(ColumnDefinition, column_id)
     if not col:
         raise HTTPException(status_code=404, detail="Column not found")
@@ -371,6 +371,8 @@ async def update_column_metadata(
         col.unit = data.unit
     if data.is_required is not None:
         col.is_required = data.is_required
+    if data.use_yn is not None:
+        col.use_yn = data.use_yn
 
     await db.commit()
     await db.refresh(col)
@@ -381,10 +383,12 @@ async def update_column_metadata(
         id=col.id,
         column_name=col.column_name,
         display_name=col.display_name,
+        category_id=col.category_id,
         category_code=cat.category_code if cat else None,
         data_type=col.data_type,
         unit=col.unit,
         is_required=col.is_required,
+        use_yn=col.use_yn,
         sort_order=col.sort_order,
     )
 
@@ -417,6 +421,7 @@ async def create_column(db: AsyncSession, data: ColumnCreateRequest) -> ColumnMe
         data_type=data.data_type,
         unit=data.unit,
         is_required=data.is_required,
+        use_yn=data.use_yn,
         select_options=data.select_options,
         sort_order=next_order,
     )
@@ -428,12 +433,40 @@ async def create_column(db: AsyncSession, data: ColumnCreateRequest) -> ColumnMe
         id=col.id,
         column_name=col.column_name,
         display_name=col.display_name,
+        category_id=col.category_id,
         category_code=cat.category_code,
         data_type=col.data_type,
         unit=col.unit,
         is_required=col.is_required,
+        use_yn=col.use_yn,
         sort_order=col.sort_order,
     )
+
+
+async def list_all_columns_with_categories(db: AsyncSession) -> list[ColumnMetadataResponse]:
+    """관리자용: use_yn 무관 전체 컬럼 + 카테고리 코드 반환 (비공개 컬럼 관리 화면용)."""
+    query = (
+        select(ColumnDefinition, ColumnCategory)
+        .join(ColumnCategory, ColumnDefinition.category_id == ColumnCategory.id)
+        .order_by(ColumnCategory.sort_order, ColumnDefinition.sort_order)
+    )
+    result = await db.execute(query)
+    rows = result.all()
+    return [
+        ColumnMetadataResponse(
+            id=col.id,
+            column_name=col.column_name,
+            display_name=col.display_name,
+            category_id=col.category_id,
+            category_code=cat.category_code,
+            data_type=col.data_type,
+            unit=col.unit,
+            is_required=col.is_required,
+            use_yn=col.use_yn,
+            sort_order=col.sort_order,
+        )
+        for col, cat in rows
+    ]
 
 
 async def delete_column(db: AsyncSession, column_id: int) -> None:

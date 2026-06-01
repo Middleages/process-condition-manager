@@ -22,6 +22,7 @@ class ColumnDefinitionResponse(BaseModel):
     unit: str | None = None
     sort_order: int
     is_required: bool
+    use_yn: bool
     validations: list[ColumnValidationResponse] = []
 
     model_config = {"from_attributes": True}

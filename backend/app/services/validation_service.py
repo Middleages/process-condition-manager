@@ -126,9 +126,11 @@ async def validate_project(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    # 2. Load all column definitions with active validations
+    # 2. Load all ACTIVE column definitions with active validations
+    # 비공개(use_yn=False) 컬럼은 검증 대상에서 제외 → 테스트 단계 컬럼이 사용자 입력을 차단하지 않음
     result = await db.execute(
         select(ColumnDefinition)
+        .where(ColumnDefinition.use_yn.is_(True))
         .options(selectinload(ColumnDefinition.validations))
     )
     all_columns = result.scalars().unique().all()

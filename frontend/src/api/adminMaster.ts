@@ -52,10 +52,12 @@ export interface ColumnMetadataResponse {
   id: number
   column_name: string
   display_name: string
+  category_id: number | null
   category_code: string | null
   data_type: string
   unit: string | null
   is_required: boolean
+  use_yn: boolean
   sort_order: number
 }
 
@@ -63,6 +65,7 @@ export interface ColumnMetadataUpdate {
   display_name?: string
   unit?: string | null
   is_required?: boolean
+  use_yn?: boolean
 }
 
 export interface ColumnCreateRequest {
@@ -72,6 +75,7 @@ export interface ColumnCreateRequest {
   data_type: string
   unit?: string | null
   is_required?: boolean
+  use_yn?: boolean
   select_options?: string[] | null
 }
 
@@ -172,6 +176,12 @@ export async function reorderLayers(orderedIds: number[]): Promise<LayerResponse
 }
 
 // ========== Columns ==========
+
+export async function fetchAdminColumns(): Promise<ColumnMetadataResponse[]> {
+  // 관리자용: use_yn 무관 전체 컬럼 조회 (비공개 컬럼 관리 화면용)
+  const { data } = await client.get<ColumnMetadataResponse[]>('/admin/columns')
+  return data
+}
 
 export async function createColumn(payload: ColumnCreateRequest): Promise<ColumnMetadataResponse> {
   const { data } = await client.post<ColumnMetadataResponse>('/admin/columns', payload)

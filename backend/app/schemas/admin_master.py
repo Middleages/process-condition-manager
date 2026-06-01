@@ -98,16 +98,19 @@ class ColumnMetadataUpdate(BaseModel):
     display_name: str | None = Field(None, max_length=200)
     unit: str | None = None
     is_required: bool | None = None
+    use_yn: bool | None = None
 
 
 class ColumnMetadataResponse(BaseModel):
     id: int
     column_name: str
     display_name: str
+    category_id: int | None = None
     category_code: str | None = None
     data_type: str
     unit: str | None = None
     is_required: bool
+    use_yn: bool
     sort_order: int
 
     model_config = ConfigDict(from_attributes=True)
@@ -124,6 +127,8 @@ class ColumnCreateRequest(BaseModel):
     data_type: str = Field(..., max_length=20)  # integer / float / string / select
     unit: str | None = None
     is_required: bool = False
+    # 등록 시 기본 비공개: 테스트 후 명시적으로 True 로 전환
+    use_yn: bool = False
     select_options: list[str] | None = None
 
 

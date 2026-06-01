@@ -176,13 +176,22 @@ async def delete_layer(
 # Columns (시스템 설정 → developer 쓰기)
 # ---------------------------------------------------------------------------
 
+@router.get("/columns", response_model=list[ColumnMetadataResponse])
+async def list_all_columns(
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(require_admin_or_developer),
+):
+    """관리자용 전체 컬럼 조회 (use_yn 무관, 비공개 컬럼 포함)."""
+    return await admin_master_service.list_all_columns_with_categories(db)
+
+
 @router.post("/columns", response_model=ColumnMetadataResponse, status_code=201)
 async def create_column(
     data: ColumnCreateRequest,
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(require_system_write),
 ):
-    """컬럼 정의 생성 (developer only)."""
+    """컬럼 정의 생성 (developer only). use_yn 기본 False — 테스트 후 명시적 활성화."""
     return await admin_master_service.create_column(db, data)
 
 

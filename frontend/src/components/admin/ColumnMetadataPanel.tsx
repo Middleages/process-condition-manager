@@ -9,20 +9,21 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog'
-import { useColumns } from '@/hooks/useColumns'
 import {
+  useAdminColumns,
   useCreateColumn,
   useUpdateColumnMetadata,
   useDeleteColumn,
   useAdminCategories,
 } from '@/hooks/useAdminMaster'
-import type { ColumnDefinition } from '@/types'
+import type { ColumnMetadataResponse } from '@/api/adminMaster'
 
 interface EditingRow {
   id: number
   display_name: string
   unit: string
   is_required: boolean
+  use_yn: boolean
 }
 
 interface NewColumnForm {
@@ -32,6 +33,7 @@ interface NewColumnForm {
   data_type: string
   unit: string
   is_required: boolean
+  use_yn: boolean
   select_options: string
 }
 
@@ -49,6 +51,7 @@ const INITIAL_FORM: NewColumnForm = {
   data_type: 'string',
   unit: '',
   is_required: false,
+  use_yn: false,
   select_options: '',
 }
 
@@ -57,7 +60,8 @@ interface ColumnMetadataPanelProps {
 }
 
 export function ColumnMetadataPanel({ readOnly = false }: ColumnMetadataPanelProps) {
-  const { data: categories = [], isLoading } = useColumns()
+  // 관리자용: use_yn 무관 전체 컬럼 조회 (비공개 컬럼도 표시)
+  const { data: allColumns = [], isLoading } = useAdminColumns()
   const { data: adminCategories = [] } = useAdminCategories()
   const createMutation = useCreateColumn()
   const updateMutation = useUpdateColumnMetadata()
@@ -67,17 +71,13 @@ export function ColumnMetadataPanel({ readOnly = false }: ColumnMetadataPanelPro
   const [newForm, setNewForm] = useState<NewColumnForm>(INITIAL_FORM)
   const [serverError, setServerError] = useState('')
 
-  // Flatten all columns from all categories
-  const allColumns: Array<ColumnDefinition & { category_code: string }> = categories.flatMap((cat) =>
-    cat.columns.map((col) => ({ ...col, category_code: cat.category_code }))
-  )
-
-  const handleEdit = (col: ColumnDefinition & { category_code: string }) => {
+  const handleEdit = (col: ColumnMetadataResponse) => {
     setEditingRow({
       id: col.id,
       display_name: col.display_name,
       unit: col.unit ?? '',
       is_required: col.is_required,
+      use_yn: col.use_yn,
     })
   }
 
@@ -90,6 +90,7 @@ export function ColumnMetadataPanel({ readOnly = false }: ColumnMetadataPanelPro
           display_name: editingRow.display_name,
           unit: editingRow.unit || null,
           is_required: editingRow.is_required,
+          use_yn: editingRow.use_yn,
         },
       })
       setEditingRow(null)
@@ -100,7 +101,19 @@ export function ColumnMetadataPanel({ readOnly = false }: ColumnMetadataPanelPro
 
   const handleCancel = () => setEditingRow(null)
 
-  const handleDelete = async (col: ColumnDefinition & { category_code: string }) => {
+  const handleToggleUseYn = async (col: ColumnMetadataResponse) => {
+    // 단일 토글: 편집모드가 아닐 때 use_yn 만 즉시 전환
+    try {
+      await updateMutation.mutateAsync({
+        id: col.id,
+        payload: { use_yn: !col.use_yn },
+      })
+    } catch {
+      alert('상태 변경 중 오류가 발생했습니다.')
+    }
+  }
+
+  const handleDelete = async (col: ColumnMetadataResponse) => {
     if (!confirm(`'${col.column_name}' 컬럼을 삭제하시겠습니까?\n관련 검증 규칙도 함께 삭제됩니다.`)) return
     try {
       await deleteMutation.mutateAsync(col.id)
@@ -133,6 +146,7 @@ export function ColumnMetadataPanel({ readOnly = false }: ColumnMetadataPanelPro
         data_type: newForm.data_type,
         unit: newForm.unit.trim() || null,
         is_required: newForm.is_required,
+        use_yn: newForm.use_yn,
         select_options: selectOptions,
       })
       setIsFormOpen(false)
@@ -162,6 +176,7 @@ export function ColumnMetadataPanel({ readOnly = false }: ColumnMetadataPanelPro
               <th className="px-4 py-3 text-left font-medium">표시 이름</th>
               <th className="px-4 py-3 text-left font-medium">단위</th>
               <th className="px-4 py-3 text-left font-medium">필수 여부</th>
+              <th className="px-4 py-3 text-left font-medium">공개 여부</th>
               <th className="px-4 py-3 text-left font-medium">카테고리</th>
               <th className="px-4 py-3 text-left font-medium">데이터 타입</th>
               <th className="px-4 py-3 text-right font-medium">작업</th>
@@ -170,19 +185,29 @@ export function ColumnMetadataPanel({ readOnly = false }: ColumnMetadataPanelPro
           <tbody>
             {isLoading && (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">로딩 중...</td>
+                <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">로딩 중...</td>
               </tr>
             )}
             {!isLoading && allColumns.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">컬럼이 없습니다.</td>
+                <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">컬럼이 없습니다.</td>
               </tr>
             )}
             {allColumns.map((col) => {
               const isEditing = editingRow?.id === col.id
               return (
-                <tr key={col.id} className="border-t hover:bg-muted/50">
-                  <td className="px-4 py-2 font-mono text-xs">{col.column_name}</td>
+                <tr
+                  key={col.id}
+                  className={`border-t hover:bg-muted/50 ${!col.use_yn ? 'bg-muted/30 text-muted-foreground' : ''}`}
+                >
+                  <td className="px-4 py-2 font-mono text-xs">
+                    {col.column_name}
+                    {!col.use_yn && (
+                      <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] bg-yellow-100 text-yellow-800 border border-yellow-300">
+                        비공개
+                      </span>
+                    )}
+                  </td>
                   <td className="px-4 py-2">
                     {isEditing ? (
                       <Input
@@ -218,6 +243,33 @@ export function ColumnMetadataPanel({ readOnly = false }: ColumnMetadataPanelPro
                       <span className={col.is_required ? 'text-red-600 font-medium' : 'text-muted-foreground'}>
                         {col.is_required ? '필수' : '선택'}
                       </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-2">
+                    {isEditing ? (
+                      <label className="inline-flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={editingRow.use_yn}
+                          onChange={(e) => setEditingRow({ ...editingRow, use_yn: e.target.checked })}
+                          className="h-4 w-4"
+                        />
+                        <span className="text-xs">{editingRow.use_yn ? '공개' : '비공개'}</span>
+                      </label>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={readOnly || updateMutation.isPending}
+                        onClick={() => handleToggleUseYn(col)}
+                        className={`px-2 py-0.5 rounded text-xs border transition-colors ${
+                          col.use_yn
+                            ? 'bg-green-100 text-green-800 border-green-300 hover:bg-green-200'
+                            : 'bg-gray-100 text-gray-600 border-gray-300 hover:bg-gray-200'
+                        } disabled:opacity-50 disabled:cursor-not-allowed`}
+                        title={col.use_yn ? '클릭하여 비공개로 전환' : '클릭하여 공개로 전환'}
+                      >
+                        {col.use_yn ? '공개' : '비공개'}
+                      </button>
                     )}
                   </td>
                   <td className="px-4 py-2 text-muted-foreground">{col.category_code}</td>
@@ -372,6 +424,18 @@ function ColumnCreateModal({
               className="h-4 w-4"
             />
             <label htmlFor="is_required" className="text-sm font-medium">필수 항목</label>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="use_yn"
+              checked={form.use_yn}
+              onChange={(e) => setForm({ ...form, use_yn: e.target.checked })}
+              className="h-4 w-4"
+            />
+            <label htmlFor="use_yn" className="text-sm font-medium">
+              즉시 공개 (체크 안하면 비공개로 등록 → 테스트 후 별도 활성화)
+            </label>
           </div>
           {form.data_type === 'select' && (
             <div>
