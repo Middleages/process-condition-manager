@@ -20,6 +20,7 @@ dev = [
     "pytest-asyncio>=0.24.0",
     "pytest-cov>=6.0.0",
     "httpx>=0.28.1",
+    "aiosqlite>=0.20.0",
     "ruff>=0.8.0",
     "pyright>=1.1.390",
 ]
@@ -32,6 +33,10 @@ package = false
 asyncio_mode = "auto"
 testpaths = ["tests"]
 addopts = "--cov=app --cov-report=term-missing"
+
+[tool.coverage.run]
+# SQLAlchemy async는 greenlet에서 ORM 코드를 실행하므로 추적 대상에 포함한다.
+concurrency = ["thread", "greenlet"]
 
 [tool.ruff]
 target-version = "py313"

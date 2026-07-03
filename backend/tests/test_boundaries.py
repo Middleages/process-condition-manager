@@ -28,10 +28,15 @@ def test_models_expose_base_metadata() -> None:
     assert Base.metadata is not None
 
 
-async def test_get_current_user_is_not_yet_implemented() -> None:
-    """인증 어댑터는 경계만 있고 구현은 T5로 미룬다."""
-    with pytest.raises(NotImplementedError):
-        await get_current_user()
+async def test_dev_stub_returns_admin() -> None:
+    """개발 스텁이 켜지면 고정 admin을 반환한다 (라우터 인증 배선용)."""
+    from app.core.auth import Role
+    from app.core.config import settings
+
+    assert settings.auth_dev_stub is True
+    user = await get_current_user()
+    assert user.id == "dev-admin"
+    assert Role.ADMIN in user.roles
 
 
 def test_user_context_carries_roles() -> None:

@@ -7,6 +7,8 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from app.domain.errors import DomainError
+
 
 class AppError(Exception):
     """애플리케이션 기본 예외."""
@@ -59,6 +61,16 @@ async def _app_error_handler(request: Request, exc: Exception) -> JSONResponse:
     )
 
 
+async def _domain_error_handler(request: Request, exc: Exception) -> JSONResponse:
+    """도메인 규칙 위반(DomainError)을 422로 매핑한다."""
+    assert isinstance(exc, DomainError)  # register 시점에 DomainError로만 배선됨
+    return JSONResponse(
+        status_code=422,
+        content={"code": exc.code, "message": exc.message},
+    )
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     """앱에 공통 예외 핸들러를 등록한다."""
     app.add_exception_handler(AppError, _app_error_handler)
+    app.add_exception_handler(DomainError, _domain_error_handler)

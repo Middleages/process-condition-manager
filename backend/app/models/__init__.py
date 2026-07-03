@@ -1,9 +1,15 @@
 """SQLAlchemy 모델 (앱 DB 전용).
 
-구체 모델은 T3(파라미터 레지스트리) 이후 추가된다.
-Alembic autogenerate가 참조할 Base metadata를 노출한다.
+Alembic autogenerate와 create_all이 참조할 수 있도록 모든 모델을 임포트해
+Base.metadata에 등록한다.
 """
 
 from app.core.db import Base
+from app.models.parameter import Parameter, ParameterCategory, ParameterOption
 
-__all__ = ["Base"]
+__all__ = [
+    "Base",
+    "Parameter",
+    "ParameterCategory",
+    "ParameterOption",
+]
