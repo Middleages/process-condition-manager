@@ -37,8 +37,9 @@ flowchart LR
 - `git tag pre-rebuild-snapshot`으로 현재 상태를 태그해 언제든 참조 가능하게 보존 (git 히스토리로 남으므로 별도 백업 불필요)
 - 제거 대상: `backend/app/**`, `backend/alembic/versions/**`(29개), `frontend/src/**`, `airflow/**`, `spec/**`, 루트 `docker-compose*.yml`, `nginx/**`
 - **보존**: `plan/**`, `.claude/**`, `.moai/**`, `CLAUDE.md`, `README.md`
-- **판단 필요**: `docs/**`(01~10 가이드, glossary 등) — 도메인 용어집·업무 배경은 재작성 비용이 크므로 보존 권장, 아키텍처/구현 가이드는 구식이므로 제거. → 아래 "결정 필요" 참조
+- **`docs/**` 처리 (확정)**: 전부 제거. 단 `08-glossary.md`는 **도메인 용어만 발췌해 보존**하고 전산출력(출력/export) 관련 항목은 삭제. 구현·아키텍처 가이드(01~07, 09, 10)는 구식이므로 제거
 - `backend/tests/**`도 제거 (새 구조 기준으로 재작성)
+- **일괄 삭제 (확정)**: 새 골격을 나란히 세우지 않고 T1에서 한 번에 제거. `pre-rebuild-snapshot` 태그로 대조 가능
 
 산출물: 빈 골격만 남은 작업 트리, `pre-rebuild-snapshot` 태그.
 
@@ -60,7 +61,7 @@ backend/app/
   main.py            # 앱 조립, 라우터 등록
 ```
 
-- 패키지 관리: `requirements.txt` → **uv + pyproject.toml + uv.lock** 전환 권장 (폐쇄망에서 lockfile 기반 재현성 확보). 유지도 가능 → "결정 필요" 참조
+- 패키지 관리 (확정): `requirements.txt` → **uv + pyproject.toml + uv.lock** 전환. 폐쇄망에서 lockfile 기반 재현성 확보
 - **이중 DB 커넥션**(핵심): `app_engine`(async, Alembic 소유) 와 `ingest_engine`(async, 읽기 전용). 같은 인스턴스의 타 DB URL 허용(D-11). ingest 세션은 `AUTOCOMMIT` + 읽기 전용으로 강제
 - async SQLAlchemy 2.0 유지 (기존 스택 승계)
 - `main.py`에 헬스체크 + 라우터 등록만. 비즈니스 로직 금지
@@ -134,7 +135,7 @@ frontend/src/
 ### T7. CI + 개발 환경
 
 - `docker-compose.yml`: postgres(앱 DB) + (fixture용 적재 스키마) + backend + frontend. **EC5 충족**
-- backend: ruff(lint) + mypy 또는 pyright(typecheck) + pytest, `pyproject.toml`에 설정
+- backend: ruff(lint) + **pyright**(typecheck, 확정) + pytest, `pyproject.toml`에 설정
 - frontend: eslint 또는 biome + `tsc -b` + vitest
 - CI 워크플로: 위 검사를 PR에서 실행. **EC4 충족**
 - 폐쇄망 대비: 의존성 사내 미러/이미지 번들 방침 문서화(README), CDN 의존 0
@@ -143,12 +144,12 @@ frontend/src/
 
 ---
 
-## 결정 필요 (실행 전 확인)
+## 결정 확정 (실행 전 확인 완료)
 
-1. **`docs/**` 처리**: 도메인 용어집(`08-glossary.md`)·업무 배경만 보존하고 구현 가이드(01~07,09,10)는 제거? 아니면 전부 제거하고 필요 시 재작성?
-2. **패키지 관리**: `requirements.txt` 유지 vs `uv`+lockfile 전환. 폐쇄망 재현성 때문에 uv 권장하나 팀 익숙도 고려 필요
-3. **타입체커**: mypy vs pyright. 프론트가 pyright 계열(VSCode)이면 통일 유리
-4. **레거시 제거 타이밍**: T1에서 한 번에 삭제 vs 새 골격을 나란히 세운 뒤 마지막에 삭제(diff가 커지지만 대조 용이)
+1. **`docs/**` 처리**: 전부 제거. `08-glossary.md`는 도메인 용어만 발췌 보존, 전산출력(출력/export) 항목은 삭제
+2. **패키지 관리**: `uv` + pyproject.toml + uv.lock 전환
+3. **타입체커**: pyright
+4. **레거시 제거 타이밍**: T1에서 일괄 삭제
 
 ## 실행 순서 요약
 
