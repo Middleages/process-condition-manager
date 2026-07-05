@@ -180,9 +180,9 @@ frontend/src/
 
 T1~T7 산출물은 모두 존재하며 계획한 경계(이중 DB 읽기 전용 강제, 인증 어댑터 Protocol, 판독 계약)가 코드로 확인됨.
 
-### 잔여 후속 과제 (Phase 0 판정을 막지는 않음)
+### 잔여 후속 과제 처리 현황
 
-1. **`pre-rebuild-snapshot` 태그 미생성** — T1 산출물이나 로컬/원격 모두 부재. 레거시 최종 커밋 `2f71a4e`(T1 제거 커밋 `6b8afb4`의 부모)에 태그를 생성·푸시하면 계획 의도대로 복원 가능
-2. **레거시 잔재 정리** — T1 제거 목록에 빠져 살아남은 파일들: 루트 `scripts/`(deploy.sh가 삭제된 `docker-compose.prod.yml` 참조 등 5개 스크립트가 구 인프라 의존), `backend/scripts/backup_users_display_name.sql`(삭제된 users 테이블 대상), `frontend/Dockerfile.prod`·`frontend/nginx.conf.prod`(재구축 전 산물, backend 쪽 Dockerfile.prod만 T2에서 갱신됨)
-3. **frontend lint 실체화** — 현재 `lint` 스크립트는 typecheck 별칭(README에 npm registry 정책 사유 문서화됨). 미러 정책 확정 시 ESLint/Biome 도입 (T7 후속)
-4. **frontend 테스트 확충** — 현재 `form.test.ts` 2건뿐. Phase 1 그리드 PoC 진입 전 컴포넌트 테스트 기반 마련 권장
+1. **`pre-rebuild-snapshot` 태그** — 레거시 최종 커밋 `2f71a4e`(T1 제거 커밋 `6b8afb4`의 부모)에 **로컬 태그 생성 완료**. 단, 이 환경의 git 프록시가 지정 브랜치 외 ref(`refs/tags/*`) push를 조직 정책으로 403 차단하여 **원격 푸시는 관리자/사용자 수동 처리 필요**. 스냅샷 커밋 자체는 git 히스토리에 영구 보존되므로 복원성에는 영향 없음
+2. **레거시 잔재 정리** — **처리 완료**: 루트 `scripts/`(deploy.sh 등 7개, 삭제된 `docker-compose.prod.yml` 참조로 현재 깨진 상태), `backend/scripts/backup_users_display_name.sql`(삭제된 users 테이블 대상) 삭제. **`frontend/Dockerfile.prod`·`frontend/nginx.conf.prod`는 유지**: backend `Dockerfile.prod`가 T2(`d9f710a`)에서 능동적으로 갱신된 정황상 prod Dockerfile은 유지 의도로 판단. 단 프론트 prod 파일은 재구축 정합성 반영이 필요(후속 갱신 대상)
+3. **frontend lint 실체화** — 현재 `lint` 스크립트는 typecheck 별칭(README에 npm registry 정책 사유 문서화됨). 미러 정책 확정 시 ESLint/Biome 도입 (T7 후속, 미처리)
+4. **frontend 테스트 확충** — **처리 완료**: `form.test.ts` 케이스 보강(2→6건, 업데이트 payload의 code 불변성·choice 옵션·round-trip 포함) + `api/parameters.test.ts` 신규(6건, client 목킹으로 CRUD 요청 형태·soft delete 엔드포인트 검증). 총 프론트 테스트 2→12건. 컴포넌트 렌더 테스트는 `jsdom`/testing-library 미설치로 순수 로직 계층에 한정
