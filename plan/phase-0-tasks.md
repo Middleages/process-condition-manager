@@ -7,11 +7,13 @@
 
 ## 완료 기준 (Exit Criteria) — 재확인
 
-- [ ] EC1. 관리자가 UI에서 파라미터를 추가/수정/비활성화할 수 있다
-- [ ] EC2. fixture 적재 데이터에서 process 목록과 layer 구성을 API로 조회할 수 있다
-- [ ] EC3. **"파라미터 1개 추가"에 앱 코드 수정이 0줄이다** (P1 원칙 검증 — 레지스트리 행 추가만으로 끝나야 함)
-- [ ] EC4. CI(lint + typecheck + test)가 그린이다
-- [ ] EC5. `docker compose up` 한 번으로 앱 DB·백엔드·프론트가 로컬에서 뜬다
+- [x] EC1. 관리자가 UI에서 파라미터를 추가/수정/비활성화할 수 있다
+- [x] EC2. fixture 적재 데이터에서 process 목록과 layer 구성을 API로 조회할 수 있다
+- [x] EC3. **"파라미터 1개 추가"에 앱 코드 수정이 0줄이다** (P1 원칙 검증 — 레지스트리 행 추가만으로 끝나야 함)
+- [x] EC4. CI(lint + typecheck + test)가 그린이다
+- [x] EC5. `docker compose up` 한 번으로 앱 DB·백엔드·프론트가 로컬에서 뜬다
+
+> 완료 점검 결과는 문서 하단 [Phase 0 완료 점검](#phase-0-완료-점검-2026-07-05) 참조.
 
 ---
 
@@ -161,3 +163,26 @@ frontend/src/
 6. T5 인증 어댑터 스텁
 7. T6 프론트 골격 + 관리 UI
 8. 완료 기준 EC1~EC5 점검 → Phase 1 착수 판단
+
+---
+
+## Phase 0 완료 점검 (2026-07-05)
+
+기준 커밋: `3b07bb8` (main). 검증 방법과 근거:
+
+| 기준 | 판정 | 근거 |
+|------|------|------|
+| EC1 | 충족 | `features/parameters` CRUD API + `ParameterAdminPage`(생성/수정/비활성화 mutation 배선), API 테스트 통과 |
+| EC2 | 충족 | `IngestReader` 계약 + `FixtureIngestReader`(layer 구성이 다른 2개 process) + `features/processes` 조회 API, 계약 테스트 통과 |
+| EC3 | 충족 | 파라미터 code가 fixture 외부 앱 코드에 하드코딩된 곳 0건 — 추가는 레지스트리 행(API)만으로 완결 |
+| EC4 | 충족 | GitHub Actions CI 그린(main run #2) + 로컬 재현: ruff 통과, pyright 0 오류, pytest 56개 통과(커버리지 98%), tsc 통과, vitest 통과, vite build 성공 |
+| EC5 | 충족(구성 검증) | compose에 app-db·ingest-db·backend(migrate+uvicorn)·frontend 4서비스 + healthcheck 정의, `docker compose config` 유효. 점검 환경에 docker 데몬이 없어 실기동 스모크는 로컬 1회 확인 권장 |
+
+T1~T7 산출물은 모두 존재하며 계획한 경계(이중 DB 읽기 전용 강제, 인증 어댑터 Protocol, 판독 계약)가 코드로 확인됨.
+
+### 잔여 후속 과제 (Phase 0 판정을 막지는 않음)
+
+1. **`pre-rebuild-snapshot` 태그 미생성** — T1 산출물이나 로컬/원격 모두 부재. 레거시 최종 커밋 `2f71a4e`(T1 제거 커밋 `6b8afb4`의 부모)에 태그를 생성·푸시하면 계획 의도대로 복원 가능
+2. **레거시 잔재 정리** — T1 제거 목록에 빠져 살아남은 파일들: 루트 `scripts/`(deploy.sh가 삭제된 `docker-compose.prod.yml` 참조 등 5개 스크립트가 구 인프라 의존), `backend/scripts/backup_users_display_name.sql`(삭제된 users 테이블 대상), `frontend/Dockerfile.prod`·`frontend/nginx.conf.prod`(재구축 전 산물, backend 쪽 Dockerfile.prod만 T2에서 갱신됨)
+3. **frontend lint 실체화** — 현재 `lint` 스크립트는 typecheck 별칭(README에 npm registry 정책 사유 문서화됨). 미러 정책 확정 시 ESLint/Biome 도입 (T7 후속)
+4. **frontend 테스트 확충** — 현재 `form.test.ts` 2건뿐. Phase 1 그리드 PoC 진입 전 컴포넌트 테스트 기반 마련 권장
