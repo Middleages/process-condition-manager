@@ -1,0 +1,79 @@
+services:
+  app-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: pcm
+      POSTGRES_USER: pcm_user
+      POSTGRES_PASSWORD: pcm_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - app-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pcm_user -d pcm"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  ingest-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ingest
+      POSTGRES_USER: pcm_user
+      POSTGRES_PASSWORD: pcm_pass
+    ports:
+      - "5433:5432"
+    volumes:
+      - ingest-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pcm_user -d ingest"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      APP_DATABASE_URL: postgresql+asyncpg://pcm_user:pcm_pass@app-db:5432/pcm
+      INGEST_DATABASE_URL: postgresql+asyncpg://pcm_user:pcm_pass@ingest-db:5432/ingest
+      AUTH_DEV_STUB: "true"
+      DEBUG: "true"
+    ports:
+      - "8000:8000"
+    depends_on:
+      app-db:
+        condition: service_healthy
+      ingest-db:
+        condition: service_healthy
+    command: >
+      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    volumes:
+      - ./backend:/app
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    environment:
+      VITE_API_BASE_URL: ""
+    ports:
+      - "5173:5173"
+    depends_on:
+      backend:
+        condition: service_healthy
+    volumes:
+      - ./frontend:/app
+      - frontend-node-modules:/app/node_modules
+    command: npm run dev -- --host 0.0.0.0
+
+volumes:
+  app-db-data:
+  ingest-db-data:
+  frontend-node-modules:
