@@ -1,10 +1,17 @@
 """T2에서 이미 구현된 경계(seam) 검증: 예외 매핑, 인증 경계, 설정, 모델 메타데이터."""
 
+from typing import Annotated
+
 import pytest
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from httpx import ASGITransport, AsyncClient
 
-from app.core.auth import Role, UserContext, get_current_user
+from app.core.auth import (
+    AuthNotConfiguredError,
+    Role,
+    UserContext,
+    get_current_user,
+)
 from app.core.config import Settings
 from app.core.errors import (
     AppError,
@@ -30,13 +37,22 @@ def test_models_expose_base_metadata() -> None:
 
 async def test_dev_stub_returns_admin() -> None:
     """개발 스텁이 켜지면 고정 admin을 반환한다 (라우터 인증 배선용)."""
-    from app.core.auth import Role
     from app.core.config import settings
 
     assert settings.auth_dev_stub is True
-    user = await get_current_user()
-    assert user.id == "dev-admin"
-    assert Role.ADMIN in user.roles
+
+    app = FastAPI()
+
+    @app.get("/me")
+    async def _me(user: Annotated[UserContext, Depends(get_current_user)]) -> dict[str, object]:
+        return {"id": user.id, "roles": list(user.roles)}
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        resp = await ac.get("/me")
+
+    assert resp.status_code == 200
+    assert resp.json() == {"id": "dev-admin", "roles": [Role.ADMIN]}
 
 
 def test_user_context_carries_roles() -> None:
@@ -72,3 +88,11 @@ async def test_app_error_maps_to_http(exc: AppError, status: int, code: str) -> 
     body = resp.json()
     assert body["code"] == code
     assert body["message"] == str(exc)
+
+
+def test_auth_not_configured_error_is_explicit_501() -> None:
+    """SSO 미연결 상태는 명시적인 501 AppError로 표현한다."""
+    exc = AuthNotConfiguredError("not ready")
+
+    assert exc.status_code == 501
+    assert exc.code == "auth_not_configured"

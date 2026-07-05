@@ -10,6 +10,7 @@ from app.core.config import settings
 from app.core.db import app_engine, ingest_engine
 from app.core.errors import register_exception_handlers
 from app.features.parameters.router import router as parameters_router
+from app.features.processes.router import router as processes_router
 
 health_router = APIRouter(tags=["health"])
 
@@ -26,6 +27,7 @@ def create_app() -> FastAPI:
     register_exception_handlers(app)
     app.include_router(health_router)
     app.include_router(parameters_router)
+    app.include_router(processes_router)
 
     # 이중 엔진 참조 보관 (실사용은 각 feature/ingest가 세션 의존성으로 접근)
     app.state.app_engine = app_engine
