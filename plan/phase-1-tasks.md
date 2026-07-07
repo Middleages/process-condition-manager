@@ -9,6 +9,7 @@
 - **Process** = 적재로 들어오는 구조(뼈대). partid, processid, stepseq, area 같은 컬럼으로 된 layer/step 목록. 조건 값 없음, 읽기 전용.
 - **Project** = process 하나를 골라 만든 조건표 (구조 사본 + 셀 값 + 상태/버전/이력).
 - **백본** = 값의 원천이 되는 **기존 프로젝트**. 생성 시 백본 프로젝트의 `cell_value`를 layer 매칭으로 복사한다. 파라미터 축은 전 프로젝트 공통(레지스트리)이므로 매칭은 **layer 축에서만** 일어난다.
+- **layer 매칭 (D-15)**: 자동 매칭 키 = `stepseq + layer_no` 조합. 자동 실패분은 사용자가 수동 매칭, 최종 미매칭은 빈 값 시작.
 - 장기적으로 process당 활성 프로젝트 1개로 수렴 (프로젝트 ≈ 프로세스).
 
 ## 완료 기준 (Exit Criteria)
@@ -17,18 +18,19 @@
 - [ ] EC2. 백본 프로젝트 복사(layer 매칭)와 레이어별 교체 결과가 데이터로 확인되고, 두 작업 모두 `change_event`가 남는다
 - [ ] EC3. 그리드 라이브러리가 PoC로 확정되고(결정 로그 기재), 그리드 어댑터 인터페이스 초안이 `frontend/src/grid/`에 있다
 - [ ] EC4. 프로젝트 목록에서 생성된 프로젝트를 검색·조회할 수 있다 (상태는 draft 고정 표시)
-- [ ] EC5. 생성 화면에서 백본 후보별 layer 매칭률과 미매칭 layer 목록이 생성 전에 표시된다 (dry-run)
+- [ ] EC5. 생성 화면에서 백본 후보별 layer 매칭률과 미매칭 layer 목록이 생성 전에 표시되고(dry-run), 자동 매칭 실패분을 사용자가 수동 매칭으로 보완할 수 있다
 
 ## 선행 확정 필요 (결정 항목)
 
-| # | 항목 | 내용 | 권고 |
+| # | 항목 | 내용 | 상태/권고 |
 |---|------|------|------|
-| P1-D1 | 미매칭 layer 처리 | 백본에 대응 layer가 없을 때의 처리 | **빈 값으로 시작** — 생성은 막지 않고 매칭 미리보기에 명시. 이후 레이어별 교체·엑셀 붙여넣기로 채움 |
-| P1-D2 | 실제 적재 스키마 | partid/processid/stepseq/area 등 실제 컬럼 확정 여부. 미확정이면 fixture reader로 계속 진행 | fixture 유지, 확정 시 `ingest/pg_reader.py` 교체 (계약 불변) |
+| P1-D1 | 미매칭 layer 처리 | 자동 매칭 실패 시 처리 | **확정 (D-15)**: 수동 매칭 제공, 최종 미매칭은 빈 값 시작. 생성은 막지 않고 매칭 미리보기에 명시. 이후 레이어별 교체·엑셀 붙여넣기로 채움 |
+| P1-D2 | 실제 적재 스키마 | partid/processid/stepseq/**layer_no**/area 등 실제 컬럼 확정 여부. **layer_no는 매칭 키의 절반이므로 실재·형식 확인 필수** | fixture 유지, 확정 시 `ingest/pg_reader.py` 교체 (계약 불변) |
 | P1-D3 | Layer/Step 명칭 | UI에서 `Layer` 단독 표기 vs `Step` 병기 | Phase 1 UI 구현 전 확정 |
 | P1-D4 | 카테고리 탭 라벨 | 파라미터 카테고리 탭은 레지스트리(SP/SC/OVL/DEV 등)에서 동적 생성 — layer의 area와 혼동 금지 | 하드코딩 금지, 레지스트리 기반 동적 생성 |
-| P1-D5 | **layer 매칭 키** | 신규 process layer ↔ 백본 프로젝트 layer를 무엇으로 매칭하는가 (layer 이름? stepseq? area 조합?) | **착수 전 확정 필수** — 매칭 규칙이 T2~T4 전부의 전제. 이름 기준을 기본 가설로 두되 사용자 확인 필요 |
+| P1-D5 | layer 매칭 키 | 신규 process layer ↔ 백본 프로젝트 layer 매칭 기준 | **확정 (D-15)**: 자동 = `stepseq + layer_no` 조합 (layer 이름은 데이터 품질상 부적합, 단일 컬럼으로는 특정 불가). 자동 실패분은 사용자 수동 매칭 |
 | P1-D6 | 중복 프로젝트 정책 | 이미 조건표(프로젝트)가 있는 process에서 또 생성할 수 있는가 | 장기 목표(process당 활성 1개) 기준 경고 후 허용 또는 차단 — 확정 필요 |
+| P1-D7 | 레거시 데이터 이관 스파이크 | 기존 시스템 데이터를 초기 백본 풀로 이관할 수 있는지 (D-04 전면 리셋의 예외, 희망 사항) | Phase 1 중 **실현 가능성 평가만** 수행 (데이터 상태 확인). 이관 작업 자체는 범위 외 — 결과에 따라 별도 배정 |
 
 ## 작업 분해 (Work Breakdown)
 
@@ -60,23 +62,24 @@ flowchart LR
 
 산출물: 모델 + 마이그레이션 + domain 규칙 테스트 + 판독 계약 2종으로 축소.
 
-### T2. 백본 layer 매칭 (규칙 + 미리보기 API)
+### T2. 백본 layer 매칭 (자동 규칙 + 수동 보완 + 미리보기 API)
 
 Phase 1의 새 축 — 신규 process의 layer와 백본 프로젝트의 layer를 잇는다.
 
-- `domain/backbone/`: 매칭 규칙 순수 로직 (P1-D5 확정 키 기반). 입력: 신규 process layer 목록 + 백본 프로젝트 layer 목록 → 출력: (매칭 쌍, 미매칭 목록)
-- **백본 후보 조회 API**: 기존 프로젝트 검색 (Approved 우선 정렬) + 후보별 매칭률 요약 — 생성 화면 ② 단계
-- **매칭 미리보기(dry-run) API**: (process_key, backbone_project_id) → sheet_layer 파생 예정 수, 매칭/미매칭 layer 목록, 복사 예정 셀 수 — 생성 화면 ③ 단계
+- `domain/backbone/`: **자동 매칭 규칙** 순수 로직 — 키는 `stepseq + layer_no` 조합 (D-15). 입력: 신규 process layer 목록 + 백본 프로젝트 layer 목록 → 출력: (자동 매칭 쌍, 미매칭 목록)
+- **수동 매칭 오버라이드**: 자동 실패 layer에 대해 사용자가 백본 layer를 직접 지정 — 오버라이드 목록은 매칭 결과에 병합되어 생성 요청(T3)에 전달된다. 유효성 규칙(같은 백본 layer 중복 지정 허용 여부 등)을 domain에 정의
+- **백본 후보 조회 API**: 기존 프로젝트 검색 (Approved 우선 정렬) + 후보별 자동 매칭률 요약 — 생성 화면 ② 단계
+- **매칭 미리보기(dry-run) API**: (process_key, backbone_project_id, 수동 오버라이드) → 자동/수동/미매칭 layer 목록, 복사 예정 셀 수 — 생성 화면 ③ 단계. 수동 매칭용 백본 layer 검색도 이 API 계열에서 제공
 - "백본 없이 시작"도 유효한 선택지 (매칭 0, 전체 빈 값 — 부트스트랩 경로)
 
-산출물: 매칭 규칙(순수 단위 테스트) + 후보/미리보기 API. **EC5 충족.**
+산출물: 매칭 규칙(순수 단위 테스트: 자동 키 조합·오버라이드 병합·중복 처리) + 후보/미리보기 API. **EC5 충족.**
 
 ### T3. 프로젝트 생성 + 백본 복사 (Phase 1의 핵심)
 
-- `POST /projects` (`features/projects`) — body: process_key, 백본 project_id(선택), 이름/설명:
-  1. `ingest reader.get_layers(process_key)` → `sheet_layer` 파생 (구조 사본)
-  2. 백본 지정 시: T2 매칭 결과대로 백본 프로젝트의 `cell_value`를 신규 layer에 bulk 복사. 미매칭 layer는 빈 값 (P1-D1)
-  3. `change_event(backbone_copy)` 기록 — payload에 배치 id, 백본 project_id, 매칭/미매칭 수
+- `POST /projects` (`features/projects`) — body: process_key, 백본 project_id(선택), **수동 매칭 오버라이드 목록**, 이름/설명:
+  1. `ingest reader.get_layers(process_key)` → `sheet_layer` 파생 (구조 사본, stepseq/layer_no 보존)
+  2. 백본 지정 시: T2 매칭 결과(자동 + 수동 오버라이드)대로 백본 프로젝트의 `cell_value`를 신규 layer에 bulk 복사. 최종 미매칭 layer는 빈 값 (P1-D1)
+  3. `change_event(backbone_copy)` 기록 — payload에 배치 id, 백본 project_id, 자동/수동/미매칭 수
 - 트랜잭션: 파생+복사+이벤트를 단일 트랜잭션으로. 최대 약 2만 행 bulk insert 성능 확인
 - P1-D6 정책 반영 (조건표 있는 process 중복 생성 시 경고/차단)
 
@@ -110,7 +113,7 @@ Phase 1의 새 축 — 신규 process의 layer와 백본 프로젝트의 layer�
 
 - **Project List** (홈): 검색/상태 필터/목록, 상세 진입
 - **Process Catalog**: 구조 탐색 (partid/processid/stepseq/area), 조건표 유무 표시, "조건표 없는 process만" 필터, 구조 preview
-- **Project Create**: ① process 확인 → ② **백본 프로젝트 선택** (후보별 매칭률) → ③ 매칭 확인(dry-run: 매칭/미매칭/복사 셀 수) → 생성
+- **Project Create**: ① process 확인 → ② **백본 프로젝트 선택** (후보별 자동 매칭률) → ③ 매칭 확인(dry-run: 자동/수동/미매칭/복사 셀 수) + **수동 매칭 UI**(자동 실패 layer에 백본 layer 검색 드롭다운) → 생성
 - **Project Detail**: layer 백본 구성 테이블 (백본 소스·값 채움율·미매칭 표시) + 교체 modal (소스 프로젝트 → layer → diff)
 - `features/projects/`, `features/backbone/` 슬라이스. 서버 상태는 TanStack Query, 전역 복제 금지
 
@@ -130,8 +133,8 @@ Phase 1의 새 축 — 신규 process의 layer와 백본 프로젝트의 layer�
 
 ## 실행 순서 요약
 
-1. 결정 항목 확정 — 특히 **P1-D5 layer 매칭 키** (T2~T4의 전제)
-2. T7 그리드 PoC 착수 (독립 트랙, 조기 시작)
+1. 잔여 결정 항목 확정 — P1-D3(명칭)·P1-D6(중복 생성 정책). 매칭 키는 D-15로 확정됨 (적재 스키마의 layer_no 실재 확인은 P1-D2에서)
+2. T7 그리드 PoC 착수 (독립 트랙, 조기 시작) + P1-D7 레거시 이관 스파이크 병행
 3. T1 데이터 모델 + 마이그레이션 + 판독 계약 축소
 4. T2 백본 layer 매칭 / T5 조회 API (병행 가능)
 5. T3 프로젝트 생성 + 백본 복사 ← 가장 중요

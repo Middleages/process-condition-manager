@@ -109,10 +109,11 @@ Phase 1에서는 `Process Catalog`, `Project Create`, `Project List`, `Project D
 ├──────────────────────────────────────────────────────────────┤
 │ 프로젝트 이름/설명 [________________________]                  │
 ├──────────────────────────────────────────────────────────────┤
-│ ③ 매칭 확인 (dry-run)                                         │
-│ - sheet_layer 파생 87 | 백본 복사 15,642 cells (79 layer)      │
-│ - 미매칭 8 layer → 빈 값 시작 (P1-D1)                          │
-│ Layer 매칭 미리보기: stepseq | layer | 백본 매칭(소스/미매칭)   │
+│ ③ 매칭 확인 (dry-run) — 자동 키: stepseq + layer_no (D-15)     │
+│ - sheet_layer 파생 87 | 자동 매칭 78 + 수동 매칭 1             │
+│ - 백본 복사 15,642 cells | 미매칭 8 layer → 빈 값 시작 (P1-D1) │
+│ Layer 매칭 미리보기: step·no | layer | 자동/수동/미매칭         │
+│  └ 자동 실패 layer에는 [수동 매칭 ▾] 백본 layer 검색 드롭다운  │
 ├──────────────────────────────────────────────────────────────┤
 │ [취소]                                      [프로젝트 생성]    │
 └──────────────────────────────────────────────────────────────┘
@@ -123,7 +124,8 @@ Phase 1에서는 `Process Catalog`, `Project Create`, `Project List`, `Project D
 - 서로 다른 process로 프로젝트를 만들면 서로 다른 layer 구조가 `sheet_layer`로 복사되어야 한다.
 - 백본 프로젝트 복사(layer 매칭) 결과가 `cell_value`에 반영되어야 한다.
 - 매칭률은 process 단독 속성이 아니라 **(process, 백본 프로젝트) 쌍**에서 계산됨을 UI가 표현해야 한다.
-- 미매칭 layer는 빈 값으로 시작하고, 그 사실이 생성 전에 표시되어야 한다 (P1-D1).
+- 자동 매칭(stepseq + layer_no) 실패분은 사용자가 **수동 매칭**으로 보완할 수 있어야 한다 (D-15).
+- 최종 미매칭 layer는 빈 값으로 시작하고, 그 사실이 생성 전에 표시되어야 한다 (P1-D1).
 
 ## 7. Sheet Editor 그리드 PoC 와이어프레임
 
@@ -191,7 +193,7 @@ POST /projects/{project_id}/validate
 
 - `Layer` 명칭을 계속 쓸지, UI에서는 `Step`을 병기할지 결정한다. (→ [phase-1-tasks.md](./phase-1-tasks.md) P1-D3)
 - process 검색 필터의 실제 속성(partid/processid/area 등)은 적재 DB 스키마 확정 후 정한다. (→ P1-D2)
-- **layer 매칭 키**(layer 이름? stepseq? area 조합?)를 확정한다. (→ P1-D5, 착수 전 필수)
+- ~~layer 매칭 키~~ — **확정 (D-15)**: 자동 = stepseq + layer_no 조합, 자동 실패분은 수동 매칭.
 - 조건표가 이미 있는 process의 중복 프로젝트 생성 정책을 정한다. (→ P1-D6)
 - 그리드 라이브러리는 Phase 1 PoC 결과로 확정한다. (→ phase-1-tasks T7)
 
