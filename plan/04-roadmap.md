@@ -4,6 +4,8 @@
 
 각 Phase는 수직 슬라이스(P3)로 완성한다 — DB부터 UI까지 관통해 **실제로 동작을 확인한 뒤** 다음 Phase로 넘어간다. 완료 기준(Exit Criteria)을 만족하지 못하면 다음 Phase를 시작하지 않는다.
 
+Phase별 세부 작업 계획(작업 분해·의존 관계·결정 항목)은 `phase-N-tasks.md`로 관리한다: [Phase 0](./phase-0-tasks.md) · [Phase 1](./phase-1-tasks.md) · [Phase 2](./phase-2-tasks.md) · [Phase 3](./phase-3-tasks.md) · [Phase 4](./phase-4-tasks.md) · [Phase 5](./phase-5-tasks.md) · [Phase 6](./phase-6-tasks.md)
+
 ```mermaid
 flowchart LR
     P0[Phase 0<br/>리셋 + 기반] --> P1[Phase 1<br/>프로젝트 + 백본]

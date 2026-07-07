@@ -14,6 +14,18 @@
 | [05-ui-wireframe.md](./05-ui-wireframe.md) | Process Catalog, Project Create, Sheet Editor 와이어프레임 계획 |
 | [wireframes/phase1-ui-wireframe.html](./wireframes/phase1-ui-wireframe.html) | Phase 1 주요 화면 흐름 HTML 와이어프레임 |
 
+### Phase별 세부 작업 계획
+
+| 문서 | 상태 |
+|------|------|
+| [phase-0-tasks.md](./phase-0-tasks.md) — 리셋 + 기반 | 완료 (2026-07-05 점검) |
+| [phase-1-tasks.md](./phase-1-tasks.md) — 프로젝트 + 백본 (그리드 PoC 병행) | 계획 |
+| [phase-2-tasks.md](./phase-2-tasks.md) — 조건표 편집기 | 계획 |
+| [phase-3-tasks.md](./phase-3-tasks.md) — 검증 엔진 | 계획 |
+| [phase-4-tasks.md](./phase-4-tasks.md) — 변경 이력 | 계획 |
+| [phase-5-tasks.md](./phase-5-tasks.md) — 승인 + Revision | 계획 |
+| [phase-6-tasks.md](./phase-6-tasks.md) — 전산 출력 | 계획 |
+
 ## 재구축 배경
 
 기존 시스템의 근본 결함은 **구조를 코드/관리자 등록으로 고정**한 것이었다.
