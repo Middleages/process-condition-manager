@@ -1,0 +1,832 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PCM Phase 1 UI Wireframe</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0f172a;
+      --panel: #111827;
+      --panel-2: #172033;
+      --line: #334155;
+      --muted: #94a3b8;
+      --text: #e5e7eb;
+      --primary: #22d3ee;
+      --primary-dark: #0891b2;
+      --ok: #34d399;
+      --warn: #fbbf24;
+      --danger: #fb7185;
+      --chip: #1e293b;
+      --shadow: 0 24px 80px rgb(0 0 0 / 0.35);
+      font-family:
+        Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+        "Noto Sans KR", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at 20% 0%, rgb(34 211 238 / 0.18), transparent 32rem),
+        radial-gradient(circle at 90% 15%, rgb(59 130 246 / 0.16), transparent 28rem),
+        var(--bg);
+      color: var(--text);
+    }
+
+    a { color: inherit; }
+
+    .app-shell {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 280px minmax(0, 1fr);
+    }
+
+    .sidebar {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      padding: 28px 22px;
+      border-right: 1px solid var(--line);
+      background: rgb(15 23 42 / 0.88);
+      backdrop-filter: blur(16px);
+    }
+
+    .brand {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 28px;
+    }
+
+    .brand-mark {
+      width: 42px;
+      height: 42px;
+      border-radius: 14px;
+      display: grid;
+      place-items: center;
+      background: linear-gradient(135deg, var(--primary), #818cf8);
+      color: #020617;
+      font-weight: 900;
+      box-shadow: 0 10px 30px rgb(34 211 238 / 0.28);
+    }
+
+    .brand h1 {
+      font-size: 16px;
+      margin: 0;
+    }
+
+    .brand p {
+      margin: 3px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .nav-title {
+      margin: 22px 0 8px;
+      color: var(--muted);
+      font-size: 11px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    .nav-item {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin: 8px 0;
+      padding: 12px 14px;
+      border: 1px solid transparent;
+      border-radius: 14px;
+      color: #cbd5e1;
+      background: transparent;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .nav-item.active,
+    .nav-item:hover {
+      border-color: rgb(34 211 238 / 0.38);
+      background: rgb(34 211 238 / 0.10);
+      color: white;
+    }
+
+    .nav-item small {
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .content {
+      padding: 32px;
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 20px;
+      align-items: start;
+      margin-bottom: 24px;
+    }
+
+    .eyebrow {
+      margin: 0 0 8px;
+      color: var(--primary);
+      font-weight: 700;
+      font-size: 13px;
+    }
+
+    h2 {
+      margin: 0;
+      font-size: clamp(28px, 3vw, 42px);
+      letter-spacing: -0.04em;
+    }
+
+    .lead {
+      max-width: 920px;
+      color: #cbd5e1;
+      line-height: 1.65;
+    }
+
+    .legend {
+      min-width: 280px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgb(17 24 39 / 0.75);
+      box-shadow: var(--shadow);
+    }
+
+    .legend-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 7px 0;
+      color: #cbd5e1;
+      border-bottom: 1px dashed rgb(148 163 184 / 0.22);
+    }
+
+    .legend-row:last-child { border-bottom: 0; }
+    .legend-row strong { color: white; }
+
+    .screen {
+      display: none;
+      animation: fade 140ms ease-out;
+    }
+
+    .screen.active { display: block; }
+
+    @keyframes fade {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .wireframe-window {
+      border: 1px solid rgb(148 163 184 / 0.28);
+      border-radius: 24px;
+      overflow: hidden;
+      background: rgb(15 23 42 / 0.85);
+      box-shadow: var(--shadow);
+    }
+
+    .window-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--line);
+      background: rgb(2 6 23 / 0.55);
+    }
+
+    .window-dots {
+      display: flex;
+      gap: 8px;
+    }
+
+    .dot {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      background: var(--danger);
+    }
+
+    .dot:nth-child(2) { background: var(--warn); }
+    .dot:nth-child(3) { background: var(--ok); }
+
+    .window-title {
+      color: #cbd5e1;
+      font-size: 13px;
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      padding: 18px;
+      border-bottom: 1px solid rgb(148 163 184 / 0.18);
+      background: var(--panel);
+    }
+
+    .input,
+    .select,
+    .button {
+      height: 40px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #0b1220;
+      color: #cbd5e1;
+      padding: 0 13px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+    }
+
+    .input { min-width: min(360px, 100%); flex: 1; }
+    .button.primary { background: var(--primary); color: #031018; border-color: var(--primary); font-weight: 800; }
+    .button.ghost { background: rgb(30 41 59 / 0.72); }
+
+    .split {
+      display: grid;
+      grid-template-columns: minmax(420px, 1fr) minmax(420px, 0.95fr);
+      min-height: 610px;
+    }
+
+    .pane {
+      padding: 18px;
+    }
+
+    .pane + .pane { border-left: 1px solid rgb(148 163 184 / 0.2); }
+
+    .pane-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .pane-title h3 {
+      margin: 0;
+      font-size: 16px;
+    }
+
+    .muted { color: var(--muted); }
+
+    .table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0 8px;
+      font-size: 13px;
+    }
+
+    .table th {
+      color: var(--muted);
+      text-align: left;
+      font-weight: 600;
+      padding: 0 12px 4px;
+    }
+
+    .table td {
+      padding: 14px 12px;
+      background: var(--panel-2);
+      border-top: 1px solid rgb(148 163 184 / 0.14);
+      border-bottom: 1px solid rgb(148 163 184 / 0.14);
+    }
+
+    .table td:first-child {
+      border-left: 1px solid rgb(148 163 184 / 0.14);
+      border-radius: 14px 0 0 14px;
+    }
+
+    .table td:last-child {
+      border-right: 1px solid rgb(148 163 184 / 0.14);
+      border-radius: 0 14px 14px 0;
+    }
+
+    .table tr.selected td {
+      background: rgb(8 145 178 / 0.22);
+      border-color: rgb(34 211 238 / 0.38);
+    }
+
+    .key {
+      display: block;
+      color: var(--primary);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 12px;
+    }
+
+    .chip-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border: 1px solid rgb(148 163 184 / 0.18);
+      border-radius: 999px;
+      background: var(--chip);
+      color: #cbd5e1;
+      font-size: 12px;
+    }
+
+    .chip.ok { color: #bbf7d0; border-color: rgb(52 211 153 / 0.35); }
+    .chip.warn { color: #fde68a; border-color: rgb(251 191 36 / 0.35); }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin: 14px 0 18px;
+    }
+
+    .metric {
+      padding: 14px;
+      border: 1px solid rgb(148 163 184 / 0.18);
+      border-radius: 16px;
+      background: var(--panel-2);
+    }
+
+    .metric span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .metric strong {
+      display: block;
+      margin-top: 6px;
+      font-size: 22px;
+    }
+
+    .card {
+      padding: 16px;
+      border: 1px solid rgb(148 163 184 / 0.18);
+      border-radius: 18px;
+      background: var(--panel-2);
+      margin-bottom: 12px;
+    }
+
+    .card h4 {
+      margin: 0 0 10px;
+    }
+
+    .create-layout {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 18px;
+      padding: 18px;
+    }
+
+    .form-row {
+      display: grid;
+      gap: 7px;
+      margin-bottom: 13px;
+    }
+
+    .form-row label {
+      color: #cbd5e1;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .field-box {
+      min-height: 42px;
+      display: flex;
+      align-items: center;
+      padding: 0 13px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #0b1220;
+      color: #cbd5e1;
+    }
+
+    .check-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+
+    .check-list li {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 12px 0;
+      border-bottom: 1px dashed rgb(148 163 184 / 0.2);
+    }
+
+    .check-list li:last-child { border-bottom: 0; }
+
+    .sheet-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 16px 18px;
+      border-bottom: 1px solid rgb(148 163 184 / 0.18);
+      background: var(--panel);
+    }
+
+    .tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .tab {
+      padding: 9px 13px;
+      border-radius: 999px;
+      border: 1px solid rgb(148 163 184 / 0.2);
+      background: var(--chip);
+      color: #cbd5e1;
+      font-size: 13px;
+    }
+
+    .tab.active {
+      background: rgb(34 211 238 / 0.15);
+      border-color: rgb(34 211 238 / 0.45);
+      color: white;
+    }
+
+    .grid-wrap {
+      overflow: auto;
+      max-height: 560px;
+      border-bottom: 1px solid rgb(148 163 184 / 0.18);
+    }
+
+    .sheet-grid {
+      min-width: 1320px;
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+
+    .sheet-grid th,
+    .sheet-grid td {
+      border: 1px solid rgb(148 163 184 / 0.18);
+      padding: 10px;
+      background: #111827;
+      white-space: nowrap;
+    }
+
+    .sheet-grid th {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: #0b1220;
+      color: #cbd5e1;
+    }
+
+    .sheet-grid .sticky-col {
+      position: sticky;
+      left: 0;
+      z-index: 3;
+      min-width: 170px;
+      background: #0f172a;
+    }
+
+    .sheet-grid th.sticky-col { z-index: 4; }
+
+    .cell-dirty { outline: 2px solid var(--warn); outline-offset: -2px; }
+    .cell-error { outline: 2px solid var(--danger); outline-offset: -2px; }
+    .cell-readonly { color: var(--muted); background: #0f172a !important; }
+
+    .bottom-panel {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      padding: 18px;
+      background: rgb(2 6 23 / 0.35);
+    }
+
+    .note {
+      padding: 14px;
+      border: 1px dashed rgb(148 163 184 / 0.35);
+      border-radius: 16px;
+      color: #cbd5e1;
+      background: rgb(15 23 42 / 0.55);
+      line-height: 1.55;
+      font-size: 13px;
+    }
+
+    @media (max-width: 1120px) {
+      .app-shell { grid-template-columns: 1fr; }
+      .sidebar {
+        position: relative;
+        height: auto;
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+      .hero,
+      .split,
+      .create-layout,
+      .bottom-panel { grid-template-columns: 1fr; }
+      .pane + .pane { border-left: 0; border-top: 1px solid rgb(148 163 184 / 0.2); }
+    }
+  </style>
+</head>
+<body>
+  <main class="app-shell">
+    <aside class="sidebar" aria-label="Wireframe navigation">
+      <div class="brand">
+        <div class="brand-mark">PCM</div>
+        <div>
+          <h1>Process Condition Manager</h1>
+          <p>Phase 1 Wireframe HTML</p>
+        </div>
+      </div>
+
+      <p class="nav-title">Primary flow</p>
+      <button class="nav-item active" type="button" data-screen="catalog">
+        <span>Process Catalog</span><small>01</small>
+      </button>
+      <button class="nav-item" type="button" data-screen="create">
+        <span>Project Create</span><small>02</small>
+      </button>
+      <button class="nav-item" type="button" data-screen="sheet">
+        <span>Sheet Editor PoC</span><small>03</small>
+      </button>
+
+      <p class="nav-title">Assumptions</p>
+      <div class="note">
+        Process는 제품/route 전체 흐름입니다. Photo, Etch, 계측 등은 process가 아니라 layer 이름 또는 유형으로 다룹니다.
+      </div>
+    </aside>
+
+    <section class="content">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">Plan 기반 HTML 와이어프레임</p>
+          <h2>Process 선택 → Project 생성 → 조건표 편집 흐름</h2>
+          <p class="lead">
+            이 파일은 <strong>plan/05-ui-wireframe.md</strong>의 정보 구조를 HTML로 옮긴 정적 와이어프레임입니다.
+            실제 구현 전 화면 밀도, 검색/필터 위치, layer preview, 100개 미만 layer × 약 200 parameter 그리드 UX를 검토하기 위한 목적입니다.
+          </p>
+        </div>
+        <aside class="legend">
+          <div class="legend-row"><span>Process 후보</span><strong>수천 개+</strong></div>
+          <div class="legend-row"><span>Layer / Process</span><strong>&lt; 100</strong></div>
+          <div class="legend-row"><span>Parameter</span><strong>≈ 200</strong></div>
+          <div class="legend-row"><span>Cells / Project</span><strong>≈ 20,000</strong></div>
+        </aside>
+      </header>
+
+      <section id="catalog" class="screen active" aria-labelledby="catalog-title">
+        <div class="wireframe-window">
+          <div class="window-bar">
+            <div class="window-dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+            <div id="catalog-title" class="window-title">Process Catalog / 제품 route 검색 및 layer preview</div>
+          </div>
+
+          <div class="toolbar">
+            <div class="input">🔎 제품명, process key, route 검색</div>
+            <div class="select">제품군: All</div>
+            <div class="select">최근 적재일: 30일</div>
+            <div class="select">상태: Active</div>
+            <button class="button primary" type="button">검색</button>
+          </div>
+
+          <div class="split">
+            <div class="pane">
+              <div class="pane-title">
+                <h3>Process 결과 테이블</h3>
+                <span class="muted">2,438 routes · cursor paging</span>
+              </div>
+              <table class="table" aria-label="Process search results">
+                <thead>
+                  <tr><th>Process</th><th>Layer</th><th>적재</th><th>상태</th></tr>
+                </thead>
+                <tbody>
+                  <tr class="selected">
+                    <td><strong>제품 Alpha Main Route</strong><span class="key">product_alpha_main</span></td>
+                    <td>87</td><td>2026-07-07</td><td><span class="chip ok">Active</span></td>
+                  </tr>
+                  <tr>
+                    <td><strong>제품 Beta Memory Route</strong><span class="key">product_beta_memory</span></td>
+                    <td>92</td><td>2026-07-06</td><td><span class="chip ok">Active</span></td>
+                  </tr>
+                  <tr>
+                    <td><strong>제품 Gamma Legacy Route</strong><span class="key">product_gamma_legacy</span></td>
+                    <td>64</td><td>2026-06-28</td><td><span class="chip warn">Review</span></td>
+                  </tr>
+                  <tr>
+                    <td><strong>제품 Delta Pilot Route</strong><span class="key">product_delta_pilot</span></td>
+                    <td>73</td><td>2026-07-02</td><td><span class="chip ok">Active</span></td>
+                  </tr>
+                </tbody>
+              </table>
+              <div class="chip-row">
+                <span class="chip">이전</span><span class="chip ok">1</span><span class="chip">2</span><span class="chip">3</span><span class="chip">다음</span>
+              </div>
+            </div>
+
+            <div class="pane">
+              <div class="pane-title">
+                <h3>선택 Process Preview</h3>
+                <button class="button primary" type="button">프로젝트 생성</button>
+              </div>
+              <div class="summary-grid">
+                <div class="metric"><span>Layer</span><strong>87</strong></div>
+                <div class="metric"><span>Parameter</span><strong>198</strong></div>
+                <div class="metric"><span>예상 Cell</span><strong>17,226</strong></div>
+              </div>
+              <div class="card">
+                <h4>제품/route 요약</h4>
+                <div class="chip-row">
+                  <span class="chip">Product: Alpha</span>
+                  <span class="chip">Route: Main</span>
+                  <span class="chip">Source: Ingest DB</span>
+                  <span class="chip ok">Mapping 98%</span>
+                </div>
+              </div>
+              <table class="table" aria-label="Layer preview">
+                <thead><tr><th>Order</th><th>Layer</th><th>Type</th><th>Status</th></tr></thead>
+                <tbody>
+                  <tr><td>001</td><td><strong>Initial Clean</strong><span class="key">001_init_clean</span></td><td>Clean</td><td><span class="chip ok">Ready</span></td></tr>
+                  <tr><td>010</td><td><strong>Active Photo</strong><span class="key">010_photo_active</span></td><td>Photo</td><td><span class="chip ok">Ready</span></td></tr>
+                  <tr><td>020</td><td><strong>Active Etch</strong><span class="key">020_etch_active</span></td><td>Etch</td><td><span class="chip ok">Ready</span></td></tr>
+                  <tr><td>030</td><td><strong>Active Metrology</strong><span class="key">030_metrology_active</span></td><td>Metrology</td><td><span class="chip warn">1 warning</span></td></tr>
+                  <tr><td>...</td><td colspan="3" class="muted">100개 미만 layer 전체 표시 + type/search filter</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="create" class="screen" aria-labelledby="create-title">
+        <div class="wireframe-window">
+          <div class="window-bar">
+            <div class="window-dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+            <div id="create-title" class="window-title">Project Create / process 구조를 sheet_layer로 파생</div>
+          </div>
+
+          <div class="create-layout">
+            <div>
+              <div class="card">
+                <h4>선택 Process</h4>
+                <div class="summary-grid">
+                  <div class="metric"><span>Process</span><strong>Alpha</strong></div>
+                  <div class="metric"><span>Layer</span><strong>87</strong></div>
+                  <div class="metric"><span>예상 Cell</span><strong>17,226</strong></div>
+                </div>
+                <div class="chip-row">
+                  <span class="chip">product_alpha_main</span>
+                  <span class="chip ok">Backbone source available</span>
+                  <span class="chip warn">Mapping 누락 3건</span>
+                </div>
+              </div>
+
+              <div class="card">
+                <h4>프로젝트 정보</h4>
+                <div class="form-row">
+                  <label>프로젝트 이름</label>
+                  <div class="field-box">Alpha Main 조건표 Draft - 2026.07</div>
+                </div>
+                <div class="form-row">
+                  <label>설명</label>
+                  <div class="field-box">신규 적재 route 기준 백본 복사 후 조건 편집 시작</div>
+                </div>
+              </div>
+
+              <div class="card">
+                <h4>생성 정책 확인</h4>
+                <ul class="check-list">
+                  <li><span>sheet_layer 파생</span><strong>87 rows</strong></li>
+                  <li><span>cell_value 초기화</span><strong>17,226 cells</strong></li>
+                  <li><span>초기 상태</span><strong>Draft</strong></li>
+                  <li><span>변경 이벤트</span><strong>backbone_copy 기록</strong></li>
+                </ul>
+              </div>
+            </div>
+
+            <div>
+              <div class="pane-title">
+                <h3>Layer Preview</h3>
+                <span class="muted">생성 전 확인</span>
+              </div>
+              <table class="table" aria-label="Project creation layer preview">
+                <thead><tr><th>Order</th><th>Layer</th><th>Source Value</th></tr></thead>
+                <tbody>
+                  <tr><td>001</td><td><strong>Initial Clean</strong><span class="key">001_init_clean</span></td><td><span class="chip ok">Complete</span></td></tr>
+                  <tr><td>010</td><td><strong>Active Photo</strong><span class="key">010_photo_active</span></td><td><span class="chip ok">Complete</span></td></tr>
+                  <tr><td>020</td><td><strong>Active Etch</strong><span class="key">020_etch_active</span></td><td><span class="chip ok">Complete</span></td></tr>
+                  <tr><td>030</td><td><strong>Active Metrology</strong><span class="key">030_metrology_active</span></td><td><span class="chip warn">Partial</span></td></tr>
+                  <tr><td>040</td><td><strong>Gate Deposition</strong><span class="key">040_deposition_gate</span></td><td><span class="chip ok">Complete</span></td></tr>
+                </tbody>
+              </table>
+              <div class="toolbar" style="border: 0; padding-left: 0; padding-right: 0;">
+                <button class="button ghost" type="button">취소</button>
+                <button class="button primary" type="button">프로젝트 생성</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="sheet" class="screen" aria-labelledby="sheet-title">
+        <div class="wireframe-window">
+          <div class="window-bar">
+            <div class="window-dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+            <div id="sheet-title" class="window-title">Sheet Editor PoC / layer × parameter grid</div>
+          </div>
+
+          <div class="sheet-toolbar">
+            <div>
+              <strong>제품 Alpha 조건표</strong>
+              <span class="chip ok">Draft</span>
+              <span class="chip">Lock: 내가 편집 중</span>
+              <span class="chip warn">Dirty 12</span>
+            </div>
+            <div class="chip-row">
+              <button class="button ghost" type="button">Excel Paste</button>
+              <button class="button ghost" type="button">검증</button>
+              <button class="button primary" type="button">저장</button>
+            </div>
+          </div>
+
+          <div class="sheet-toolbar">
+            <div class="tabs" aria-label="Parameter category tabs">
+              <span class="tab active">전체</span>
+              <span class="tab">Photo</span>
+              <span class="tab">Etch</span>
+              <span class="tab">계측</span>
+              <span class="tab">Deposition</span>
+              <span class="tab">Custom</span>
+            </div>
+            <div class="input" style="max-width: 360px; flex: 0 1 360px;">🔎 layer / parameter 검색</div>
+          </div>
+
+          <div class="grid-wrap">
+            <table class="sheet-grid" aria-label="Layer parameter sheet grid">
+              <thead>
+                <tr>
+                  <th class="sticky-col">Layer</th>
+                  <th>PR_TYPE</th>
+                  <th>SPIN_SPEED</th>
+                  <th>EXPOSURE</th>
+                  <th>FOCUS</th>
+                  <th>ETCH_RATE</th>
+                  <th>THICKNESS</th>
+                  <th>OVERLAY</th>
+                  <th>CD_TARGET</th>
+                  <th>BAKE_TEMP</th>
+                  <th>...</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="sticky-col"><strong>001 Initial Clean</strong><span class="key">001_init_clean · Clean</span></td>
+                  <td class="cell-readonly">-</td><td class="cell-readonly">-</td><td class="cell-readonly">-</td><td class="cell-readonly">-</td><td>-</td><td>90.0</td><td>-</td><td>-</td><td>110</td><td>...</td>
+                </tr>
+                <tr>
+                  <td class="sticky-col"><strong>010 Active Photo</strong><span class="key">010_photo_active · Photo</span></td>
+                  <td>PR-A</td><td class="cell-dirty">3200</td><td>42.5</td><td>0.12</td><td class="cell-readonly">-</td><td>87.5</td><td>3.0</td><td>45</td><td>105</td><td>...</td>
+                </tr>
+                <tr>
+                  <td class="sticky-col"><strong>020 Active Etch</strong><span class="key">020_etch_active · Etch</span></td>
+                  <td class="cell-readonly">-</td><td class="cell-readonly">-</td><td class="cell-readonly">-</td><td>-</td><td>18.7</td><td class="cell-dirty">72.4</td><td>-</td><td>43</td><td>-</td><td>...</td>
+                </tr>
+                <tr>
+                  <td class="sticky-col"><strong>030 Active Metrology</strong><span class="key">030_metrology_active · Metrology</span></td>
+                  <td class="cell-readonly">-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td class="cell-error">9.8</td><td>44</td><td>-</td><td>...</td>
+                </tr>
+                <tr>
+                  <td class="sticky-col"><strong>040 Gate Deposition</strong><span class="key">040_deposition_gate · Deposition</span></td>
+                  <td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>90.0</td><td>2.8</td><td>-</td><td>350</td><td>...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="bottom-panel">
+            <div class="note"><strong>선택 셀 상세</strong><br />010 Active Photo / SPIN_SPEED<br />기존 3000 → 변경 3200</div>
+            <div class="note"><strong>Validation</strong><br /><span style="color: var(--danger);">OVERLAY 9.8nm</span> 값이 허용 범위를 초과했습니다.</div>
+            <div class="note"><strong>Paste Staging</strong><br />Excel TSV 6행 × 4열 대기. 적용 전 타입 검사를 표시합니다.</div>
+            <div class="note"><strong>Dirty Batch</strong><br />저장 payload는 변경된 셀만 UPSERT 대상으로 구성합니다.</div>
+          </div>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <script>
+    const navItems = document.querySelectorAll('[data-screen]');
+    const screens = document.querySelectorAll('.screen');
+
+    navItems.forEach((item) => {
+      item.addEventListener('click', () => {
+        const target = item.dataset.screen;
+        navItems.forEach((nav) => nav.classList.toggle('active', nav === item));
+        screens.forEach((screen) => screen.classList.toggle('active', screen.id === target));
+      });
+    });
+  </script>
+</body>
+</html>
