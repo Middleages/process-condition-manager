@@ -6,10 +6,10 @@ Phase 1에 들어가기 전에 PCM의 핵심 화면 흐름을 먼저 고정한�
 
 ## 2. 도메인 해석 반영
 
-- **Process**: `photo`, `etch`, `계측` 같은 단일 제조공정 종류가 아니라, 하나의 제품/route가 완성될 때까지 통과하는 전체 layer/step 집합이다.
-- **Layer**: process 내부의 개별 제조 step이며 조건표의 행이다. `photo`, `etch`, `계측`, `deposition`, `clean` 등은 layer의 이름이나 유형으로 표현한다.
+- **Process**: 적재로 들어오는 **구조(뼈대)** — partid, processid, stepseq, area 같은 컬럼으로 된 layer/step 목록. 조건 값이 없고 읽기 전용이다 (D-14).
+- **Layer**: process 내부의 개별 제조 step이며 조건표의 행이다. `photo`, `etch`, `계측` 등은 layer의 이름/유형(area)으로 표현한다.
 - **Parameter**: 전 process 공통 컬럼 세트이며 200개 부근에서 움직이는 것을 기준으로 한다.
-- **Project**: 적재된 process 구조를 선택해 생성하는 편집/검토/승인 대상 조건표다.
+- **Project**: process 하나를 골라 만든 조건표(구조 사본 + 셀 값 + 상태/버전). 값의 원천은 **백본 프로젝트**(기존 프로젝트)이며, 백본을 layer 매칭하는 순간 "프로세스가 프로젝트로 변신"한다. 장기적으로 process당 활성 프로젝트 1개로 수렴한다.
 
 ## 3. 규모 가정
 
@@ -48,8 +48,7 @@ App Shell
 │  └─ validation panel
 └─ Parameter Admin
    ├─ parameter registry
-   ├─ category/options
-   └─ source parameter mapping
+   └─ category/options
 ```
 
 Phase 1에서는 `Process Catalog`, `Project Create`, `Project List`, `Project Detail(백본 교체)`를 우선 잡고, `Sheet Editor`는 그리드 PoC 화면으로 별도 검증한다.
@@ -65,18 +64,18 @@ Phase 1에서는 `Process Catalog`, `Project Create`, `Project List`, `Project D
 ```text
 ┌──────────────────────────────────────────────────────────────────────┐
 │ Process Catalog                                                       │
-│ [검색어: 제품명/process key/route] [제품군] [최근 적재일] [상태]       │
+│ [검색어: partid/processid] [Area] [최근 적재일] [☐ 조건표 없는 것만]  │
 ├──────────────────────────────┬───────────────────────────────────────┤
-│ Process 결과 테이블           │ Process Preview                       │
+│ Process 결과 테이블           │ Process 구조 Preview                  │
 │ ┌──────────────────────────┐ │ ┌───────────────────────────────────┐ │
-│ │ key | 이름 | layer | 적재 │ │ │ 제품/route 요약                   │ │
-│ │ ...                      │ │ │ layer count, parameter coverage   │ │
+│ │ partid·processid | steps │ │ │ 구조 요약                          │ │
+│ │ | 적재 | 조건표 유무      │ │ │ step count, area 목록, 조건표 유무│ │
 │ └──────────────────────────┘ │ └───────────────────────────────────┘ │
 │ [페이지/더보기]              │ ┌───────────────────────────────────┐ │
-│                              │ │ Layer 구조                         │ │
-│                              │ │ order | layer | type | 주요 조건   │ │
+│                              │ │ Layer 구조 (값 없음 — 구조만)      │ │
+│                              │ │ stepseq | layer | area             │ │
 │                              │ └───────────────────────────────────┘ │
-│                              │ [프로젝트 생성]                      │
+│                              │ [이 구조로 프로젝트 생성]            │
 └──────────────────────────────┴───────────────────────────────────────┘
 ```
 
@@ -92,27 +91,28 @@ Phase 1에서는 `Process Catalog`, `Project Create`, `Project List`, `Project D
 
 ### 6.1 목적
 
-선택한 process 구조를 프로젝트의 `sheet_layer`로 파생하고, 적재 조건 값을 백본으로 복사하기 전에 사용자가 생성 결과를 확인하게 한다.
+선택한 process(구조)를 `sheet_layer`로 파생하고, **백본 프로젝트(값)를 layer 매칭**해 복사하기 전에 사용자가 매칭 결과를 확인하게 한다 (D-14).
 
 ### 6.2 레이아웃
 
 ```text
 ┌──────────────────────────────────────────────────────────────┐
-│ 새 프로젝트 생성                                              │
+│ 새 프로젝트 생성  ① Process 확인 → ② 백본 선택 → ③ 매칭 확인  │
 ├──────────────────────────────────────────────────────────────┤
-│ Process: 제품 Alpha Main Route / product_alpha_main           │
-│ Layer: 87개 | Parameter: 198개 | 예상 셀: 17,226개             │
+│ ① Process(구조): 제품 Alpha Main / ALPHA-01 · P-MAIN          │
+│    Steps: 87 | 조건표: 없음 → 신규                             │
 ├──────────────────────────────────────────────────────────────┤
-│ 프로젝트 이름 [________________________]                       │
-│ 설명           [________________________]                       │
+│ ② 백본 프로젝트(값): 기존 프로젝트 검색 (Approved 우선)       │
+│    - Beta Memory 조건표 v3  [layer 매칭 79/87]  ← 선택         │
+│    - Delta Pilot 조건표 v2  [매칭 61/87]                       │
+│    - 백본 없이 시작 (모든 셀 빈 값)                            │
 ├──────────────────────────────────────────────────────────────┤
-│ Layer Preview                                                 │
-│ order | layer key | layer name | type | source value status    │
+│ 프로젝트 이름/설명 [________________________]                  │
 ├──────────────────────────────────────────────────────────────┤
-│ Mapping/Backbone Check                                        │
-│ - source parameter mapping 누락 n건                            │
-│ - 조건 값 없음 n건                                             │
-│ - 생성 후 draft 상태로 시작                                    │
+│ ③ 매칭 확인 (dry-run)                                         │
+│ - sheet_layer 파생 87 | 백본 복사 15,642 cells (79 layer)      │
+│ - 미매칭 8 layer → 빈 값 시작 (P1-D1)                          │
+│ Layer 매칭 미리보기: stepseq | layer | 백본 매칭(소스/미매칭)   │
 ├──────────────────────────────────────────────────────────────┤
 │ [취소]                                      [프로젝트 생성]    │
 └──────────────────────────────────────────────────────────────┘
@@ -121,8 +121,9 @@ Phase 1에서는 `Process Catalog`, `Project Create`, `Project List`, `Project D
 ### 6.3 Phase 1 완료 기준 연결
 
 - 서로 다른 process로 프로젝트를 만들면 서로 다른 layer 구조가 `sheet_layer`로 복사되어야 한다.
-- 백본 복사 결과가 `cell_value`에 반영되어야 한다.
-- source parameter mapping 누락이 있으면 생성 가능/불가 정책을 명시한다.
+- 백본 프로젝트 복사(layer 매칭) 결과가 `cell_value`에 반영되어야 한다.
+- 매칭률은 process 단독 속성이 아니라 **(process, 백본 프로젝트) 쌍**에서 계산됨을 UI가 표현해야 한다.
+- 미매칭 layer는 빈 값으로 시작하고, 그 사실이 생성 전에 표시되어야 한다 (P1-D1).
 
 ## 7. Sheet Editor 그리드 PoC 와이어프레임
 
@@ -166,12 +167,15 @@ Phase 1에서는 `Process Catalog`, `Project Create`, `Project List`, `Project D
 와이어프레임 기준으로 Phase 1에서 다음 API 계약을 구체화한다.
 
 ```text
-GET /processes?query=&limit=&cursor=
-GET /processes/{process_key}
-GET /processes/{process_key}/layers
-POST /projects
-GET /projects
-GET /projects/{project_id}
+GET  /processes?query=&limit=&cursor=          # 구조 검색 (조건표 유무 포함)
+GET  /processes/{process_key}                  # 구조 요약
+GET  /processes/{process_key}/layers           # layer 구성 (stepseq/area)
+GET  /projects/backbone-candidates?process_key=  # 백본 후보 + 매칭률
+POST /projects/create-preview                  # (process, 백본) 매칭 dry-run
+POST /projects                                 # 생성 (구조 파생 + 백본 복사)
+POST /projects/{id}/layers/{layer_key}/backbone-replace
+GET  /projects
+GET  /projects/{project_id}
 ```
 
 Phase 2에서는 sheet editor를 위해 다음 계약을 추가한다.
@@ -186,8 +190,9 @@ POST /projects/{project_id}/validate
 ## 9. 결정 보류 항목
 
 - `Layer` 명칭을 계속 쓸지, UI에서는 `Step`을 병기할지 결정한다. (→ [phase-1-tasks.md](./phase-1-tasks.md) P1-D3)
-- process 검색 필터의 실제 속성은 적재 DB 스키마 확정 후 정한다. (→ P1-D2)
-- source parameter mapping 누락 시 프로젝트 생성을 막을지, 경고 후 생성할지 정한다. (→ P1-D1, 권고: 경고 후 생성 허용 — HTML 와이어프레임에 이 정책으로 표현)
+- process 검색 필터의 실제 속성(partid/processid/area 등)은 적재 DB 스키마 확정 후 정한다. (→ P1-D2)
+- **layer 매칭 키**(layer 이름? stepseq? area 조합?)를 확정한다. (→ P1-D5, 착수 전 필수)
+- 조건표가 이미 있는 process의 중복 프로젝트 생성 정책을 정한다. (→ P1-D6)
 - 그리드 라이브러리는 Phase 1 PoC 결과로 확정한다. (→ phase-1-tasks T7)
 
-HTML 와이어프레임(v2)은 위 화면 지도 기준 5개 화면(Project List / Process Catalog / Project Create / Project Detail·백본 교체 / Sheet Editor PoC)을 담고 있으며, 화면 간 버튼 이동으로 실제 flow를 시뮬레이션한다.
+HTML 와이어프레임(v3, light theme)은 위 화면 지도 기준 5개 화면(Project List / Process Catalog / Project Create / Project Detail·백본 교체 / Sheet Editor PoC)을 담고 있으며, 화면 간 버튼 이동으로 실제 flow를 시뮬레이션한다.

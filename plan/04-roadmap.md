@@ -40,9 +40,9 @@ flowchart LR
 ## Phase 1 — 프로젝트 + 백본 (그리드 PoC 병행)
 
 **범위:**
-- process 선택 → 프로젝트 생성: 적재 데이터의 layer 구성에서 `sheet_layer` 파생, 백본(전체 조건 값) 복사로 `cell_value` 초기화
-- 원천 파라미터 식별자 ↔ `parameter.code` 매핑 테이블 + 관리 UI (1:1이 아닐 경우 대비)
-- 레이어별 백본 교체 (다른 process의 특정 layer 조건으로 교체)
+- process(구조) 선택 + **백본 프로젝트(값) 선택** → 프로젝트 생성: 적재 layer 구성에서 `sheet_layer` 파생, 백본 프로젝트의 `cell_value`를 **layer 매칭**으로 복사 (D-14. 백본 없이 빈 시작도 지원)
+- layer 매칭 규칙 구현 (신규 process layer ↔ 백본 프로젝트 layer, 매칭 키는 착수 전 확정)
+- 레이어별 백본 교체 (다른 **프로젝트**의 특정 layer 조건으로 교체)
 - 프로젝트 목록/검색/상태 표시 (상태 전환 로직은 Phase 5, 여기서는 draft 고정)
 - 백본 작업의 `change_event` 기록 (이력 UI는 Phase 4, 기록만 시작)
 - **병행: 그리드 PoC** ([03-grid-evaluation.md](./03-grid-evaluation.md) 시나리오 수행 → 라이브러리 확정 → 결정 로그 기재)

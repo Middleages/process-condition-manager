@@ -56,7 +56,7 @@ PCM(Process Condition Manager)이 다루는 반도체 Photo 공정 도메인의 
 | **Photo 공정** | Photolithography Process | 반도체 제조의 미세 패턴 형성 공정. PCM의 대상 |
 | **제품** | Product | 반도체 칩의 종류. 예: Product_A, Product_B |
 | **라인** | Line | 제조 생산 라인. 제품은 라인에 속함 |
-| **Process** | Process | 하나의 제품/route가 완성될 때까지 통과하는 전체 layer/step 집합. 단일 `photo`, `etch`, `계측` 공정 종류가 아니라 프로젝트 생성의 기준이 되는 제품 공정 흐름이다 — 재구축 아키텍처의 핵심 전제 |
+| **Process** | Process | 하나의 제품/route가 완성될 때까지 통과하는 전체 layer/step 집합. 단일 `photo`, `etch`, `계측` 공정 종류가 아니라 프로젝트 생성의 기준이 되는 제품 공정 흐름이다 — 재구축 아키텍처의 핵심 전제. **구조(partid, processid, stepseq, area 등)만 가지며 조건 값은 없다** — 값은 백본 프로젝트에서 온다 (D-14). 장기적으로 process당 활성 프로젝트 1개로 수렴한다 |
 
 ## 프로젝트 상태 (Workflow)
 

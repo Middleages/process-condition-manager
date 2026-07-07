@@ -125,13 +125,19 @@ edit_lock
 
 ## 7. 적재 영역 판독 (ingest reader 계약)
 
-적재 스키마의 실제 형태는 Prefect 파이프라인 확정 시 반영한다. PCM이 적재 영역에 요구하는 **판독 계약**만 먼저 고정한다:
+적재 데이터는 **구조만** 담는다 — process별 layer/step 목록(partid, processid, stepseq, area 같은 컬럼). **조건 값은 적재에 존재하지 않으며, 값의 원천은 기존 프로젝트(백본)다** (D-14). 적재 스키마의 실제 형태는 Prefect 파이프라인 확정 시 반영하고, 판독 계약만 먼저 고정한다:
 
 | 판독 기능 | 반환 |
 |-----------|------|
-| process 목록 조회 | process_key, 표시명, 최종 적재 시각 |
-| process의 layer 구성 조회 | layer_key, layer_name, 순서 |
-| process/layer의 조건 값 조회 (백본 소스) | (layer_key, 원천 파라미터 식별자, 값) 목록 |
+| process 목록 조회 | process_key(partid+processid 조합 등), 표시 속성, 최종 적재 시각 |
+| process의 layer 구성 조회 | layer_key, layer_name, stepseq(순서), area 등 구조 속성 |
 
-- 원천 파라미터 식별자 ↔ PCM `parameter.code` 매핑이 1:1이 아닐 경우를 대비해 매핑 테이블(관리자 관리)을 Phase 1에서 함께 설계한다.
+- ~~조건 값 조회 (백본 소스)~~ — **D-14로 폐기.** 백본 복사는 기존 프로젝트의 `cell_value` → 신규 프로젝트의 `cell_value` 복사이며 적재 영역과 무관하다. 원천 파라미터 매핑 테이블도 백본 용도로는 불필요하다 (Recipe XML 매핑은 별개 주제로 후속 Phase에서 다룸).
+- 신규 process의 layer ↔ 백본 프로젝트의 layer **매칭 규칙**(매칭 키: 이름/stepseq/area 조합 여부)은 미확정 — Phase 1 착수 전 확정 필요.
 - 접근은 읽기 전용 커넥션(별도 engine, 같은 인스턴스의 타 DB 허용 — D-11)으로만 한다.
+
+## 8. 백본 (D-14)
+
+- **백본 = 기존 프로젝트.** 신규 프로젝트 생성 시 (a) process에서 구조(`sheet_layer`)를 파생하고, (b) 선택한 백본 프로젝트의 `cell_value`를 layer 매칭으로 복사한다. 파라미터 축은 전 프로젝트 공통(레지스트리)이므로 파라미터 매핑은 필요 없다 — 매칭은 layer 축에서만 일어난다.
+- 매칭 실패 layer는 빈 값으로 시작한다. 이후 레이어별 백본 교체(소스: 다른 프로젝트의 layer) 또는 엑셀 붙여넣기로 채운다.
+- 백본 프로젝트가 하나도 없는 부트스트랩 상황은 "백본 없이 시작"(전체 빈 값)으로 처리한다.
