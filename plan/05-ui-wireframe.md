@@ -10,6 +10,7 @@ Phase 1에 들어가기 전에 PCM의 핵심 화면 흐름을 먼저 고정한�
 - **Layer**: process 내부의 개별 제조 step이며 조건표의 행이다. `photo`, `etch`, `계측` 등은 layer의 이름/유형(area)으로 표현한다.
 - **Parameter**: 전 process 공통 컬럼 세트이며 200개 부근에서 움직이는 것을 기준으로 한다.
 - **Project**: process 하나를 골라 만든 조건표(구조 사본 + 셀 값 + 상태/버전). 값의 원천은 **백본 프로젝트**(기존 프로젝트)이며, 백본을 layer 매칭하는 순간 "프로세스가 프로젝트로 변신"한다. 장기적으로 process당 활성 프로젝트 1개로 수렴한다.
+- **조건 행 / POR** (D-16): 같은 layer/step에 여러 조건 행이 존재할 수 있다. 시트의 행 = 조건 행이며, 같은 layer의 행들은 그룹핑해 표시한다. POR은 layer당 최대 1개(por_yn)로 사용자가 선택한다. UI 명칭은 Layer/Step 병기.
 
 ## 3. 규모 가정
 
@@ -157,8 +158,9 @@ Phase 1에서는 `Process Catalog`, `Project Create`, `Project List`, `Project D
 
 ### 7.3 PoC 체크리스트
 
-- 100개 layer × 200 parameter = 20,000셀 렌더링/스크롤이 쾌적한가?
+- 100개 layer × 200 parameter = 20,000셀(조건 1행 기준) 렌더링/스크롤이 쾌적한가?
 - 좌측 layer 식별 컬럼 고정이 가능한가?
+- 같은 layer의 다중 조건 행을 그룹핑(셀 병합 또는 그룹 표시)할 수 있는가? POR 라디오 컬럼을 둘 수 있는가? (D-16)
 - parameter category별 탭/필터가 가능한가?
 - Excel TSV 붙여넣기 후 적용 전 staging 표시가 가능한가?
 - 셀 타입별 editor와 validation 표시가 가능한가?

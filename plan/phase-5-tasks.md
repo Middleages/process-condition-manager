@@ -23,6 +23,7 @@
 | P5-D2 | Rejected 복귀 처리 | Rejected → Draft 복귀 시 기존 코멘트/검증 상태 처리 | 코멘트는 보존(resolve 표시), Draft 복귀는 status_change 이벤트만 |
 | P5-D3 | Revision 셀 복사 범위 | Archived 본에는 현재 비활성화된 파라미터의 셀 값이 있을 수 있음. 새 Draft는 live 레지스트리를 따르므로 이 값들의 처리 | **전체 복사** — narrow 테이블에서 무해하며 이력 연속성 유지. live 컬럼 정의에 없는 code는 화면에 나타나지 않을 뿐 데이터는 보존. 해당 파라미터 재활성화 시 값이 되살아나는 동작을 명세로 문서화 |
 | P5-D4 | Review 중 편집 잠금 | Review 상태에서 편집 불가는 상태 머신이 보장 — edit_lock과의 관계 정리 | Review 진입 시 기존 잠금 해제, Review/Approved/Archived에서는 잠금 획득 자체를 거부 |
+| P5-D5 | POR 완결성 게이트 | Review 요청 게이트에 "모든 layer에 POR 1개 지정"(D-16)을 포함할지 | **포함 권고** — 승인본은 layer별 대표 조건이 확정된 상태여야 함. 검증 오류 0건 게이트와 함께 검사 |
 
 ## 작업 분해 (Work Breakdown)
 

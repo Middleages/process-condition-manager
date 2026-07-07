@@ -10,6 +10,7 @@
 - **Project** = process 하나를 골라 만든 조건표 (구조 사본 + 셀 값 + 상태/버전/이력).
 - **백본** = 값의 원천이 되는 **기존 프로젝트**. 생성 시 백본 프로젝트의 `cell_value`를 layer 매칭으로 복사한다. 파라미터 축은 전 프로젝트 공통(레지스트리)이므로 매칭은 **layer 축에서만** 일어난다.
 - **layer 매칭 (D-15)**: 자동 매칭 키 = `stepseq + layer_no` 조합. 자동 실패분은 사용자가 수동 매칭, 최종 미매칭은 빈 값 시작.
+- **다중 조건 행 + POR (D-16)**: 같은 layer/step에 여러 조건 행(`layer_condition`)이 존재할 수 있다. 시트의 행 = 조건 행. POR은 layer당 최대 1개(`is_por` + partial unique). UI 명칭은 Layer/Step 병기.
 - 장기적으로 process당 활성 프로젝트 1개로 수렴 (프로젝트 ≈ 프로세스).
 
 ## 완료 기준 (Exit Criteria)
@@ -26,11 +27,12 @@
 |---|------|------|------|
 | P1-D1 | 미매칭 layer 처리 | 자동 매칭 실패 시 처리 | **확정 (D-15)**: 수동 매칭 제공, 최종 미매칭은 빈 값 시작. 생성은 막지 않고 매칭 미리보기에 명시. 이후 레이어별 교체·엑셀 붙여넣기로 채움 |
 | P1-D2 | 실제 적재 스키마 | partid/processid/stepseq/**layer_no**/area 등 실제 컬럼 확정 여부. **layer_no는 매칭 키의 절반이므로 실재·형식 확인 필수** | fixture 유지, 확정 시 `ingest/pg_reader.py` 교체 (계약 불변) |
-| P1-D3 | Layer/Step 명칭 | UI에서 `Layer` 단독 표기 vs `Step` 병기 | Phase 1 UI 구현 전 확정 |
+| P1-D3 | Layer/Step 명칭 | UI 표기 | **확정**: 병기 — "Layer (Step)" 형태로 표기 |
 | P1-D4 | 카테고리 탭 라벨 | 파라미터 카테고리 탭은 레지스트리(SP/SC/OVL/DEV 등)에서 동적 생성 — layer의 area와 혼동 금지 | 하드코딩 금지, 레지스트리 기반 동적 생성 |
 | P1-D5 | layer 매칭 키 | 신규 process layer ↔ 백본 프로젝트 layer 매칭 기준 | **확정 (D-15)**: 자동 = `stepseq + layer_no` 조합 (layer 이름은 데이터 품질상 부적합, 단일 컬럼으로는 특정 불가). 자동 실패분은 사용자 수동 매칭 |
 | P1-D6 | 중복 프로젝트 정책 | 이미 조건표(프로젝트)가 있는 process에서 또 생성할 수 있는가 | 장기 목표(process당 활성 1개) 기준 경고 후 허용 또는 차단 — 확정 필요 |
 | P1-D7 | 레거시 데이터 이관 스파이크 | 기존 시스템 데이터를 초기 백본 풀로 이관할 수 있는지 (D-04 전면 리셋의 예외, 희망 사항) | Phase 1 중 **실현 가능성 평가만** 수행 (데이터 상태 확인). 이관 작업 자체는 범위 외 — 결과에 따라 별도 배정 |
+| P1-D8 | 백본 복사 시 조건 행 범위 | 백본 layer에 다중 조건 행이 있을 때 전부 복사할지, POR 행만 복사할지 (D-16) | **전부 복사 + POR 플래그 유지** 권고 — "다 보이게" 요구와 일관. 미매칭 layer는 기본 조건 1행 + POR 미지정으로 생성 |
 
 ## 작업 분해 (Work Breakdown)
 
@@ -51,9 +53,10 @@ flowchart LR
 
 [02-data-model.md](./02-data-model.md) §4~5를 구현.
 
-- `models/`: `Project`, `SheetLayer`, `CellValue`, `ChangeEvent`
-  - `sheet_layer`에 구조 속성 보존: layer_key, layer_name, sort_order(stepseq), area 등 적재 컬럼 반영 (P1-D2 확정분)
-  - `cell_value`: `UNIQUE(layer_id, parameter_code)`, `parameter_code`는 **FK 아님**(스냅샷 독립성), 값은 TEXT
+- `models/`: `Project`, `SheetLayer`, `LayerCondition`, `CellValue`, `ChangeEvent`
+  - `sheet_layer`에 구조 속성 보존: layer_key, layer_name, stepseq, **layer_no**, area 등 적재 컬럼 반영 (P1-D2 확정분)
+  - `layer_condition` (D-16): layer당 다중 조건 행, `is_por` + **partial unique index** `UNIQUE(layer_id) WHERE is_por` — POR layer당 1개를 DB가 강제
+  - `cell_value`: `UNIQUE(condition_id, parameter_code)` — 행 = 조건 행. `parameter_code`는 **FK 아님**(스냅샷 독립성), 값은 TEXT
   - `change_event`: append-only(UPDATE/DELETE 금지), `payload` JSONB에 벌크 배치 식별자
   - `project.status`는 이번 Phase에서 `draft` 고정 (상태 머신은 Phase 5). `edit_lock`은 Phase 2로 이연
   - ~~`SourceParameterMapping`~~ — **D-14로 폐기** (백본이 프로젝트이므로 파라미터 매핑 불필요)
@@ -78,7 +81,7 @@ Phase 1의 새 축 — 신규 process의 layer와 백본 프로젝트의 layer�
 
 - `POST /projects` (`features/projects`) — body: process_key, 백본 project_id(선택), **수동 매칭 오버라이드 목록**, 이름/설명:
   1. `ingest reader.get_layers(process_key)` → `sheet_layer` 파생 (구조 사본, stepseq/layer_no 보존)
-  2. 백본 지정 시: T2 매칭 결과(자동 + 수동 오버라이드)대로 백본 프로젝트의 `cell_value`를 신규 layer에 bulk 복사. 최종 미매칭 layer는 빈 값 (P1-D1)
+  2. 백본 지정 시: T2 매칭 결과(자동 + 수동 오버라이드)대로 백본 layer의 **조건 행 구성(`layer_condition` + POR 플래그)과 `cell_value`를 함께 복사** (P1-D8). 최종 미매칭 layer는 기본 조건 1행 + POR 미지정 + 빈 값 (P1-D1)
   3. `change_event(backbone_copy)` 기록 — payload에 배치 id, 백본 project_id, 자동/수동/미매칭 수
 - 트랜잭션: 파생+복사+이벤트를 단일 트랜잭션으로. 최대 약 2만 행 bulk insert 성능 확인
 - P1-D6 정책 반영 (조건표 있는 process 중복 생성 시 경고/차단)

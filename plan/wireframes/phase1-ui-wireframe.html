@@ -744,7 +744,8 @@
       <div class="note">
         <strong>Process</strong> = 적재로 들어오는 <strong>구조(뼈대)</strong>. partid, processid, stepseq, area 같은 컬럼으로 된 layer/step 목록. 조건 값 없음, 읽기 전용.<br /><br />
         <strong>Project</strong> = process 하나를 골라 만든 <strong>조건표</strong> (구조 + 셀 값 + 상태/버전).<br /><br />
-        <strong>백본</strong> = 값의 원천이 되는 <strong>기존 프로젝트</strong>. 백본을 매칭하는 순간 "프로세스가 프로젝트로 변신"한다.
+        <strong>백본</strong> = 값의 원천이 되는 <strong>기존 프로젝트</strong>. 백본을 매칭하는 순간 "프로세스가 프로젝트로 변신"한다.<br /><br />
+        <strong>조건 행 / POR</strong> = 같은 layer·step에 <strong>여러 조건 행</strong>이 있을 수 있고, 그중 <strong>POR은 layer당 1개</strong>(por_yn)를 사용자가 선택한다 (D-16).
       </div>
 
       <p class="nav-title">적용 정책</p>
@@ -771,7 +772,7 @@
           <div class="legend-row"><span>Process 후보</span><strong>수천 개+</strong></div>
           <div class="legend-row"><span>Layer(Step) / Process</span><strong>&lt; 100</strong></div>
           <div class="legend-row"><span>Parameter</span><strong>≈ 200</strong></div>
-          <div class="legend-row"><span>Cells / Project</span><strong>≈ 20,000</strong></div>
+          <div class="legend-row"><span>Cells / Project</span><strong>≈ 20,000 (조건 1행 기준)</strong></div>
         </aside>
       </header>
 
@@ -939,7 +940,7 @@
                 <span class="chip">🔎 layer 검색</span>
               </div>
               <table class="table" aria-label="Layer structure preview">
-                <thead><tr><th>StepSeq</th><th>LayerNo</th><th>Layer</th><th>Area</th></tr></thead>
+                <thead><tr><th>StepSeq</th><th>LayerNo</th><th>Layer (Step)</th><th>Area</th></tr></thead>
                 <tbody>
                   <tr><td>0010</td><td>01</td><td><strong>INIT_CLN</strong><span class="key">init_cln</span></td><td>CLN</td></tr>
                   <tr><td>0100</td><td>10</td><td><strong>AA_PHOTO</strong><span class="key">aa_photo</span></td><td>PHOTO</td></tr>
@@ -1053,7 +1054,7 @@
                 <span class="muted small">생성 전 최종 확인</span>
               </div>
               <table class="table" aria-label="Layer matching preview">
-                <thead><tr><th>Step·No</th><th>Layer</th><th>백본 매칭</th></tr></thead>
+                <thead><tr><th>Step·No</th><th>Layer (Step)</th><th>백본 매칭</th></tr></thead>
                 <tbody>
                   <tr><td>0100 · 10</td><td><strong>AA_PHOTO</strong><span class="key">aa_photo</span></td><td><span class="chip ok">자동: Beta v3 · 0100·10</span></td></tr>
                   <tr><td>0200 · 10</td><td><strong>AA_ETCH</strong><span class="key">aa_etch</span></td><td><span class="chip ok">자동: Beta v3 · 0200·10</span></td></tr>
@@ -1079,6 +1080,7 @@
             <li><strong>자동 매칭 키 = stepseq + layer number</strong> (D-15). layer 이름은 데이터 품질상 매칭 키로 부적합하고, 단일 컬럼으로는 특정이 어려워 조합 키를 쓴다. 자동 실패분은 미리보기에서 <strong>사용자가 수동 매칭</strong>(백본 layer 검색 드롭다운)한다.</li>
             <li>"백본 없이 시작" 옵션이 부트스트랩 경로 — 최초 프로젝트는 빈 조건표 + 엑셀 붙여넣기로 시작 (레거시 시스템 데이터 이관은 별도 검토 항목).</li>
             <li>③은 dry-run API 결과. 생성은 단일 트랜잭션: sheet_layer 파생 + cell_value 복사(자동+수동 매칭 반영) + <code>change_event(backbone_copy)</code>.</li>
+            <li>백본 layer에 <strong>다중 조건 행</strong>이 있으면 조건 행 전부 + POR 플래그를 그대로 복사한다 (P1-D8 권고 — 확정 필요). 미매칭(빈 값) layer는 기본 조건 1행 + POR 미지정으로 생성.</li>
           </ol>
         </div>
       </section>
@@ -1112,13 +1114,14 @@
             </div>
             <table class="table" aria-label="Layer backbone composition">
               <thead>
-                <tr><th>StepSeq</th><th>Layer</th><th>Area</th><th>값 채움</th><th>백본 소스 (프로젝트)</th><th></th></tr>
+                <tr><th>StepSeq</th><th>Layer (Step)</th><th>Area</th><th>조건</th><th>값 채움</th><th>백본 소스 (프로젝트)</th><th></th></tr>
               </thead>
               <tbody>
                 <tr>
                   <td>0100</td>
                   <td><strong>AA_PHOTO</strong><span class="key">aa_photo</span></td>
                   <td>PHOTO</td>
+                  <td><span class="chip">2 · POR: C1</span></td>
                   <td><div class="bar" title="96%"><i style="width:96%"></i></div></td>
                   <td><span class="chip">Main: Beta Memory v3</span></td>
                   <td><button class="button ghost" type="button">교체</button></td>
@@ -1127,6 +1130,7 @@
                   <td>0200</td>
                   <td><strong>AA_ETCH</strong><span class="key">aa_etch</span></td>
                   <td>ETCH</td>
+                  <td><span class="chip">1 · POR</span></td>
                   <td><div class="bar" title="99%"><i style="width:99%"></i></div></td>
                   <td><span class="chip warn">교체 대상 선택됨</span></td>
                   <td><button class="button primary" type="button">교체 중…</button></td>
@@ -1135,6 +1139,7 @@
                   <td>0350</td>
                   <td><strong>SP_MET_X</strong><span class="key">sp_met_x</span></td>
                   <td>MET</td>
+                  <td><span class="chip danger">1 · POR 미지정</span></td>
                   <td><div class="bar low" title="12%"><i style="width:12%"></i></div></td>
                   <td><span class="chip danger">미매칭 — 빈 값 시작</span></td>
                   <td><button class="button ghost" type="button">교체</button></td>
@@ -1143,11 +1148,12 @@
                   <td>0300</td>
                   <td><strong>AA_MET</strong><span class="key">aa_met</span></td>
                   <td>MET</td>
+                  <td><span class="chip">1 · POR</span></td>
                   <td><div class="bar" title="91%"><i style="width:91%"></i></div></td>
                   <td><span class="chip ok">교체됨: Delta Pilot v2 · AA_MET</span></td>
                   <td><button class="button ghost" type="button">교체</button></td>
                 </tr>
-                <tr><td colspan="6" class="muted">… 87개 layer 전체 (area 필터 + 검색 + 미매칭만 보기)</td></tr>
+                <tr><td colspan="7" class="muted">… 87개 layer 전체 (area 필터 + 검색 + 미매칭만 보기)</td></tr>
               </tbody>
             </table>
           </div>
@@ -1256,6 +1262,7 @@
             <span><i class="i-dirty"></i> Dirty (미저장)</span>
             <span><i class="i-staged"></i> Paste staging</span>
             <span><i class="i-error"></i> 검증 오류</span>
+            <span><b style="color: var(--ok);">●</b> POR — layer당 1개, 클릭으로 다른 조건 행에 이양</span>
             <span class="muted">빈 값 "–"도 편집 가능한 셀 — "해당 없음" 개념은 미도입 (P2-D3)</span>
           </div>
 
@@ -1263,7 +1270,8 @@
             <table class="sheet-grid" aria-label="Layer parameter sheet grid">
               <thead>
                 <tr>
-                  <th class="sticky-col" rowspan="2">Layer</th>
+                  <th class="sticky-col" rowspan="2">Layer (Step)</th>
+                  <th rowspan="2">조건 · POR</th>
                   <th class="cat" colspan="3">SP · Spin/PR</th>
                   <th class="cat" colspan="3">SC · Scanner/Expose</th>
                   <th class="cat" colspan="2">OVL · Overlay</th>
@@ -1282,31 +1290,42 @@
               </thead>
               <tbody>
                 <tr>
-                  <td class="sticky-col"><strong>0010 INIT_CLN</strong><span class="key">init_cln · CLN</span></td>
+                  <td class="sticky-col"><strong>0010 · 01 INIT_CLN</strong><span class="key">init_cln · CLN</span></td>
+                  <td><span class="chip ok">● POR</span></td>
                   <td class="cell-empty">–</td><td class="cell-empty">–</td><td>110</td>
                   <td class="cell-empty">–</td><td class="cell-empty">–</td><td class="cell-empty">–</td>
                   <td class="cell-empty">–</td><td class="cell-empty">–</td><td>…</td>
                 </tr>
                 <tr>
-                  <td class="sticky-col"><strong>0100 AA_PHOTO</strong><span class="key">aa_photo · PHOTO</span></td>
-                  <td>PR-A ▾</td><td class="cell-dirty cell-focus">3200</td><td>105</td>
+                  <td class="sticky-col" rowspan="2"><strong>0100 · 10 AA_PHOTO</strong><span class="key">aa_photo · PHOTO</span><br /><span class="chip warn" style="margin-top: 6px;">조건 2</span></td>
+                  <td><span class="chip ok">● POR · C1</span></td>
+                  <td>PR-A ▾</td><td>3000</td><td>105</td>
                   <td>42.5</td><td>0.12</td><td>RT-1104 ▾</td>
                   <td>3.0</td><td>45</td><td>…</td>
                 </tr>
                 <tr>
-                  <td class="sticky-col"><strong>0200 AA_ETCH</strong><span class="key">aa_etch · ETCH</span></td>
+                  <td><span class="chip">○ C2</span></td>
+                  <td>PR-B ▾</td><td class="cell-dirty cell-focus">3200</td><td>105</td>
+                  <td>41.8</td><td>0.10</td><td>RT-1104 ▾</td>
+                  <td>2.9</td><td>44</td><td>…</td>
+                </tr>
+                <tr>
+                  <td class="sticky-col"><strong>0200 · 10 AA_ETCH</strong><span class="key">aa_etch · ETCH</span></td>
+                  <td><span class="chip ok">● POR</span></td>
                   <td class="cell-empty">–</td><td class="cell-empty">–</td><td class="cell-dirty">72.4</td>
                   <td class="cell-empty">–</td><td class="cell-empty">–</td><td class="cell-empty">–</td>
                   <td class="cell-empty">–</td><td>43</td><td>…</td>
                 </tr>
                 <tr>
-                  <td class="sticky-col"><strong>0300 AA_MET</strong><span class="key">aa_met · MET</span></td>
+                  <td class="sticky-col"><strong>0300 · 10 AA_MET</strong><span class="key">aa_met · MET</span></td>
+                  <td><span class="chip ok">● POR</span></td>
                   <td class="cell-empty">–</td><td class="cell-empty">–</td><td class="cell-empty">–</td>
                   <td class="cell-empty">–</td><td class="cell-empty">–</td><td class="cell-empty">–</td>
                   <td class="cell-error">9.8</td><td>44</td><td>…</td>
                 </tr>
                 <tr>
-                  <td class="sticky-col"><strong>0350 SP_MET_X</strong><span class="key">sp_met_x · MET</span></td>
+                  <td class="sticky-col"><strong>0350 · 12 SP_MET_X</strong><span class="key">sp_met_x · MET</span></td>
+                  <td><span class="chip ok">● POR</span></td>
                   <td class="cell-empty">–</td><td class="cell-empty">–</td><td class="cell-empty">–</td>
                   <td class="cell-staged">41.0</td><td class="cell-staged">0.10</td><td class="cell-staged">RT-2001</td>
                   <td class="cell-empty">–</td><td class="cell-staged">42</td><td>…</td>
@@ -1318,7 +1337,7 @@
           <div class="bottom-panel">
             <div class="note">
               <h5>선택 셀</h5>
-              0100 AA_PHOTO · SPIN_SPEED<br />
+              0100 · 10 AA_PHOTO · 조건 C2 · SPIN_SPEED<br />
               <span class="muted">3000</span> → <strong>3200</strong> <span class="muted small">(number · rpm · 범위 0~5000)</span><br />
               <span class="chip" style="margin-top: 8px;">셀 이력 보기 (Phase 4)</span>
             </div>
@@ -1343,6 +1362,7 @@
         <div class="annotations">
           <h4>동작 메모 — Sheet Editor PoC</h4>
           <ol>
+            <li><strong>행 = 조건 행</strong>(layer가 아님, D-16): 같은 layer·step에 여러 조건이 있으면 전부 표시하되 <strong>layer 셀 병합(그룹핑)</strong>으로 같은 layer·step임이 드러난다 (예: AA_PHOTO의 C1/C2). "조건 · POR" 컬럼의 ● 클릭으로 POR을 다른 조건 행에 이양 — <strong>layer당 POR 1개</strong>는 서버가 강제(por_yn + partial unique), 이양은 <code>change_event(por_change)</code>로 기록. 조건 행 추가/복제/삭제는 Phase 2 편집기 기능.</li>
             <li>카테고리 탭·컬럼 그룹은 <strong>파라미터 레지스트리</strong>에서 동적 생성 (layer의 area와는 다른 축).</li>
             <li>빈 값 "–"는 readonly가 아니라 <strong>편집 가능한 빈 셀</strong> (P2-D3). 미매칭 layer 행은 대부분 빈 값으로 시작하고, 붙여넣기·교체로 채워진다.</li>
             <li>Paste staging: 붙여넣기는 즉시 반영이 아니라 <strong>staging(점선) → 타입 검사 → 적용/취소</strong>. 적용 시 dirty로 전환.</li>

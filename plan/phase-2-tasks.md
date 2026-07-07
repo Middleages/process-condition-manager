@@ -13,6 +13,7 @@
 - [ ] EC3. 두 브라우저로 동시 접근 시 한쪽만 편집 가능하고, 비보유자에게는 읽기 전용 + "누가 편집 중"이 표시된다
 - [ ] EC4. 더티 셀만 배치 UPSERT로 저장되고, 저장마다 `change_event(cell_update)`가 셀 단위로 남는다
 - [ ] EC5. 카테고리 탭·컬럼 고정·헤더 툴팁·컬럼 검색-점프가 레지스트리 데이터 기반으로 동적으로 동작한다
+- [ ] EC6. 같은 layer/step의 다중 조건 행이 그룹핑되어 표시되고, 조건 행 추가/복제/삭제와 POR 이양이 동작하며, layer당 POR 1개가 서버에서 강제된다 (D-16)
 
 ## 선행 확정 필요 (결정 항목)
 
@@ -34,13 +35,14 @@ flowchart LR
     T3 --> T4[T4 엑셀 붙여넣기]
     T1 --> T5[T5 편집 잠금]
     T2 --> T6[T6 컬럼 가독성]
+    T3 --> T7[T7 조건 행 관리 + POR]
 ```
 
 ### T1. 시트 조회 API
 
 - `GET /projects/{project_id}/sheet` (`features/sheets`):
   - **컬럼 정의**: live 레지스트리(`is_active=true`)의 파라미터/카테고리/선택지 — Phase 5에서 스냅샷 분기가 추가되므로 "컬럼 정의 공급자"를 service 내부에서 분리해 둔다
-  - **본문**: `layers → cell_values` 단일 조인 쿼리 → layer×parameter 매트릭스로 변환해 반환
+  - **본문**: `layers → layer_conditions → cell_values` 단일 조인 쿼리 → **조건 행 × parameter 매트릭스**로 변환해 반환 (행마다 layer 그룹 정보 + is_por 포함 — D-16)
 - 100 layer × 200 parameter(약 2만 셀) 응답 크기·직렬화 시간 측정, 필요 시 응답 포맷 최적화(행 배열 + 컬럼 인덱스 방식)
 - 프론트는 받은 컬럼 정의만으로 그리드를 구성한다 (P1 원칙: 코드가 파라미터를 모름)
 
@@ -52,7 +54,8 @@ Phase 1 인터페이스 초안을 확정 라이브러리로 구현 (`frontend/sr
 
 - 동적 컬럼 정의 (레지스트리 → 컬럼), 셀 타입별 에디터: number(단위 표시) / text / choice(드롭다운)
 - 셀 상태 렌더링: dirty / 검증 오류(Phase 3에서 연결) / 코멘트(Phase 5에서 연결) — 상태 표시 계약만 먼저 구현
-- 범위 선택, 컬럼 가상화, 좌측 layer 식별 컬럼 고정
+- 범위 선택, 컬럼 가상화, 좌측 layer 식별 컬럼 고정 (표기: "Layer (Step)" 병기 — P1-D3)
+- **조건 행 그룹핑** (D-16): 같은 layer의 조건 행들을 시각적으로 묶어 표시 (layer 셀 병합 또는 그룹 배경) — 어댑터 계약에 행 그룹 개념 포함. PoC 확정 라이브러리의 그룹핑 지원 방식 확인
 - **라이브러리 API가 어댑터 밖으로 새어나가지 않는지**를 리뷰 기준으로 삼는다 (P4)
 
 산출물: 어댑터 구현 + 60행×200컬럼 렌더링 데모. **EC2 충족.**
@@ -97,6 +100,15 @@ Phase 1 인터페이스 초안을 확정 라이브러리로 구현 (`frontend/sr
 
 산출물: 가독성 장치 4종 동작. **EC5 충족.**
 
+### T7. 조건 행 관리 + POR 선택 (D-16)
+
+- **조건 행 CRUD API**: `POST /projects/{id}/layers/{layer_key}/conditions` (추가/복제 — 복제 시 원본 조건 행의 셀 값 복사), 삭제(soft 여부 결정). `change_event(condition_add/condition_remove)` 기록
+- **POR 이양 API**: `PUT .../conditions/{condition_id}/por` — 트랜잭션 안에서 기존 POR 해제 + 새 POR 지정, partial unique 제약이 최종 방어선. `change_event(por_change)` 기록
+- UI: "조건 · POR" 컬럼 — POR 라디오(●/○) 클릭으로 이양, 행 컨텍스트 메뉴로 추가/복제/삭제. POR 미지정 layer는 경고 표시
+- 삭제 제약: POR 행 삭제 시 처리(다른 행에 이양 강제 vs POR 미지정 허용) 결정 필요
+
+산출물: 조건 행 CRUD + POR 이양 + 그룹핑 UI + layer당 POR 1개 강제 테스트. **EC6 충족.**
+
 ## 실행 순서 요약
 
 1. 결정 항목 P2-D1~D4 확정
@@ -104,5 +116,5 @@ Phase 1 인터페이스 초안을 확정 라이브러리로 구현 (`frontend/sr
 3. T2 그리드 어댑터 구현 / T5 편집 잠금 (병행)
 4. T3 셀 편집 + 저장
 5. T4 엑셀 붙여넣기 ← 핵심 요구
-6. T6 컬럼 가독성
-7. EC1~EC5 점검 → Phase 3 착수 판단
+6. T7 조건 행 관리 + POR / T6 컬럼 가독성 (병행)
+7. EC1~EC6 점검 → Phase 3 착수 판단

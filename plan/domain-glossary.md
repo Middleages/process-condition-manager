@@ -35,7 +35,9 @@ PCM(Process Condition Manager)이 다루는 반도체 Photo 공정 도메인의 
 | **공정조건표** | Process Condition Table | 레이어(행) × 파라미터(열)로 구성된 반도체 공정 조건 데이터. 프로젝트의 핵심 |
 | **조건 (Condition)** | Condition / Parameter Value | 특정 레이어-파라미터의 값 |
 | **파라미터** | Parameter / Column | 공정 조건의 항목. 100~200개 이상. 예: PR_TYPE, SPIN_SPEED. 전 process 공통이며 관리자가 제어하는 레지스트리로 관리 |
-| **셀** | Cell | 조건표의 한 칸. 레이어 × 파라미터의 교점 |
+| **조건 행** | Condition Row | 같은 레이어/스텝에 속하는 조건 값 한 벌. 한 레이어에 여러 조건 행이 존재할 수 있으며 시트의 행 단위다 (D-16) |
+| **POR** | Process of Record | 레이어의 여러 조건 행 중 대표(적용) 조건. **레이어당 최대 1개**를 사용자가 선택하며 por_yn 플래그로 관리한다 |
+| **셀** | Cell | 조건표의 한 칸. 조건 행 × 파라미터의 교점 |
 | **Dirty Cell** | Dirty Cell / Modified Cell | 사용자가 편집했으나 아직 저장하지 않은 셀 |
 
 ## 카테고리
