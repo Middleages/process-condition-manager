@@ -7,7 +7,8 @@ erDiagram
     INGEST_PROCESS ||--o{ INGEST_LAYER_DATA : "적재 영역 (읽기 전용)"
     PARAMETER ||--o{ PARAMETER_OPTION : "선택지 타입일 때"
     PROJECT ||--o{ SHEET_LAYER : "생성 시 구조 파생"
-    SHEET_LAYER ||--o{ CELL_VALUE : ""
+    SHEET_LAYER ||--o{ LAYER_CONDITION : "다중 조건 (D-16)"
+    LAYER_CONDITION ||--o{ CELL_VALUE : ""
     PROJECT ||--o{ CHANGE_EVENT : "append-only"
     PROJECT ||--o| EDIT_LOCK : ""
     PROJECT ||--o| PARAMETER_SNAPSHOT : "승인 시점 동결"
@@ -71,16 +72,32 @@ project
 
 sheet_layer             -- 프로젝트 생성 시 적재 데이터의 layer 구성에서 파생
   id PK, project_id FK
-  layer_key, layer_name, sort_order
+  layer_key, layer_name
+  stepseq, layer_no     -- 매칭 키 (D-15) — 구조 속성 보존
+  area, sort_order
+
+layer_condition         -- 같은 layer/step의 다중 조건 행 (D-16)
+  id PK, layer_id FK
+  condition_label       -- 구분용 라벨 (C1, C2, ... 또는 사용자 지정)
+  is_por                -- POR 여부 (por_yn). layer당 최대 1개
+  sort_order
+  -- 제약: partial unique index UNIQUE(layer_id) WHERE is_por = true
 
 cell_value              -- 조건표 본문: narrow(long) 테이블
   id PK
-  layer_id FK
+  condition_id FK       -- layer_condition 참조 (행 = 조건 행, layer가 아님)
   parameter_code        -- parameter.code 참조 (FK 아님: 스냅샷 독립성)
   value                 -- TEXT 저장, value_type에 따라 해석
   updated_by, updated_at
-  UNIQUE (layer_id, parameter_code)
+  UNIQUE (condition_id, parameter_code)
 ```
+
+### 다중 조건과 POR (D-16)
+
+- 같은 layer/step에 **여러 조건 행**이 존재할 수 있다. 시트의 행 단위는 layer가 아니라 **조건 행**이며, UI는 같은 layer의 조건 행들을 그룹핑해 표시한다 (같은 layer·step임이 드러나야 함).
+- **POR(Process of Record)은 layer당 최대 1개** — `is_por` 플래그와 partial unique 제약으로 DB가 강제한다. POR 이양은 트랜잭션 안에서 (기존 POR 해제 + 새 POR 지정) + `change_event(por_change)` 기록으로 처리한다.
+- 프로젝트 생성/백본 복사 시 layer당 기본 조건 1행으로 시작하며, 백본 layer에 다중 조건이 있으면 그대로 복사한다(POR 플래그 포함 — 정책은 phase-1 P1-D8). 조건 행 추가/복제/삭제는 Phase 2 편집기 기능.
+- 검증(Phase 3)·승인 게이트(Phase 5)·출력(Phase 6)이 전 조건 행을 대상으로 할지 POR만 대상으로 할지는 각 Phase 결정 항목으로 관리한다.
 
 ### narrow 테이블 vs JSONB 트레이드오프
 
@@ -89,7 +106,7 @@ cell_value              -- 조건표 본문: narrow(long) 테이블
 | 파라미터 추가/삭제 | 스키마 무변경, 행 추가만 | 스키마 무변경 |
 | 셀 단위 이력/잠금/검증 상태 | 셀이 행이므로 자연스러움 | 별도 구조 필요 |
 | 부분 업데이트(셀 몇 개 저장) | UPSERT로 정확히 그 셀만 | 문서 전체 재기록 |
-| 시트 전체 로드 | 1 프로젝트 = 100개 미만 layer × 약 200 param = 최대 약 20,000행. 단일 쿼리로 시작하되 그리드 PoC에서 체감 성능을 확인한다 | 더 빠르나 차이 미미 |
+| 시트 전체 로드 | 1 프로젝트 = 100개 미만 layer × 약 200 param = 최대 약 20,000행 (조건 1행 기준 — 다중 조건 layer만큼 증가). 단일 쿼리로 시작하되 그리드 PoC에서 체감 성능을 확인한다 | 더 빠르나 차이 미미 |
 | 규모 | 프로젝트당 최대 약 2만 행. 수천 프로젝트여도 수천만 행 수준 — PostgreSQL 인덱스와 bulk I/O 전략으로 관리 가능 | — |
 
 **채택: narrow 테이블.** 셀 단위 이력(Phase 4)과 검증(Phase 3)이 셀=행 구조와 정확히 맞물린다. 시트 로드는 `(project) → layers → cell_values` 단일 조인 쿼리로 처리하고, API는 그리드가 쓰기 좋은 layer×parameter 매트릭스로 변환해 반환한다.
@@ -101,8 +118,9 @@ change_event
   id PK (bigserial)
   project_id FK
   event_type            -- cell_update | backbone_copy | backbone_layer_replace
+                        --  | por_change | condition_add | condition_remove
                         --  | status_change | revision_create | ...
-  layer_key, parameter_code   -- 셀 이벤트일 때
+  layer_key, condition_id, parameter_code   -- 셀/조건 이벤트일 때
   old_value, new_value
   source                -- manual | backbone | recipe | system
   actor, created_at
@@ -125,13 +143,20 @@ edit_lock
 
 ## 7. 적재 영역 판독 (ingest reader 계약)
 
-적재 스키마의 실제 형태는 Prefect 파이프라인 확정 시 반영한다. PCM이 적재 영역에 요구하는 **판독 계약**만 먼저 고정한다:
+적재 데이터는 **구조만** 담는다 — process별 layer/step 목록(partid, processid, stepseq, area 같은 컬럼). **조건 값은 적재에 존재하지 않으며, 값의 원천은 기존 프로젝트(백본)다** (D-14). 적재 스키마의 실제 형태는 Prefect 파이프라인 확정 시 반영하고, 판독 계약만 먼저 고정한다:
 
 | 판독 기능 | 반환 |
 |-----------|------|
-| process 목록 조회 | process_key, 표시명, 최종 적재 시각 |
-| process의 layer 구성 조회 | layer_key, layer_name, 순서 |
-| process/layer의 조건 값 조회 (백본 소스) | (layer_key, 원천 파라미터 식별자, 값) 목록 |
+| process 목록 조회 | process_key(partid+processid 조합 등), 표시 속성, 최종 적재 시각 |
+| process의 layer 구성 조회 | layer_key, layer_name, stepseq(순서), **layer_no(layer number)**, area 등 구조 속성 |
 
-- 원천 파라미터 식별자 ↔ PCM `parameter.code` 매핑이 1:1이 아닐 경우를 대비해 매핑 테이블(관리자 관리)을 Phase 1에서 함께 설계한다.
+- ~~조건 값 조회 (백본 소스)~~ — **D-14로 폐기.** 백본 복사는 기존 프로젝트의 `cell_value` → 신규 프로젝트의 `cell_value` 복사이며 적재 영역과 무관하다. 원천 파라미터 매핑 테이블도 백본 용도로는 불필요하다 (Recipe XML 매핑은 별개 주제로 후속 Phase에서 다룸).
+- `stepseq`와 `layer_no`는 layer 매칭 키(D-15)이므로 판독 계약의 필수 반환 항목이다. 적재 스키마 확정 시 두 컬럼의 실재·형식을 확인한다.
 - 접근은 읽기 전용 커넥션(별도 engine, 같은 인스턴스의 타 DB 허용 — D-11)으로만 한다.
+
+## 8. 백본 (D-14 · D-15)
+
+- **백본 = 기존 프로젝트.** 신규 프로젝트 생성 시 (a) process에서 구조(`sheet_layer`)를 파생하고, (b) 선택한 백본 프로젝트의 `cell_value`를 layer 매칭으로 복사한다. 파라미터 축은 전 프로젝트 공통(레지스트리)이므로 파라미터 매핑은 필요 없다 — 매칭은 layer 축에서만 일어난다.
+- **layer 매칭 규칙 (D-15)**: 자동 매칭 키는 `stepseq + layer_no` 조합 (layer 이름은 매칭 키로 부적합). 자동 매칭 실패분은 생성 미리보기에서 **사용자가 수동 매칭**으로 백본 layer를 직접 지정할 수 있다. 수동 매칭 결과는 생성 요청에 오버라이드로 포함된다.
+- 최종 미매칭 layer는 빈 값으로 시작한다. 이후 레이어별 백본 교체(소스: 다른 프로젝트의 layer) 또는 엑셀 붙여넣기로 채운다.
+- 백본 프로젝트가 하나도 없는 부트스트랩 상황은 "백본 없이 시작"(전체 빈 값)으로 처리한다. 레거시 시스템 데이터 이관은 별도 검토 항목(D-15 비고)으로, 이 모델의 전제가 아니다.

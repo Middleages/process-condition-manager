@@ -14,6 +14,18 @@
 | [05-ui-wireframe.md](./05-ui-wireframe.md) | Process Catalog, Project Create, Sheet Editor 와이어프레임 계획 |
 | [wireframes/phase1-ui-wireframe.html](./wireframes/phase1-ui-wireframe.html) | Phase 1 주요 화면 흐름 HTML 와이어프레임 |
 
+### Phase별 세부 작업 계획
+
+| 문서 | 상태 |
+|------|------|
+| [phase-0-tasks.md](./phase-0-tasks.md) — 리셋 + 기반 | 완료 (2026-07-05 점검) |
+| [phase-1-tasks.md](./phase-1-tasks.md) — 프로젝트 + 백본 (그리드 PoC 병행) | 계획 |
+| [phase-2-tasks.md](./phase-2-tasks.md) — 조건표 편집기 | 계획 |
+| [phase-3-tasks.md](./phase-3-tasks.md) — 검증 엔진 | 계획 |
+| [phase-4-tasks.md](./phase-4-tasks.md) — 변경 이력 | 계획 |
+| [phase-5-tasks.md](./phase-5-tasks.md) — 승인 + Revision | 계획 |
+| [phase-6-tasks.md](./phase-6-tasks.md) — 전산 출력 | 계획 |
+
 ## 재구축 배경
 
 기존 시스템의 근본 결함은 **구조를 코드/관리자 등록으로 고정**한 것이었다.
@@ -41,8 +53,14 @@
 | D-11 | 데이터 경계 | PCM은 PostgreSQL만 조회. 같은 인스턴스의 타 DB 조회 가능성 있음 → 읽기 전용 커넥션 분리로 대응 | |
 | D-12 | 그리드 제약 | 유료 라이선스 불가, 사내망(폐쇄망) 배포. 엑셀 대량 붙여넣기 UX와 100~200 컬럼 가독성이 핵심 요구 | AG Grid 붙여넣기 실패는 클립보드가 Enterprise 전용 기능이었기 때문 |
 | D-13 | 레포 전략 | 이 레포에서 기존 코드를 제거하고 재구축. 문서 체계는 `plan/`으로 새로 수립 | Phase 0에서 실행 |
+| D-14 | Process/Project 관계 재정의 | **Process는 구조만 갖는 적재 데이터**(partid, processid, stepseq, area 등의 컬럼으로 된 layer/step 목록)이며 조건 값이 없다. **백본은 적재가 아니라 기존 프로젝트**다: 신규 프로젝트 생성 = process(구조) 선택 + 백본 프로젝트(값) 선택 → layer 매칭으로 값 복사("파라미터가 프로세스에 매칭되며 프로젝트로 변신"). 레이어별 백본 교체의 소스도 프로젝트. 원천 파라미터 매핑 테이블은 백본 용도로는 불필요(폐기). 장기적으로 process당 활성 프로젝트 1개로 수렴(프로젝트≈프로세스) | 2026-07-07 확정. D-06의 "조건 값 판독"과 Phase 1 초안의 매핑 테이블 항목을 대체 |
+| D-15 | layer 매칭 키 + 부트스트랩 | 자동 매칭 키는 **stepseq + layer number** 조합 (적재 process 테이블에 layer number 컬럼 존재). layer 이름은 데이터 품질상 매칭 키로 부적합하고, 단일 컬럼으로는 특정이 어려워 조합 키를 쓴다. **자동 매칭 실패분은 사용자 수동 매칭**으로 보완, 최종 미매칭은 빈 값 시작. 부트스트랩은 "백본 없이 시작(빈 조건표 + 엑셀 붙여넣기)" 확정 | 2026-07-07 확정. 레거시 시스템 데이터 이관(D-04의 예외)은 희망 사항 — 실현 가능성 검토 후 결정 |
+| D-16 | 다중 조건 행 + POR | 같은 layer/step에 **여러 조건 행**이 존재할 수 있다. 시트의 행 = 조건 행(`layer_condition`)이며, 전부 표시하되 같은 layer·step임이 드러나게 그룹핑한다. **POR은 layer당 최대 1개** — `is_por`(por_yn) 플래그 + partial unique 제약으로 강제, 사용자가 조건 행 중 하나를 POR로 선택/이양(`change_event(por_change)`). UI 명칭은 **Layer/Step 병기** | 2026-07-07 확정 (P1-D3 병기 포함). 파생 정책도 확정: 백본 복사 시 조건 행 전부+POR 유지(P1-D8), 편집 중 POR 미지정 허용 + Review 게이트에서 완결성 검사(P5-D5), cross-layer 검증 참조는 POR 행 기준(P3-D5), 출력은 기본 POR 행만(P6-D5) |
+| D-17 | 파라미터 초기 주입 + 중복 프로젝트 정책 | 약 200개 파라미터의 초기 등록은 **엑셀 임포트 기능**(업로드 → dry-run 미리보기 → code 기준 UPSERT)으로 처리 — 반복 사용 가능한 관리 기능으로 Phase 1에 배정 (D-07 "지속 추가/변경" 대응). 조건표가 이미 있는 process의 신규 프로젝트 생성은 **차단**하고 기존 프로젝트(Draft: 이어서 편집 / Approved: Revision)로 유도 | 2026-07-07 확정 |
 
 ## 미확정 항목
 
 - **인증 구조 상세** (D-10): SSO 방식/IdP 연동 상세는 사용자가 추후 전달. Phase 0에서 인증 어댑터 경계만 먼저 확보한다.
 - **그리드 라이브러리 최종 선정** (D-12): Phase 1에서 PoC로 결정. 평가 기준과 후보는 [03-grid-evaluation.md](./03-grid-evaluation.md) 참조.
+- **레거시 데이터 이관 여부** (D-15 비고): 기존 시스템 데이터를 초기 백본 풀로 이관하는 것은 희망 사항 (D-04 전면 리셋의 예외). 실제 데이터 상태를 봐야 판단 가능 — Phase 1 중 별도 스파이크로 실현 가능성만 평가하고, 이관 작업 자체는 로드맵 범위에 넣지 않는다.
+- **적재 스키마의 layer number 컬럼** (D-15 전제): 매칭 키의 절반이므로 적재 스키마 확정 시(P1-D2) 컬럼 실재와 형식을 반드시 확인.

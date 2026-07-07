@@ -6,20 +6,20 @@
   <title>PCM Phase 1 UI Wireframe</title>
   <style>
     :root {
-      color-scheme: dark;
-      --bg: #0f172a;
-      --panel: #111827;
-      --panel-2: #172033;
-      --line: #334155;
-      --muted: #94a3b8;
-      --text: #e5e7eb;
-      --primary: #22d3ee;
-      --primary-dark: #0891b2;
-      --ok: #34d399;
-      --warn: #fbbf24;
-      --danger: #fb7185;
-      --chip: #1e293b;
-      --shadow: 0 24px 80px rgb(0 0 0 / 0.35);
+      color-scheme: light;
+      --bg: #f1f5f9;
+      --panel: #ffffff;
+      --panel-2: #f8fafc;
+      --line: #e2e8f0;
+      --muted: #64748b;
+      --text: #1e293b;
+      --primary: #0891b2;
+      --primary-ink: #155e75;
+      --ok: #059669;
+      --warn: #d97706;
+      --danger: #e11d48;
+      --chip: #f1f5f9;
+      --shadow: 0 18px 50px rgb(15 23 42 / 0.08);
       font-family:
         Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
         "Noto Sans KR", sans-serif;
@@ -30,8 +30,8 @@
     body {
       margin: 0;
       background:
-        radial-gradient(circle at 20% 0%, rgb(34 211 238 / 0.18), transparent 32rem),
-        radial-gradient(circle at 90% 15%, rgb(59 130 246 / 0.16), transparent 28rem),
+        radial-gradient(circle at 18% 0%, rgb(8 145 178 / 0.07), transparent 30rem),
+        radial-gradient(circle at 92% 12%, rgb(99 102 241 / 0.06), transparent 26rem),
         var(--bg);
       color: var(--text);
     }
@@ -50,15 +50,16 @@
       height: 100vh;
       padding: 28px 22px;
       border-right: 1px solid var(--line);
-      background: rgb(15 23 42 / 0.88);
+      background: rgb(255 255 255 / 0.85);
       backdrop-filter: blur(16px);
+      overflow-y: auto;
     }
 
     .brand {
       display: flex;
       gap: 12px;
       align-items: center;
-      margin-bottom: 28px;
+      margin-bottom: 26px;
     }
 
     .brand-mark {
@@ -67,16 +68,13 @@
       border-radius: 14px;
       display: grid;
       place-items: center;
-      background: linear-gradient(135deg, var(--primary), #818cf8);
-      color: #020617;
+      background: linear-gradient(135deg, #06b6d4, #6366f1);
+      color: white;
       font-weight: 900;
-      box-shadow: 0 10px 30px rgb(34 211 238 / 0.28);
+      box-shadow: 0 8px 22px rgb(8 145 178 / 0.25);
     }
 
-    .brand h1 {
-      font-size: 16px;
-      margin: 0;
-    }
+    .brand h1 { font-size: 16px; margin: 0; }
 
     .brand p {
       margin: 3px 0 0;
@@ -97,57 +95,55 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin: 8px 0;
+      margin: 7px 0;
       padding: 12px 14px;
       border: 1px solid transparent;
       border-radius: 14px;
-      color: #cbd5e1;
+      color: #334155;
       background: transparent;
       text-align: left;
       cursor: pointer;
+      font-size: 14px;
     }
 
     .nav-item.active,
     .nav-item:hover {
-      border-color: rgb(34 211 238 / 0.38);
-      background: rgb(34 211 238 / 0.10);
-      color: white;
+      border-color: rgb(8 145 178 / 0.35);
+      background: rgb(8 145 178 / 0.07);
+      color: #0f172a;
     }
 
-    .nav-item small {
-      color: var(--muted);
-      font-size: 11px;
-    }
+    .nav-item small { color: var(--muted); font-size: 11px; }
 
-    .content {
-      padding: 32px;
-    }
+    .content { padding: 32px; }
 
     .hero {
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto;
       gap: 20px;
       align-items: start;
-      margin-bottom: 24px;
+      margin-bottom: 18px;
     }
 
     .eyebrow {
       margin: 0 0 8px;
-      color: var(--primary);
+      color: var(--primary-ink);
       font-weight: 700;
       font-size: 13px;
     }
 
     h2 {
       margin: 0;
-      font-size: clamp(28px, 3vw, 42px);
+      font-size: clamp(26px, 3vw, 38px);
       letter-spacing: -0.04em;
+      color: #0f172a;
     }
 
     .lead {
       max-width: 920px;
-      color: #cbd5e1;
+      color: #475569;
       line-height: 1.65;
+      font-size: 14px;
     }
 
     .legend {
@@ -155,7 +151,7 @@
       padding: 16px;
       border: 1px solid var(--line);
       border-radius: 18px;
-      background: rgb(17 24 39 / 0.75);
+      background: var(--panel);
       box-shadow: var(--shadow);
     }
 
@@ -164,18 +160,28 @@
       justify-content: space-between;
       gap: 18px;
       padding: 7px 0;
-      color: #cbd5e1;
-      border-bottom: 1px dashed rgb(148 163 184 / 0.22);
+      color: #475569;
+      border-bottom: 1px dashed var(--line);
+      font-size: 13px;
     }
 
     .legend-row:last-child { border-bottom: 0; }
-    .legend-row strong { color: white; }
+    .legend-row strong { color: #0f172a; }
 
-    .screen {
-      display: none;
-      animation: fade 140ms ease-out;
+    .flow-strip {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+      margin: 0 0 24px;
+      color: var(--muted);
+      font-size: 12px;
     }
 
+    .flow-strip .chip { cursor: pointer; }
+    .flow-strip .chip.here { border-color: rgb(8 145 178 / 0.5); color: var(--primary-ink); background: rgb(8 145 178 / 0.08); font-weight: 700; }
+
+    .screen { display: none; animation: fade 140ms ease-out; }
     .screen.active { display: block; }
 
     @keyframes fade {
@@ -184,10 +190,10 @@
     }
 
     .wireframe-window {
-      border: 1px solid rgb(148 163 184 / 0.28);
+      border: 1px solid var(--line);
       border-radius: 24px;
       overflow: hidden;
-      background: rgb(15 23 42 / 0.85);
+      background: var(--panel);
       box-shadow: var(--shadow);
     }
 
@@ -195,37 +201,26 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 16px 18px;
+      padding: 15px 18px;
       border-bottom: 1px solid var(--line);
-      background: rgb(2 6 23 / 0.55);
+      background: var(--panel-2);
     }
 
-    .window-dots {
-      display: flex;
-      gap: 8px;
-    }
+    .window-dots { display: flex; gap: 8px; }
 
-    .dot {
-      width: 11px;
-      height: 11px;
-      border-radius: 50%;
-      background: var(--danger);
-    }
+    .dot { width: 11px; height: 11px; border-radius: 50%; background: #fda4af; }
+    .dot:nth-child(2) { background: #fcd34d; }
+    .dot:nth-child(3) { background: #6ee7b7; }
 
-    .dot:nth-child(2) { background: var(--warn); }
-    .dot:nth-child(3) { background: var(--ok); }
-
-    .window-title {
-      color: #cbd5e1;
-      font-size: 13px;
-    }
+    .window-title { color: var(--muted); font-size: 13px; }
 
     .toolbar {
       display: flex;
       flex-wrap: wrap;
+      align-items: center;
       gap: 10px;
-      padding: 18px;
-      border-bottom: 1px solid rgb(148 163 184 / 0.18);
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--line);
       background: var(--panel);
     }
 
@@ -235,30 +230,29 @@
       height: 40px;
       border: 1px solid var(--line);
       border-radius: 12px;
-      background: #0b1220;
-      color: #cbd5e1;
+      background: white;
+      color: #334155;
       padding: 0 13px;
       display: inline-flex;
       align-items: center;
       gap: 8px;
       font-size: 13px;
+      cursor: default;
     }
 
-    .input { min-width: min(360px, 100%); flex: 1; }
-    .button.primary { background: var(--primary); color: #031018; border-color: var(--primary); font-weight: 800; }
-    .button.ghost { background: rgb(30 41 59 / 0.72); }
+    .input { min-width: min(340px, 100%); flex: 1; color: var(--muted); }
+    .button { cursor: pointer; font-weight: 600; }
+    .button.primary { background: var(--primary); color: white; border-color: var(--primary); font-weight: 700; }
+    .button.ghost { background: var(--panel-2); }
 
     .split {
       display: grid;
       grid-template-columns: minmax(420px, 1fr) minmax(420px, 0.95fr);
-      min-height: 610px;
+      min-height: 540px;
     }
 
-    .pane {
-      padding: 18px;
-    }
-
-    .pane + .pane { border-left: 1px solid rgb(148 163 184 / 0.2); }
+    .pane { padding: 18px; min-width: 0; }
+    .pane + .pane { border-left: 1px solid var(--line); }
 
     .pane-title {
       display: flex;
@@ -268,12 +262,10 @@
       margin-bottom: 14px;
     }
 
-    .pane-title h3 {
-      margin: 0;
-      font-size: 16px;
-    }
+    .pane-title h3 { margin: 0; font-size: 16px; color: #0f172a; }
 
     .muted { color: var(--muted); }
+    .small { font-size: 12px; }
 
     .table {
       width: 100%;
@@ -290,54 +282,61 @@
     }
 
     .table td {
-      padding: 14px 12px;
+      padding: 13px 12px;
       background: var(--panel-2);
-      border-top: 1px solid rgb(148 163 184 / 0.14);
-      border-bottom: 1px solid rgb(148 163 184 / 0.14);
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      vertical-align: middle;
     }
 
-    .table td:first-child {
-      border-left: 1px solid rgb(148 163 184 / 0.14);
-      border-radius: 14px 0 0 14px;
-    }
-
-    .table td:last-child {
-      border-right: 1px solid rgb(148 163 184 / 0.14);
-      border-radius: 0 14px 14px 0;
-    }
+    .table td:first-child { border-left: 1px solid var(--line); border-radius: 14px 0 0 14px; }
+    .table td:last-child { border-right: 1px solid var(--line); border-radius: 0 14px 14px 0; }
 
     .table tr.selected td {
-      background: rgb(8 145 178 / 0.22);
-      border-color: rgb(34 211 238 / 0.38);
+      background: #ecfeff;
+      border-color: rgb(8 145 178 / 0.4);
     }
 
     .key {
       display: block;
-      color: var(--primary);
+      color: var(--primary-ink);
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
       font-size: 12px;
     }
 
-    .chip-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-    }
+    .chip-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 
     .chip {
       display: inline-flex;
       align-items: center;
       gap: 6px;
       padding: 6px 10px;
-      border: 1px solid rgb(148 163 184 / 0.18);
+      border: 1px solid var(--line);
       border-radius: 999px;
       background: var(--chip);
-      color: #cbd5e1;
+      color: #475569;
       font-size: 12px;
     }
 
-    .chip.ok { color: #bbf7d0; border-color: rgb(52 211 153 / 0.35); }
-    .chip.warn { color: #fde68a; border-color: rgb(251 191 36 / 0.35); }
+    .chip.ok { color: #047857; border-color: rgb(5 150 105 / 0.35); background: #ecfdf5; }
+    .chip.warn { color: #b45309; border-color: rgb(217 119 6 / 0.35); background: #fffbeb; }
+    .chip.danger { color: #be123c; border-color: rgb(225 29 72 / 0.3); background: #fff1f2; }
+    .chip.disabled { opacity: 0.5; border-style: dashed; }
+    .chip.filter-on { border-color: rgb(8 145 178 / 0.5); color: var(--primary-ink); background: #ecfeff; font-weight: 700; }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+    }
+
+    .badge.draft { background: #ecfeff; color: #0e7490; border: 1px solid #a5f3fc; }
+    .badge.approved { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
+    .badge.none { background: var(--chip); color: var(--muted); border: 1px dashed #cbd5e1; }
 
     .summary-grid {
       display: grid;
@@ -348,34 +347,62 @@
 
     .metric {
       padding: 14px;
-      border: 1px solid rgb(148 163 184 / 0.18);
+      border: 1px solid var(--line);
       border-radius: 16px;
       background: var(--panel-2);
     }
 
-    .metric span {
-      display: block;
-      color: var(--muted);
-      font-size: 12px;
-    }
-
-    .metric strong {
-      display: block;
-      margin-top: 6px;
-      font-size: 22px;
-    }
+    .metric span { display: block; color: var(--muted); font-size: 12px; }
+    .metric strong { display: block; margin-top: 6px; font-size: 22px; color: #0f172a; }
 
     .card {
       padding: 16px;
-      border: 1px solid rgb(148 163 184 / 0.18);
+      border: 1px solid var(--line);
       border-radius: 18px;
       background: var(--panel-2);
       margin-bottom: 12px;
     }
 
-    .card h4 {
-      margin: 0 0 10px;
+    .card h4 { margin: 0 0 10px; font-size: 14px; color: #0f172a; }
+
+    .banner {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      padding: 13px 15px;
+      border-radius: 14px;
+      font-size: 13px;
+      line-height: 1.55;
+      margin-bottom: 12px;
     }
+
+    .banner.warn { border: 1px solid #fcd34d; background: #fffbeb; color: #92400e; }
+    .banner.info { border: 1px solid #a5f3fc; background: #ecfeff; color: #155e75; }
+
+    .steps {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel);
+      font-size: 13px;
+    }
+
+    .step {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 13px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      color: var(--muted);
+      background: var(--chip);
+    }
+
+    .step.done { border-color: rgb(5 150 105 / 0.4); color: #047857; background: #ecfdf5; }
+    .step.current { border-color: rgb(8 145 178 / 0.5); color: var(--primary-ink); background: #ecfeff; font-weight: 700; }
+    .step b { font-weight: 800; }
 
     .create-layout {
       display: grid;
@@ -384,17 +411,8 @@
       padding: 18px;
     }
 
-    .form-row {
-      display: grid;
-      gap: 7px;
-      margin-bottom: 13px;
-    }
-
-    .form-row label {
-      color: #cbd5e1;
-      font-size: 13px;
-      font-weight: 700;
-    }
+    .form-row { display: grid; gap: 7px; margin-bottom: 13px; }
+    .form-row label { color: #334155; font-size: 13px; font-weight: 700; }
 
     .field-box {
       min-height: 42px;
@@ -403,61 +421,143 @@
       padding: 0 13px;
       border: 1px solid var(--line);
       border-radius: 12px;
-      background: #0b1220;
-      color: #cbd5e1;
+      background: white;
+      color: #334155;
     }
 
-    .check-list {
-      list-style: none;
-      padding: 0;
-      margin: 0;
-    }
+    .check-list { list-style: none; padding: 0; margin: 0; }
 
     .check-list li {
       display: flex;
       justify-content: space-between;
       gap: 16px;
-      padding: 12px 0;
-      border-bottom: 1px dashed rgb(148 163 184 / 0.2);
+      padding: 11px 0;
+      border-bottom: 1px dashed var(--line);
+      font-size: 13px;
     }
 
     .check-list li:last-child { border-bottom: 0; }
 
+    .bar {
+      position: relative;
+      width: 110px;
+      height: 8px;
+      border-radius: 999px;
+      background: var(--line);
+      overflow: hidden;
+    }
+
+    .bar i {
+      position: absolute;
+      inset: 0 auto 0 0;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #06b6d4, #0891b2);
+    }
+
+    .bar.low i { background: linear-gradient(90deg, #f59e0b, #d97706); }
+
+    .modal-frame {
+      margin: 4px 18px 18px;
+      border: 2px dashed rgb(8 145 178 / 0.45);
+      border-radius: 20px;
+      background: var(--panel-2);
+      overflow: hidden;
+    }
+
+    .modal-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--line);
+      background: #ecfeff;
+    }
+
+    .modal-head h4 { margin: 0; font-size: 14px; color: #0f172a; }
+
+    .modal-body {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+      padding: 16px 18px;
+    }
+
+    .modal-step h5 {
+      margin: 0 0 10px;
+      font-size: 12px;
+      color: var(--primary-ink);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .mini-list { list-style: none; margin: 0; padding: 0; font-size: 13px; }
+
+    .mini-list li {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 11px;
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      background: white;
+      margin-bottom: 7px;
+    }
+
+    .mini-list li.selected { border-color: rgb(8 145 178 / 0.5); background: #ecfeff; }
+
+    .diff-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+
+    .diff-table th, .diff-table td {
+      text-align: left;
+      padding: 8px 10px;
+      border-bottom: 1px dashed var(--line);
+    }
+
+    .diff-table th { color: var(--muted); font-weight: 600; }
+    .diff-table .old { color: var(--muted); text-decoration: line-through; }
+    .diff-table .new { color: var(--primary-ink); font-weight: 700; }
+
+    .modal-foot {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 18px;
+      border-top: 1px solid var(--line);
+      background: white;
+    }
+
     .sheet-toolbar {
       display: flex;
       flex-wrap: wrap;
+      align-items: center;
       justify-content: space-between;
       gap: 12px;
-      padding: 16px 18px;
-      border-bottom: 1px solid rgb(148 163 184 / 0.18);
+      padding: 15px 18px;
+      border-bottom: 1px solid var(--line);
       background: var(--panel);
     }
 
-    .tabs {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-    }
+    .tabs { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 
     .tab {
       padding: 9px 13px;
       border-radius: 999px;
-      border: 1px solid rgb(148 163 184 / 0.2);
+      border: 1px solid var(--line);
       background: var(--chip);
-      color: #cbd5e1;
+      color: #475569;
       font-size: 13px;
     }
 
-    .tab.active {
-      background: rgb(34 211 238 / 0.15);
-      border-color: rgb(34 211 238 / 0.45);
-      color: white;
-    }
+    .tab.active { background: #ecfeff; border-color: rgb(8 145 178 / 0.45); color: var(--primary-ink); font-weight: 700; }
+    .tab.meta { border-style: dashed; color: var(--muted); font-size: 12px; background: transparent; }
 
     .grid-wrap {
       overflow: auto;
-      max-height: 560px;
-      border-bottom: 1px solid rgb(148 163 184 / 0.18);
+      max-height: 520px;
+      border-bottom: 1px solid var(--line);
     }
 
     .sheet-grid {
@@ -469,50 +569,130 @@
 
     .sheet-grid th,
     .sheet-grid td {
-      border: 1px solid rgb(148 163 184 / 0.18);
-      padding: 10px;
-      background: #111827;
+      border: 1px solid var(--line);
+      padding: 9px 10px;
+      background: white;
       white-space: nowrap;
     }
 
-    .sheet-grid th {
+    .sheet-grid thead th {
       position: sticky;
-      top: 0;
       z-index: 2;
-      background: #0b1220;
-      color: #cbd5e1;
+      background: var(--panel-2);
+      color: #475569;
+    }
+
+    .sheet-grid thead tr:first-child th { top: 0; }
+    .sheet-grid thead tr:nth-child(2) th { top: 33px; }
+
+    .sheet-grid th.cat {
+      text-align: center;
+      color: var(--primary-ink);
+      font-size: 11px;
+      letter-spacing: 0.08em;
     }
 
     .sheet-grid .sticky-col {
       position: sticky;
       left: 0;
       z-index: 3;
-      min-width: 170px;
-      background: #0f172a;
+      min-width: 180px;
+      background: var(--panel-2);
     }
 
     .sheet-grid th.sticky-col { z-index: 4; }
 
     .cell-dirty { outline: 2px solid var(--warn); outline-offset: -2px; }
     .cell-error { outline: 2px solid var(--danger); outline-offset: -2px; }
-    .cell-readonly { color: var(--muted); background: #0f172a !important; }
+    .cell-staged { outline: 2px dashed var(--primary); outline-offset: -2px; color: var(--primary-ink); }
+    .cell-empty { color: #cbd5e1; }
+    .cell-focus { outline: 2px solid #6366f1; outline-offset: -2px; }
+
+    .cell-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      padding: 12px 18px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel-2);
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .cell-legend i {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border-radius: 4px;
+      background: white;
+      border: 1px solid var(--line);
+      vertical-align: -2px;
+      margin-right: 6px;
+      font-style: normal;
+    }
+
+    .cell-legend .i-dirty { outline: 2px solid var(--warn); outline-offset: -2px; }
+    .cell-legend .i-error { outline: 2px solid var(--danger); outline-offset: -2px; }
+    .cell-legend .i-staged { outline: 2px dashed var(--primary); outline-offset: -2px; }
+    .cell-legend .i-focus { outline: 2px solid #6366f1; outline-offset: -2px; }
 
     .bottom-panel {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
       gap: 12px;
       padding: 18px;
-      background: rgb(2 6 23 / 0.35);
+      background: var(--panel-2);
     }
 
     .note {
       padding: 14px;
-      border: 1px dashed rgb(148 163 184 / 0.35);
+      border: 1px dashed #cbd5e1;
       border-radius: 16px;
-      color: #cbd5e1;
-      background: rgb(15 23 42 / 0.55);
+      color: #475569;
+      background: white;
       line-height: 1.55;
       font-size: 13px;
+    }
+
+    .note h5 {
+      margin: 0 0 7px;
+      font-size: 12px;
+      color: var(--primary-ink);
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .annotations {
+      margin: 16px 4px 40px;
+      padding: 16px 18px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: var(--panel);
+    }
+
+    .annotations h4 {
+      margin: 0 0 10px;
+      font-size: 13px;
+      color: var(--primary-ink);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .annotations ol {
+      margin: 0;
+      padding-left: 20px;
+      color: #475569;
+      font-size: 13px;
+      line-height: 1.7;
+    }
+
+    .annotations code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 12px;
+      color: var(--primary-ink);
+      background: #ecfeff;
+      padding: 1px 5px;
+      border-radius: 6px;
     }
 
     @media (max-width: 1120px) {
@@ -526,8 +706,9 @@
       .hero,
       .split,
       .create-layout,
+      .modal-body,
       .bottom-panel { grid-template-columns: 1fr; }
-      .pane + .pane { border-left: 0; border-top: 1px solid rgb(148 163 184 / 0.2); }
+      .pane + .pane { border-left: 0; border-top: 1px solid var(--line); }
     }
   </style>
 </head>
@@ -538,24 +719,41 @@
         <div class="brand-mark">PCM</div>
         <div>
           <h1>Process Condition Manager</h1>
-          <p>Phase 1 Wireframe HTML</p>
+          <p>Phase 1 Wireframe · v3 (light)</p>
         </div>
       </div>
 
       <p class="nav-title">Primary flow</p>
+      <button class="nav-item" type="button" data-screen="projects">
+        <span>Project List</span><small>01</small>
+      </button>
       <button class="nav-item active" type="button" data-screen="catalog">
-        <span>Process Catalog</span><small>01</small>
+        <span>Process Catalog</span><small>02</small>
       </button>
       <button class="nav-item" type="button" data-screen="create">
-        <span>Project Create</span><small>02</small>
+        <span>Project Create</span><small>03</small>
+      </button>
+      <button class="nav-item" type="button" data-screen="detail">
+        <span>Project Detail · 백본 교체</span><small>04</small>
       </button>
       <button class="nav-item" type="button" data-screen="sheet">
-        <span>Sheet Editor PoC</span><small>03</small>
+        <span>Sheet Editor PoC</span><small>05</small>
       </button>
 
-      <p class="nav-title">Assumptions</p>
+      <p class="nav-title">도메인 정의 (D-14)</p>
       <div class="note">
-        Process는 제품/route 전체 흐름입니다. Photo, Etch, 계측 등은 process가 아니라 layer 이름 또는 유형으로 다룹니다.
+        <strong>Process</strong> = 적재로 들어오는 <strong>구조(뼈대)</strong>. partid, processid, stepseq, area 같은 컬럼으로 된 layer/step 목록. 조건 값 없음, 읽기 전용.<br /><br />
+        <strong>Project</strong> = process 하나를 골라 만든 <strong>조건표</strong> (구조 + 셀 값 + 상태/버전).<br /><br />
+        <strong>백본</strong> = 값의 원천이 되는 <strong>기존 프로젝트</strong>. 백본을 매칭하는 순간 "프로세스가 프로젝트로 변신"한다.<br /><br />
+        <strong>조건 행 / POR</strong> = 같은 layer·step에 <strong>여러 조건 행</strong>이 있을 수 있고, 그중 <strong>POR은 layer당 1개</strong>(por_yn)를 사용자가 선택한다 (D-16).
+      </div>
+
+      <p class="nav-title">적용 정책</p>
+      <div class="note">
+        <strong>D-15</strong> layer 자동 매칭 키 = <strong>stepseq + layer number</strong> 조합 (layer 이름은 매칭 키로 부적합). 자동 실패분은 <strong>사용자 수동 매칭</strong>으로 보완<br />
+        <strong>P1-D1</strong> 최종 미매칭 layer는 빈 값으로 시작<br />
+        <strong>P2-D3</strong> 빈 셀은 "해당 없음"이 아닌 편집 가능한 빈 값<br />
+        <span class="muted small">숫자 키 1–5로 화면 전환</span>
       </div>
     </aside>
 
@@ -563,32 +761,113 @@
       <header class="hero">
         <div>
           <p class="eyebrow">Plan 기반 HTML 와이어프레임</p>
-          <h2>Process 선택 → Project 생성 → 조건표 편집 흐름</h2>
+          <h2>프로세스(구조) 선택 → 백본 프로젝트 매칭 → 조건표 편집</h2>
           <p class="lead">
-            이 파일은 <strong>plan/05-ui-wireframe.md</strong>의 정보 구조를 HTML로 옮긴 정적 와이어프레임입니다.
-            실제 구현 전 화면 밀도, 검색/필터 위치, layer preview, 100개 미만 layer × 약 200 parameter 그리드 UX를 검토하기 위한 목적입니다.
+            <strong>plan/05-ui-wireframe.md</strong>·<strong>plan/phase-1-tasks.md</strong> 기반 정적 와이어프레임입니다.
+            핵심 flow: 적재된 process(구조)를 고르고, 값의 원천이 될 <strong>백본 프로젝트</strong>를 골라 layer를 매칭하면
+            새 프로젝트(조건표)가 만들어집니다. 버튼을 누르면 실제 flow대로 화면이 이동합니다.
           </p>
         </div>
         <aside class="legend">
           <div class="legend-row"><span>Process 후보</span><strong>수천 개+</strong></div>
-          <div class="legend-row"><span>Layer / Process</span><strong>&lt; 100</strong></div>
+          <div class="legend-row"><span>Layer(Step) / Process</span><strong>&lt; 100</strong></div>
           <div class="legend-row"><span>Parameter</span><strong>≈ 200</strong></div>
-          <div class="legend-row"><span>Cells / Project</span><strong>≈ 20,000</strong></div>
+          <div class="legend-row"><span>Cells / Project</span><strong>≈ 20,000 (조건 1행 기준)</strong></div>
         </aside>
       </header>
 
+      <div class="flow-strip" aria-label="Screen flow">
+        <span class="chip" data-goto="projects">01 목록</span> →
+        <span class="chip here" data-goto="catalog">02 카탈로그</span> →
+        <span class="chip" data-goto="create">03 생성 (백본 매칭)</span> →
+        <span class="chip" data-goto="detail">04 상세/백본</span> →
+        <span class="chip" data-goto="sheet">05 시트 PoC</span>
+      </div>
+
+      <!-- ═══════════════ 01. Project List ═══════════════ -->
+      <section id="projects" class="screen" aria-labelledby="projects-title">
+        <div class="wireframe-window">
+          <div class="window-bar">
+            <div class="window-dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+            <div id="projects-title" class="window-title">Project List / 작업의 시작점 (홈)</div>
+          </div>
+
+          <div class="toolbar">
+            <div class="input">🔎 프로젝트명, process key 검색</div>
+            <span class="chip filter-on">전체 12</span>
+            <span class="chip">Draft 9</span>
+            <span class="chip">Approved 3</span>
+            <span class="chip disabled" title="Phase 5">Review</span>
+            <span class="chip disabled" title="Phase 5">Archived</span>
+            <button class="button primary" type="button" data-goto="catalog">＋ 새 프로젝트</button>
+          </div>
+
+          <div class="pane">
+            <table class="table" aria-label="Project list">
+              <thead>
+                <tr><th>프로젝트</th><th>Process</th><th>상태</th><th>버전</th><th>잠금</th><th>최근 수정</th><th></th></tr>
+              </thead>
+              <tbody>
+                <tr class="selected">
+                  <td><strong>Alpha Main 조건표</strong></td>
+                  <td><span class="key">ALPHA-01 · P-MAIN</span></td>
+                  <td><span class="badge draft">Draft</span></td>
+                  <td>v1</td>
+                  <td><span class="chip ok">내가 편집 중</span></td>
+                  <td class="muted">5분 전 · 나</td>
+                  <td><button class="button ghost" type="button" data-goto="detail">열기</button></td>
+                </tr>
+                <tr>
+                  <td><strong>Beta Memory 조건표</strong></td>
+                  <td><span class="key">BETA-02 · P-MEM</span></td>
+                  <td><span class="badge approved">Approved</span></td>
+                  <td>v3</td>
+                  <td class="muted">—</td>
+                  <td class="muted">2026-06-30 · 김공정</td>
+                  <td><button class="button ghost" type="button">열기</button></td>
+                </tr>
+                <tr>
+                  <td><strong>Delta Pilot 조건표</strong></td>
+                  <td><span class="key">DELTA-04 · P-PILOT</span></td>
+                  <td><span class="badge approved">Approved</span></td>
+                  <td>v2</td>
+                  <td class="muted">—</td>
+                  <td class="muted">2026-06-21 · 박포토</td>
+                  <td><button class="button ghost" type="button">열기</button></td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="chip-row" style="margin-top: 10px;">
+              <span class="chip">이전</span><span class="chip filter-on">1</span><span class="chip">2</span><span class="chip">다음</span>
+              <span class="muted small" style="margin-left: auto;">빈 목록일 때: "아직 프로젝트가 없습니다 → 새 프로젝트" 안내</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="annotations">
+          <h4>동작 메모 — Project List</h4>
+          <ol>
+            <li>장기적으로 <strong>process당 활성 프로젝트 1개</strong>로 수렴("프로젝트 = 프로세스" 감각). 목록의 Process 컬럼이 그 대응 관계를 보여준다.</li>
+            <li>Approved 프로젝트는 이후 다른 프로젝트 생성 시 <strong>백본 후보</strong>가 된다 (03 화면 ② 단계).</li>
+            <li>Phase 1에서는 상태가 <code>draft</code> 고정 — Review/Archived 칩은 자리만 (Phase 5). 잠금 표시는 Phase 2.</li>
+            <li>목록 API: <code>GET /projects?query=&amp;status=&amp;cursor=</code>.</li>
+          </ol>
+        </div>
+      </section>
+
+      <!-- ═══════════════ 02. Process Catalog ═══════════════ -->
       <section id="catalog" class="screen active" aria-labelledby="catalog-title">
         <div class="wireframe-window">
           <div class="window-bar">
             <div class="window-dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
-            <div id="catalog-title" class="window-title">Process Catalog / 제품 route 검색 및 layer preview</div>
+            <div id="catalog-title" class="window-title">Process Catalog / 적재된 구조(layer 리스트) 탐색</div>
           </div>
 
           <div class="toolbar">
-            <div class="input">🔎 제품명, process key, route 검색</div>
-            <div class="select">제품군: All</div>
-            <div class="select">최근 적재일: 30일</div>
-            <div class="select">상태: Active</div>
+            <div class="input">🔎 partid, processid 검색</div>
+            <div class="select">Area: All ▾</div>
+            <div class="select">최근 적재일: 30일 ▾</div>
+            <span class="chip">☐ 조건표 없는 process만</span>
             <button class="button primary" type="button">검색</button>
           </div>
 
@@ -596,236 +875,530 @@
             <div class="pane">
               <div class="pane-title">
                 <h3>Process 결과 테이블</h3>
-                <span class="muted">2,438 routes · cursor paging</span>
+                <span class="muted small">2,438 processes · cursor paging</span>
               </div>
               <table class="table" aria-label="Process search results">
                 <thead>
-                  <tr><th>Process</th><th>Layer</th><th>적재</th><th>상태</th></tr>
+                  <tr><th>Process (partid · processid)</th><th>Steps</th><th>최근 적재</th><th>조건표</th></tr>
                 </thead>
                 <tbody>
                   <tr class="selected">
-                    <td><strong>제품 Alpha Main Route</strong><span class="key">product_alpha_main</span></td>
-                    <td>87</td><td>2026-07-07</td><td><span class="chip ok">Active</span></td>
+                    <td><strong>제품 Alpha Main</strong><span class="key">ALPHA-01 · P-MAIN</span></td>
+                    <td>87</td>
+                    <td class="muted">2026-07-07</td>
+                    <td><span class="badge none">없음</span></td>
                   </tr>
                   <tr>
-                    <td><strong>제품 Beta Memory Route</strong><span class="key">product_beta_memory</span></td>
-                    <td>92</td><td>2026-07-06</td><td><span class="chip ok">Active</span></td>
+                    <td><strong>제품 Beta Memory</strong><span class="key">BETA-02 · P-MEM</span></td>
+                    <td>92</td>
+                    <td class="muted">2026-07-06</td>
+                    <td><span class="badge approved">v3 Approved</span></td>
                   </tr>
                   <tr>
-                    <td><strong>제품 Gamma Legacy Route</strong><span class="key">product_gamma_legacy</span></td>
-                    <td>64</td><td>2026-06-28</td><td><span class="chip warn">Review</span></td>
+                    <td><strong>제품 Gamma Legacy</strong><span class="key">GAMMA-03 · P-LGC</span></td>
+                    <td>64</td>
+                    <td class="muted">2026-06-28</td>
+                    <td><span class="badge none">없음</span></td>
                   </tr>
                   <tr>
-                    <td><strong>제품 Delta Pilot Route</strong><span class="key">product_delta_pilot</span></td>
-                    <td>73</td><td>2026-07-02</td><td><span class="chip ok">Active</span></td>
+                    <td><strong>제품 Delta Pilot</strong><span class="key">DELTA-04 · P-PILOT</span></td>
+                    <td>73</td>
+                    <td class="muted">2026-07-02</td>
+                    <td><span class="badge approved">v2 Approved</span></td>
                   </tr>
                 </tbody>
               </table>
               <div class="chip-row">
-                <span class="chip">이전</span><span class="chip ok">1</span><span class="chip">2</span><span class="chip">3</span><span class="chip">다음</span>
+                <span class="chip">이전</span><span class="chip filter-on">1</span><span class="chip">2</span><span class="chip">3</span><span class="chip">다음</span>
               </div>
             </div>
 
             <div class="pane">
               <div class="pane-title">
-                <h3>선택 Process Preview</h3>
-                <button class="button primary" type="button">프로젝트 생성</button>
+                <h3>선택 Process 구조 Preview</h3>
+                <button class="button primary" type="button" data-goto="create">이 구조로 프로젝트 생성 →</button>
               </div>
               <div class="summary-grid">
-                <div class="metric"><span>Layer</span><strong>87</strong></div>
-                <div class="metric"><span>Parameter</span><strong>198</strong></div>
-                <div class="metric"><span>예상 Cell</span><strong>17,226</strong></div>
+                <div class="metric"><span>Steps (Layer)</span><strong>87</strong></div>
+                <div class="metric"><span>Area</span><strong>4</strong></div>
+                <div class="metric"><span>조건표</span><strong class="muted">없음</strong></div>
               </div>
               <div class="card">
-                <h4>제품/route 요약</h4>
+                <h4>구조 요약</h4>
                 <div class="chip-row">
-                  <span class="chip">Product: Alpha</span>
-                  <span class="chip">Route: Main</span>
-                  <span class="chip">Source: Ingest DB</span>
-                  <span class="chip ok">Mapping 98%</span>
+                  <span class="chip">PartID: ALPHA-01</span>
+                  <span class="chip">ProcessID: P-MAIN</span>
+                  <span class="chip">Source: Ingest DB (읽기 전용)</span>
                 </div>
               </div>
-              <table class="table" aria-label="Layer preview">
-                <thead><tr><th>Order</th><th>Layer</th><th>Type</th><th>Status</th></tr></thead>
+              <div class="chip-row" style="margin-bottom: 10px;">
+                <span class="chip filter-on">전체 87</span>
+                <span class="chip">PHOTO 22</span>
+                <span class="chip">ETCH 18</span>
+                <span class="chip">MET 15</span>
+                <span class="chip">기타 32</span>
+                <span class="chip">🔎 layer 검색</span>
+              </div>
+              <table class="table" aria-label="Layer structure preview">
+                <thead><tr><th>StepSeq</th><th>LayerNo</th><th>Layer (Step)</th><th>Area</th></tr></thead>
                 <tbody>
-                  <tr><td>001</td><td><strong>Initial Clean</strong><span class="key">001_init_clean</span></td><td>Clean</td><td><span class="chip ok">Ready</span></td></tr>
-                  <tr><td>010</td><td><strong>Active Photo</strong><span class="key">010_photo_active</span></td><td>Photo</td><td><span class="chip ok">Ready</span></td></tr>
-                  <tr><td>020</td><td><strong>Active Etch</strong><span class="key">020_etch_active</span></td><td>Etch</td><td><span class="chip ok">Ready</span></td></tr>
-                  <tr><td>030</td><td><strong>Active Metrology</strong><span class="key">030_metrology_active</span></td><td>Metrology</td><td><span class="chip warn">1 warning</span></td></tr>
-                  <tr><td>...</td><td colspan="3" class="muted">100개 미만 layer 전체 표시 + type/search filter</td></tr>
+                  <tr><td>0010</td><td>01</td><td><strong>INIT_CLN</strong><span class="key">init_cln</span></td><td>CLN</td></tr>
+                  <tr><td>0100</td><td>10</td><td><strong>AA_PHOTO</strong><span class="key">aa_photo</span></td><td>PHOTO</td></tr>
+                  <tr><td>0200</td><td>10</td><td><strong>AA_ETCH</strong><span class="key">aa_etch</span></td><td>ETCH</td></tr>
+                  <tr><td>0300</td><td>10</td><td><strong>AA_MET</strong><span class="key">aa_met</span></td><td>MET</td></tr>
+                  <tr><td>0400</td><td>20</td><td><strong>GATE_PHOTO</strong><span class="key">gate_photo</span></td><td>PHOTO</td></tr>
+                  <tr><td colspan="4" class="muted">… 100개 미만이므로 전체 스크롤 (area 필터 + 검색). stepseq + layer number가 매칭 키 (D-15)</td></tr>
                 </tbody>
               </table>
             </div>
           </div>
         </div>
+
+        <div class="annotations">
+          <h4>동작 메모 — Process Catalog</h4>
+          <ol>
+            <li>process는 <strong>구조만</strong> 보여준다 — partid/processid/stepseq/area 기반 layer 리스트. 값·매핑 정보는 여기 없다 (값의 원천은 백본 프로젝트, D-14).</li>
+            <li>"조건표" 컬럼으로 process ↔ 프로젝트 대응 상태를 표시 — "없음"인 process가 생성 대상. "조건표 없는 process만" 필터가 신규 작업 발굴 동선.</li>
+            <li>이미 조건표가 있는 process는 신규 생성이 <strong>차단</strong>되고 기존 프로젝트로 유도된다 (P1-D6 확정) — Draft면 "이어서 편집", Approved면 "Revision 생성"(Phase 5). 버튼도 "기존 조건표 열기"로 바뀐다.</li>
+            <li>검색/필터 속성(partid, area 등)은 적재 스키마 확정 후 최종 확정 (<code>P1-D2</code>).</li>
+            <li>API: <code>GET /processes?query=&amp;cursor=</code>, <code>GET /processes/{key}/layers</code>.</li>
+          </ol>
+        </div>
       </section>
 
+      <!-- ═══════════════ 03. Project Create ═══════════════ -->
       <section id="create" class="screen" aria-labelledby="create-title">
         <div class="wireframe-window">
           <div class="window-bar">
             <div class="window-dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
-            <div id="create-title" class="window-title">Project Create / process 구조를 sheet_layer로 파생</div>
+            <div id="create-title" class="window-title">Project Create / 구조(process) + 값(백본 프로젝트) 매칭</div>
+          </div>
+
+          <div class="steps" aria-label="Creation steps">
+            <span class="step done"><b>①</b> Process 확인 (구조)</span>
+            <span class="step done"><b>②</b> 백본 프로젝트 선택 (값)</span>
+            <span class="step current"><b>③</b> 매칭 확인 + 생성</span>
           </div>
 
           <div class="create-layout">
             <div>
               <div class="card">
-                <h4>선택 Process</h4>
+                <h4>① 선택 Process — 구조의 원천</h4>
                 <div class="summary-grid">
-                  <div class="metric"><span>Process</span><strong>Alpha</strong></div>
-                  <div class="metric"><span>Layer</span><strong>87</strong></div>
-                  <div class="metric"><span>예상 Cell</span><strong>17,226</strong></div>
+                  <div class="metric"><span>Process</span><strong>Alpha Main</strong></div>
+                  <div class="metric"><span>Steps</span><strong>87</strong></div>
+                  <div class="metric"><span>조건표</span><strong class="muted">없음 → 신규</strong></div>
                 </div>
                 <div class="chip-row">
-                  <span class="chip">product_alpha_main</span>
-                  <span class="chip ok">Backbone source available</span>
-                  <span class="chip warn">Mapping 누락 3건</span>
+                  <span class="chip">ALPHA-01 · P-MAIN</span>
+                  <span class="chip">적재 2026-07-07</span>
                 </div>
+              </div>
+
+              <div class="card">
+                <h4>② 백본 프로젝트 — 값의 원천</h4>
+                <div class="input" style="margin-bottom: 10px; min-width: 0;">🔎 기존 프로젝트 검색 (Approved 우선)</div>
+                <ul class="mini-list">
+                  <li class="selected">
+                    <span><strong>Beta Memory 조건표 v3</strong><span class="key">BETA-02 · P-MEM · Approved</span></span>
+                    <span class="chip ok">layer 매칭 79/87</span>
+                  </li>
+                  <li>
+                    <span><strong>Delta Pilot 조건표 v2</strong><span class="key">DELTA-04 · P-PILOT · Approved</span></span>
+                    <span class="chip">매칭 61/87</span>
+                  </li>
+                  <li>
+                    <span><strong>백본 없이 시작</strong><span class="muted small">모든 셀 빈 값 — 엑셀 붙여넣기로 채움</span></span>
+                    <span class="chip">0/87</span>
+                  </li>
+                </ul>
               </div>
 
               <div class="card">
                 <h4>프로젝트 정보</h4>
                 <div class="form-row">
                   <label>프로젝트 이름</label>
-                  <div class="field-box">Alpha Main 조건표 Draft - 2026.07</div>
+                  <div class="field-box">Alpha Main 조건표</div>
                 </div>
                 <div class="form-row">
                   <label>설명</label>
-                  <div class="field-box">신규 적재 route 기준 백본 복사 후 조건 편집 시작</div>
+                  <div class="field-box">Beta Memory v3 백본 기반 신규 작성</div>
                 </div>
-              </div>
-
-              <div class="card">
-                <h4>생성 정책 확인</h4>
-                <ul class="check-list">
-                  <li><span>sheet_layer 파생</span><strong>87 rows</strong></li>
-                  <li><span>cell_value 초기화</span><strong>17,226 cells</strong></li>
-                  <li><span>초기 상태</span><strong>Draft</strong></li>
-                  <li><span>변경 이벤트</span><strong>backbone_copy 기록</strong></li>
-                </ul>
               </div>
             </div>
 
             <div>
-              <div class="pane-title">
-                <h3>Layer Preview</h3>
-                <span class="muted">생성 전 확인</span>
+              <div class="banner info">
+                ℹ️ <span>매칭률은 process가 아니라 <strong>(선택 process, 백본 프로젝트) 쌍</strong>에서 layer 단위로 계산됩니다.
+                자동 매칭 키는 <strong>stepseq + layer number</strong> (D-15). 백본을 고르는 순간 파라미터 값이 구조에 매칭되며 — 이때 "프로세스가 프로젝트로 변신"합니다.</span>
               </div>
-              <table class="table" aria-label="Project creation layer preview">
-                <thead><tr><th>Order</th><th>Layer</th><th>Source Value</th></tr></thead>
+              <div class="banner warn">
+                ⚠️ <span><strong>자동 매칭 실패 8 layer</strong> — 아래 미리보기에서 <strong>수동 매칭</strong>으로 백본 layer를 직접 지정하거나,
+                빈 값으로 시작할 수 있습니다 (P1-D1). 빈 값 layer는 생성 후 레이어별 교체(04)·엑셀 붙여넣기로 채웁니다.</span>
+              </div>
+
+              <div class="card">
+                <h4>③ 매칭 확인 (dry-run 결과)</h4>
+                <ul class="check-list">
+                  <li><span>sheet_layer 파생 (적재 구조)</span><strong>87 rows</strong></li>
+                  <li><span>자동 매칭 (stepseq + layer no)</span><strong>78 layers</strong></li>
+                  <li><span>수동 매칭 (사용자 지정)</span><strong>1 layer</strong></li>
+                  <li><span>백본 값 복사 (79 layer)</span><strong>15,642 cells</strong></li>
+                  <li><span>미매칭 — 빈 값 시작</span><strong class="muted">8 layers</strong></li>
+                  <li><span>초기 상태 / 이벤트</span><strong>Draft (v1) · backbone_copy 1건</strong></li>
+                </ul>
+              </div>
+
+              <div class="pane-title" style="margin-top: 16px;">
+                <h3>Layer 매칭 미리보기</h3>
+                <span class="muted small">생성 전 최종 확인</span>
+              </div>
+              <table class="table" aria-label="Layer matching preview">
+                <thead><tr><th>Step·No</th><th>Layer (Step)</th><th>백본 매칭</th></tr></thead>
                 <tbody>
-                  <tr><td>001</td><td><strong>Initial Clean</strong><span class="key">001_init_clean</span></td><td><span class="chip ok">Complete</span></td></tr>
-                  <tr><td>010</td><td><strong>Active Photo</strong><span class="key">010_photo_active</span></td><td><span class="chip ok">Complete</span></td></tr>
-                  <tr><td>020</td><td><strong>Active Etch</strong><span class="key">020_etch_active</span></td><td><span class="chip ok">Complete</span></td></tr>
-                  <tr><td>030</td><td><strong>Active Metrology</strong><span class="key">030_metrology_active</span></td><td><span class="chip warn">Partial</span></td></tr>
-                  <tr><td>040</td><td><strong>Gate Deposition</strong><span class="key">040_deposition_gate</span></td><td><span class="chip ok">Complete</span></td></tr>
+                  <tr><td>0100 · 10</td><td><strong>AA_PHOTO</strong><span class="key">aa_photo</span></td><td><span class="chip ok">자동: Beta v3 · 0100·10</span></td></tr>
+                  <tr><td>0200 · 10</td><td><strong>AA_ETCH</strong><span class="key">aa_etch</span></td><td><span class="chip ok">자동: Beta v3 · 0200·10</span></td></tr>
+                  <tr><td>0350 · 12</td><td><strong>SP_MET_X</strong><span class="key">sp_met_x</span></td><td><span class="chip warn">자동 실패</span> <span class="chip">수동 매칭 ▾</span></td></tr>
+                  <tr><td>0360 · 13</td><td><strong>SP_MET_Y</strong><span class="key">sp_met_y</span></td><td><span class="chip ok">수동: Beta v3 · 0355·13 (사용자 지정)</span></td></tr>
+                  <tr><td>0400 · 20</td><td><strong>GATE_PHOTO</strong><span class="key">gate_photo</span></td><td><span class="chip ok">자동: Beta v3 · 0400·20</span></td></tr>
+                  <tr><td colspan="3" class="muted">… 87개 전체 스크롤 (미매칭만 보기 필터). 수동 매칭 ▾ = 백본 layer 검색 드롭다운</td></tr>
                 </tbody>
               </table>
-              <div class="toolbar" style="border: 0; padding-left: 0; padding-right: 0;">
-                <button class="button ghost" type="button">취소</button>
-                <button class="button primary" type="button">프로젝트 생성</button>
+              <div class="toolbar" style="border: 0; padding-left: 0; padding-right: 0; justify-content: flex-end;">
+                <button class="button ghost" type="button" data-goto="catalog">← 취소</button>
+                <button class="button primary" type="button" data-goto="detail">프로젝트 생성</button>
               </div>
             </div>
           </div>
         </div>
+
+        <div class="annotations">
+          <h4>동작 메모 — Project Create</h4>
+          <ol>
+            <li><strong>구조와 값의 분리</strong>가 이 화면의 핵심: ① process = 구조(적재), ② 백본 프로젝트 = 값(기존 조건표). 매칭은 두 선택의 조합에서 계산된다 — process 자체에는 매핑/값이 없다 (D-14).</li>
+            <li>백본 후보는 <strong>기존 프로젝트</strong> 목록 (Approved 우선 정렬). 후보마다 layer 매칭률을 미리 보여줘 선택을 돕는다.</li>
+            <li><strong>자동 매칭 키 = stepseq + layer number</strong> (D-15). layer 이름은 데이터 품질상 매칭 키로 부적합하고, 단일 컬럼으로는 특정이 어려워 조합 키를 쓴다. 자동 실패분은 미리보기에서 <strong>사용자가 수동 매칭</strong>(백본 layer 검색 드롭다운)한다.</li>
+            <li>"백본 없이 시작" 옵션이 부트스트랩 경로 — 최초 프로젝트는 빈 조건표 + 엑셀 붙여넣기로 시작 (레거시 시스템 데이터 이관은 별도 검토 항목).</li>
+            <li>③은 dry-run API 결과. 생성은 단일 트랜잭션: sheet_layer 파생 + cell_value 복사(자동+수동 매칭 반영) + <code>change_event(backbone_copy)</code>.</li>
+            <li>백본 layer에 <strong>다중 조건 행</strong>이 있으면 조건 행 전부 + POR 플래그를 그대로 복사한다 (P1-D8 확정). 미매칭(빈 값) layer는 기본 조건 1행 + POR 미지정으로 생성.</li>
+          </ol>
+        </div>
       </section>
 
+      <!-- ═══════════════ 04. Project Detail + 백본 교체 ═══════════════ -->
+      <section id="detail" class="screen" aria-labelledby="detail-title">
+        <div class="wireframe-window">
+          <div class="window-bar">
+            <div class="window-dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+            <div id="detail-title" class="window-title">Project Detail / layer 백본 구성 관리 · 시트 진입</div>
+          </div>
+
+          <div class="sheet-toolbar">
+            <div class="chip-row">
+              <strong>Alpha Main 조건표</strong>
+              <span class="badge draft">Draft</span>
+              <span class="chip">v1</span>
+              <span class="chip">ALPHA-01 · P-MAIN</span>
+              <span class="chip ok">내가 편집 중</span>
+            </div>
+            <div class="chip-row">
+              <button class="button ghost" type="button" data-goto="projects">← 목록</button>
+              <button class="button primary" type="button" data-goto="sheet">시트 열기 →</button>
+            </div>
+          </div>
+
+          <div class="pane">
+            <div class="pane-title">
+              <h3>Layer 백본 구성</h3>
+              <span class="muted small">layer별로 다른 프로젝트의 조건으로 교체 가능 — 레이어별 백본 조합</span>
+            </div>
+            <table class="table" aria-label="Layer backbone composition">
+              <thead>
+                <tr><th>StepSeq</th><th>Layer (Step)</th><th>Area</th><th>조건</th><th>값 채움</th><th>백본 소스 (프로젝트)</th><th></th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>0100</td>
+                  <td><strong>AA_PHOTO</strong><span class="key">aa_photo</span></td>
+                  <td>PHOTO</td>
+                  <td><span class="chip">2 · POR: C1</span></td>
+                  <td><div class="bar" title="96%"><i style="width:96%"></i></div></td>
+                  <td><span class="chip">Main: Beta Memory v3</span></td>
+                  <td><button class="button ghost" type="button">교체</button></td>
+                </tr>
+                <tr class="selected">
+                  <td>0200</td>
+                  <td><strong>AA_ETCH</strong><span class="key">aa_etch</span></td>
+                  <td>ETCH</td>
+                  <td><span class="chip">1 · POR</span></td>
+                  <td><div class="bar" title="99%"><i style="width:99%"></i></div></td>
+                  <td><span class="chip warn">교체 대상 선택됨</span></td>
+                  <td><button class="button primary" type="button">교체 중…</button></td>
+                </tr>
+                <tr>
+                  <td>0350</td>
+                  <td><strong>SP_MET_X</strong><span class="key">sp_met_x</span></td>
+                  <td>MET</td>
+                  <td><span class="chip danger">1 · POR 미지정</span></td>
+                  <td><div class="bar low" title="12%"><i style="width:12%"></i></div></td>
+                  <td><span class="chip danger">미매칭 — 빈 값 시작</span></td>
+                  <td><button class="button ghost" type="button">교체</button></td>
+                </tr>
+                <tr>
+                  <td>0300</td>
+                  <td><strong>AA_MET</strong><span class="key">aa_met</span></td>
+                  <td>MET</td>
+                  <td><span class="chip">1 · POR</span></td>
+                  <td><div class="bar" title="91%"><i style="width:91%"></i></div></td>
+                  <td><span class="chip ok">교체됨: Delta Pilot v2 · AA_MET</span></td>
+                  <td><button class="button ghost" type="button">교체</button></td>
+                </tr>
+                <tr><td colspan="7" class="muted">… 87개 layer 전체 (area 필터 + 검색 + 미매칭만 보기)</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="modal-frame" role="dialog" aria-label="Layer backbone replacement modal">
+            <div class="modal-head">
+              <h4>Modal — 레이어 백본 교체: 0200 AA_ETCH</h4>
+              <span class="chip">Esc 닫기</span>
+            </div>
+            <div class="modal-body">
+              <div class="modal-step">
+                <h5>1. 소스 프로젝트 검색</h5>
+                <div class="input" style="margin-bottom: 10px; min-width: 0;">🔎 delta</div>
+                <ul class="mini-list">
+                  <li class="selected"><span>Delta Pilot 조건표 v2<span class="key">DELTA-04 · Approved</span></span><span class="chip ok">73 layers</span></li>
+                  <li><span>Delta Pilot 조건표 v1<span class="key">DELTA-04 · Archived</span></span><span class="chip">73 layers</span></li>
+                </ul>
+                <p class="muted small">기존 프로젝트가 소스 — 적재 데이터가 아님 (D-14).</p>
+              </div>
+              <div class="modal-step">
+                <h5>2. 소스 Layer 선택</h5>
+                <ul class="mini-list">
+                  <li><span>0180 · 09 PRE_ETCH<span class="key">pre_etch</span></span><span class="chip">ETCH</span></li>
+                  <li class="selected"><span>0200 · 10 AA_ETCH<span class="key">aa_etch</span></span><span class="chip ok">step·no 일치</span></li>
+                  <li><span>0220 · 11 POST_ETCH<span class="key">post_etch</span></span><span class="chip">ETCH</span></li>
+                </ul>
+                <p class="muted small">stepseq + layer number 일치 layer를 우선 추천 (D-15).</p>
+              </div>
+              <div class="modal-step">
+                <h5>3. 변경 미리보기</h5>
+                <table class="diff-table" aria-label="Replacement diff preview">
+                  <thead><tr><th>Parameter</th><th>현재</th><th>교체 후</th></tr></thead>
+                  <tbody>
+                    <tr><td><span class="key">ETCH_RATE</span></td><td class="old">18.7</td><td class="new">21.2</td></tr>
+                    <tr><td><span class="key">THICKNESS</span></td><td class="old">72.4</td><td class="new">70.0</td></tr>
+                    <tr><td><span class="key">CD_TARGET</span></td><td class="old">43</td><td class="new">41</td></tr>
+                    <tr><td colspan="3" class="muted">… 값 변경 57 · 신규 12 · 유지 129</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div class="modal-foot">
+              <span class="muted small">적용 시 <strong>layer 전체 UPSERT</strong> + change_event(backbone_layer_replace) 배치 기록</span>
+              <div class="chip-row">
+                <button class="button ghost" type="button">취소</button>
+                <button class="button primary" type="button">교체 적용 (198 cells)</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="annotations">
+          <h4>동작 메모 — Project Detail · 백본 교체</h4>
+          <ol>
+            <li>레이어별 백본 교체의 <strong>소스는 다른 프로젝트</strong>(의 layer)다 — 생성 시 백본 선택과 같은 원리의 layer 단위 버전.</li>
+            <li>"백본 소스" 컬럼으로 layer별 조합 상태(Main/교체됨/미매칭)를 상시 노출 — 어떤 layer가 어느 조건표에서 왔는지 추적 가능.</li>
+            <li>"값 채움" 바로 미매칭·빈 layer를 시각적으로 발견 → 교체 또는 엑셀 붙여넣기로 채우는 동선.</li>
+            <li>교체 modal 3단계: 소스 프로젝트 검색 → layer 선택(stepseq+layer number 일치 우선 추천, D-15) → <strong>diff 미리보기 후 적용</strong>. 미리보기 없이 덮어쓰지 않는다.</li>
+            <li>API: <code>POST /projects/{id}/layers/{layer_key}/backbone-replace</code> — body: 소스 project_id + layer_key. 교체 이력은 Phase 4 타임라인에서.</li>
+          </ol>
+        </div>
+      </section>
+
+      <!-- ═══════════════ 05. Sheet Editor PoC ═══════════════ -->
       <section id="sheet" class="screen" aria-labelledby="sheet-title">
         <div class="wireframe-window">
           <div class="window-bar">
             <div class="window-dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
-            <div id="sheet-title" class="window-title">Sheet Editor PoC / layer × parameter grid</div>
+            <div id="sheet-title" class="window-title">Sheet Editor PoC / layer × parameter grid (Phase 2 대비 검증용)</div>
           </div>
 
           <div class="sheet-toolbar">
-            <div>
-              <strong>제품 Alpha 조건표</strong>
-              <span class="chip ok">Draft</span>
-              <span class="chip">Lock: 내가 편집 중</span>
+            <div class="chip-row">
+              <button class="button ghost" type="button" data-goto="detail">←</button>
+              <strong>Alpha Main 조건표</strong>
+              <span class="badge draft">Draft</span>
+              <span class="chip ok">Lock: 내가 편집 중</span>
               <span class="chip warn">Dirty 12</span>
+              <span class="chip">자동 임시저장 32초 전</span>
             </div>
             <div class="chip-row">
               <button class="button ghost" type="button">Excel Paste</button>
               <button class="button ghost" type="button">검증</button>
-              <button class="button primary" type="button">저장</button>
+              <button class="button primary" type="button">저장 (12)</button>
             </div>
           </div>
 
           <div class="sheet-toolbar">
-            <div class="tabs" aria-label="Parameter category tabs">
-              <span class="tab active">전체</span>
-              <span class="tab">Photo</span>
-              <span class="tab">Etch</span>
-              <span class="tab">계측</span>
-              <span class="tab">Deposition</span>
-              <span class="tab">Custom</span>
+            <div class="tabs" aria-label="Parameter category tabs (registry-driven)">
+              <span class="tab active">전체 198</span>
+              <span class="tab">SP · Spin/PR 52</span>
+              <span class="tab">SC · Scanner 61</span>
+              <span class="tab">OVL · Overlay 34</span>
+              <span class="tab">DEV · Develop 45</span>
+              <span class="tab meta">＋ 카테고리는 레지스트리에서 동적 생성</span>
             </div>
-            <div class="input" style="max-width: 360px; flex: 0 1 360px;">🔎 layer / parameter 검색</div>
+            <div class="chip-row">
+              <div class="input" style="max-width: 260px; flex: 0 1 260px;">🔎 layer / parameter 검색</div>
+              <div class="select">컬럼 점프: OVERLAY ▾</div>
+            </div>
+          </div>
+
+          <div class="cell-legend" aria-label="Cell state legend">
+            <span><i></i> 기본 (편집 가능)</span>
+            <span><i class="i-focus"></i> 선택</span>
+            <span><i class="i-dirty"></i> Dirty (미저장)</span>
+            <span><i class="i-staged"></i> Paste staging</span>
+            <span><i class="i-error"></i> 검증 오류</span>
+            <span><b style="color: var(--ok);">●</b> POR — layer당 1개, 클릭으로 다른 조건 행에 이양</span>
+            <span class="muted">빈 값 "–"도 편집 가능한 셀 — "해당 없음" 개념은 미도입 (P2-D3)</span>
           </div>
 
           <div class="grid-wrap">
             <table class="sheet-grid" aria-label="Layer parameter sheet grid">
               <thead>
                 <tr>
-                  <th class="sticky-col">Layer</th>
+                  <th class="sticky-col" rowspan="2">Layer (Step)</th>
+                  <th rowspan="2">조건 · POR</th>
+                  <th class="cat" colspan="3">SP · Spin/PR</th>
+                  <th class="cat" colspan="3">SC · Scanner/Expose</th>
+                  <th class="cat" colspan="2">OVL · Overlay</th>
+                  <th class="cat" rowspan="2">…</th>
+                </tr>
+                <tr>
                   <th>PR_TYPE</th>
                   <th>SPIN_SPEED</th>
+                  <th>BAKE_TEMP</th>
                   <th>EXPOSURE</th>
                   <th>FOCUS</th>
-                  <th>ETCH_RATE</th>
-                  <th>THICKNESS</th>
+                  <th>RETICLE_ID</th>
                   <th>OVERLAY</th>
                   <th>CD_TARGET</th>
-                  <th>BAKE_TEMP</th>
-                  <th>...</th>
                 </tr>
               </thead>
               <tbody>
                 <tr>
-                  <td class="sticky-col"><strong>001 Initial Clean</strong><span class="key">001_init_clean · Clean</span></td>
-                  <td class="cell-readonly">-</td><td class="cell-readonly">-</td><td class="cell-readonly">-</td><td class="cell-readonly">-</td><td>-</td><td>90.0</td><td>-</td><td>-</td><td>110</td><td>...</td>
+                  <td class="sticky-col"><strong>0010 · 01 INIT_CLN</strong><span class="key">init_cln · CLN</span></td>
+                  <td><span class="chip ok">● POR</span></td>
+                  <td class="cell-empty">–</td><td class="cell-empty">–</td><td>110</td>
+                  <td class="cell-empty">–</td><td class="cell-empty">–</td><td class="cell-empty">–</td>
+                  <td class="cell-empty">–</td><td class="cell-empty">–</td><td>…</td>
                 </tr>
                 <tr>
-                  <td class="sticky-col"><strong>010 Active Photo</strong><span class="key">010_photo_active · Photo</span></td>
-                  <td>PR-A</td><td class="cell-dirty">3200</td><td>42.5</td><td>0.12</td><td class="cell-readonly">-</td><td>87.5</td><td>3.0</td><td>45</td><td>105</td><td>...</td>
+                  <td class="sticky-col" rowspan="2"><strong>0100 · 10 AA_PHOTO</strong><span class="key">aa_photo · PHOTO</span><br /><span class="chip warn" style="margin-top: 6px;">조건 2</span></td>
+                  <td><span class="chip ok">● POR · C1</span></td>
+                  <td>PR-A ▾</td><td>3000</td><td>105</td>
+                  <td>42.5</td><td>0.12</td><td>RT-1104 ▾</td>
+                  <td>3.0</td><td>45</td><td>…</td>
                 </tr>
                 <tr>
-                  <td class="sticky-col"><strong>020 Active Etch</strong><span class="key">020_etch_active · Etch</span></td>
-                  <td class="cell-readonly">-</td><td class="cell-readonly">-</td><td class="cell-readonly">-</td><td>-</td><td>18.7</td><td class="cell-dirty">72.4</td><td>-</td><td>43</td><td>-</td><td>...</td>
+                  <td><span class="chip">○ C2</span></td>
+                  <td>PR-B ▾</td><td class="cell-dirty cell-focus">3200</td><td>105</td>
+                  <td>41.8</td><td>0.10</td><td>RT-1104 ▾</td>
+                  <td>2.9</td><td>44</td><td>…</td>
                 </tr>
                 <tr>
-                  <td class="sticky-col"><strong>030 Active Metrology</strong><span class="key">030_metrology_active · Metrology</span></td>
-                  <td class="cell-readonly">-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td class="cell-error">9.8</td><td>44</td><td>-</td><td>...</td>
+                  <td class="sticky-col"><strong>0200 · 10 AA_ETCH</strong><span class="key">aa_etch · ETCH</span></td>
+                  <td><span class="chip ok">● POR</span></td>
+                  <td class="cell-empty">–</td><td class="cell-empty">–</td><td class="cell-dirty">72.4</td>
+                  <td class="cell-empty">–</td><td class="cell-empty">–</td><td class="cell-empty">–</td>
+                  <td class="cell-empty">–</td><td>43</td><td>…</td>
                 </tr>
                 <tr>
-                  <td class="sticky-col"><strong>040 Gate Deposition</strong><span class="key">040_deposition_gate · Deposition</span></td>
-                  <td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>90.0</td><td>2.8</td><td>-</td><td>350</td><td>...</td>
+                  <td class="sticky-col"><strong>0300 · 10 AA_MET</strong><span class="key">aa_met · MET</span></td>
+                  <td><span class="chip ok">● POR</span></td>
+                  <td class="cell-empty">–</td><td class="cell-empty">–</td><td class="cell-empty">–</td>
+                  <td class="cell-empty">–</td><td class="cell-empty">–</td><td class="cell-empty">–</td>
+                  <td class="cell-error">9.8</td><td>44</td><td>…</td>
+                </tr>
+                <tr>
+                  <td class="sticky-col"><strong>0350 · 12 SP_MET_X</strong><span class="key">sp_met_x · MET</span></td>
+                  <td><span class="chip ok">● POR</span></td>
+                  <td class="cell-empty">–</td><td class="cell-empty">–</td><td class="cell-empty">–</td>
+                  <td class="cell-staged">41.0</td><td class="cell-staged">0.10</td><td class="cell-staged">RT-2001</td>
+                  <td class="cell-empty">–</td><td class="cell-staged">42</td><td>…</td>
                 </tr>
               </tbody>
             </table>
           </div>
 
           <div class="bottom-panel">
-            <div class="note"><strong>선택 셀 상세</strong><br />010 Active Photo / SPIN_SPEED<br />기존 3000 → 변경 3200</div>
-            <div class="note"><strong>Validation</strong><br /><span style="color: var(--danger);">OVERLAY 9.8nm</span> 값이 허용 범위를 초과했습니다.</div>
-            <div class="note"><strong>Paste Staging</strong><br />Excel TSV 6행 × 4열 대기. 적용 전 타입 검사를 표시합니다.</div>
-            <div class="note"><strong>Dirty Batch</strong><br />저장 payload는 변경된 셀만 UPSERT 대상으로 구성합니다.</div>
+            <div class="note">
+              <h5>선택 셀</h5>
+              0100 · 10 AA_PHOTO · 조건 C2 · SPIN_SPEED<br />
+              <span class="muted">3000</span> → <strong>3200</strong> <span class="muted small">(number · rpm · 범위 0~5000)</span><br />
+              <span class="chip" style="margin-top: 8px;">셀 이력 보기 (Phase 4)</span>
+            </div>
+            <div class="note">
+              <h5>Validation</h5>
+              <span style="color: var(--danger);">● OVERLAY 9.8</span> 허용 범위(0~5.0nm) 초과<br />
+              <span class="chip danger" style="margin-top: 8px;">오류 1 · 셀로 이동</span>
+            </div>
+            <div class="note">
+              <h5>Paste Staging</h5>
+              Excel 1행 × 4열 대기 — 미매칭 layer(SP_MET_X)를 붙여넣기로 채우는 중<br />
+              <span class="chip ok" style="margin-top: 8px;">적용</span> <span class="chip">취소</span>
+            </div>
+            <div class="note">
+              <h5>저장</h5>
+              Dirty 12 셀만 배치 UPSERT<br />
+              <span class="muted small">저장마다 change_event(cell_update) 셀 단위 기록 · 자동 임시저장 동작 중</span>
+            </div>
           </div>
+        </div>
+
+        <div class="annotations">
+          <h4>동작 메모 — Sheet Editor PoC</h4>
+          <ol>
+            <li><strong>행 = 조건 행</strong>(layer가 아님, D-16): 같은 layer·step에 여러 조건이 있으면 전부 표시하되 <strong>layer 셀 병합(그룹핑)</strong>으로 같은 layer·step임이 드러난다 (예: AA_PHOTO의 C1/C2). "조건 · POR" 컬럼의 ● 클릭으로 POR을 다른 조건 행에 이양 — <strong>layer당 POR 1개</strong>는 서버가 강제(por_yn + partial unique), 이양은 <code>change_event(por_change)</code>로 기록. 조건 행 추가/복제/삭제는 Phase 2 편집기 기능.</li>
+            <li>카테고리 탭·컬럼 그룹은 <strong>파라미터 레지스트리</strong>에서 동적 생성 (layer의 area와는 다른 축).</li>
+            <li>빈 값 "–"는 readonly가 아니라 <strong>편집 가능한 빈 셀</strong> (P2-D3). 미매칭 layer 행은 대부분 빈 값으로 시작하고, 붙여넣기·교체로 채워진다.</li>
+            <li>Paste staging: 붙여넣기는 즉시 반영이 아니라 <strong>staging(점선) → 타입 검사 → 적용/취소</strong>. 적용 시 dirty로 전환.</li>
+            <li>비보유자 화면(Phase 2): 상단에 "OO 님이 편집 중 — 읽기 전용" 배너 + 편집/저장/붙여넣기 비활성.</li>
+            <li>이 화면은 그리드 PoC(phase-1-tasks T7) 검증 대상 — 실제 그리드는 Glide Data Grid vs RevoGrid PoC로 확정.</li>
+          </ol>
         </div>
       </section>
     </section>
   </main>
 
   <script>
-    const navItems = document.querySelectorAll('[data-screen]');
+    const navItems = document.querySelectorAll('.nav-item[data-screen]');
     const screens = document.querySelectorAll('.screen');
+    const flowChips = document.querySelectorAll('.flow-strip .chip');
+    const order = ['projects', 'catalog', 'create', 'detail', 'sheet'];
+
+    function show(target) {
+      navItems.forEach((nav) => nav.classList.toggle('active', nav.dataset.screen === target));
+      screens.forEach((screen) => screen.classList.toggle('active', screen.id === target));
+      flowChips.forEach((chip) => chip.classList.toggle('here', chip.dataset.goto === target));
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
 
     navItems.forEach((item) => {
-      item.addEventListener('click', () => {
-        const target = item.dataset.screen;
-        navItems.forEach((nav) => nav.classList.toggle('active', nav === item));
-        screens.forEach((screen) => screen.classList.toggle('active', screen.id === target));
-      });
+      item.addEventListener('click', () => show(item.dataset.screen));
+    });
+
+    document.querySelectorAll('[data-goto]').forEach((el) => {
+      el.addEventListener('click', () => show(el.dataset.goto));
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.target.closest('input, textarea')) return;
+      const idx = Number(e.key) - 1;
+      if (idx >= 0 && idx < order.length) show(order[idx]);
     });
   </script>
 </body>

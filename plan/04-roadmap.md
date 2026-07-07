@@ -4,6 +4,8 @@
 
 각 Phase는 수직 슬라이스(P3)로 완성한다 — DB부터 UI까지 관통해 **실제로 동작을 확인한 뒤** 다음 Phase로 넘어간다. 완료 기준(Exit Criteria)을 만족하지 못하면 다음 Phase를 시작하지 않는다.
 
+Phase별 세부 작업 계획(작업 분해·의존 관계·결정 항목)은 `phase-N-tasks.md`로 관리한다: [Phase 0](./phase-0-tasks.md) · [Phase 1](./phase-1-tasks.md) · [Phase 2](./phase-2-tasks.md) · [Phase 3](./phase-3-tasks.md) · [Phase 4](./phase-4-tasks.md) · [Phase 5](./phase-5-tasks.md) · [Phase 6](./phase-6-tasks.md)
+
 ```mermaid
 flowchart LR
     P0[Phase 0<br/>리셋 + 기반] --> P1[Phase 1<br/>프로젝트 + 백본]
@@ -38,10 +40,12 @@ flowchart LR
 ## Phase 1 — 프로젝트 + 백본 (그리드 PoC 병행)
 
 **범위:**
-- process 선택 → 프로젝트 생성: 적재 데이터의 layer 구성에서 `sheet_layer` 파생, 백본(전체 조건 값) 복사로 `cell_value` 초기화
-- 원천 파라미터 식별자 ↔ `parameter.code` 매핑 테이블 + 관리 UI (1:1이 아닐 경우 대비)
-- 레이어별 백본 교체 (다른 process의 특정 layer 조건으로 교체)
-- 프로젝트 목록/검색/상태 표시 (상태 전환 로직은 Phase 5, 여기서는 draft 고정)
+- process(구조) 선택 + **백본 프로젝트(값) 선택** → 프로젝트 생성: 적재 layer 구성에서 `sheet_layer` 파생, 백본 프로젝트의 `cell_value`를 **layer 매칭**으로 복사 (D-14. 백본 없이 빈 시작도 지원)
+- 다중 조건 행 모델(D-16): `layer_condition` + POR 플래그 — 생성 시 백본의 조건 행 구성을 그대로 복사
+- layer 매칭 구현 (자동: `stepseq + layer_no` 조합 키 — D-15, 자동 실패분은 생성 미리보기에서 사용자 수동 매칭)
+- 레이어별 백본 교체 (다른 **프로젝트**의 특정 layer 조건으로 교체)
+- 프로젝트 목록/검색/상태 표시 (상태 전환 로직은 Phase 5, 여기서는 draft 고정). 조건표 있는 process의 중복 생성은 차단 (D-17)
+- **파라미터 레지스트리 엑셀 임포트** (D-17): 업로드 → dry-run 미리보기 → code 기준 UPSERT — 초기 약 200개 파라미터 주입 + 이후 반복 사용
 - 백본 작업의 `change_event` 기록 (이력 UI는 Phase 4, 기록만 시작)
 - **병행: 그리드 PoC** ([03-grid-evaluation.md](./03-grid-evaluation.md) 시나리오 수행 → 라이브러리 확정 → 결정 로그 기재)
 
@@ -53,8 +57,9 @@ flowchart LR
 ## Phase 2 — 조건표 편집기 + 데이터 모델
 
 **범위:**
-- 시트 조회 API: layer × parameter 매트릭스 + 컬럼 정의(live 레지스트리) 반환
-- 그리드 어댑터 구현: 동적 컬럼, 셀 타입별 에디터, 카테고리 탭, 컬럼 고정/툴팁/검색-점프
+- 시트 조회 API: 조건 행 × parameter 매트릭스 + 컬럼 정의(live 레지스트리) 반환
+- 그리드 어댑터 구현: 동적 컬럼, 셀 타입별 에디터, 카테고리 탭, 컬럼 고정/툴팁/검색-점프, 같은 layer 조건 행 그룹핑
+- **조건 행 관리 + POR 선택** (D-16): 행 추가/복제/삭제, POR 이양(layer당 1개)
 - **엑셀 범위 붙여넣기** (핵심 요구): TSV 파싱 → 타입 검사 → 스테이징 표시 → 적용
 - 셀 편집 저장: 더티 셀 배치 UPSERT + `change_event` 기록, 자동 임시저장
 - **편집 잠금**: 획득/하트비트/해제, 비보유자 읽기 전용 처리
@@ -121,4 +126,4 @@ flowchart LR
 
 - **Phase 경계에서 문서 갱신**: 완료 시 결정 로그와 해당 문서에 실제 결과(예: 확정된 그리드, 확정된 적재 스키마)를 반영한다.
 - **범위 추가 금지**: Phase 진행 중 새 요구가 나오면 로드맵에 기재하고 이후 Phase로 배정한다. "일단 다 만들고 끼워 맞추기"로 회귀하지 않는다.
-- **미확정 의존성 추적**: 인증 구조 상세(Phase 0 스텁 → Phase 5 필수), 실제 적재 스키마(Phase 0 fixture → Phase 1 필수)는 각 필수 시점 전에 확정되어야 한다.
+- **미확정 의존성 추적**: 인증 구조 상세(Phase 0 스텁 → Phase 5 필수), 실제 적재 스키마(Phase 0 fixture → Phase 1 필수 — layer_no 컬럼 확인 포함)는 각 필수 시점 전에 확정되어야 한다. 레거시 데이터 이관(D-15 비고)은 Phase 1 중 실현 가능성 스파이크만 수행하고 이관 작업은 별도 배정한다.
