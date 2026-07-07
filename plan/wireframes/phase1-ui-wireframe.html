@@ -959,7 +959,7 @@
           <ol>
             <li>process는 <strong>구조만</strong> 보여준다 — partid/processid/stepseq/area 기반 layer 리스트. 값·매핑 정보는 여기 없다 (값의 원천은 백본 프로젝트, D-14).</li>
             <li>"조건표" 컬럼으로 process ↔ 프로젝트 대응 상태를 표시 — "없음"인 process가 생성 대상. "조건표 없는 process만" 필터가 신규 작업 발굴 동선.</li>
-            <li>이미 조건표가 있는 process에서 "생성"을 누르면 안내: 장기 목표는 process당 활성 프로젝트 1개 (중복 생성 정책은 P1-D6).</li>
+            <li>이미 조건표가 있는 process는 신규 생성이 <strong>차단</strong>되고 기존 프로젝트로 유도된다 (P1-D6 확정) — Draft면 "이어서 편집", Approved면 "Revision 생성"(Phase 5). 버튼도 "기존 조건표 열기"로 바뀐다.</li>
             <li>검색/필터 속성(partid, area 등)은 적재 스키마 확정 후 최종 확정 (<code>P1-D2</code>).</li>
             <li>API: <code>GET /processes?query=&amp;cursor=</code>, <code>GET /processes/{key}/layers</code>.</li>
           </ol>

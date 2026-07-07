@@ -44,7 +44,8 @@ flowchart LR
 - 다중 조건 행 모델(D-16): `layer_condition` + POR 플래그 — 생성 시 백본의 조건 행 구성을 그대로 복사
 - layer 매칭 구현 (자동: `stepseq + layer_no` 조합 키 — D-15, 자동 실패분은 생성 미리보기에서 사용자 수동 매칭)
 - 레이어별 백본 교체 (다른 **프로젝트**의 특정 layer 조건으로 교체)
-- 프로젝트 목록/검색/상태 표시 (상태 전환 로직은 Phase 5, 여기서는 draft 고정)
+- 프로젝트 목록/검색/상태 표시 (상태 전환 로직은 Phase 5, 여기서는 draft 고정). 조건표 있는 process의 중복 생성은 차단 (D-17)
+- **파라미터 레지스트리 엑셀 임포트** (D-17): 업로드 → dry-run 미리보기 → code 기준 UPSERT — 초기 약 200개 파라미터 주입 + 이후 반복 사용
 - 백본 작업의 `change_event` 기록 (이력 UI는 Phase 4, 기록만 시작)
 - **병행: 그리드 PoC** ([03-grid-evaluation.md](./03-grid-evaluation.md) 시나리오 수행 → 라이브러리 확정 → 결정 로그 기재)
 
