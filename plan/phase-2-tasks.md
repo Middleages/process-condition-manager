@@ -105,7 +105,7 @@ Phase 1 인터페이스 초안을 확정 라이브러리로 구현 (`frontend/sr
 - **조건 행 CRUD API**: `POST /projects/{id}/layers/{layer_key}/conditions` (추가/복제 — 복제 시 원본 조건 행의 셀 값 복사), 삭제(soft 여부 결정). `change_event(condition_add/condition_remove)` 기록
 - **POR 이양 API**: `PUT .../conditions/{condition_id}/por` — 트랜잭션 안에서 기존 POR 해제 + 새 POR 지정, partial unique 제약이 최종 방어선. `change_event(por_change)` 기록
 - UI: "조건 · POR" 컬럼 — POR 라디오(●/○) 클릭으로 이양, 행 컨텍스트 메뉴로 추가/복제/삭제. POR 미지정 layer는 경고 표시
-- 삭제 제약: POR 행 삭제 시 처리(다른 행에 이양 강제 vs POR 미지정 허용) 결정 필요
+- 삭제 제약 (확정): POR 행 삭제 시 layer는 **POR 미지정 상태 허용** — 편집 중에는 유효하며, Review 요청 시 POR 완결성 게이트(P5-D5)가 차단한다
 
 산출물: 조건 행 CRUD + POR 이양 + 그룹핑 UI + layer당 POR 1개 강제 테스트. **EC6 충족.**
 

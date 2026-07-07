@@ -1080,7 +1080,7 @@
             <li><strong>자동 매칭 키 = stepseq + layer number</strong> (D-15). layer 이름은 데이터 품질상 매칭 키로 부적합하고, 단일 컬럼으로는 특정이 어려워 조합 키를 쓴다. 자동 실패분은 미리보기에서 <strong>사용자가 수동 매칭</strong>(백본 layer 검색 드롭다운)한다.</li>
             <li>"백본 없이 시작" 옵션이 부트스트랩 경로 — 최초 프로젝트는 빈 조건표 + 엑셀 붙여넣기로 시작 (레거시 시스템 데이터 이관은 별도 검토 항목).</li>
             <li>③은 dry-run API 결과. 생성은 단일 트랜잭션: sheet_layer 파생 + cell_value 복사(자동+수동 매칭 반영) + <code>change_event(backbone_copy)</code>.</li>
-            <li>백본 layer에 <strong>다중 조건 행</strong>이 있으면 조건 행 전부 + POR 플래그를 그대로 복사한다 (P1-D8 권고 — 확정 필요). 미매칭(빈 값) layer는 기본 조건 1행 + POR 미지정으로 생성.</li>
+            <li>백본 layer에 <strong>다중 조건 행</strong>이 있으면 조건 행 전부 + POR 플래그를 그대로 복사한다 (P1-D8 확정). 미매칭(빈 값) layer는 기본 조건 1행 + POR 미지정으로 생성.</li>
           </ol>
         </div>
       </section>
