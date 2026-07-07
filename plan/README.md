@@ -11,6 +11,8 @@
 | [02-data-model.md](./02-data-model.md) | 도메인 모델, DB 스키마 설계, 파라미터 스냅샷 정책 |
 | [03-grid-evaluation.md](./03-grid-evaluation.md) | 그리드 라이브러리 평가 기준, 후보 비교, PoC 계획 |
 | [04-roadmap.md](./04-roadmap.md) | Phase 0~6 단계별 구축 로드맵 및 완료 기준 |
+| [05-ui-wireframe.md](./05-ui-wireframe.md) | Process Catalog, Project Create, Sheet Editor 와이어프레임 계획 |
+| [wireframes/phase1-ui-wireframe.html](./wireframes/phase1-ui-wireframe.html) | Phase 1 주요 화면 흐름 HTML 와이어프레임 |
 
 ## 재구축 배경
 
@@ -30,7 +32,7 @@
 | D-02 | 구축 순서 | 프로젝트+백본 → 편집기+데이터모델 → 검증 → 이력 → 승인 → 출력 | [04-roadmap.md](./04-roadmap.md) |
 | D-03 | 기술 스택 | FastAPI + React/TS + PostgreSQL 유지, 그리드 라이브러리만 재검토 | [03-grid-evaluation.md](./03-grid-evaluation.md) |
 | D-04 | 기존 데이터 | 이관 없음. 스키마·데이터 전면 리셋 | |
-| D-05 | 동적 구조의 범위 | **layer 구성**이 process마다 다름. 파라미터(컬럼) 세트는 전 process 공통 | |
+| D-05 | 동적 구조의 범위 | **Process는 제품/route 전체 집합**이며 layer 구성은 process마다 다름. `photo`, `etch`, `계측` 등은 process가 아니라 layer의 이름/유형이다. 파라미터(컬럼) 세트는 전 process 공통 | |
 | D-06 | 구조 정보 원천 | 외부 시스템 → Prefect 자동 적재 → PCM이 적재 데이터에서 구조 판독. 데이터 없는 신규 process는 없음 | |
 | D-07 | 파라미터 정의 | 관리자가 제어하는 레지스트리. 지속적으로 추가/변경됨. 타입(숫자/문자/선택지)과 카테고리를 컬럼별 속성으로 보유 | |
 | D-08 | 파라미터 변경 파급 | **(a) 정책**: Draft는 최신 정의를 따르고, 승인 시점에 파라미터 세트를 스냅샷으로 동결. 승인/아카이브 조건표는 당시 세트 그대로 보존 | [02-data-model.md](./02-data-model.md) |

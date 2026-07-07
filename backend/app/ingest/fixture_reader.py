@@ -18,27 +18,39 @@ class _ProcessFixture:
 
 _FIXTURES: tuple[_ProcessFixture, ...] = (
     _ProcessFixture(
-        info=ProcessInfo(key="lithography", display_name="노광", sort_order=10),
+        info=ProcessInfo(key="product_alpha_main", display_name="제품 Alpha Main Route", sort_order=10),
         layers=(
-            LayerInfo(key="bottom", display_name="Bottom Layer", sort_order=10),
-            LayerInfo(key="photoresist", display_name="Photoresist", sort_order=20),
-            LayerInfo(key="topcoat", display_name="Topcoat", sort_order=30),
+            LayerInfo(key="001_init_clean", display_name="Initial Clean", sort_order=10),
+            LayerInfo(key="010_photo_active", display_name="Active Photo", sort_order=20),
+            LayerInfo(key="020_etch_active", display_name="Active Etch", sort_order=30),
+            LayerInfo(key="030_metrology_active", display_name="Active Metrology", sort_order=40),
+            LayerInfo(key="040_deposition_gate", display_name="Gate Deposition", sort_order=50),
         ),
         condition_values=(
-            ConditionValue("bottom", "thickness_nm", 90.0),
-            ConditionValue("photoresist", "exposure_dose_mj", 42.5),
-            ConditionValue("topcoat", "bake_temp_c", 110),
+            ConditionValue("001_init_clean", "clean_time_sec", 45),
+            ConditionValue("010_photo_active", "exposure_dose_mj", 42.5),
+            ConditionValue("020_etch_active", "etch_rate_nm_min", 18.7),
+            ConditionValue("030_metrology_active", "overlay_nm", 3.1),
+            ConditionValue("040_deposition_gate", "thickness_nm", 90.0),
         ),
     ),
     _ProcessFixture(
-        info=ProcessInfo(key="etch", display_name="식각", sort_order=20),
+        info=ProcessInfo(key="product_beta_memory", display_name="제품 Beta Memory Route", sort_order=20),
         layers=(
-            LayerInfo(key="mask", display_name="Mask", sort_order=10),
-            LayerInfo(key="target", display_name="Target Film", sort_order=20),
+            LayerInfo(key="001_init_clean", display_name="Initial Clean", sort_order=10),
+            LayerInfo(key="015_deposition_well", display_name="Well Deposition", sort_order=20),
+            LayerInfo(key="025_photo_well", display_name="Well Photo", sort_order=30),
+            LayerInfo(key="035_etch_well", display_name="Well Etch", sort_order=40),
+            LayerInfo(key="045_strip_well", display_name="Well Strip", sort_order=50),
+            LayerInfo(key="055_metrology_well", display_name="Well Metrology", sort_order=60),
         ),
         condition_values=(
-            ConditionValue("mask", "selectivity", 3.2),
-            ConditionValue("target", "etch_rate_nm_min", 18.7),
+            ConditionValue("001_init_clean", "clean_time_sec", 50),
+            ConditionValue("015_deposition_well", "thickness_nm", 120.0),
+            ConditionValue("025_photo_well", "exposure_dose_mj", 39.8),
+            ConditionValue("035_etch_well", "etch_rate_nm_min", 16.4),
+            ConditionValue("045_strip_well", "strip_time_sec", 75),
+            ConditionValue("055_metrology_well", "overlay_nm", 2.8),
         ),
     ),
 )
@@ -75,9 +87,9 @@ _fixture_reader = FixtureIngestReader()
 
 
 def get_ingest_reader() -> IngestReader:
-    """현재 활성 적재 판독기를 반환한다.
+    """FastAPI DI에서 사용할 판독기 인스턴스를 반환한다.
 
     Phase 0 T4에서는 fixture 구현을 사용한다. 실제 스키마 확정 후 이 함수의
-    반환 구현만 pg_reader로 교체한다.
+    반환 구현만 교체한다.
     """
     return _fixture_reader
