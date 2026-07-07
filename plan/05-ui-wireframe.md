@@ -37,6 +37,9 @@ App Shell
 │  ├─ 선택 process 요약
 │  ├─ layer 구조 확인
 │  └─ 백본 복사 미리보기
+├─ Project Detail
+│  ├─ layer 백본 구성 (Main/교체 상태)
+│  └─ 레이어별 백본 교체 modal (소스 검색 → layer 선택 → diff 미리보기)
 ├─ Sheet Editor
 │  ├─ layer × parameter grid
 │  ├─ parameter category tabs
@@ -49,7 +52,7 @@ App Shell
    └─ source parameter mapping
 ```
 
-Phase 1에서는 `Process Catalog`, `Project Create`, `Project List`를 우선 잡고, `Sheet Editor`는 그리드 PoC 화면으로 별도 검증한다.
+Phase 1에서는 `Process Catalog`, `Project Create`, `Project List`, `Project Detail(백본 교체)`를 우선 잡고, `Sheet Editor`는 그리드 PoC 화면으로 별도 검증한다.
 
 ## 5. Process Catalog 와이어프레임
 
@@ -134,7 +137,8 @@ Phase 1에서는 `Process Catalog`, `Project Create`, `Project List`를 우선 �
 │ Project: 제품 Alpha 조건표                         [저장] [검증]     │
 │ 상태: Draft | Lock: 내가 편집 중 | 변경 n건                          │
 ├──────────────────────────────────────────────────────────────────────┤
-│ [전체] [Photo] [Etch] [계측] [Deposition]   검색 [layer/parameter]    │
+│ [전체] [SP·Spin/PR] [SC·Scanner] [OVL] [DEV] …   검색 [layer/parameter]│
+│  ※ 탭은 파라미터 카테고리(레지스트리)에서 동적 생성 — layer 유형 아님  │
 ├───────────────┬──────────────────────────────────────────────────────┤
 │ Layer 고정열   │ Parameter columns                                    │
 │ order/name/type│ PR_TYPE | SPIN_SPEED | EXPOSURE | ETCH_RATE | ...    │
@@ -181,7 +185,9 @@ POST /projects/{project_id}/validate
 
 ## 9. 결정 보류 항목
 
-- `Layer` 명칭을 계속 쓸지, UI에서는 `Step`을 병기할지 결정한다.
-- process 검색 필터의 실제 속성은 적재 DB 스키마 확정 후 정한다.
-- source parameter mapping 누락 시 프로젝트 생성을 막을지, 경고 후 생성할지 정한다.
-- 그리드 라이브러리는 Phase 1 PoC 결과로 확정한다.
+- `Layer` 명칭을 계속 쓸지, UI에서는 `Step`을 병기할지 결정한다. (→ [phase-1-tasks.md](./phase-1-tasks.md) P1-D3)
+- process 검색 필터의 실제 속성은 적재 DB 스키마 확정 후 정한다. (→ P1-D2)
+- source parameter mapping 누락 시 프로젝트 생성을 막을지, 경고 후 생성할지 정한다. (→ P1-D1, 권고: 경고 후 생성 허용 — HTML 와이어프레임에 이 정책으로 표현)
+- 그리드 라이브러리는 Phase 1 PoC 결과로 확정한다. (→ phase-1-tasks T7)
+
+HTML 와이어프레임(v2)은 위 화면 지도 기준 5개 화면(Project List / Process Catalog / Project Create / Project Detail·백본 교체 / Sheet Editor PoC)을 담고 있으며, 화면 간 버튼 이동으로 실제 flow를 시뮬레이션한다.
