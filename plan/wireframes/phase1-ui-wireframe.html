@@ -1,0 +1,1109 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PCM Phase 1 Light UI Wireframe</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      color-scheme: light;
+      --nav: #1a1a2e;
+      --nav-muted: #8b8fa3;
+      --bg: #f0f2f5;
+      --paper: #ffffff;
+      --paper-soft: #fafafa;
+      --line: #e0e0e0;
+      --line-strong: #d0d5dd;
+      --text: #333333;
+      --muted: #777777;
+      --primary: #2f5496;
+      --primary-soft: #e8f0fe;
+      --green: #2e7d32;
+      --green-bg: #e8f5e9;
+      --orange: #e65100;
+      --orange-bg: #fff3e0;
+      --red: #c62828;
+      --red-bg: #ffebee;
+      --blue-bg: #e3f2fd;
+      --yellow-bg: #fffde7;
+      --shadow: 0 1px 3px rgb(0 0 0 / 0.08);
+      --shadow-modal: 0 8px 30px rgb(0 0 0 / 0.15);
+      font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, "Noto Sans KR", sans-serif;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    a { color: inherit; }
+
+    .doc-nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      z-index: 100;
+      width: 240px;
+      height: 100vh;
+      overflow-y: auto;
+      background: var(--nav);
+      padding: 20px 0;
+    }
+
+    .doc-nav h1 {
+      color: #fff;
+      font-size: 14px;
+      padding: 0 20px 16px;
+      border-bottom: 1px solid rgb(255 255 255 / 0.12);
+      margin-bottom: 12px;
+    }
+
+    .doc-nav a,
+    .doc-nav button {
+      display: block;
+      width: 100%;
+      color: #aab;
+      text-decoration: none;
+      padding: 8px 20px;
+      font: inherit;
+      font-size: 13px;
+      text-align: left;
+      background: transparent;
+      border: 0;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .doc-nav a:hover,
+    .doc-nav button:hover,
+    .doc-nav button.active {
+      color: #fff;
+      background: rgb(255 255 255 / 0.08);
+    }
+
+    .section-label {
+      color: #667;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      padding: 16px 20px 6px;
+    }
+
+    .doc-main {
+      margin-left: 240px;
+      padding: 40px;
+      max-width: 1240px;
+    }
+
+    .screen-section {
+      background: var(--paper);
+      border-radius: 12px;
+      padding: 32px;
+      margin-bottom: 32px;
+      box-shadow: var(--shadow);
+    }
+
+    .screen-section h2 {
+      font-size: 22px;
+      color: var(--nav);
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      color: #888;
+      font-size: 14px;
+      margin-bottom: 24px;
+    }
+
+    .screen-section h3 {
+      font-size: 16px;
+      color: #444;
+      margin: 24px 0 12px;
+      padding-top: 16px;
+      border-top: 1px solid #eee;
+    }
+
+    .screen-section h3:first-of-type {
+      border-top: 0;
+      padding-top: 0;
+    }
+
+    .wireframe {
+      border: 2px solid #ddd;
+      border-radius: 8px;
+      overflow: hidden;
+      margin: 16px 0;
+      background: var(--paper-soft);
+    }
+
+    .wireframe-label {
+      background: #eee;
+      padding: 6px 12px;
+      font-size: 11px;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .spec-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0;
+      font-size: 13px;
+    }
+
+    .spec-table th {
+      background: #f5f7fa;
+      padding: 8px 12px;
+      text-align: left;
+      font-weight: 600;
+      border: 1px solid var(--line);
+    }
+
+    .spec-table td {
+      padding: 8px 12px;
+      border: 1px solid var(--line);
+      vertical-align: top;
+    }
+
+    code {
+      background: #f0f0f0;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 12px;
+    }
+
+    .annotation {
+      background: #fff8e1;
+      border-left: 3px solid #ffc107;
+      padding: 10px 14px;
+      margin: 12px 0;
+      font-size: 13px;
+      border-radius: 0 4px 4px 0;
+    }
+
+    .annotation strong { color: var(--orange); }
+
+    .pill {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .pill.draft { background: var(--orange-bg); color: var(--orange); }
+    .pill.review { background: var(--blue-bg); color: #1565c0; }
+    .pill.approved { background: var(--green-bg); color: var(--green); }
+    .pill.rejected, .pill.error { background: #fce4ec; color: var(--red); }
+    .pill.info { background: var(--primary-soft); color: var(--primary); }
+    .pill.neutral { background: #f5f5f5; color: #666; }
+
+    .pc-header,
+    .ce-topbar {
+      height: 48px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      background: var(--primary);
+      color: #fff;
+      padding: 0 20px;
+      font-size: 14px;
+    }
+
+    .pc-header strong,
+    .ce-topbar .product-name { font-size: 16px; }
+
+    .pc-toolbar,
+    .project-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 16px 20px;
+      background: #fff;
+      border-bottom: 1px solid #eee;
+    }
+
+    .toolbar-left,
+    .toolbar-right {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn {
+      padding: 8px 16px;
+      border-radius: 6px;
+      border: 1px solid #ddd;
+      background: #fff;
+      color: #333;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    .btn.primary {
+      background: var(--primary);
+      color: #fff;
+      border-color: var(--primary);
+      font-weight: 600;
+    }
+
+    .btn.active {
+      background: var(--primary-soft);
+      border-color: var(--primary);
+      color: var(--primary);
+      font-weight: 600;
+    }
+
+    .search,
+    .select,
+    .input-like {
+      min-height: 36px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      background: #fff;
+      padding: 8px 12px;
+      color: #555;
+      font-size: 13px;
+    }
+
+    .search { width: 260px; }
+    .select { min-width: 136px; }
+
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    .data-table th {
+      padding: 10px 16px;
+      text-align: left;
+      background: #f8f9fa;
+      border-bottom: 2px solid var(--line);
+      font-weight: 600;
+      color: #555;
+      white-space: nowrap;
+    }
+
+    .data-table td {
+      padding: 10px 16px;
+      border-bottom: 1px solid #eee;
+      vertical-align: middle;
+    }
+
+    .data-table tr:hover td { background: #f5f8ff; }
+    .data-table tr.selected td { background: #eef5ff; }
+
+    .link {
+      color: var(--primary);
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .link:hover { text-decoration: underline; }
+
+    .key {
+      display: block;
+      color: #888;
+      font-family: Consolas, Monaco, monospace;
+      font-size: 11px;
+      margin-top: 2px;
+    }
+
+    .catalog-split {
+      display: grid;
+      grid-template-columns: minmax(540px, 1fr) 360px;
+      min-height: 420px;
+    }
+
+    .catalog-main,
+    .catalog-preview {
+      min-width: 0;
+      padding: 16px 20px 20px;
+    }
+
+    .catalog-preview {
+      border-left: 1px solid #eee;
+      background: #fcfcfd;
+    }
+
+    .preview-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .metric {
+      background: #fff;
+      border: 1px solid #e6e8ef;
+      border-radius: 8px;
+      padding: 10px;
+    }
+
+    .metric span {
+      display: block;
+      color: #888;
+      font-size: 11px;
+    }
+
+    .metric strong {
+      display: block;
+      margin-top: 4px;
+      color: var(--nav);
+      font-size: 18px;
+    }
+
+    .mini-list {
+      border: 1px solid #e6e8ef;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #fff;
+    }
+
+    .mini-row {
+      display: grid;
+      grid-template-columns: 44px 1fr 72px;
+      gap: 8px;
+      align-items: center;
+      padding: 8px 10px;
+      border-bottom: 1px solid #f0f0f0;
+      font-size: 12px;
+    }
+
+    .mini-row:last-child { border-bottom: 0; }
+
+    .modal-overlay {
+      background: rgb(0 0 0 / 0.12);
+      padding: 40px;
+      display: flex;
+      justify-content: center;
+    }
+
+    .modal-box {
+      background: #fff;
+      border-radius: 12px;
+      width: 560px;
+      box-shadow: var(--shadow-modal);
+      overflow: hidden;
+    }
+
+    .modal-header { padding: 20px 24px 0; }
+    .modal-header h3 { font-size: 18px; margin-bottom: 4px; border: 0; padding: 0; }
+    .modal-header p { color: #888; font-size: 13px; }
+    .modal-body { padding: 20px 24px; }
+    .modal-footer {
+      padding: 16px 24px;
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      border-top: 1px solid #eee;
+      background: #fafafa;
+    }
+
+    .form-group { margin-bottom: 16px; }
+    .form-group label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: #555; }
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font: inherit;
+      font-size: 14px;
+      background: #fff;
+    }
+    .form-group textarea { min-height: 72px; resize: vertical; }
+    .hint { font-size: 12px; color: #999; margin-top: 4px; }
+
+    .create-preview {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin: 12px 0;
+    }
+
+    .ce-container {
+      display: flex;
+      flex-direction: column;
+      height: 650px;
+      background: #fff;
+    }
+
+    .ce-topbar .status-badge {
+      padding: 3px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+      background: rgb(255 255 255 / 0.2);
+    }
+
+    .ce-topbar .error-badge {
+      padding: 3px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+      background: #ff5252;
+      margin-left: auto;
+    }
+
+    .ce-topbar .save-btn {
+      padding: 6px 16px;
+      background: #fff;
+      color: var(--primary);
+      border: 0;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .ce-body {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    .ce-layer-nav {
+      width: 220px;
+      flex-shrink: 0;
+      border-right: 1px solid var(--line);
+      background: #f8f9fa;
+      overflow-y: auto;
+    }
+
+    .ce-layer-nav .nav-header {
+      padding: 10px 12px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #888;
+      border-bottom: 1px solid var(--line);
+      text-transform: uppercase;
+    }
+
+    .ce-layer-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 8px 12px;
+      font-size: 12px;
+      cursor: pointer;
+      border-bottom: 1px solid #eee;
+      transition: background 0.15s;
+    }
+
+    .ce-layer-item:hover { background: var(--primary-soft); }
+    .ce-layer-item.active { background: #d4e4ff; font-weight: 700; }
+    .ce-layer-item .backbone-src { font-size: 10px; color: #999; margin-top: 2px; }
+
+    .ce-editor {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .ce-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      background: #fff;
+      border-bottom: 2px solid var(--line);
+      padding: 0 16px;
+      flex-shrink: 0;
+    }
+
+    .ce-tab {
+      padding: 10px 18px;
+      font-size: 13px;
+      font-weight: 700;
+      color: #888;
+      cursor: pointer;
+      border-bottom: 3px solid transparent;
+      margin-bottom: -2px;
+      transition: all 0.2s;
+    }
+
+    .ce-tab:hover { color: #555; }
+    .ce-tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+    .ce-tab .col-count { font-weight: 400; color: #aaa; font-size: 11px; margin-left: 4px; }
+
+    .ce-grid {
+      flex: 1;
+      overflow: auto;
+      background: #fff;
+    }
+
+    .ce-grid table {
+      border-collapse: collapse;
+      width: max-content;
+      min-width: 100%;
+    }
+
+    .ce-grid th {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      min-width: 120px;
+      background: #f0f2f5;
+      padding: 8px 12px;
+      border: 1px solid #ddd;
+      color: #555;
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .ce-grid th.layer-col {
+      position: sticky;
+      left: 0;
+      z-index: 3;
+      min-width: 150px;
+      background: #e8ecf0;
+    }
+
+    .ce-grid td {
+      padding: 6px 10px;
+      border: 1px solid var(--line);
+      font-size: 12px;
+      text-align: center;
+      white-space: nowrap;
+    }
+
+    .ce-grid td.layer-col {
+      position: sticky;
+      left: 0;
+      z-index: 1;
+      background: #f8f9fa;
+      font-weight: 700;
+      text-align: left;
+    }
+
+    .ce-grid td.changed { background: var(--yellow-bg); }
+    .ce-grid td.recipe { background: var(--green-bg); }
+    .ce-grid td.error { background: var(--red-bg); color: var(--red); font-weight: 700; }
+    .ce-grid td.editing { outline: 2px solid var(--primary); background: #fff; }
+
+    .ce-validation {
+      height: 140px;
+      flex-shrink: 0;
+      border-top: 2px solid var(--line);
+      background: #fff;
+      overflow-y: auto;
+    }
+
+    .ce-validation .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 16px;
+      background: #fafafa;
+      border-bottom: 1px solid #eee;
+      font-size: 12px;
+      font-weight: 700;
+      color: #555;
+    }
+
+    .ce-val-item {
+      display: flex;
+      align-items: center;
+      padding: 6px 16px;
+      font-size: 12px;
+      border-bottom: 1px solid #f0f0f0;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .ce-val-item:hover { background: #fff8e1; }
+    .ce-val-item .icon {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      margin-right: 10px;
+      flex-shrink: 0;
+      background: #ffcdd2;
+      color: var(--red);
+      font-weight: 700;
+    }
+
+    .ce-val-item .location {
+      min-width: 220px;
+      color: var(--primary);
+      font-weight: 700;
+    }
+
+    .ce-val-item .message { color: #666; }
+
+    .cell-states {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin: 16px 0;
+    }
+
+    .cell-state-box {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+      text-align: center;
+      background: #fff;
+    }
+
+    .cell-state-box .cell-demo {
+      width: 110px;
+      height: 36px;
+      margin: 0 auto 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .cell-state-box .label { font-size: 12px; font-weight: 700; margin-bottom: 4px; }
+    .cell-state-box .desc { font-size: 11px; color: #888; }
+
+    .flow-diagram {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin: 16px 0;
+    }
+
+    .flow-step {
+      padding: 10px 16px;
+      background: var(--primary-soft);
+      border: 1px solid #bbdefb;
+      border-radius: 8px;
+      color: var(--primary);
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .flow-arrow { color: #999; font-size: 16px; }
+
+    .tag {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .tag.get { background: var(--green-bg); color: var(--green); }
+    .tag.post { background: var(--blue-bg); color: #1565c0; }
+    .tag.patch { background: #f3e5f5; color: #7b1fa2; }
+    .tag.put { background: var(--orange-bg); color: var(--orange); }
+
+    @media (max-width: 980px) {
+      .doc-nav { position: static; width: 100%; height: auto; }
+      .doc-main { margin-left: 0; padding: 20px; }
+      .catalog-split { grid-template-columns: 1fr; }
+      .catalog-preview { border-left: 0; border-top: 1px solid #eee; }
+      .pc-toolbar, .project-toolbar { align-items: flex-start; flex-direction: column; }
+      .search { width: 100%; }
+      .ce-body { flex-direction: column; }
+      .ce-layer-nav { width: 100%; max-height: 180px; border-right: 0; border-bottom: 1px solid var(--line); }
+      .cell-states { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <nav class="doc-nav">
+    <h1>📐 PCM Light 화면 설계서</h1>
+    <div class="section-label">검토</div>
+    <a href="#overview">0. UI 구성 검토</a>
+    <div class="section-label">Pages</div>
+    <a href="#process-catalog">1. Process Catalog</a>
+    <a href="#project-list">2. 프로젝트 목록</a>
+    <a href="#project-create">3. 프로젝트 생성</a>
+    <a href="#condition-editor">4. 조건표 편집기</a>
+    <div class="section-label">Components</div>
+    <a href="#cell-states">셀 상태 & 툴팁</a>
+    <a href="#flows">편집/저장 흐름</a>
+    <a href="#api-map">화면 ↔ API 매핑</a>
+  </nav>
+
+  <main class="doc-main">
+    <section id="overview" class="screen-section">
+      <h2>0. UI 구성 검토 — Light 버전</h2>
+      <p class="subtitle">제공해주신 레퍼런스 UI의 문서형/light 스타일을 기준으로, 현재 Phase 1 계획의 화면 구성을 재정리했습니다.</p>
+
+      <div class="annotation">
+        <strong>검토 결론:</strong> 이전 dark mockup보다 이 light 문서형 UI가 Phase 1 논의에 더 적합합니다. 표, 상태 배지, API 매핑, 동작 명세를 한 문서 안에서 같이 볼 수 있어 “화면 설계서”로 사용하기 좋습니다.
+      </div>
+
+      <h3>레퍼런스 UI에서 채택할 점</h3>
+      <table class="spec-table">
+        <tr><th style="width:180px">항목</th><th>채택 방향</th></tr>
+        <tr><td>문서형 좌측 Nav</td><td>화면, 컴포넌트, 흐름, API 매핑을 한 HTML에서 점프해서 검토한다.</td></tr>
+        <tr><td>Light 테마</td><td>실제 업무 화면과 설계 리뷰에 적합한 흰 배경/파란 primary 색상으로 통일한다.</td></tr>
+        <tr><td>프로젝트 목록 우선</td><td>Process Catalog와 별개로 사용자가 매일 들어오는 시작점은 Project List로 둔다.</td></tr>
+        <tr><td>조건표 편집기 구조</td><td>상단바 + 좌측 layer nav + category tabs + grid + validation panel 구성을 유지한다.</td></tr>
+        <tr><td>상태/툴팁/흐름 명세</td><td>셀 상태와 API 호출 흐름을 UI 문서 안에 같이 둔다.</td></tr>
+      </table>
+
+      <h3>우리 도메인에 맞게 조정한 점</h3>
+      <table class="spec-table">
+        <tr><th style="width:180px">조정</th><th>이유</th></tr>
+        <tr><td>Process Catalog 추가</td><td>Process는 제품/route 전체 흐름이므로, 프로젝트 생성 전 적재 process를 검색/preview하는 화면이 필요하다.</td></tr>
+        <tr><td>Backbone 제품 선택 단순화 보류</td><td>Phase 1에서는 process 선택 → project 생성 → sheet_layer 파생 흐름을 먼저 검증한다.</td></tr>
+        <tr><td>Layer 100개 미만 기준</td><td>좌측 layer nav와 grid sticky row/column 구조로 충분히 검토 가능한 규모다.</td></tr>
+        <tr><td>Parameter 약 200개 기준</td><td>category tab과 horizontal grid scroll을 기본 UX로 둔다.</td></tr>
+      </table>
+    </section>
+
+    <section id="process-catalog" class="screen-section">
+      <h2>1. Process Catalog</h2>
+      <p class="subtitle">경로: /processes &nbsp;|&nbsp; 목적: 수천 개 적재 process 중 프로젝트 생성 기준 process 선택</p>
+
+      <div class="wireframe">
+        <div class="wireframe-label">Wireframe — /processes</div>
+        <div class="pc-header"><strong>PCM - Process Catalog</strong><span>제품/route 기반 process 선택</span></div>
+        <div class="pc-toolbar">
+          <div class="toolbar-left">
+            <input class="search" placeholder="🔍 제품명 / process key / route 검색" />
+            <select class="select"><option>제품군 전체</option></select>
+            <select class="select"><option>최근 적재 30일</option></select>
+            <select class="select"><option>Active</option></select>
+          </div>
+          <button class="btn primary">검색</button>
+        </div>
+
+        <div class="catalog-split">
+          <div class="catalog-main">
+            <table class="data-table">
+              <thead>
+                <tr><th>Process</th><th>Layer</th><th>Parameter</th><th>최근 적재</th><th>상태</th></tr>
+              </thead>
+              <tbody>
+                <tr class="selected">
+                  <td><a class="link">제품 Alpha Main Route</a><span class="key">product_alpha_main</span></td>
+                  <td>87</td><td>198</td><td>2026-07-07</td><td><span class="pill approved">Active</span></td>
+                </tr>
+                <tr>
+                  <td><a class="link">제품 Beta Memory Route</a><span class="key">product_beta_memory</span></td>
+                  <td>92</td><td>201</td><td>2026-07-06</td><td><span class="pill approved">Active</span></td>
+                </tr>
+                <tr>
+                  <td><a class="link">제품 Gamma Legacy Route</a><span class="key">product_gamma_legacy</span></td>
+                  <td>64</td><td>193</td><td>2026-06-28</td><td><span class="pill review">Review</span></td>
+                </tr>
+                <tr>
+                  <td><a class="link">제품 Delta Pilot Route</a><span class="key">product_delta_pilot</span></td>
+                  <td>73</td><td>198</td><td>2026-07-02</td><td><span class="pill approved">Active</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <aside class="catalog-preview">
+            <div class="preview-title">
+              <strong>선택 Process Preview</strong>
+              <button class="btn primary">프로젝트 생성</button>
+            </div>
+            <div class="metric-grid">
+              <div class="metric"><span>Layer</span><strong>87</strong></div>
+              <div class="metric"><span>Param</span><strong>198</strong></div>
+              <div class="metric"><span>Cell</span><strong>17,226</strong></div>
+            </div>
+            <div class="mini-list">
+              <div class="mini-row"><span>001</span><strong>Initial Clean<span class="key">001_init_clean</span></strong><span>Clean</span></div>
+              <div class="mini-row"><span>010</span><strong>Active Photo<span class="key">010_photo_active</span></strong><span>Photo</span></div>
+              <div class="mini-row"><span>020</span><strong>Active Etch<span class="key">020_etch_active</span></strong><span>Etch</span></div>
+              <div class="mini-row"><span>030</span><strong>Active Metrology<span class="key">030_metrology_active</span></strong><span>계측</span></div>
+              <div class="mini-row"><span>...</span><span>100개 미만 layer 전체 preview</span><span></span></div>
+            </div>
+          </aside>
+        </div>
+      </div>
+
+      <h3>UI 동작 명세</h3>
+      <table class="spec-table">
+        <tr><th style="width:170px">요소</th><th>동작</th></tr>
+        <tr><td>검색/필터</td><td>수천 개 process 대응을 위해 서버 검색과 cursor pagination 전제. <code>GET /processes?query=&limit=&cursor=</code></td></tr>
+        <tr><td>Process 선택</td><td>오른쪽 preview에 layer count, parameter count, 예상 cell 수, layer preview 표시.</td></tr>
+        <tr><td>프로젝트 생성</td><td>선택 process를 Project Create 모달로 넘긴다. Process는 제품/route 전체 흐름이다.</td></tr>
+      </table>
+    </section>
+
+    <section id="project-list" class="screen-section">
+      <h2>2. 프로젝트 목록 페이지</h2>
+      <p class="subtitle">경로: /projects &nbsp;|&nbsp; 역할: 전체 사용자 시작 화면</p>
+
+      <div class="wireframe">
+        <div class="wireframe-label">Wireframe — /projects</div>
+        <div class="pc-header"><strong>PCM - Process Condition Manager</strong><span>프로젝트 목록</span></div>
+        <div class="project-toolbar">
+          <div class="toolbar-left">
+            <button class="btn active">전체</button>
+            <button class="btn">Draft</button>
+            <button class="btn">Review</button>
+            <button class="btn">Approved</button>
+            <input class="search" placeholder="🔍 프로젝트 / 제품명 검색" />
+          </div>
+          <button class="btn primary">+ 새 프로젝트</button>
+        </div>
+        <table class="data-table">
+          <thead>
+            <tr><th>#</th><th>프로젝트</th><th>Process</th><th>상태</th><th>Layer</th><th>오류</th><th>잠금</th><th>수정일</th><th></th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>1</td><td><a class="link">Alpha Main 조건표 Draft</a></td><td>product_alpha_main</td><td><span class="pill draft">Draft</span></td><td>87</td><td style="color:#c62828;font-weight:700">3</td><td>김엔지니어</td><td>2026-07-07 14:30</td><td><a class="link">편집 →</a></td>
+            </tr>
+            <tr>
+              <td>2</td><td><a class="link">Beta Memory 검토본</a></td><td>product_beta_memory</td><td><span class="pill review">Review</span></td><td>92</td><td style="color:#2e7d32">0</td><td>-</td><td>2026-07-06 11:00</td><td><a class="link">보기 →</a></td>
+            </tr>
+            <tr>
+              <td>3</td><td><a class="link">Gamma Legacy 승인본</a></td><td>product_gamma_legacy</td><td><span class="pill approved">Approved</span></td><td>64</td><td style="color:#2e7d32">0</td><td>-</td><td>2026-06-30 09:15</td><td><a class="link">보기 →</a></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>UI 구성 검토</h3>
+      <table class="spec-table">
+        <tr><th style="width:170px">항목</th><th>판단</th></tr>
+        <tr><td>시작 화면</td><td>실사용자는 Process Catalog보다 Project List를 더 자주 볼 가능성이 높으므로 좌측 nav의 주요 페이지로 유지한다.</td></tr>
+        <tr><td>+ 새 프로젝트</td><td>모달에서 Process Catalog 검색을 embed하거나, Process Catalog 화면으로 이동시키는 2안 모두 열어둔다.</td></tr>
+        <tr><td>오류/잠금 표시</td><td>Phase 2~5 기능이지만 목록의 주요 상태 컬럼으로 미리 자리 잡는다.</td></tr>
+      </table>
+    </section>
+
+    <section id="project-create" class="screen-section">
+      <h2>3. 프로젝트 생성 모달</h2>
+      <p class="subtitle">Process Catalog 또는 Project List의 “+ 새 프로젝트”에서 진입</p>
+
+      <div class="wireframe">
+        <div class="wireframe-label">Wireframe — Create Project</div>
+        <div class="modal-overlay">
+          <div class="modal-box">
+            <div class="modal-header">
+              <h3>새 프로젝트 생성</h3>
+              <p>선택한 process 구조에서 layer를 파생하고 백본 조건 값을 복사합니다.</p>
+            </div>
+            <div class="modal-body">
+              <div class="form-group">
+                <label>프로젝트 이름 *</label>
+                <input value="Alpha Main 조건표 Draft - 2026.07" />
+                <div class="hint">중복 가능. 사용자가 구분하기 쉬운 작업명</div>
+              </div>
+              <div class="form-group">
+                <label>기준 Process *</label>
+                <select>
+                  <option>제품 Alpha Main Route / product_alpha_main (87 layers)</option>
+                  <option>제품 Beta Memory Route / product_beta_memory (92 layers)</option>
+                </select>
+                <div class="hint">Process는 제품/route 전체 흐름이며 photo/etch/계측은 layer 유형입니다.</div>
+              </div>
+              <div class="form-group">
+                <label>설명</label>
+                <textarea>신규 적재 route 기준 백본 복사 후 조건 편집 시작</textarea>
+              </div>
+              <div class="create-preview">
+                <div class="metric"><span>Layer</span><strong>87</strong></div>
+                <div class="metric"><span>Parameter</span><strong>198</strong></div>
+                <div class="metric"><span>예상 Cell</span><strong>17,226</strong></div>
+              </div>
+              <div class="annotation"><strong>생성 결과:</strong> sheet_layer 87행 생성, cell_value 약 17,226행 초기화, change_event에 backbone_copy 기록</div>
+            </div>
+            <div class="modal-footer">
+              <button class="btn">취소</button>
+              <button class="btn primary">생성</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <h3>UI 동작 명세</h3>
+      <table class="spec-table">
+        <tr><th style="width:170px">요소</th><th>동작</th></tr>
+        <tr><td>기준 Process 선택</td><td><code>GET /processes?query=</code> 검색 결과에서 선택. 선택 시 layer/parameter/cell 수 preview 갱신.</td></tr>
+        <tr><td>생성 버튼</td><td><code>POST /projects</code> 호출. 성공 시 <code>/projects/{project_id}/sheet</code> 이동.</td></tr>
+        <tr><td>mapping 누락</td><td>생성 허용 여부는 보류. 현재 UI에서는 warning annotation으로 먼저 노출한다.</td></tr>
+      </table>
+    </section>
+
+    <section id="condition-editor" class="screen-section">
+      <h2>4. 조건표 편집기 (핵심 화면)</h2>
+      <p class="subtitle">경로: /projects/{id}/sheet &nbsp;|&nbsp; layer × parameter 조건표 편집</p>
+
+      <div class="wireframe">
+        <div class="wireframe-label">Wireframe — Sheet Editor</div>
+        <div class="ce-container">
+          <div class="ce-topbar">
+            <span style="cursor:pointer;">← 목록</span>
+            <span class="product-name">Alpha Main 조건표 Draft</span>
+            <span class="status-badge">Draft</span>
+            <span style="color:rgba(255,255,255,0.7);font-size:12px;">Process: product_alpha_main</span>
+            <span class="error-badge">⚠ 오류 3건</span>
+            <button class="save-btn">💾 저장</button>
+          </div>
+
+          <div class="ce-body">
+            <aside class="ce-layer-nav" id="comp-layer">
+              <div class="nav-header">Layers (87)</div>
+              <div class="ce-layer-item active"><div><div>001_INIT_CLEAN</div><div class="backbone-src">← product_alpha_main</div></div></div>
+              <div class="ce-layer-item"><div><div>010_PHOTO_ACTIVE</div><div class="backbone-src">← product_alpha_main</div></div></div>
+              <div class="ce-layer-item"><div><div>020_ETCH_ACTIVE</div><div class="backbone-src">← product_alpha_main</div></div><span class="pill error">2</span></div>
+              <div class="ce-layer-item"><div><div>030_METROLOGY_ACTIVE</div><div class="backbone-src">← product_alpha_main</div></div><span class="pill error">1</span></div>
+              <div class="ce-layer-item"><div><div>040_DEPOSITION_GATE</div><div class="backbone-src">← product_alpha_main</div></div></div>
+              <div class="ce-layer-item"><div><div>...</div><div class="backbone-src">100개 미만 layer</div></div></div>
+            </aside>
+
+            <div class="ce-editor">
+              <div class="ce-tabs" id="comp-tabs">
+                <div class="ce-tab active">전체 <span class="col-count">198</span></div>
+                <div class="ce-tab">SP (Spin/PR) <span class="col-count">42</span></div>
+                <div class="ce-tab">SC (Scanner) <span class="col-count">38</span></div>
+                <div class="ce-tab">ETCH <span class="col-count">36</span></div>
+                <div class="ce-tab">OVL/계측 <span class="col-count">28</span></div>
+                <div class="ce-tab">Custom <span class="col-count">54</span></div>
+              </div>
+
+              <div class="ce-grid" id="comp-grid">
+                <table>
+                  <thead>
+                    <tr>
+                      <th class="layer-col">Layer</th>
+                      <th>PR Type</th>
+                      <th>Spin Speed<br><span style="font-weight:400;color:#999">rpm</span></th>
+                      <th>Exposure<br><span style="font-weight:400;color:#999">mJ</span></th>
+                      <th>Focus<br><span style="font-weight:400;color:#999">um</span></th>
+                      <th>Etch Rate<br><span style="font-weight:400;color:#999">nm/min</span></th>
+                      <th>Thickness<br><span style="font-weight:400;color:#999">nm</span></th>
+                      <th>Overlay<br><span style="font-weight:400;color:#999">nm</span></th>
+                      <th>CD Target<br><span style="font-weight:400;color:#999">nm</span></th>
+                      <th>Bake Temp<br><span style="font-weight:400;color:#999">℃</span></th>
+                      <th>...</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td class="layer-col">001_INIT_CLEAN</td>
+                      <td></td><td></td><td></td><td></td><td></td><td class="recipe">90.0</td><td></td><td></td><td>110</td><td>...</td>
+                    </tr>
+                    <tr>
+                      <td class="layer-col">010_PHOTO_ACTIVE</td>
+                      <td>KrF-A01</td><td class="changed">3200</td><td>42.5</td><td>0.12</td><td></td><td>87.5</td><td>3.0</td><td>45</td><td>105</td><td>...</td>
+                    </tr>
+                    <tr>
+                      <td class="layer-col">020_ETCH_ACTIVE</td>
+                      <td></td><td></td><td></td><td></td><td>18.7</td><td class="changed">72.4</td><td></td><td>43</td><td></td><td>...</td>
+                    </tr>
+                    <tr>
+                      <td class="layer-col">030_METROLOGY_ACTIVE</td>
+                      <td></td><td></td><td></td><td></td><td></td><td></td><td class="error">9.8</td><td>44</td><td></td><td>...</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="ce-validation" id="comp-validation">
+                <div class="panel-header"><span>⚠ 검증 오류 3건</span><span>▼ 접기</span></div>
+                <div class="ce-val-item"><div class="icon">!</div><span class="location">020_ETCH_ACTIVE → Thickness</span><span class="message">허용 범위를 초과했습니다.</span></div>
+                <div class="ce-val-item"><div class="icon">!</div><span class="location">030_METROLOGY_ACTIVE → Overlay</span><span class="message">Overlay 값이 spec보다 큽니다.</span></div>
+                <div class="ce-val-item"><div class="icon">!</div><span class="location">010_PHOTO_ACTIVE → Spin Speed</span><span class="message">변경값 저장 전 확인 필요.</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <h3>핵심 구성 검토</h3>
+      <table class="spec-table">
+        <tr><th style="width:170px">영역</th><th>판단</th></tr>
+        <tr><td>좌측 Layer Nav</td><td>100개 미만 layer에서는 유용하다. 오류 뱃지와 backbone source를 같이 표시한다.</td></tr>
+        <tr><td>Category Tabs</td><td>200개 parameter를 한 번에 모두 보여주기보다 category 단위로 좁혀 보는 기본 UX가 필요하다.</td></tr>
+        <tr><td>Grid</td><td>sticky layer column + horizontal scroll + dirty/error/recipe 상태 색상은 필수다.</td></tr>
+        <tr><td>Validation Panel</td><td>하단 패널에서 오류 클릭 시 해당 layer/parameter cell로 jump하는 UX를 목표로 한다.</td></tr>
+      </table>
+    </section>
+
+    <section id="cell-states" class="screen-section">
+      <h2>셀 상태 & 툴팁</h2>
+      <p class="subtitle">AG Grid 또는 유사 그리드의 cellStyle / tooltipValueGetter 후보</p>
+
+      <div class="cell-states">
+        <div class="cell-state-box"><div class="cell-demo" style="background:#fffde7;border-color:#ffc107;">3200</div><div class="label" style="color:#e65100;">🟡 변경</div><div class="desc">backbone 원본값과 다름</div></div>
+        <div class="cell-state-box"><div class="cell-demo" style="background:#e8f5e9;border-color:#66bb6a;">90.0</div><div class="label" style="color:#2e7d32;">🟢 Recipe/Backbone</div><div class="desc">원천 복사 또는 recipe 반영</div></div>
+        <div class="cell-state-box"><div class="cell-demo" style="background:#ffebee;border-color:#ef5350;color:#c62828;">9.8</div><div class="label" style="color:#c62828;">🔴 검증 오류</div><div class="desc">범위 초과/필수값 누락</div></div>
+        <div class="cell-state-box"><div class="cell-demo" style="background:#fff;border-color:#2f5496;outline:2px solid #2f5496;">42.5</div><div class="label" style="color:#2f5496;">🔵 편집 중</div><div class="desc">현재 focus cell</div></div>
+      </div>
+
+      <table class="spec-table">
+        <tr><th style="width:130px">우선순위</th><th>상태</th><th>판단 기준</th></tr>
+        <tr><td>1</td><td>오류</td><td>검증 결과에 해당 cell이 존재하면 다른 상태보다 우선 표시</td></tr>
+        <tr><td>2</td><td>편집 중</td><td>현재 focus/editing cell</td></tr>
+        <tr><td>3</td><td>Recipe/Backbone</td><td>원천 복사 또는 recipe 적용 이력이 있는 값</td></tr>
+        <tr><td>4</td><td>변경</td><td>현재 값이 backbone snapshot과 다름</td></tr>
+      </table>
+    </section>
+
+    <section id="flows" class="screen-section">
+      <h2>편집 → 저장 데이터 흐름</h2>
+      <p class="subtitle">프론트엔드에서 셀 편집 후 저장까지</p>
+
+      <h3>페이지 초기 로딩</h3>
+      <div class="flow-diagram">
+        <div class="flow-step">페이지 마운트</div><span class="flow-arrow">→</span>
+        <div class="flow-step"><span class="tag get">GET</span> project sheet</div><span class="flow-arrow">→</span>
+        <div class="flow-step"><span class="tag get">GET</span> parameter registry</div><span class="flow-arrow">→</span>
+        <div class="flow-step">Grid 렌더링</div><span class="flow-arrow">→</span>
+        <div class="flow-step">초기 검증 결과 표시</div>
+      </div>
+
+      <h3>셀 편집/저장</h3>
+      <div class="flow-diagram">
+        <div class="flow-step">onCellValueChanged</div><span class="flow-arrow">→</span>
+        <div class="flow-step">dirty cell map 추가</div><span class="flow-arrow">→</span>
+        <div class="flow-step">프론트 즉시 검증</div><span class="flow-arrow">→</span>
+        <div class="flow-step"><span class="tag patch">PATCH</span> dirty cells</div><span class="flow-arrow">→</span>
+        <div class="flow-step">change_event 기록</div>
+      </div>
+    </section>
+
+    <section id="api-map" class="screen-section">
+      <h2>화면 ↔ API 매핑</h2>
+      <p class="subtitle">Phase 1/2에서 구체화할 API 후보</p>
+
+      <table class="spec-table">
+        <tr><th>화면 / 동작</th><th>API</th><th>호출 시점</th></tr>
+        <tr><td>Process Catalog 로딩/검색</td><td><span class="tag get">GET</span> <code>/processes?query=&limit=&cursor=</code></td><td>검색/필터 변경</td></tr>
+        <tr><td>Process Preview</td><td><span class="tag get">GET</span> <code>/processes/{process_key}/layers</code></td><td>process 선택</td></tr>
+        <tr><td>Project List</td><td><span class="tag get">GET</span> <code>/projects?status=&query=</code></td><td>페이지 마운트/필터</td></tr>
+        <tr><td>Project 생성</td><td><span class="tag post">POST</span> <code>/projects</code></td><td>생성 버튼</td></tr>
+        <tr><td>Sheet 조회</td><td><span class="tag get">GET</span> <code>/projects/{project_id}/sheet</code></td><td>편집기 진입</td></tr>
+        <tr><td>Cell 저장</td><td><span class="tag patch">PATCH</span> <code>/projects/{project_id}/cells</code></td><td>저장/자동저장</td></tr>
+        <tr><td>검증</td><td><span class="tag post">POST</span> <code>/projects/{project_id}/validate</code></td><td>저장 후/검증 버튼</td></tr>
+      </table>
+    </section>
+  </main>
+</body>
+</html>
