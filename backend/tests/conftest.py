@@ -2,7 +2,8 @@
 
 - client: DB 무의존 라이브니스/조립 검증용 클라이언트
 - db_client: SQLite 인메모리 앱 DB로 get_app_session을 오버라이드한 클라이언트
-  (레지스트리 CRUD API 테스트용). JSONB 등 PG 전용 기능은 T3 레지스트리에
+- db_session: db_client와 같은 엔진을 공유하는 세션 (백본 셀 값 등 API가 아직
+  없는 데이터를 직접 시드할 때 사용). JSONB 등 PG 전용 기능은 Phase 1 스키마에
   없으므로 SQLite로 고충실도 검증이 가능하다.
 """
 
@@ -10,7 +11,12 @@ from collections.abc import AsyncIterator
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlalchemy.pool import StaticPool
 
 import app.models  # noqa: F401 — 모든 모델을 metadata에 등록 (create_all 대상)
@@ -27,22 +33,34 @@ async def client() -> AsyncIterator[AsyncClient]:
 
 
 @pytest.fixture
-async def db_client() -> AsyncIterator[AsyncClient]:
-    """SQLite 인메모리 앱 DB로 배선된 테스트 클라이언트."""
+async def db_engine() -> AsyncIterator[AsyncEngine]:
+    """SQLite 인메모리 엔진 (테스트 1개 스코프에서 client/session이 공유)."""
     engine = create_async_engine(
         "sqlite+aiosqlite://",
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
-    session_factory = async_sessionmaker(
-        engine, expire_on_commit=False, class_=AsyncSession
-    )
-
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    try:
+        yield engine
+    finally:
+        await engine.dispose()
+
+
+@pytest.fixture
+def db_session_factory(db_engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
+    return async_sessionmaker(db_engine, expire_on_commit=False, class_=AsyncSession)
+
+
+@pytest.fixture
+async def db_client(
+    db_session_factory: async_sessionmaker[AsyncSession],
+) -> AsyncIterator[AsyncClient]:
+    """SQLite 인메모리 앱 DB로 배선된 테스트 클라이언트."""
 
     async def _override_get_app_session() -> AsyncIterator[AsyncSession]:
-        async with session_factory() as session:
+        async with db_session_factory() as session:
             yield session
 
     app.dependency_overrides[get_app_session] = _override_get_app_session
@@ -52,4 +70,12 @@ async def db_client() -> AsyncIterator[AsyncClient]:
             yield ac
     finally:
         app.dependency_overrides.pop(get_app_session, None)
-        await engine.dispose()
+
+
+@pytest.fixture
+async def db_session(
+    db_session_factory: async_sessionmaker[AsyncSession],
+) -> AsyncIterator[AsyncSession]:
+    """db_client와 같은 엔진을 공유하는 직접 시드용 세션."""
+    async with db_session_factory() as session:
+        yield session

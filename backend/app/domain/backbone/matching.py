@@ -45,6 +45,14 @@ class MatchResult:
         return sum(1 for match in self.matches if match.source_layer_key is None)
 
     @property
+    def auto_count(self) -> int:
+        return sum(1 for match in self.matches if match.match_type == "auto")
+
+    @property
+    def manual_count(self) -> int:
+        return sum(1 for match in self.matches if match.match_type == "manual")
+
+    @property
     def match_rate(self) -> float:
         if not self.matches:
             return 0.0
