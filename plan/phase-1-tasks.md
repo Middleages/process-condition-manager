@@ -15,12 +15,12 @@
 
 ## 완료 기준 (Exit Criteria)
 
-- [ ] EC1. **layer 구성이 서로 다른 두 process** 각각에서 프로젝트를 생성하면, 각자의 구조대로 시트(`sheet_layer` + `cell_value`)가 만들어진다 — 동적 구조의 핵심 검증
-- [ ] EC2. 백본 프로젝트 복사(layer 매칭)와 레이어별 교체 결과가 데이터로 확인되고, 두 작업 모두 `change_event`가 남는다
-- [ ] EC3. 그리드 라이브러리가 PoC로 확정되고(결정 로그 기재), 그리드 어댑터 인터페이스 초안이 `frontend/src/grid/`에 있다
-- [ ] EC4. 프로젝트 목록에서 생성된 프로젝트를 검색·조회할 수 있다 (상태는 draft 고정 표시)
-- [ ] EC5. 생성 화면에서 백본 후보별 layer 매칭률과 미매칭 layer 목록이 생성 전에 표시되고(dry-run), 자동 매칭 실패분을 사용자가 수동 매칭으로 보완할 수 있다
-- [ ] EC6. CSV 파라미터 목록을 붙여넣기 임포트(미리보기 → 적용)해 레지스트리에 일괄 등록/갱신할 수 있다 (D-17)
+- [x] EC1. **layer 구성이 서로 다른 두 process** 각각에서 프로젝트를 생성하면, 각자의 구조대로 시트(`sheet_layer` + `cell_value`)가 만들어진다 — 동적 구조의 핵심 검증 · `test_create_project_from_process_structure`, `test_backbone_copy_duplicates_conditions_and_cells`
+- [x] EC2. 백본 프로젝트 복사(layer 매칭)와 레이어별 교체 결과가 데이터로 확인되고, 두 작업 모두 `change_event`가 남는다 · `test_backbone_copy_records_event_with_counts`, `test_replace_layer_backbone_uses_source_layer_conditions` · 백본 없는 생성은 `project_create`, 복사는 `backbone_copy`로 분리
+- [x] EC3. 그리드 라이브러리가 확정되고(결정 로그: README D-18 / 03 §7 — Glide Data Grid), 그리드 어댑터 인터페이스 초안이 `frontend/src/grid/types.ts`에 있다 · 붙여넣기·성능 대화형 체감 검증은 Phase 2 착수 첫 스텝의 확인 게이트로 남김
+- [x] EC4. 프로젝트 목록에서 생성된 프로젝트를 검색·조회할 수 있다 (상태는 draft 고정 표시) · `GET /projects` query/status/cursor, `test_list_projects_search_and_cursor_paging`
+- [x] EC5. 생성 화면에서 백본 후보별 layer 매칭률과 미매칭 layer 목록이 생성 전에 표시되고(dry-run), 자동 매칭 실패분을 사용자가 수동 매칭으로 보완할 수 있다 · `GET /projects/backbone-candidates`, `POST /projects/backbone-preview`, ProjectCreateWizard
+- [x] EC6. CSV 파라미터 목록을 붙여넣기 임포트(미리보기 → 적용)해 레지스트리에 일괄 등록/갱신할 수 있다 (D-17) · `POST /parameters/import/{preview,apply}`, CsvImportPanel
 
 ## 선행 확정 필요 (결정 항목)
 
@@ -32,7 +32,7 @@
 | P1-D4 | 카테고리 탭 라벨 | 파라미터 카테고리 탭은 레지스트리(SP/SC/OVL/DEV 등)에서 동적 생성 — layer의 area와 혼동 금지 | 하드코딩 금지, 레지스트리 기반 동적 생성 |
 | P1-D5 | layer 매칭 키 | 신규 process layer ↔ 백본 프로젝트 layer 매칭 기준 | **확정 (D-15)**: 자동 = `step_seq + layer_id` 조합. 수동 매칭은 자동 매칭을 override할 수 있고, 같은 백본 source layer를 여러 target layer에 매칭할 수 있다. 수동 매칭분은 UI/API에서 `manual`로 표시한다. |
 | P1-D6 | 중복 프로젝트 정책 | 이미 조건표(프로젝트)가 있는 process에서 또 생성할 수 있는가 | **확정: 차단.** 기존 프로젝트로 유도 — Draft면 "이어서 편집", Approved면 "Revision 생성"(Phase 5 기능, 그 전까지는 기존 프로젝트 열기 안내만) |
-| P1-D7 | 레거시 데이터 이관 스파이크 | 기존 시스템 데이터를 초기 백본 풀로 이관할 수 있는지 (D-04 전면 리셋의 예외, 희망 사항) | Phase 1 중 **실현 가능성 평가만** 수행 (데이터 상태 확인). 이관 작업 자체는 범위 외 — 결과에 따라 별도 배정 |
+| P1-D7 | 레거시 데이터 이관 스파이크 | 기존 시스템 데이터를 초기 백본 풀로 이관할 수 있는지 (D-04 전면 리셋의 예외, 희망 사항) | **스파이크 결과: 보류.** 이관의 실현 가능성은 (1) 적재 스키마 확정(P1-D2 실 컬럼) 과 (2) 레거시 조건 값의 실데이터 접근에 달려 있는데, 현 단계에서 둘 다 미확보다. 백본은 이제 "적재"가 아니라 "기존 프로젝트"(D-14)이므로, 이관은 곧 **레거시 조건 값 → PCM 프로젝트(`layer_condition`/`cell_value`) 시드**를 의미한다. 이는 T3 생성 경로 + CSV 임포트(T8) 위에 얹을 수 있으므로 별도 코드 축이 아니라 **일회성 시드 스크립트**로 충분하다. 실데이터/스키마 확정 후 재평가하며 이관 작업 자체는 범위 외 유지 |
 | P1-D8 | 백본 복사 시 조건 행 범위 | 백본 layer에 다중 조건 행이 있을 때의 복사 범위 (D-16) | **확정**: 조건 행(`layer_condition`) 전부 복사 + 조건 행 라벨(`label`) + POR 플래그 그대로 유지. 미매칭 layer는 기본 조건 1행 + 기본 라벨 + POR 미지정으로 생성 |
 
 ## 작업 분해 (Work Breakdown)

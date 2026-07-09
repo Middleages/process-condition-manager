@@ -19,7 +19,7 @@
 | 문서 | 상태 |
 |------|------|
 | [phase-0-tasks.md](./phase-0-tasks.md) — 리셋 + 기반 | 완료 (2026-07-05 점검) |
-| [phase-1-tasks.md](./phase-1-tasks.md) — 프로젝트 + 백본 (그리드 PoC 병행) | 계획 |
+| [phase-1-tasks.md](./phase-1-tasks.md) — 프로젝트 + 백본 (그리드 PoC 병행) | 구현 완료 (2026-07-09 검토 반영, EC1~EC6 충족) |
 | [phase-2-tasks.md](./phase-2-tasks.md) — 조건표 편집기 | 계획 |
 | [phase-3-tasks.md](./phase-3-tasks.md) — 검증 엔진 | 계획 |
 | [phase-4-tasks.md](./phase-4-tasks.md) — 변경 이력 | 계획 |
