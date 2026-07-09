@@ -31,6 +31,13 @@ class ProjectRepository:
         )
         return result.scalar_one_or_none()
 
+    async def list_backbone_candidates(self) -> list[Project]:
+        """백본 후보 — 매칭률 계산에 필요한 layer 구조만 로드한다 (셀 제외)."""
+        result = await self.session.execute(
+            select(Project).options(selectinload(Project.layers)).order_by(Project.id.desc())
+        )
+        return list(result.scalars().all())
+
     async def processes_with_projects(self) -> set[tuple[str, str]]:
         """조건표(프로젝트)가 하나라도 있는 (line_id, process_id) 집합."""
         rows = await self.session.execute(

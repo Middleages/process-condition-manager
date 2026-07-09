@@ -122,6 +122,30 @@ async def test_preview_with_backbone_reports_match_and_copy_counts(
     assert types == {"auto", "unmatched"}
 
 
+async def test_backbone_candidates_ranked_by_match_rate(db_client: AsyncClient) -> None:
+    # 백본 후보: PROC_ALPHA(001/CLN 공통) 하나. 대상 PROC_BETA 기준 매칭률 계산.
+    alpha = (
+        await db_client.post(
+            "/projects",
+            json={"line_id": "L1", "process_id": "PROC_ALPHA", "part_id": "A", "name": "Alpha"},
+        )
+    ).json()
+
+    resp = await db_client.get(
+        "/projects/backbone-candidates",
+        params={"line_id": "L1", "process_id": "PROC_BETA"},
+    )
+
+    assert resp.status_code == 200, resp.text
+    candidates = resp.json()
+    assert len(candidates) == 1
+    assert candidates[0]["id"] == alpha["id"]
+    # PROC_BETA layer 2개 중 001/CLN 하나만 매칭 → 0.5
+    assert candidates[0]["matched_count"] == 1
+    assert candidates[0]["unmatched_count"] == 1
+    assert candidates[0]["match_rate"] == 0.5
+
+
 async def test_list_and_get_project(db_client: AsyncClient) -> None:
     created = (
         await db_client.post(

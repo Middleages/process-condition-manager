@@ -6,7 +6,7 @@ from dataclasses import asdict, dataclass
 from sqlalchemy.exc import IntegrityError
 
 from app.core.errors import ConflictError, DomainValidationError, NotFoundError
-from app.domain.backbone import LayerMatchInput, ManualOverride, match_layers
+from app.domain.backbone import LayerMatchInput, ManualOverride, MatchResult, match_layers
 from app.features.projects.repository import ProjectRepository
 from app.features.projects.schema import (
     BackboneReplaceIn,
@@ -63,6 +63,27 @@ class ProjectService:
         if project is None:
             raise NotFoundError(f"프로젝트를 찾을 수 없다: {project_id}")
         return project
+
+    async def list_backbone_candidates(
+        self, line_id: str, process_id: str
+    ) -> list[tuple[Project, MatchResult]]:
+        """대상 process 구조에 대해 후보 프로젝트별 자동 매칭률을 계산한다.
+
+        매칭률 내림차순 정렬(동률이면 최근 생성 우선). Phase 1은 draft만 존재하지만
+        status 우선순위 자리는 잡아둔다(Approved 우선 — Phase 5).
+        """
+        target_layers = await self.reader.get_layers(line_id, process_id)
+        target_inputs = _match_inputs_from_ingest(target_layers)
+        candidates = await self.repo.list_backbone_candidates()
+        ranked = [
+            (candidate, match_layers(target_inputs, _match_inputs_from_sheet(candidate.layers)))
+            for candidate in candidates
+        ]
+        ranked.sort(
+            key=lambda pair: (_status_priority(pair[0].status), pair[1].match_rate, pair[0].id),
+            reverse=True,
+        )
+        return ranked
 
     async def preview_match(self, data: MatchPreviewIn) -> MatchPreviewOut:
         target_layers = await self.reader.get_layers(data.line_id, data.process_id)
@@ -234,6 +255,12 @@ class ProjectService:
         except IntegrityError as exc:
             await self.repo.session.rollback()
             raise ConflictError("이미 존재하는 프로젝트 identity") from exc
+
+
+def _status_priority(status: ProjectStatus) -> int:
+    """백본 후보 정렬 우선순위 (Approved 우선 자리 확보 — Phase 5 상태 머신 대비)."""
+    order = {ProjectStatus.DRAFT: 0}
+    return order.get(status, 0)
 
 
 def _duplicate_conflict(existing: Project) -> ConflictError:
