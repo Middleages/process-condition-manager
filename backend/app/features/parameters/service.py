@@ -6,7 +6,15 @@ core.errors 예외로 변환한다.
 """
 
 from app.core.errors import ConflictError, NotFoundError
-from app.domain.parameters import validate_code, validate_new_parameter
+from app.domain.parameters import (
+    ImportPayload,
+    ImportPlan,
+    ValueType,
+    build_import_plan,
+    parse_rows,
+    validate_code,
+    validate_new_parameter,
+)
 from app.domain.parameters.rules import (
     validate_choice_options,
     validate_number_bounds,
@@ -148,10 +156,93 @@ class ParameterService:
         )
         return parameter
 
+    # --- CSV 임포트 (T8) ---
+
+    async def import_preview(self, csv_text: str) -> ImportPlan:
+        """CSV를 파싱하고 레지스트리와 대조해 create/update/error를 분류한다 (dry-run)."""
+        rows = parse_rows(csv_text)
+        existing = await self._existing_value_types()
+        return build_import_plan(rows, existing)
+
+    async def import_apply(self, csv_text: str) -> ImportPlan:
+        """미리보기와 동일한 계획으로 유효 행만 code 기준 UPSERT 적용한다.
+
+        오류 행은 건드리지 않고, 반환 계획으로 결과 요약을 제공한다.
+        """
+        plan = await self.import_preview(csv_text)
+        category_cache: dict[str, int] = {}
+        for row in plan.rows:
+            if row.payload is None:
+                continue
+            category_id = await self._resolve_category(row.payload.category, category_cache)
+            if row.action == "create":
+                await self.repo.add_parameter(_new_parameter(row.payload, category_id))
+            else:
+                await self._apply_update(row.payload, category_id)
+        await self.repo.session.flush()
+        return plan
+
+    async def _existing_value_types(self) -> dict[str, str]:
+        params = await self.repo.list_parameters(include_inactive=True)
+        return {p.code: p.value_type.value for p in params}
+
+    async def _resolve_category(
+        self, code: str | None, cache: dict[str, int]
+    ) -> int | None:
+        if code is None:
+            return None
+        if code in cache:
+            return cache[code]
+        category = await self.repo.get_category_by_code(code)
+        if category is None:
+            category = await self.repo.add_category(
+                ParameterCategory(code=code, display_name=code.upper())
+            )
+        cache[code] = category.id
+        return category.id
+
+    async def _apply_update(self, payload: ImportPayload, category_id: int | None) -> None:
+        parameter = await self.repo.get_parameter_by_code(payload.code)
+        if parameter is None:  # pragma: no cover - 계획 단계에서 update로 분류된 경우만 진입
+            raise NotFoundError(f"파라미터를 찾을 수 없다: {payload.code}")
+        parameter.display_name = payload.display_name
+        parameter.description = payload.description
+        parameter.category_id = category_id
+        parameter.unit = payload.unit
+        parameter.min_value = payload.min_value
+        parameter.max_value = payload.max_value
+        parameter.sort_order = payload.sort_order
+        if payload.value_type is ValueType.CHOICE:
+            await self.repo.replace_options(
+                parameter, [_option_from_value(v) for v in payload.options]
+            )
+
 
 def _to_option(data: OptionIn) -> ParameterOption:
     return ParameterOption(
         value=data.value,
         display_name=data.display_name,
         sort_order=data.sort_order,
+    )
+
+
+def _option_from_value(value: str) -> ParameterOption:
+    return ParameterOption(value=value, display_name=value)
+
+
+def _new_parameter(payload: ImportPayload, category_id: int | None) -> Parameter:
+    return Parameter(
+        code=payload.code,
+        display_name=payload.display_name,
+        description=payload.description,
+        value_type=payload.value_type,
+        category_id=category_id,
+        unit=payload.unit,
+        min_value=payload.min_value,
+        max_value=payload.max_value,
+        sort_order=payload.sort_order,
+        options=[
+            ParameterOption(value=value, display_name=value, sort_order=index)
+            for index, value in enumerate(payload.options)
+        ],
     )

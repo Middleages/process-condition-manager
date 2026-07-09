@@ -262,3 +262,60 @@ async def test_parameter_with_unknown_category_404(db_client: AsyncClient) -> No
         },
     )
     assert resp.status_code == 404
+
+
+async def test_csv_import_preview_then_apply_upserts(db_client: AsyncClient) -> None:
+    # 기존 파라미터 1개 (갱신 대상)
+    await db_client.post(
+        "/parameters",
+        json={"code": "pr_type", "display_name": "old", "value_type": "text"},
+    )
+
+    csv_text = (
+        "code,display_name,type,category,options\n"
+        "spin_speed,Spin Speed,number,sp,\n"
+        'pr_type,PR Type,text,sp,\n'
+        'dev_mode,Dev Mode,choice,dev,"A,B"\n'
+    )
+
+    preview = await db_client.post(
+        "/parameters/import/preview", json={"csv_text": csv_text}
+    )
+    assert preview.status_code == 200, preview.text
+    body = preview.json()
+    assert body["created_count"] == 2
+    assert body["updated_count"] == 1
+    assert body["error_count"] == 0
+
+    # 미리보기는 DB를 바꾸지 않는다
+    before = (await db_client.get("/parameters")).json()
+    assert {p["code"] for p in before} == {"pr_type"}
+
+    applied = await db_client.post(
+        "/parameters/import/apply", json={"csv_text": csv_text}
+    )
+    assert applied.status_code == 200, applied.text
+
+    params = {p["code"]: p for p in (await db_client.get("/parameters")).json()}
+    assert set(params) == {"pr_type", "spin_speed", "dev_mode"}
+    assert params["pr_type"]["display_name"] == "PR Type"  # 갱신됨
+    assert [o["value"] for o in params["dev_mode"]["options"]] == ["A", "B"]
+    # category 자동 생성
+    categories = {c["code"] for c in (await db_client.get("/parameters/categories")).json()}
+    assert {"sp", "dev"} <= categories
+
+
+async def test_csv_import_reports_errors_without_applying(db_client: AsyncClient) -> None:
+    csv_text = "code,type\n9bad,text\npr_type,choice\n"  # 형식오류 + choice 옵션누락
+
+    preview = await db_client.post(
+        "/parameters/import/preview", json={"csv_text": csv_text}
+    )
+    assert preview.json()["error_count"] == 2
+
+    apply = await db_client.post(
+        "/parameters/import/apply", json={"csv_text": csv_text}
+    )
+    assert apply.status_code == 200
+    # 오류 행만 있으므로 아무것도 생성되지 않는다
+    assert (await db_client.get("/parameters")).json() == []
