@@ -3,13 +3,15 @@ import { FormEvent, ReactNode, useState } from 'react'
 
 import { createCategory, listCategories } from '@/api/categories'
 import {
+  applyParameterImport,
   createParameter,
   deactivateParameter,
   listParameters,
+  previewParameterImport,
   replaceParameterOptions,
   updateParameter,
 } from '@/api/parameters'
-import type { ParameterOut, ValueType } from '@/api/types'
+import type { ParameterImportResultOut, ParameterOut, ValueType } from '@/api/types'
 import { getApiErrorMessage } from '@/api/client'
 import { ErrorMessage, LoadingMessage } from '@/shared/components/StatusMessage'
 
@@ -29,6 +31,8 @@ export function ParameterAdminPage() {
   const [editing, setEditing] = useState<ParameterOut | null>(null)
   const [categoryCode, setCategoryCode] = useState('')
   const [categoryDisplayName, setCategoryDisplayName] = useState('')
+  const [importCsv, setImportCsv] = useState('')
+  const [importPreview, setImportPreview] = useState<ParameterImportResultOut | null>(null)
   const [form, setForm] = useState<ParameterFormState>(initialParameterFormState)
 
   const parametersQuery = useQuery({
@@ -67,6 +71,21 @@ export function ParameterAdminPage() {
       await queryClient.invalidateQueries({ queryKey: ['parameter-categories'] })
       setCategoryCode('')
       setCategoryDisplayName('')
+    },
+  })
+
+
+  const previewImportMutation = useMutation({
+    mutationFn: () => previewParameterImport(importCsv),
+    onSuccess: (result) => setImportPreview(result),
+  })
+
+  const applyImportMutation = useMutation({
+    mutationFn: () => applyParameterImport(importCsv),
+    onSuccess: async (result) => {
+      setImportPreview(result)
+      await queryClient.invalidateQueries({ queryKey: ['parameters'] })
+      await queryClient.invalidateQueries({ queryKey: ['parameter-categories'] })
     },
   })
 
@@ -110,6 +129,43 @@ export function ParameterAdminPage() {
           파라미터를 추가·수정·비활성화하고 목록 반영을 즉시 확인한다.
         </p>
       </div>
+
+
+      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="mb-4">
+          <h3 className="text-lg font-semibold">CSV 파라미터 일괄 임포트</h3>
+          <p className="mt-1 text-sm text-slate-500">
+            첫 줄은 헤더다. 줄바꿈이 들어간 헤더는 제거해서 매핑하고, choice 옵션은 CSV 셀 안에서 콤마로 구분한다.
+          </p>
+        </div>
+        <textarea
+          className="input min-h-36 font-mono text-sm"
+          value={importCsv}
+          onChange={(event) => setImportCsv(event.target.value)}
+          placeholder={'code,display name,value_type,category,choices\nmode,Mode,choice,photo,"A,B"'}
+        />
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <button
+            className="btn-secondary"
+            type="button"
+            disabled={previewImportMutation.isPending || importCsv.trim() === ''}
+            onClick={() => previewImportMutation.mutate()}
+          >
+            미리보기
+          </button>
+          <button
+            className="btn-primary"
+            type="button"
+            disabled={applyImportMutation.isPending || importCsv.trim() === ''}
+            onClick={() => applyImportMutation.mutate()}
+          >
+            적용
+          </button>
+          {previewImportMutation.isError ? <span className="text-sm text-red-600">{getApiErrorMessage(previewImportMutation.error)}</span> : null}
+          {applyImportMutation.isError ? <span className="text-sm text-red-600">{getApiErrorMessage(applyImportMutation.error)}</span> : null}
+        </div>
+        {importPreview ? <ImportResult result={importPreview} /> : null}
+      </section>
 
       <form onSubmit={submitCategory} className="rounded-xl border border-slate-200 bg-white shadow-sm p-5">
         <h3 className="mb-4 text-lg font-semibold">카테고리 추가</h3>
@@ -309,5 +365,34 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
       <span>{label}</span>
       {children}
     </label>
+  )
+}
+
+
+function ImportResult({ result }: { result: ParameterImportResultOut }) {
+  return (
+    <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+      <div className="flex flex-wrap gap-2">
+        <span className="rounded-full bg-emerald-50 px-2 py-1 text-emerald-700">신규 {result.new_count}</span>
+        <span className="rounded-full bg-cyan-50 px-2 py-1 text-cyan-700">갱신 {result.update_count}</span>
+        <span className="rounded-full bg-red-50 px-2 py-1 text-red-700">오류 {result.error_count}</span>
+      </div>
+      {result.errors.length > 0 ? (
+        <ul className="mt-3 list-disc space-y-1 pl-5 text-red-700">
+          {result.errors.map((error) => (
+            <li key={error}>{error}</li>
+          ))}
+        </ul>
+      ) : null}
+      {result.rows.length > 0 ? (
+        <ul className="mt-3 grid gap-1 text-slate-600 md:grid-cols-2">
+          {result.rows.slice(0, 8).map((row) => (
+            <li key={`${row.row_number}-${row.code}`} className="font-mono">
+              {row.row_number}행 · {row.code} · {row.action}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
   )
 }

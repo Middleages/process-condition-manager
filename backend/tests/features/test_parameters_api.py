@@ -262,3 +262,48 @@ async def test_parameter_with_unknown_category_404(db_client: AsyncClient) -> No
         },
     )
     assert resp.status_code == 404
+
+
+async def test_parameter_import_preview_and_apply_csv(db_client: AsyncClient) -> None:
+    csv_text = (
+        'code,display name,value_type,category,choices\n'
+        'mode,Mode,choice,photo,"A,B"\n'
+        'exposure,Exposure,number,photo,\n'
+    )
+
+    preview = await db_client.post("/parameters/import/preview", json={"csv_text": csv_text})
+    assert preview.status_code == 200, preview.text
+    assert preview.json()["new_count"] == 2
+    assert preview.json()["error_count"] == 0
+
+    applied = await db_client.post("/parameters/import/apply", json={"csv_text": csv_text})
+    assert applied.status_code == 200, applied.text
+    assert applied.json()["new_count"] == 2
+
+    listed = await db_client.get("/parameters")
+    assert [param["code"] for param in listed.json()] == ["exposure", "mode"]
+    mode = next(param for param in listed.json() if param["code"] == "mode")
+    assert [option["value"] for option in mode["options"]] == ["A", "B"]
+
+    update_csv = """code,display name,value_type,category\nmode,Mode Updated,text,photo\n"""
+    updated = await db_client.post("/parameters/import/apply", json={"csv_text": update_csv})
+    assert updated.status_code == 200
+    assert updated.json()["update_count"] == 1
+    mode_after = next(
+        param
+        for param in (await db_client.get("/parameters")).json()
+        if param["code"] == "mode"
+    )
+    assert mode_after["display_name"] == "Mode Updated"
+    assert mode_after["value_type"] == "text"
+
+
+async def test_parameter_import_reports_duplicate_code(db_client: AsyncClient) -> None:
+    csv_text = '"co\nde",display name\nfoo,Foo\nfoo,Foo Again\n'
+
+    preview = await db_client.post("/parameters/import/preview", json={"csv_text": csv_text})
+
+    assert preview.status_code == 200
+    body = preview.json()
+    assert body["error_count"] == 1
+    assert "중복 code foo" in body["errors"][0]

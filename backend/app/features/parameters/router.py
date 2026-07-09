@@ -19,6 +19,9 @@ from app.features.parameters.schema import (
     CategoryUpdate,
     OptionIn,
     ParameterCreate,
+    ParameterImportApplyIn,
+    ParameterImportPreviewIn,
+    ParameterImportResultOut,
     ParameterOut,
     ParameterUpdate,
 )
@@ -68,6 +71,23 @@ async def update_category(
 ) -> CategoryOut:
     category = await service.update_category(category_id, data)
     return CategoryOut.model_validate(category)
+
+
+# --- Imports ---
+
+
+@router.post("/import/preview", response_model=ParameterImportResultOut)
+async def preview_import(
+    data: ParameterImportPreviewIn, service: ServiceDep
+) -> ParameterImportResultOut:
+    return await service.preview_import_csv(data.csv_text)
+
+
+@router.post("/import/apply", response_model=ParameterImportResultOut)
+async def apply_import(
+    data: ParameterImportApplyIn, service: ServiceDep
+) -> ParameterImportResultOut:
+    return await service.apply_import_csv(data.csv_text)
 
 
 # --- Parameters ---

@@ -3,8 +3,8 @@ import { FormEvent, ReactNode, useEffect, useMemo, useState } from 'react'
 
 import { getApiErrorMessage } from '@/api/client'
 import { listProcesses } from '@/api/processes'
-import { createProject, listProjects } from '@/api/projects'
-import type { ProcessOut, ProjectOut } from '@/api/types'
+import { createProject, listProjects, previewBackbone } from '@/api/projects'
+import type { MatchPreviewOut, ProcessOut, ProjectOut } from '@/api/types'
 import { ErrorMessage, LoadingMessage } from '@/shared/components/StatusMessage'
 
 export function ProjectWorkspacePage() {
@@ -17,6 +17,8 @@ export function ProjectWorkspacePage() {
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null)
   const [partId, setPartId] = useState('')
   const [name, setName] = useState('')
+  const [backboneProjectId, setBackboneProjectId] = useState<string>('')
+  const [preview, setPreview] = useState<MatchPreviewOut | null>(null)
 
   const selectedProcess = useMemo(
     () => processes.find((process) => process.key === selectedProcessKey) ?? null,
@@ -49,6 +51,7 @@ export function ProjectWorkspacePage() {
         process_id: selectedProcess.process_id,
         part_id: partId.trim(),
         name: name.trim(),
+        backbone_project_id: backboneProjectId === '' ? null : Number(backboneProjectId),
       })
     },
     onSuccess: async (project) => {
@@ -56,7 +59,24 @@ export function ProjectWorkspacePage() {
       setSelectedProjectId(project.id)
       setPartId('')
       setName('')
+      setBackboneProjectId('')
+      setPreview(null)
     },
+  })
+
+
+  const previewMutation = useMutation({
+    mutationFn: async () => {
+      if (selectedProcess === null) {
+        throw new Error('process를 선택해 주세요')
+      }
+      return previewBackbone({
+        line_id: selectedProcess.line_id,
+        process_id: selectedProcess.process_id,
+        backbone_project_id: backboneProjectId === '' ? null : Number(backboneProjectId),
+      })
+    },
+    onSuccess: (result) => setPreview(result),
   })
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -106,6 +126,29 @@ export function ProjectWorkspacePage() {
           <Field label="프로젝트명">
             <input className="input" value={name} onChange={(event) => setName(event.target.value)} required />
           </Field>
+          <Field label="백본 프로젝트">
+            <select className="input" value={backboneProjectId} onChange={(event) => setBackboneProjectId(event.target.value)}>
+              <option value="">백본 없이 시작</option>
+              {projects.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.name} · {project.part_id}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <div className="flex items-center gap-3">
+            <button
+              className="btn-secondary"
+              type="button"
+              disabled={previewMutation.isPending || selectedProcess === null}
+              onClick={() => previewMutation.mutate()}
+            >
+              매칭 미리보기
+            </button>
+            {previewMutation.isError ? <span className="text-sm text-red-600">{getApiErrorMessage(previewMutation.error)}</span> : null}
+          </div>
+          {preview ? <BackbonePreview preview={preview} /> : null}
+
           <button className="btn-primary" type="submit" disabled={createMutation.isPending || selectedProcess === null}>
             {createMutation.isPending ? '생성 중...' : '프로젝트 생성'}
           </button>
@@ -224,6 +267,21 @@ function ProjectDetail({ project }: { project: ProjectOut }) {
           </tbody>
         </table>
       </div>
+    </div>
+  )
+}
+
+
+function BackbonePreview({ preview }: { preview: MatchPreviewOut }) {
+  return (
+    <div className="rounded-lg border border-cyan-100 bg-cyan-50 p-3 text-sm text-cyan-900">
+      <div className="flex flex-wrap gap-2">
+        <span>매칭 {preview.matched_count}</span>
+        <span>미매칭 {preview.unmatched_count}</span>
+        <span>복사 조건 {preview.copy_condition_count}</span>
+        <span>복사 셀 {preview.copy_cell_count}</span>
+      </div>
+      <p className="mt-2 text-xs text-cyan-700">자동/수동 상세 매칭 UI는 다음 편집 화면 전에 확장한다.</p>
     </div>
   )
 }

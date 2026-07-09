@@ -11,12 +11,15 @@ from app.domain.parameters.rules import (
     validate_choice_options,
     validate_number_bounds,
 )
+from app.features.parameters.importer import parse_parameter_csv
 from app.features.parameters.repository import ParameterRepository
 from app.features.parameters.schema import (
     CategoryCreate,
     CategoryUpdate,
     OptionIn,
     ParameterCreate,
+    ParameterImportResultOut,
+    ParameterImportRowOut,
     ParameterUpdate,
 )
 from app.models.parameter import Parameter, ParameterCategory, ParameterOption
@@ -147,6 +150,92 @@ class ParameterService:
             parameter, [_to_option(o) for o in options]
         )
         return parameter
+
+    async def preview_import_csv(self, csv_text: str) -> ParameterImportResultOut:
+        parsed = parse_parameter_csv(csv_text)
+        rows: list[ParameterImportRowOut] = []
+        for parsed_row in parsed.rows:
+            existing = await self.repo.get_parameter_by_code(parsed_row.parameter.code)
+            rows.append(
+                ParameterImportRowOut(
+                    row_number=parsed_row.row_number,
+                    code=parsed_row.parameter.code,
+                    action="update" if existing else "create",
+                )
+            )
+        return ParameterImportResultOut(
+            new_count=sum(1 for row in rows if row.action == "create"),
+            update_count=sum(1 for row in rows if row.action == "update"),
+            error_count=len(parsed.errors),
+            rows=rows,
+            errors=parsed.errors,
+        )
+
+    async def apply_import_csv(self, csv_text: str) -> ParameterImportResultOut:
+        preview = await self.preview_import_csv(csv_text)
+        if preview.error_count > 0:
+            return preview
+        parsed = parse_parameter_csv(csv_text)
+        applied_rows: list[ParameterImportRowOut] = []
+        for parsed_row in parsed.rows:
+            category_id = await self._ensure_import_category(parsed_row.category_code)
+            data = parsed_row.parameter
+            data.category_id = category_id
+            existing = await self.repo.get_parameter_by_code(data.code)
+            if existing is None:
+                parameter = await self.create_parameter(data)
+                applied_rows.append(
+                    ParameterImportRowOut(
+                        row_number=parsed_row.row_number,
+                        code=parameter.code,
+                        action="create",
+                    )
+                )
+            else:
+                validate_new_parameter(
+                    code=data.code,
+                    value_type=data.value_type,
+                    min_value=data.min_value,
+                    max_value=data.max_value,
+                    option_values=[option.value for option in data.options],
+                )
+                existing.display_name = data.display_name
+                existing.description = data.description
+                existing.value_type = data.value_type
+                existing.category_id = data.category_id
+                existing.unit = data.unit
+                existing.min_value = data.min_value
+                existing.max_value = data.max_value
+                existing.sort_order = data.sort_order
+                await self.repo.replace_options(
+                    existing, [_to_option(option) for option in data.options]
+                )
+                applied_rows.append(
+                    ParameterImportRowOut(
+                        row_number=parsed_row.row_number,
+                        code=existing.code,
+                        action="update",
+                    )
+                )
+        return ParameterImportResultOut(
+            new_count=sum(1 for row in applied_rows if row.action == "create"),
+            update_count=sum(1 for row in applied_rows if row.action == "update"),
+            error_count=0,
+            rows=applied_rows,
+            errors=[],
+        )
+
+    async def _ensure_import_category(self, category_code: str | None) -> int | None:
+        if category_code is None:
+            return None
+        code = validate_code(category_code)
+        category = await self.repo.get_category_by_code(code)
+        if category is not None:
+            return category.id
+        created = await self.repo.add_category(
+            ParameterCategory(code=code, display_name=category_code, sort_order=0)
+        )
+        return created.id
 
 
 def _to_option(data: OptionIn) -> ParameterOption:

@@ -101,3 +101,34 @@ class ParameterOut(BaseModel):
     sort_order: int
     is_active: bool
     options: list[OptionOut] = Field(default_factory=list)
+
+
+class ParameterImportPreviewIn(BaseModel):
+    """CSV 붙여넣기 import 미리보기 입력."""
+
+    csv_text: str
+
+
+class ParameterImportApplyIn(BaseModel):
+    """CSV 붙여넣기 import 적용 입력."""
+
+    csv_text: str
+
+
+class ParameterImportRowOut(BaseModel):
+    """Import dry-run 행 결과."""
+
+    row_number: int
+    code: str
+    action: str
+    errors: list[str] = Field(default_factory=list)
+
+
+class ParameterImportResultOut(BaseModel):
+    """Import 미리보기/적용 결과."""
+
+    new_count: int
+    update_count: int
+    error_count: int
+    rows: list[ParameterImportRowOut] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)

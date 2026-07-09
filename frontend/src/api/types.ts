@@ -106,6 +106,21 @@ export interface ProjectCreate {
   manual_overrides?: ManualOverrideIn[]
 }
 
+export interface MatchOut {
+  target_layer_key: string
+  source_layer_key: string | null
+  match_type: 'auto' | 'manual' | 'unmatched'
+}
+
+export interface MatchPreviewOut {
+  match_rate: number
+  matched_count: number
+  unmatched_count: number
+  copy_condition_count: number
+  copy_cell_count: number
+  matches: MatchOut[]
+}
+
 export interface ProjectLayerOut extends LayerOut {
   id: number
   layer_key: string
@@ -124,6 +139,21 @@ export interface ProjectOut {
   description: string | null
   status: 'draft'
   layers: ProjectLayerOut[]
+}
+
+export interface ParameterImportRowOut {
+  row_number: number
+  code: string
+  action: 'create' | 'update'
+  errors: string[]
+}
+
+export interface ParameterImportResultOut {
+  new_count: number
+  update_count: number
+  error_count: number
+  rows: ParameterImportRowOut[]
+  errors: string[]
 }
 
 export interface ApiErrorBody {
