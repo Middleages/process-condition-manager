@@ -27,7 +27,7 @@
 | # | 항목 | 내용 | 상태/권고 |
 |---|------|------|------|
 | P1-D1 | 미매칭 layer 처리 | 자동 매칭 실패 시 처리 | **확정 (D-15)**: 수동 매칭 제공, 최종 미매칭은 빈 값 시작. 생성은 막지 않고 매칭 미리보기에 명시. 이후 레이어별 교체·CSV 붙여넣기로 채움 |
-| P1-D2 | 실제 적재 스키마 | **확정**: `line_id`, `process_id`, `step_seq`, `layer_id`, `eqp_type`, `eqp_type_desc`, `area_name`. `layer_id`가 기존 `layer_no` 역할이며 매칭 키의 절반이다. `step_seq`/`layer_id`는 문자 타입이고, 같은 process 안에서 `step_seq + layer_id`는 unique이다. 프로젝트 생성 시 사용자가 `part_id`를 입력하며 PCM 내부 project identity는 `line_id + process_id + part_id`로 둔다. | fixture도 실제 컬럼명 기준으로 정리하고, 확정 시 `ingest/pg_reader.py` 교체 (계약 불변) |
+| P1-D2 | 실제 적재 스키마 | **확정**: `line_id`, `process_id`, `step_seq`, `layer_id`, `eqp_type`, `eqp_type_desc`, `area_name`. `layer_id`가 기존 `layer_no` 역할이며 매칭 키의 절반이다. `step_seq`/`layer_id`는 문자 타입이고, 같은 process 안에서 `step_seq + layer_id`는 unique이다. 프로젝트 생성 시 사용자가 `part_id`를 입력하며 PCM 내부 project identity는 `line_id + process_id + part_id`로 둔다. | **반영 완료**: 단일 테이블 `public.f_stpes`(1행=1 layer) 확정. `ingest/pg_reader.py` 구현(계약 불변), `INGEST_READER=pg`로 전환. process 목록은 `DISTINCT(line_id, process_id)`(적재일시 컬럼 없음 → 이름순, "최근 적재일" 필터는 범위 외). 검증은 테스트용 PostgreSQL(compose ingest-db 시드 + env-gated 통합 테스트) |
 | P1-D3 | Layer/Step 명칭 | UI 표기 | **확정**: 병기 — "Layer (Step)" 형태로 표기 |
 | P1-D4 | 카테고리 탭 라벨 | 파라미터 카테고리 탭은 레지스트리(SP/SC/OVL/DEV 등)에서 동적 생성 — layer의 area와 혼동 금지 | 하드코딩 금지, 레지스트리 기반 동적 생성 |
 | P1-D5 | layer 매칭 키 | 신규 process layer ↔ 백본 프로젝트 layer 매칭 기준 | **확정 (D-15)**: 자동 = `step_seq + layer_id` 조합. 수동 매칭은 자동 매칭을 override할 수 있고, 같은 백본 source layer를 여러 target layer에 매칭할 수 있다. 수동 매칭분은 UI/API에서 `manual`로 표시한다. |
