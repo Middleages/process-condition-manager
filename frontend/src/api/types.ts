@@ -79,6 +79,23 @@ export interface ProcessOut {
   process_id: string
   display_name: string
   sort_order: number
+  has_project: boolean
+}
+
+export interface ProcessListOut {
+  items: ProcessOut[]
+  next_cursor: string | null
+}
+
+export interface ProcessDetailOut {
+  key: string
+  line_id: string
+  process_id: string
+  display_name: string
+  step_count: number
+  area_names: string[]
+  has_project: boolean
+  project_count: number
 }
 
 export interface LayerOut {

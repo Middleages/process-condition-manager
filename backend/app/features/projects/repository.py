@@ -31,6 +31,19 @@ class ProjectRepository:
         )
         return result.scalar_one_or_none()
 
+    async def processes_with_projects(self) -> set[tuple[str, str]]:
+        """조건표(프로젝트)가 하나라도 있는 (line_id, process_id) 집합."""
+        rows = await self.session.execute(
+            select(Project.line_id, Project.process_id).distinct()
+        )
+        return {(row[0], row[1]) for row in rows.all()}
+
+    async def count_by_process(self, line_id: str, process_id: str) -> int:
+        stmt = select(func.count(Project.id)).where(
+            Project.line_id == line_id, Project.process_id == process_id
+        )
+        return int((await self.session.execute(stmt)).scalar_one())
+
     async def get_by_identity(
         self, line_id: str, process_id: str, part_id: str
     ) -> Project | None:
