@@ -11,6 +11,7 @@ export function AppLayout() {
             <h1 className="text-xl font-semibold">Process Condition Manager</h1>
           </div>
           <nav className="flex gap-2">
+            <NavItem to="/projects">프로젝트</NavItem>
             <NavItem to="/parameters">파라미터 관리</NavItem>
             <NavItem to="/processes">공정/layer 확인</NavItem>
           </nav>
