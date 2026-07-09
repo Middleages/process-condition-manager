@@ -1,0 +1,106 @@
+"""프로젝트/백본 라우터."""
+
+from collections.abc import AsyncIterator
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.auth import UserContext, get_current_user
+from app.core.db import get_app_session
+from app.features.projects.repository import ProjectRepository
+from app.features.projects.schema import (
+    BackboneReplaceIn,
+    LayerOut,
+    MatchPreviewIn,
+    MatchPreviewOut,
+    ProjectCreate,
+    ProjectOut,
+)
+from app.features.projects.service import ProjectService
+from app.ingest.fixture_reader import get_ingest_reader
+from app.ingest.reader import IngestReader
+from app.models.project import Project
+
+router = APIRouter(
+    prefix="/projects",
+    tags=["projects"],
+    dependencies=[Depends(get_current_user)],
+)
+
+
+async def get_service(
+    session: Annotated[AsyncSession, Depends(get_app_session)],
+    reader: Annotated[IngestReader, Depends(get_ingest_reader)],
+) -> AsyncIterator[ProjectService]:
+    service = ProjectService(ProjectRepository(session), reader)
+    yield service
+    await session.commit()
+
+
+ServiceDep = Annotated[ProjectService, Depends(get_service)]
+UserDep = Annotated[UserContext, Depends(get_current_user)]
+
+
+@router.post("/backbone-preview", response_model=MatchPreviewOut)
+async def preview_backbone(data: MatchPreviewIn, service: ServiceDep) -> MatchPreviewOut:
+    return await service.preview_match(data)
+
+
+@router.post("", response_model=ProjectOut, status_code=status.HTTP_201_CREATED)
+async def create_project(
+    data: ProjectCreate, service: ServiceDep, user: UserDep
+) -> ProjectOut:
+    project = await service.create_project(data, actor=user.id)
+    return _project_out(project)
+
+
+@router.post("/{project_id}/layers/{layer_key}/backbone-replace", response_model=ProjectOut)
+async def replace_layer_backbone(
+    project_id: int,
+    layer_key: str,
+    data: BackboneReplaceIn,
+    service: ServiceDep,
+    user: UserDep,
+) -> ProjectOut:
+    project = await service.replace_layer_backbone(project_id, layer_key, data, actor=user.id)
+    return _project_out(project)
+
+
+@router.get("", response_model=list[ProjectOut])
+async def list_projects(service: ServiceDep) -> list[ProjectOut]:
+    return [_project_out(project) for project in await service.list_projects()]
+
+
+@router.get("/{project_id}", response_model=ProjectOut)
+async def get_project(project_id: int, service: ServiceDep) -> ProjectOut:
+    return _project_out(await service.get_project(project_id))
+
+
+def _project_out(project: Project) -> ProjectOut:
+    return ProjectOut(
+        id=project.id,
+        line_id=project.line_id,
+        process_id=project.process_id,
+        part_id=project.part_id,
+        name=project.name,
+        description=project.description,
+        status=project.status.value,
+        layers=[
+            LayerOut(
+                id=layer.id,
+                layer_key=layer.layer_key,
+                step_seq=layer.step_seq,
+                layer_id=layer.layer_id,
+                eqp_type=layer.eqp_type,
+                eqp_type_desc=layer.eqp_type_desc,
+                area_name=layer.area_name,
+                sort_order=layer.sort_order,
+                condition_count=len(layer.conditions),
+                cell_count=sum(len(condition.cell_values) for condition in layer.conditions),
+                source_project_id=layer.source_project_id,
+                source_layer_key=layer.source_layer_key,
+            )
+            for layer in project.layers
+        ],
+    )

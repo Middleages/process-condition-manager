@@ -104,14 +104,14 @@ export function ParameterAdminPage() {
   return (
     <section className="space-y-6">
       <div>
-        <p className="text-sm text-cyan-300">Phase 0 · EC1/EC3 확인</p>
+        <p className="text-sm text-cyan-700">Phase 0 · EC1/EC3 확인</p>
         <h2 className="text-2xl font-semibold">파라미터 관리</h2>
-        <p className="mt-2 text-sm text-slate-400">
+        <p className="mt-2 text-sm text-slate-500">
           파라미터를 추가·수정·비활성화하고 목록 반영을 즉시 확인한다.
         </p>
       </div>
 
-      <form onSubmit={submitCategory} className="rounded-xl border border-slate-800 bg-slate-900 p-5">
+      <form onSubmit={submitCategory} className="rounded-xl border border-slate-200 bg-white shadow-sm p-5">
         <h3 className="mb-4 text-lg font-semibold">카테고리 추가</h3>
         <div className="grid gap-4 md:grid-cols-[1fr_1fr_auto]">
           <Field label="Category code">
@@ -137,15 +137,15 @@ export function ParameterAdminPage() {
           </div>
         </div>
         {createCategoryMutation.isError ? (
-          <p className="mt-3 text-sm text-red-300">{getApiErrorMessage(createCategoryMutation.error)}</p>
+          <p className="mt-3 text-sm text-red-600">{getApiErrorMessage(createCategoryMutation.error)}</p>
         ) : null}
       </form>
 
-      <form onSubmit={submit} className="rounded-xl border border-slate-800 bg-slate-900 p-5">
+      <form onSubmit={submit} className="rounded-xl border border-slate-200 bg-white shadow-sm p-5">
         <div className="mb-4 flex items-center justify-between gap-3">
           <h3 className="text-lg font-semibold">{editing ? '파라미터 수정' : '파라미터 추가'}</h3>
           {editing ? (
-            <button type="button" className="text-sm text-slate-300 underline" onClick={resetForm}>
+            <button type="button" className="text-sm text-slate-600 underline" onClick={resetForm}>
               새 파라미터 입력
             </button>
           ) : null}
@@ -240,13 +240,13 @@ export function ParameterAdminPage() {
           <button className="btn-primary" type="submit" disabled={saveMutation.isPending}>
             {saveMutation.isPending ? '저장 중...' : '저장'}
           </button>
-          {saveMutation.isError ? <span className="text-sm text-red-300">{getApiErrorMessage(saveMutation.error)}</span> : null}
+          {saveMutation.isError ? <span className="text-sm text-red-600">{getApiErrorMessage(saveMutation.error)}</span> : null}
         </div>
       </form>
 
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold">파라미터 목록</h3>
-        <label className="flex items-center gap-2 text-sm text-slate-300">
+        <label className="flex items-center gap-2 text-sm text-slate-600">
           <input
             type="checkbox"
             checked={includeInactive}
@@ -259,9 +259,9 @@ export function ParameterAdminPage() {
       {parametersQuery.isLoading ? <LoadingMessage /> : null}
       {parametersQuery.isError ? <ErrorMessage message={getApiErrorMessage(parametersQuery.error)} /> : null}
       {parametersQuery.data ? (
-        <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900">
+        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
           <table className="w-full text-left text-sm">
-            <thead className="bg-slate-800 text-slate-300">
+            <thead className="bg-slate-50 text-slate-600">
               <tr>
                 <th className="px-4 py-3">code</th>
                 <th className="px-4 py-3">표시명</th>
@@ -272,8 +272,8 @@ export function ParameterAdminPage() {
             </thead>
             <tbody>
               {parametersQuery.data.map((parameter) => (
-                <tr key={parameter.id} className="border-t border-slate-800">
-                  <td className="px-4 py-3 font-mono text-cyan-200">{parameter.code}</td>
+                <tr key={parameter.id} className="border-t border-slate-200">
+                  <td className="px-4 py-3 font-mono text-cyan-700">{parameter.code}</td>
                   <td className="px-4 py-3">{parameter.display_name}</td>
                   <td className="px-4 py-3">{parameter.value_type}</td>
                   <td className="px-4 py-3">{parameter.is_active ? 'active' : 'inactive'}</td>
@@ -295,7 +295,7 @@ export function ParameterAdminPage() {
             </tbody>
           </table>
           {parametersQuery.data.length === 0 ? (
-            <p className="p-4 text-sm text-slate-400">등록된 파라미터가 없다.</p>
+            <p className="p-4 text-sm text-slate-500">등록된 파라미터가 없다.</p>
           ) : null}
         </div>
       ) : null}
@@ -305,7 +305,7 @@ export function ParameterAdminPage() {
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <label className="space-y-1 text-sm text-slate-300">
+    <label className="space-y-1 text-sm text-slate-600">
       <span>{label}</span>
       {children}
     </label>

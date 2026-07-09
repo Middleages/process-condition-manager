@@ -7,19 +7,20 @@ async def test_list_processes(client: AsyncClient) -> None:
     resp = await client.get("/processes")
 
     assert resp.status_code == 200
-    assert [process["key"] for process in resp.json()] == ["product_alpha_main", "product_beta_memory"]
+    body = resp.json()
+    assert [process["key"] for process in body] == ["L1::PROC_ALPHA", "L1::PROC_BETA"]
+    assert body[0]["line_id"] == "L1"
+    assert body[0]["process_id"] == "PROC_ALPHA"
 
 
 async def test_get_process_layers(client: AsyncClient) -> None:
-    resp = await client.get("/processes/product_alpha_main/layers")
+    resp = await client.get("/processes/L1::PROC_ALPHA/layers")
 
     assert resp.status_code == 200
-    assert [layer["key"] for layer in resp.json()] == [
-        "001_init_clean",
-        "010_photo_active",
-        "020_etch_active",
-        "030_metrology_active",
-        "040_deposition_gate",
+    assert [(layer["step_seq"], layer["layer_id"]) for layer in resp.json()] == [
+        ("001", "CLN"),
+        ("010", "ACT"),
+        ("020", "ACT"),
     ]
 
 

@@ -75,14 +75,55 @@ export interface ParameterUpdate {
 
 export interface ProcessOut {
   key: string
+  line_id: string
+  process_id: string
   display_name: string
   sort_order: number
 }
 
 export interface LayerOut {
   key: string
-  display_name: string
+  step_seq: string
+  layer_id: string
+  eqp_type: string | null
+  eqp_type_desc: string | null
+  area_name: string | null
   sort_order: number
+}
+
+export interface ManualOverrideIn {
+  target_layer_key: string
+  source_layer_key: string
+}
+
+export interface ProjectCreate {
+  line_id: string
+  process_id: string
+  part_id: string
+  name: string
+  description?: string | null
+  backbone_project_id?: number | null
+  manual_overrides?: ManualOverrideIn[]
+}
+
+export interface ProjectLayerOut extends LayerOut {
+  id: number
+  layer_key: string
+  condition_count: number
+  cell_count: number
+  source_project_id: number | null
+  source_layer_key: string | null
+}
+
+export interface ProjectOut {
+  id: number
+  line_id: string
+  process_id: string
+  part_id: string
+  name: string
+  description: string | null
+  status: 'draft'
+  layers: ProjectLayerOut[]
 }
 
 export interface ApiErrorBody {
