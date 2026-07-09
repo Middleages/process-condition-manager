@@ -17,9 +17,13 @@ from sqlalchemy import (
     func,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
+
+# PostgreSQL에서는 JSONB(인덱싱/조회 우수), 그 외(SQLite 테스트)는 JSON으로 대체한다.
+_JSON_PAYLOAD = JSON().with_variant(JSONB(), "postgresql")
 
 
 class ProjectStatus(StrEnum):
@@ -31,6 +35,7 @@ class ProjectStatus(StrEnum):
 class ChangeEventType(StrEnum):
     """Phase 1에서 기록하는 변경 이벤트 유형."""
 
+    PROJECT_CREATE = "project_create"
     BACKBONE_COPY = "backbone_copy"
     BACKBONE_LAYER_REPLACE = "backbone_layer_replace"
 
@@ -65,7 +70,6 @@ class Project(Base):
         back_populates="project",
         cascade="all, delete-orphan",
         order_by="SheetLayer.sort_order",
-        lazy="selectin",
     )
 
 
@@ -94,7 +98,6 @@ class SheetLayer(Base):
         back_populates="layer",
         cascade="all, delete-orphan",
         order_by="LayerCondition.condition_index",
-        lazy="selectin",
     )
 
 
@@ -117,7 +120,7 @@ class LayerCondition(Base):
     layer_id: Mapped[int] = mapped_column(
         ForeignKey("sheet_layer.id", ondelete="CASCADE"), index=True
     )
-    label: Mapped[str] = mapped_column(String(128), default="기본", server_default="기본")
+    label: Mapped[str] = mapped_column(String(128), default="base", server_default="base")
     condition_index: Mapped[int] = mapped_column(Integer)
     is_por: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     source_condition_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -127,7 +130,6 @@ class LayerCondition(Base):
         back_populates="condition",
         cascade="all, delete-orphan",
         order_by="CellValue.parameter_code",
-        lazy="selectin",
     )
 
 
@@ -162,7 +164,7 @@ class ChangeEvent(Base):
         Enum(ChangeEventType, native_enum=False, length=64), index=True
     )
     actor: Mapped[str] = mapped_column(String(128), default="system", server_default="system")
-    payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    payload: Mapped[dict] = mapped_column(_JSON_PAYLOAD, default=dict)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

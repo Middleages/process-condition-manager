@@ -4,6 +4,13 @@
 제공한다. FastAPI·SQLAlchemy를 알지 못한다.
 """
 
+from app.domain.parameters.csv_import import (
+    ImportPayload,
+    ImportPlan,
+    PlanRow,
+    build_import_plan,
+    parse_rows,
+)
 from app.domain.parameters.rules import (
     ensure_code_immutable,
     snapshot,
@@ -15,8 +22,13 @@ from app.domain.parameters.rules import (
 from app.domain.parameters.types import ValueType
 
 __all__ = [
+    "ImportPayload",
+    "ImportPlan",
+    "PlanRow",
     "ValueType",
+    "build_import_plan",
     "ensure_code_immutable",
+    "parse_rows",
     "snapshot",
     "validate_choice_options",
     "validate_code",

@@ -22,9 +22,11 @@ class AppError(Exception):
         *,
         code: str | None = None,
         status_code: int | None = None,
+        details: dict | None = None,
     ) -> None:
         super().__init__(message)
         self.message = message
+        self.details = details or {}
         if code is not None:
             self.code = code
         if status_code is not None:
@@ -55,10 +57,10 @@ class DomainValidationError(AppError):
 async def _app_error_handler(request: Request, exc: Exception) -> JSONResponse:
     """AppError 계열 예외를 표준 JSON 오류 응답으로 변환한다."""
     assert isinstance(exc, AppError)  # register 시점에 AppError로만 배선됨
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={"code": exc.code, "message": exc.message},
-    )
+    content: dict = {"code": exc.code, "message": exc.message}
+    if exc.details:
+        content["details"] = exc.details
+    return JSONResponse(status_code=exc.status_code, content=content)
 
 
 async def _domain_error_handler(request: Request, exc: Exception) -> JSONResponse:

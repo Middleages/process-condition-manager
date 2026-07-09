@@ -12,11 +12,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
 from app.core.db import get_app_session
+from app.domain.parameters import ImportPlan
 from app.features.parameters.repository import ParameterRepository
 from app.features.parameters.schema import (
     CategoryCreate,
     CategoryOut,
     CategoryUpdate,
+    ImportIn,
+    ImportResultOut,
+    ImportRowOut,
     OptionIn,
     ParameterCreate,
     ParameterOut,
@@ -68,6 +72,31 @@ async def update_category(
 ) -> CategoryOut:
     category = await service.update_category(category_id, data)
     return CategoryOut.model_validate(category)
+
+
+# --- CSV 임포트 (T8) ---
+
+
+def _import_result(plan: ImportPlan) -> ImportResultOut:
+    return ImportResultOut(
+        created_count=plan.created_count,
+        updated_count=plan.updated_count,
+        error_count=plan.error_count,
+        rows=[
+            ImportRowOut(line=row.line, code=row.code, action=row.action, message=row.message)
+            for row in plan.rows
+        ],
+    )
+
+
+@router.post("/import/preview", response_model=ImportResultOut)
+async def import_preview(data: ImportIn, service: ServiceDep) -> ImportResultOut:
+    return _import_result(await service.import_preview(data.csv_text))
+
+
+@router.post("/import/apply", response_model=ImportResultOut)
+async def import_apply(data: ImportIn, service: ServiceDep) -> ImportResultOut:
+    return _import_result(await service.import_apply(data.csv_text))
 
 
 # --- Parameters ---

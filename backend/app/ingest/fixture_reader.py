@@ -1,14 +1,12 @@
 """fixture 기반 적재 판독기 구현."""
 
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 
 from app.core.errors import NotFoundError
-from app.ingest.reader import IngestReader, LayerInfo, ProcessInfo
+from app.ingest.reader import IngestReader, LayerInfo, ProcessInfo, process_key
 
-
-def process_key(line_id: str, process_id: str) -> str:
-    """API path에서 사용할 안정적인 process key."""
-    return f"{line_id}::{process_id}"
+__all__ = ["FixtureIngestReader", "get_ingest_reader", "process_key"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,6 +112,25 @@ class FixtureIngestReader(IngestReader):
 _fixture_reader = FixtureIngestReader()
 
 
-def get_ingest_reader() -> IngestReader:
-    """FastAPI DI에서 사용할 판독기 인스턴스를 반환한다."""
-    return _fixture_reader
+async def get_ingest_reader() -> AsyncIterator[IngestReader]:
+    """설정에 따라 판독기를 선택하는 FastAPI 의존성.
+
+    - fixture(기본): 인메모리 고정 데이터 (적재 DB 미접속 — 개발/단위테스트)
+    - pg: 읽기 전용 ingest 세션으로 실 적재 테이블을 읽는 PgIngestReader
+    """
+    # 지역 import — fixture 모드는 적재 DB/PG 의존성을 건드리지 않는다.
+    from app.core.config import settings
+
+    if settings.ingest_reader != "pg":
+        yield _fixture_reader
+        return
+
+    from app.core.db import IngestSessionLocal
+    from app.ingest.pg_reader import PgIngestReader
+
+    async with IngestSessionLocal() as session:
+        yield PgIngestReader(
+            session,
+            table=settings.ingest_layer_table,
+            schema=settings.ingest_layer_schema,
+        )

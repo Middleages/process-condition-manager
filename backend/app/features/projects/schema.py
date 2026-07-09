@@ -49,6 +49,40 @@ class ProjectOut(BaseModel):
     layers: list[LayerOut] = Field(default_factory=list)
 
 
+class ProjectSummaryOut(BaseModel):
+    """목록용 요약 — layer/cell 집계만 담고 전체 트리는 싣지 않는다."""
+
+    id: int
+    line_id: str
+    process_id: str
+    part_id: str
+    name: str
+    description: str | None
+    status: str
+    layer_count: int
+    cell_count: int
+
+
+class ProjectListOut(BaseModel):
+    items: list[ProjectSummaryOut]
+    next_cursor: int | None = None
+
+
+class BackboneCandidateOut(BaseModel):
+    """백본 후보 프로젝트 + 대상 구조에 대한 자동 매칭률."""
+
+    id: int
+    name: str
+    line_id: str
+    process_id: str
+    part_id: str
+    status: str
+    layer_count: int
+    match_rate: float
+    matched_count: int
+    unmatched_count: int
+
+
 class MatchPreviewIn(BaseModel):
     line_id: str
     process_id: str

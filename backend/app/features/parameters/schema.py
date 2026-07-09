@@ -84,6 +84,30 @@ class ParameterUpdate(BaseModel):
     is_active: bool | None = None
 
 
+class ImportIn(BaseModel):
+    """CSV 붙여넣기 임포트 입력."""
+
+    csv_text: str
+
+
+class ImportRowOut(BaseModel):
+    """임포트 계획의 행 단위 결과."""
+
+    line: int
+    code: str
+    action: str  # create | update | error
+    message: str | None = None
+
+
+class ImportResultOut(BaseModel):
+    """임포트 미리보기/적용 결과 요약."""
+
+    created_count: int
+    updated_count: int
+    error_count: int
+    rows: list[ImportRowOut]
+
+
 class ParameterOut(BaseModel):
     """파라미터 출력."""
 

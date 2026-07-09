@@ -45,3 +45,23 @@ def test_unmatched_when_no_auto_or_valid_manual_source() -> None:
 
     assert result.unmatched_count == 1
     assert result.match_rate == 0.0
+
+
+def test_auto_and_manual_counts_are_separated() -> None:
+    result = match_layers(
+        [
+            LayerMatchInput("target-a", "001", "CLN"),
+            LayerMatchInput("target-b", "010", "ACT"),
+            LayerMatchInput("target-c", "020", "ETCH"),
+        ],
+        [
+            LayerMatchInput("source-a", "001", "CLN"),
+            LayerMatchInput("source-b", "010", "ACT"),
+        ],
+        [ManualOverride("target-c", "source-a")],
+    )
+
+    assert result.auto_count == 2
+    assert result.manual_count == 1
+    assert result.matched_count == 3
+    assert result.unmatched_count == 0

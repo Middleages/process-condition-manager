@@ -73,12 +73,43 @@ export interface ParameterUpdate {
   is_active?: boolean | null
 }
 
+export interface ImportRowOut {
+  line: number
+  code: string
+  action: 'create' | 'update' | 'error'
+  message: string | null
+}
+
+export interface ImportResultOut {
+  created_count: number
+  updated_count: number
+  error_count: number
+  rows: ImportRowOut[]
+}
+
 export interface ProcessOut {
   key: string
   line_id: string
   process_id: string
   display_name: string
   sort_order: number
+  has_project: boolean
+}
+
+export interface ProcessListOut {
+  items: ProcessOut[]
+  next_cursor: string | null
+}
+
+export interface ProcessDetailOut {
+  key: string
+  line_id: string
+  process_id: string
+  display_name: string
+  step_count: number
+  area_names: string[]
+  has_project: boolean
+  project_count: number
 }
 
 export interface LayerOut {
@@ -96,6 +127,41 @@ export interface ManualOverrideIn {
   source_layer_key: string
 }
 
+export interface BackboneCandidateOut {
+  id: number
+  name: string
+  line_id: string
+  process_id: string
+  part_id: string
+  status: string
+  layer_count: number
+  match_rate: number
+  matched_count: number
+  unmatched_count: number
+}
+
+export type MatchType = 'auto' | 'manual' | 'unmatched'
+
+export interface MatchOut {
+  target_layer_key: string
+  source_layer_key: string | null
+  match_type: MatchType
+}
+
+export interface MatchPreviewOut {
+  match_rate: number
+  matched_count: number
+  unmatched_count: number
+  copy_condition_count: number
+  copy_cell_count: number
+  matches: MatchOut[]
+}
+
+export interface BackboneReplaceIn {
+  source_project_id: number
+  source_layer_key: string
+}
+
 export interface ProjectCreate {
   line_id: string
   process_id: string
@@ -106,9 +172,15 @@ export interface ProjectCreate {
   manual_overrides?: ManualOverrideIn[]
 }
 
-export interface ProjectLayerOut extends LayerOut {
+export interface ProjectLayerOut {
   id: number
   layer_key: string
+  step_seq: string
+  layer_id: string
+  eqp_type: string | null
+  eqp_type_desc: string | null
+  area_name: string | null
+  sort_order: number
   condition_count: number
   cell_count: number
   source_project_id: number | null
@@ -124,6 +196,23 @@ export interface ProjectOut {
   description: string | null
   status: 'draft'
   layers: ProjectLayerOut[]
+}
+
+export interface ProjectSummaryOut {
+  id: number
+  line_id: string
+  process_id: string
+  part_id: string
+  name: string
+  description: string | null
+  status: 'draft'
+  layer_count: number
+  cell_count: number
+}
+
+export interface ProjectListOut {
+  items: ProjectSummaryOut[]
+  next_cursor: number | null
 }
 
 export interface ApiErrorBody {

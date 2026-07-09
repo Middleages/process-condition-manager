@@ -1,9 +1,12 @@
 """프로젝트 생성/백본 서비스."""
 
-from dataclasses import asdict
+import uuid
+from dataclasses import asdict, dataclass
 
-from app.core.errors import ConflictError, NotFoundError
-from app.domain.backbone import LayerMatchInput, ManualOverride, match_layers
+from sqlalchemy.exc import IntegrityError
+
+from app.core.errors import ConflictError, DomainValidationError, NotFoundError
+from app.domain.backbone import LayerMatchInput, ManualOverride, MatchResult, match_layers
 from app.features.projects.repository import ProjectRepository
 from app.features.projects.schema import (
     BackboneReplaceIn,
@@ -25,6 +28,17 @@ from app.models.project import (
 )
 
 
+@dataclass(frozen=True, slots=True)
+class _ConditionSnapshot:
+    """복사 원본이 자기 자신일 때도 안전하도록 조건 행을 값으로 떠 둔다."""
+
+    label: str
+    condition_index: int
+    is_por: bool
+    source_condition_id: int | None
+    cells: tuple[tuple[str, str | None], ...]
+
+
 class ProjectService:
     """Phase 1 프로젝트/백본 오케스트레이션."""
 
@@ -32,14 +46,44 @@ class ProjectService:
         self.repo = repo
         self.reader = reader
 
-    async def list_projects(self) -> list[Project]:
-        return await self.repo.list()
+    async def list_projects(
+        self,
+        *,
+        query: str | None = None,
+        status: str | None = None,
+        cursor: int | None = None,
+        limit: int = 50,
+    ) -> tuple[list[tuple[Project, int, int]], int | None]:
+        return await self.repo.list_summaries(
+            query=query, status=status, cursor=cursor, limit=limit
+        )
 
     async def get_project(self, project_id: int) -> Project:
         project = await self.repo.get(project_id)
         if project is None:
             raise NotFoundError(f"프로젝트를 찾을 수 없다: {project_id}")
         return project
+
+    async def list_backbone_candidates(
+        self, line_id: str, process_id: str
+    ) -> list[tuple[Project, MatchResult]]:
+        """대상 process 구조에 대해 후보 프로젝트별 자동 매칭률을 계산한다.
+
+        매칭률 내림차순 정렬(동률이면 최근 생성 우선). Phase 1은 draft만 존재하지만
+        status 우선순위 자리는 잡아둔다(Approved 우선 — Phase 5).
+        """
+        target_layers = await self.reader.get_layers(line_id, process_id)
+        target_inputs = _match_inputs_from_ingest(target_layers)
+        candidates = await self.repo.list_backbone_candidates()
+        ranked = [
+            (candidate, match_layers(target_inputs, _match_inputs_from_sheet(candidate.layers)))
+            for candidate in candidates
+        ]
+        ranked.sort(
+            key=lambda pair: (_status_priority(pair[0].status), pair[1].match_rate, pair[0].id),
+            reverse=True,
+        )
+        return ranked
 
     async def preview_match(self, data: MatchPreviewIn) -> MatchPreviewOut:
         target_layers = await self.reader.get_layers(data.line_id, data.process_id)
@@ -62,6 +106,7 @@ class ProjectService:
             )
 
         backbone = await self.get_project(data.backbone_project_id)
+        _validate_overrides(data.manual_overrides, target_layers, backbone.layers)
         result = match_layers(
             _match_inputs_from_ingest(target_layers),
             _match_inputs_from_sheet(backbone.layers),
@@ -86,16 +131,23 @@ class ProjectService:
         )
 
     async def create_project(self, data: ProjectCreate, actor: str) -> Project:
-        if await self.repo.get_by_identity(data.line_id, data.process_id, data.part_id):
-            raise ConflictError(
-                f"이미 존재하는 프로젝트 identity: {data.line_id}/{data.process_id}/{data.part_id}"
-            )
+        existing = await self.repo.get_by_identity(
+            data.line_id, data.process_id, data.part_id
+        )
+        if existing is not None:
+            raise _duplicate_conflict(existing)
+
         target_layers = await self.reader.get_layers(data.line_id, data.process_id)
         backbone = (
             await self.get_project(data.backbone_project_id)
             if data.backbone_project_id is not None
             else None
         )
+        if backbone is not None:
+            _validate_overrides(data.manual_overrides, target_layers, backbone.layers)
+        elif data.manual_overrides:
+            raise DomainValidationError("백본 없이 수동 매칭을 지정할 수 없다")
+
         match_result = match_layers(
             _match_inputs_from_ingest(target_layers),
             _match_inputs_from_sheet(backbone.layers) if backbone else [],
@@ -118,29 +170,37 @@ class ProjectService:
             layer = _sheet_layer_from_ingest(layer_info, index)
             match = match_by_target[layer_info.key]
             if match.source_layer_key is None:
-                layer.conditions.append(LayerCondition(label="기본", condition_index=1))
+                layer.conditions.append(LayerCondition(label="base", condition_index=1))
             else:
                 source_layer = source_layer_by_key[match.source_layer_key]
                 layer.source_project_id = backbone.id if backbone else None
                 layer.source_layer_key = source_layer.layer_key
-                _copy_conditions(source_layer, layer)
+                _apply_snapshots(_snapshot_conditions(source_layer), layer)
             project.layers.append(layer)
 
         project = await self.repo.add(project)
-        project_event = ChangeEvent(
-            project_id=project.id,
-            event_type=ChangeEventType.BACKBONE_COPY,
-            actor=actor,
-            payload={
-                "backbone_project_id": data.backbone_project_id,
-                "matched_count": match_result.matched_count,
-                "unmatched_count": match_result.unmatched_count,
-            },
+        batch_id = uuid.uuid4().hex
+        event_type = (
+            ChangeEventType.BACKBONE_COPY
+            if backbone is not None
+            else ChangeEventType.PROJECT_CREATE
         )
-        self.repo.session.add(project_event)
-        await self.repo.session.flush()
+        self.repo.session.add(
+            ChangeEvent(
+                project_id=project.id,
+                event_type=event_type,
+                actor=actor,
+                payload={
+                    "batch_id": batch_id,
+                    "backbone_project_id": data.backbone_project_id,
+                    "auto_count": match_result.auto_count,
+                    "manual_count": match_result.manual_count,
+                    "unmatched_count": match_result.unmatched_count,
+                },
+            )
+        )
+        await self._flush_or_conflict()
         return await self.get_project(project.id)
-
 
     async def replace_layer_backbone(
         self, project_id: int, layer_key: str, data: BackboneReplaceIn, actor: str
@@ -150,6 +210,11 @@ class ProjectService:
         target_layer = _find_layer(project.layers, layer_key)
         source_layer = _find_layer(source_project.layers, data.source_layer_key)
 
+        if source_layer.id == target_layer.id:
+            raise DomainValidationError("같은 layer를 자기 자신으로 교체할 수 없다")
+
+        # 소스가 같은 프로젝트일 수 있으므로 삭제 전에 값으로 떠 둔다.
+        snapshots = _snapshot_conditions(source_layer)
         before = {
             "condition_count": len(target_layer.conditions),
             "cell_count": sum(len(condition.cell_values) for condition in target_layer.conditions),
@@ -160,10 +225,10 @@ class ProjectService:
         target_layer.conditions.clear()
         target_layer.source_project_id = source_project.id
         target_layer.source_layer_key = source_layer.layer_key
-        _copy_conditions(source_layer, target_layer)
+        _apply_snapshots(snapshots, target_layer)
         after = {
-            "condition_count": len(source_layer.conditions),
-            "cell_count": sum(len(condition.cell_values) for condition in source_layer.conditions),
+            "condition_count": len(snapshots),
+            "cell_count": sum(len(snap.cells) for snap in snapshots),
         }
         self.repo.session.add(
             ChangeEvent(
@@ -171,6 +236,7 @@ class ProjectService:
                 event_type=ChangeEventType.BACKBONE_LAYER_REPLACE,
                 actor=actor,
                 payload={
+                    "batch_id": uuid.uuid4().hex,
                     "target_layer_key": layer_key,
                     "source_project_id": source_project.id,
                     "source_layer_key": source_layer.layer_key,
@@ -181,6 +247,51 @@ class ProjectService:
         )
         await self.repo.session.flush()
         return await self.get_project(project.id)
+
+    async def _flush_or_conflict(self) -> None:
+        """flush 중 unique 위반은 409로 변환한다 (동시 생성 레이스 대비)."""
+        try:
+            await self.repo.session.flush()
+        except IntegrityError as exc:
+            await self.repo.session.rollback()
+            raise ConflictError("이미 존재하는 프로젝트 identity") from exc
+
+
+def _status_priority(status: ProjectStatus) -> int:
+    """백본 후보 정렬 우선순위 (Approved 우선 자리 확보 — Phase 5 상태 머신 대비)."""
+    order = {ProjectStatus.DRAFT: 0}
+    return order.get(status, 0)
+
+
+def _duplicate_conflict(existing: Project) -> ConflictError:
+    # P1-D6: 기존 프로젝트로 유도할 수 있도록 식별자를 실어 보낸다.
+    identity = f"{existing.line_id}/{existing.process_id}/{existing.part_id}"
+    return ConflictError(
+        f"이미 조건표가 있는 process다: {identity}",
+        details={
+            "existing_project_id": existing.id,
+            "existing_status": existing.status.value,
+        },
+    )
+
+
+def _validate_overrides(
+    overrides: list[ManualOverrideIn],
+    target_layers: list[LayerInfo],
+    source_layers: list[SheetLayer],
+) -> None:
+    """수동 매칭이 실존 layer를 가리키는지 검증한다 (조용한 무시 방지)."""
+    target_keys = {layer.key for layer in target_layers}
+    source_keys = {layer.layer_key for layer in source_layers}
+    for override in overrides:
+        if override.target_layer_key not in target_keys:
+            raise DomainValidationError(
+                f"수동 매칭 대상 layer가 없다: {override.target_layer_key}"
+            )
+        if override.source_layer_key not in source_keys:
+            raise DomainValidationError(
+                f"수동 매칭 백본 layer가 없다: {override.source_layer_key}"
+            )
 
 
 def _match_inputs_from_ingest(layers: list[LayerInfo]) -> list[LayerMatchInput]:
@@ -207,17 +318,33 @@ def _sheet_layer_from_ingest(layer: LayerInfo, index: int) -> SheetLayer:
     )
 
 
-def _copy_conditions(source_layer: SheetLayer, target_layer: SheetLayer) -> None:
-    for condition in source_layer.conditions:
-        copied = LayerCondition(
+def _snapshot_conditions(source_layer: SheetLayer) -> list[_ConditionSnapshot]:
+    return [
+        _ConditionSnapshot(
             label=condition.label,
             condition_index=condition.condition_index,
             is_por=condition.is_por,
             source_condition_id=condition.id,
+            cells=tuple(
+                (cell.parameter_code, cell.value_text) for cell in condition.cell_values
+            ),
+        )
+        for condition in source_layer.conditions
+    ]
+
+
+def _apply_snapshots(
+    snapshots: list[_ConditionSnapshot], target_layer: SheetLayer
+) -> None:
+    for snap in snapshots:
+        copied = LayerCondition(
+            label=snap.label,
+            condition_index=snap.condition_index,
+            is_por=snap.is_por,
+            source_condition_id=snap.source_condition_id,
         )
         copied.cell_values.extend(
-            CellValue(parameter_code=cell.parameter_code, value_text=cell.value_text)
-            for cell in condition.cell_values
+            CellValue(parameter_code=code, value_text=value) for code, value in snap.cells
         )
         target_layer.conditions.append(copied)
 

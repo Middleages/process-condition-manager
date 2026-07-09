@@ -25,6 +25,8 @@ services:
       - "5433:5432"
     volumes:
       - ingest-db-data:/var/lib/postgresql/data
+      # 최초 기동 시 public.f_stpes 시드 (INGEST_READER=pg 시험용)
+      - ./docker/ingest-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U pcm_user -d ingest"]
       interval: 5s
@@ -38,6 +40,8 @@ services:
     environment:
       APP_DATABASE_URL: postgresql+asyncpg://pcm_user:pcm_pass@app-db:5432/pcm
       INGEST_DATABASE_URL: postgresql+asyncpg://pcm_user:pcm_pass@ingest-db:5432/ingest
+      # 적재 판독기: 기본 fixture. 실 적재 테이블(public.f_stpes)을 읽으려면 pg 로 전환.
+      INGEST_READER: "fixture"
       AUTH_DEV_STUB: "true"
       DEBUG: "true"
     ports:

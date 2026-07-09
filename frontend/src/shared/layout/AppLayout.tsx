@@ -13,7 +13,7 @@ export function AppLayout() {
           <nav className="flex gap-2">
             <NavItem to="/projects">프로젝트</NavItem>
             <NavItem to="/parameters">파라미터 관리</NavItem>
-            <NavItem to="/processes">공정/layer 확인</NavItem>
+            <NavItem to="/processes">공정 카탈로그</NavItem>
           </nav>
         </div>
       </header>

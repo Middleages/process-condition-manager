@@ -13,6 +13,8 @@ import type { ParameterOut, ValueType } from '@/api/types'
 import { getApiErrorMessage } from '@/api/client'
 import { ErrorMessage, LoadingMessage } from '@/shared/components/StatusMessage'
 
+import { CsvImportPanel } from './CsvImportPanel'
+
 import {
   initialParameterFormState,
   stateFromParameter,
@@ -110,6 +112,8 @@ export function ParameterAdminPage() {
           파라미터를 추가·수정·비활성화하고 목록 반영을 즉시 확인한다.
         </p>
       </div>
+
+      <CsvImportPanel />
 
       <form onSubmit={submitCategory} className="rounded-xl border border-slate-200 bg-white shadow-sm p-5">
         <h3 className="mb-4 text-lg font-semibold">카테고리 추가</h3>

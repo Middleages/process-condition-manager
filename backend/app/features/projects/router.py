@@ -10,12 +10,15 @@ from app.core.auth import UserContext, get_current_user
 from app.core.db import get_app_session
 from app.features.projects.repository import ProjectRepository
 from app.features.projects.schema import (
+    BackboneCandidateOut,
     BackboneReplaceIn,
     LayerOut,
     MatchPreviewIn,
     MatchPreviewOut,
     ProjectCreate,
+    ProjectListOut,
     ProjectOut,
+    ProjectSummaryOut,
 )
 from app.features.projects.service import ProjectService
 from app.ingest.fixture_reader import get_ingest_reader
@@ -40,6 +43,28 @@ async def get_service(
 
 ServiceDep = Annotated[ProjectService, Depends(get_service)]
 UserDep = Annotated[UserContext, Depends(get_current_user)]
+
+
+@router.get("/backbone-candidates", response_model=list[BackboneCandidateOut])
+async def backbone_candidates(
+    service: ServiceDep, line_id: str, process_id: str
+) -> list[BackboneCandidateOut]:
+    ranked = await service.list_backbone_candidates(line_id, process_id)
+    return [
+        BackboneCandidateOut(
+            id=project.id,
+            name=project.name,
+            line_id=project.line_id,
+            process_id=project.process_id,
+            part_id=project.part_id,
+            status=project.status.value,
+            layer_count=len(project.layers),
+            match_rate=result.match_rate,
+            matched_count=result.matched_count,
+            unmatched_count=result.unmatched_count,
+        )
+        for project, result in ranked
+    ]
 
 
 @router.post("/backbone-preview", response_model=MatchPreviewOut)
@@ -67,9 +92,35 @@ async def replace_layer_backbone(
     return _project_out(project)
 
 
-@router.get("", response_model=list[ProjectOut])
-async def list_projects(service: ServiceDep) -> list[ProjectOut]:
-    return [_project_out(project) for project in await service.list_projects()]
+@router.get("", response_model=ProjectListOut)
+async def list_projects(
+    service: ServiceDep,
+    query: str | None = None,
+    status: str | None = None,
+    cursor: int | None = None,
+    limit: int = 50,
+) -> ProjectListOut:
+    limit = max(1, min(limit, 200))
+    summaries, next_cursor = await service.list_projects(
+        query=query, status=status, cursor=cursor, limit=limit
+    )
+    return ProjectListOut(
+        items=[
+            ProjectSummaryOut(
+                id=project.id,
+                line_id=project.line_id,
+                process_id=project.process_id,
+                part_id=project.part_id,
+                name=project.name,
+                description=project.description,
+                status=project.status.value,
+                layer_count=layer_count,
+                cell_count=cell_count,
+            )
+            for project, layer_count, cell_count in summaries
+        ],
+        next_cursor=next_cursor,
+    )
 
 
 @router.get("/{project_id}", response_model=ProjectOut)
