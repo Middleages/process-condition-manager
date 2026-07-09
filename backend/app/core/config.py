@@ -33,6 +33,12 @@ class Settings(BaseSettings):
         "postgresql+asyncpg://pcm_user:pcm_pass@localhost:5432/ingest"
     )
 
+    # 적재 판독기 선택: "fixture"(기본, 개발/단위테스트) | "pg"(실 적재 테이블)
+    ingest_reader: str = "fixture"
+    # 실 적재 테이블 (단일 테이블, 1행=1 layer — P1-D2 확정 스키마)
+    ingest_layer_schema: str | None = "public"
+    ingest_layer_table: str = "f_stpes"
+
     # 개발용 인증 스텁 활성화 여부 (실제 어댑터 구현은 T5)
     auth_dev_stub: bool = True
 
