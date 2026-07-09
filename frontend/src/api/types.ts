@@ -127,6 +127,41 @@ export interface ManualOverrideIn {
   source_layer_key: string
 }
 
+export interface BackboneCandidateOut {
+  id: number
+  name: string
+  line_id: string
+  process_id: string
+  part_id: string
+  status: string
+  layer_count: number
+  match_rate: number
+  matched_count: number
+  unmatched_count: number
+}
+
+export type MatchType = 'auto' | 'manual' | 'unmatched'
+
+export interface MatchOut {
+  target_layer_key: string
+  source_layer_key: string | null
+  match_type: MatchType
+}
+
+export interface MatchPreviewOut {
+  match_rate: number
+  matched_count: number
+  unmatched_count: number
+  copy_condition_count: number
+  copy_cell_count: number
+  matches: MatchOut[]
+}
+
+export interface BackboneReplaceIn {
+  source_project_id: number
+  source_layer_key: string
+}
+
 export interface ProjectCreate {
   line_id: string
   process_id: string
