@@ -9,6 +9,10 @@ from collections.abc import Sequence
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects import postgresql
+
+# change_event.payload: PostgreSQL은 JSONB, 그 외는 JSON.
+_JSON_PAYLOAD = sa.JSON().with_variant(postgresql.JSONB(), "postgresql")
 
 revision: str = "0002"
 down_revision: str | None = "0001"
@@ -62,7 +66,7 @@ def upgrade() -> None:
         "layer_condition",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("layer_id", sa.Integer(), sa.ForeignKey("sheet_layer.id", ondelete="CASCADE")),
-        sa.Column("label", sa.String(length=128), nullable=False, server_default="기본"),
+        sa.Column("label", sa.String(length=128), nullable=False, server_default="base"),
         sa.Column("condition_index", sa.Integer(), nullable=False),
         sa.Column("is_por", sa.Boolean(), nullable=False, server_default="false"),
         sa.Column("source_condition_id", sa.Integer(), nullable=True),
@@ -97,6 +101,7 @@ def upgrade() -> None:
         sa.Column(
             "event_type",
             sa.Enum(
+                "project_create",
                 "backbone_copy",
                 "backbone_layer_replace",
                 name="change_event_type",
@@ -106,7 +111,7 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.Column("actor", sa.String(length=128), nullable=False, server_default="system"),
-        sa.Column("payload", sa.JSON(), nullable=False),
+        sa.Column("payload", _JSON_PAYLOAD, nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
     )
     op.create_index("ix_change_event_project_id", "change_event", ["project_id"])
