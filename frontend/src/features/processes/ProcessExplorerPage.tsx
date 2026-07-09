@@ -54,7 +54,9 @@ export function ProcessExplorerPage() {
                   onClick={() => setSelectedProcessKey(process.key)}
                 >
                   <span className="block font-medium">{process.display_name}</span>
-                  <span className="font-mono text-xs opacity-80">{process.key}</span>
+                  <span className="font-mono text-xs opacity-80">
+                    {process.line_id} / {process.process_id}
+                  </span>
                 </button>
               ))}
             </div>
@@ -69,10 +71,13 @@ export function ProcessExplorerPage() {
                 {layersQuery.data.map((layer) => (
                   <li key={layer.key} className="rounded-lg border border-slate-800 bg-slate-950 p-3">
                     <div className="flex items-center justify-between">
-                      <span className="font-medium">{layer.display_name}</span>
-                      <span className="text-xs text-slate-400">order {layer.sort_order}</span>
+                      <span className="font-medium">Step {layer.step_seq}</span>
+                      <span className="text-xs text-slate-400">layer {layer.layer_id}</span>
                     </div>
                     <p className="mt-1 font-mono text-sm text-cyan-200">{layer.key}</p>
+                    <p className="mt-1 text-xs text-slate-400">
+                      {layer.area_name ?? '-'} · {layer.eqp_type ?? '-'}
+                    </p>
                   </li>
                 ))}
               </ol>

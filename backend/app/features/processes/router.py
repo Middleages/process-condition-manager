@@ -1,8 +1,6 @@
-"""공정/layer 조회 라우터.
+"""공정/layer 조회 라우터."""
 
-조회는 반드시 IngestReader 계약을 통해 수행한다.
-"""
-
+from dataclasses import asdict
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
@@ -32,24 +30,10 @@ ServiceDep = Annotated[ProcessService, Depends(get_service)]
 @router.get("", response_model=list[ProcessOut])
 async def list_processes(service: ServiceDep) -> list[ProcessOut]:
     processes = await service.list_processes()
-    return [
-        ProcessOut(
-            key=process.key,
-            display_name=process.display_name,
-            sort_order=process.sort_order,
-        )
-        for process in processes
-    ]
+    return [ProcessOut(**asdict(process)) for process in processes]
 
 
 @router.get("/{process_key}/layers", response_model=list[LayerOut])
 async def get_layers(process_key: str, service: ServiceDep) -> list[LayerOut]:
     layers = await service.get_layers(process_key)
-    return [
-        LayerOut(
-            key=layer.key,
-            display_name=layer.display_name,
-            sort_order=layer.sort_order,
-        )
-        for layer in layers
-    ]
+    return [LayerOut(**asdict(layer)) for layer in layers]

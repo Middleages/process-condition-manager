@@ -1,56 +1,88 @@
-"""T4 fixture 기반 적재 판독기 구현.
-
-실제 적재 스키마 미확정 상태에서 계약과 API를 검증하기 위한 in-memory 구현이다.
-"""
+"""fixture 기반 적재 판독기 구현."""
 
 from dataclasses import dataclass
 
 from app.core.errors import NotFoundError
-from app.ingest.reader import ConditionValue, IngestReader, LayerInfo, ProcessInfo
+from app.ingest.reader import IngestReader, LayerInfo, ProcessInfo
+
+
+def process_key(line_id: str, process_id: str) -> str:
+    """API path에서 사용할 안정적인 process key."""
+    return f"{line_id}::{process_id}"
 
 
 @dataclass(frozen=True, slots=True)
 class _ProcessFixture:
     info: ProcessInfo
     layers: tuple[LayerInfo, ...]
-    condition_values: tuple[ConditionValue, ...]
 
 
 _FIXTURES: tuple[_ProcessFixture, ...] = (
     _ProcessFixture(
-        info=ProcessInfo(key="product_alpha_main", display_name="제품 Alpha Main Route", sort_order=10),
-        layers=(
-            LayerInfo(key="001_init_clean", display_name="Initial Clean", sort_order=10),
-            LayerInfo(key="010_photo_active", display_name="Active Photo", sort_order=20),
-            LayerInfo(key="020_etch_active", display_name="Active Etch", sort_order=30),
-            LayerInfo(key="030_metrology_active", display_name="Active Metrology", sort_order=40),
-            LayerInfo(key="040_deposition_gate", display_name="Gate Deposition", sort_order=50),
+        info=ProcessInfo(
+            key=process_key("L1", "PROC_ALPHA"),
+            line_id="L1",
+            process_id="PROC_ALPHA",
+            display_name="L1 / PROC_ALPHA",
+            sort_order=10,
         ),
-        condition_values=(
-            ConditionValue("001_init_clean", "clean_time_sec", 45),
-            ConditionValue("010_photo_active", "exposure_dose_mj", 42.5),
-            ConditionValue("020_etch_active", "etch_rate_nm_min", 18.7),
-            ConditionValue("030_metrology_active", "overlay_nm", 3.1),
-            ConditionValue("040_deposition_gate", "thickness_nm", 90.0),
+        layers=(
+            LayerInfo(
+                key="L1::PROC_ALPHA::001::CLN",
+                step_seq="001",
+                layer_id="CLN",
+                eqp_type="CLEAN",
+                eqp_type_desc="Initial Clean",
+                area_name="CLEAN",
+                sort_order=10,
+            ),
+            LayerInfo(
+                key="L1::PROC_ALPHA::010::ACT",
+                step_seq="010",
+                layer_id="ACT",
+                eqp_type="PHOTO",
+                eqp_type_desc="Active Photo",
+                area_name="PHOTO",
+                sort_order=20,
+            ),
+            LayerInfo(
+                key="L1::PROC_ALPHA::020::ACT",
+                step_seq="020",
+                layer_id="ACT",
+                eqp_type="ETCH",
+                eqp_type_desc="Active Etch",
+                area_name="ETCH",
+                sort_order=30,
+            ),
         ),
     ),
     _ProcessFixture(
-        info=ProcessInfo(key="product_beta_memory", display_name="제품 Beta Memory Route", sort_order=20),
-        layers=(
-            LayerInfo(key="001_init_clean", display_name="Initial Clean", sort_order=10),
-            LayerInfo(key="015_deposition_well", display_name="Well Deposition", sort_order=20),
-            LayerInfo(key="025_photo_well", display_name="Well Photo", sort_order=30),
-            LayerInfo(key="035_etch_well", display_name="Well Etch", sort_order=40),
-            LayerInfo(key="045_strip_well", display_name="Well Strip", sort_order=50),
-            LayerInfo(key="055_metrology_well", display_name="Well Metrology", sort_order=60),
+        info=ProcessInfo(
+            key=process_key("L1", "PROC_BETA"),
+            line_id="L1",
+            process_id="PROC_BETA",
+            display_name="L1 / PROC_BETA",
+            sort_order=20,
         ),
-        condition_values=(
-            ConditionValue("001_init_clean", "clean_time_sec", 50),
-            ConditionValue("015_deposition_well", "thickness_nm", 120.0),
-            ConditionValue("025_photo_well", "exposure_dose_mj", 39.8),
-            ConditionValue("035_etch_well", "etch_rate_nm_min", 16.4),
-            ConditionValue("045_strip_well", "strip_time_sec", 75),
-            ConditionValue("055_metrology_well", "overlay_nm", 2.8),
+        layers=(
+            LayerInfo(
+                key="L1::PROC_BETA::001::CLN",
+                step_seq="001",
+                layer_id="CLN",
+                eqp_type="CLEAN",
+                eqp_type_desc="Initial Clean",
+                area_name="CLEAN",
+                sort_order=10,
+            ),
+            LayerInfo(
+                key="L1::PROC_BETA::015::WELL",
+                step_seq="015",
+                layer_id="WELL",
+                eqp_type="DEP",
+                eqp_type_desc="Well Deposition",
+                area_name="DEP",
+                sort_order=20,
+            ),
         ),
     ),
 )
@@ -60,7 +92,7 @@ class FixtureIngestReader(IngestReader):
     """fixture 스키마를 읽는 적재 판독기."""
 
     def __init__(self, fixtures: tuple[_ProcessFixture, ...] = _FIXTURES) -> None:
-        self._fixtures = {fixture.info.key: fixture for fixture in fixtures}
+        self._fixtures = {(f.info.line_id, f.info.process_id): f for f in fixtures}
 
     async def list_processes(self) -> list[ProcessInfo]:
         return sorted(
@@ -68,28 +100,20 @@ class FixtureIngestReader(IngestReader):
             key=lambda process: (process.sort_order, process.key),
         )
 
-    async def get_layers(self, process_key: str) -> list[LayerInfo]:
-        fixture = self._get_fixture(process_key)
-        return sorted(fixture.layers, key=lambda layer: (layer.sort_order, layer.key))
+    async def get_layers(self, line_id: str, process_id: str) -> list[LayerInfo]:
+        fixture = self._get_fixture(line_id, process_id)
+        return sorted(fixture.layers, key=lambda layer: (layer.step_seq, layer.layer_id))
 
-    async def get_condition_values(self, process_key: str) -> list[ConditionValue]:
-        fixture = self._get_fixture(process_key)
-        return list(fixture.condition_values)
-
-    def _get_fixture(self, process_key: str) -> _ProcessFixture:
+    def _get_fixture(self, line_id: str, process_id: str) -> _ProcessFixture:
         try:
-            return self._fixtures[process_key]
+            return self._fixtures[(line_id, process_id)]
         except KeyError as exc:
-            raise NotFoundError(f"공정을 찾을 수 없다: {process_key}") from exc
+            raise NotFoundError(f"process를 찾을 수 없다: {line_id}/{process_id}") from exc
 
 
 _fixture_reader = FixtureIngestReader()
 
 
 def get_ingest_reader() -> IngestReader:
-    """FastAPI DI에서 사용할 판독기 인스턴스를 반환한다.
-
-    Phase 0 T4에서는 fixture 구현을 사용한다. 실제 스키마 확정 후 이 함수의
-    반환 구현만 교체한다.
-    """
+    """FastAPI DI에서 사용할 판독기 인스턴스를 반환한다."""
     return _fixture_reader
