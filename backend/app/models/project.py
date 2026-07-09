@@ -70,7 +70,6 @@ class Project(Base):
         back_populates="project",
         cascade="all, delete-orphan",
         order_by="SheetLayer.sort_order",
-        lazy="selectin",
     )
 
 
@@ -99,7 +98,6 @@ class SheetLayer(Base):
         back_populates="layer",
         cascade="all, delete-orphan",
         order_by="LayerCondition.condition_index",
-        lazy="selectin",
     )
 
 
@@ -132,7 +130,6 @@ class LayerCondition(Base):
         back_populates="condition",
         cascade="all, delete-orphan",
         order_by="CellValue.parameter_code",
-        lazy="selectin",
     )
 
 

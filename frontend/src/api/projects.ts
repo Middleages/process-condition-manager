@@ -1,8 +1,15 @@
 import { apiClient } from './client'
-import type { ProjectCreate, ProjectOut } from './types'
+import type { ProjectCreate, ProjectListOut, ProjectOut } from './types'
 
-export async function listProjects(): Promise<ProjectOut[]> {
-  const response = await apiClient.get<ProjectOut[]>('/projects')
+export interface ListProjectsParams {
+  query?: string
+  status?: string
+  cursor?: number
+  limit?: number
+}
+
+export async function listProjects(params: ListProjectsParams = {}): Promise<ProjectListOut> {
+  const response = await apiClient.get<ProjectListOut>('/projects', { params })
   return response.data
 }
 

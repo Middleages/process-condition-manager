@@ -137,11 +137,46 @@ async def test_list_and_get_project(db_client: AsyncClient) -> None:
 
     listed = await db_client.get("/projects")
     assert listed.status_code == 200
-    assert [project["id"] for project in listed.json()] == [created["id"]]
+    body = listed.json()
+    assert [project["id"] for project in body["items"]] == [created["id"]]
+    assert body["items"][0]["layer_count"] == 2
+    assert body["next_cursor"] is None
 
     fetched = await db_client.get(f"/projects/{created['id']}")
     assert fetched.status_code == 200
     assert fetched.json()["name"] == "Beta 조건표"
+
+
+async def test_list_projects_search_and_cursor_paging(db_client: AsyncClient) -> None:
+    for part in ("AAA", "BBB", "CCC"):
+        await db_client.post(
+            "/projects",
+            json={
+                "line_id": "L1",
+                "process_id": "PROC_ALPHA",
+                "part_id": part,
+                "name": f"proj-{part}",
+            },
+        )
+
+    # 검색: part_id 부분 일치
+    searched = await db_client.get("/projects", params={"query": "BBB"})
+    assert [p["part_id"] for p in searched.json()["items"]] == ["BBB"]
+
+    # 커서 페이징: 최신순 2개 + next_cursor
+    page1 = (await db_client.get("/projects", params={"limit": 2})).json()
+    assert len(page1["items"]) == 2
+    assert page1["next_cursor"] is not None
+
+    page2 = (
+        await db_client.get(
+            "/projects", params={"limit": 2, "cursor": page1["next_cursor"]}
+        )
+    ).json()
+    assert len(page2["items"]) == 1
+    assert page2["next_cursor"] is None
+    ids_all = [p["id"] for p in page1["items"]] + [p["id"] for p in page2["items"]]
+    assert len(set(ids_all)) == 3
 
 
 async def test_replace_layer_backbone_uses_source_layer_conditions(db_client: AsyncClient) -> None:

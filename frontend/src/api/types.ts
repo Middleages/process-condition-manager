@@ -106,9 +106,15 @@ export interface ProjectCreate {
   manual_overrides?: ManualOverrideIn[]
 }
 
-export interface ProjectLayerOut extends LayerOut {
+export interface ProjectLayerOut {
   id: number
   layer_key: string
+  step_seq: string
+  layer_id: string
+  eqp_type: string | null
+  eqp_type_desc: string | null
+  area_name: string | null
+  sort_order: number
   condition_count: number
   cell_count: number
   source_project_id: number | null
@@ -124,6 +130,23 @@ export interface ProjectOut {
   description: string | null
   status: 'draft'
   layers: ProjectLayerOut[]
+}
+
+export interface ProjectSummaryOut {
+  id: number
+  line_id: string
+  process_id: string
+  part_id: string
+  name: string
+  description: string | null
+  status: 'draft'
+  layer_count: number
+  cell_count: number
+}
+
+export interface ProjectListOut {
+  items: ProjectSummaryOut[]
+  next_cursor: number | null
 }
 
 export interface ApiErrorBody {

@@ -3,16 +3,20 @@ import { FormEvent, ReactNode, useEffect, useMemo, useState } from 'react'
 
 import { getApiErrorMessage } from '@/api/client'
 import { listProcesses } from '@/api/processes'
-import { createProject, listProjects } from '@/api/projects'
-import type { ProcessOut, ProjectOut } from '@/api/types'
+import { createProject, getProject, listProjects } from '@/api/projects'
+import type { ProcessOut, ProjectOut, ProjectSummaryOut } from '@/api/types'
 import { ErrorMessage, LoadingMessage } from '@/shared/components/StatusMessage'
 
 export function ProjectWorkspacePage() {
   const queryClient = useQueryClient()
   const processesQuery = useQuery({ queryKey: ['processes'], queryFn: listProcesses })
-  const projectsQuery = useQuery({ queryKey: ['projects'], queryFn: listProjects })
+  const [search, setSearch] = useState('')
+  const projectsQuery = useQuery({
+    queryKey: ['projects', search],
+    queryFn: () => listProjects({ query: search.trim() || undefined }),
+  })
   const processes = processesQuery.data ?? []
-  const projects = projectsQuery.data ?? []
+  const projects = projectsQuery.data?.items ?? []
   const [selectedProcessKey, setSelectedProcessKey] = useState<string>('')
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null)
   const [partId, setPartId] = useState('')
@@ -22,10 +26,13 @@ export function ProjectWorkspacePage() {
     () => processes.find((process) => process.key === selectedProcessKey) ?? null,
     [processes, selectedProcessKey],
   )
-  const selectedProject = useMemo(
-    () => projects.find((project) => project.id === selectedProjectId) ?? projects[0] ?? null,
-    [projects, selectedProjectId],
-  )
+  const activeProjectId = selectedProjectId ?? projects[0]?.id ?? null
+  const detailQuery = useQuery({
+    queryKey: ['project', activeProjectId],
+    queryFn: () => getProject(activeProjectId as number),
+    enabled: activeProjectId !== null,
+  })
+  const selectedProject = detailQuery.data ?? null
 
   useEffect(() => {
     if (selectedProcessKey === '' && processes[0] !== undefined) {
@@ -121,6 +128,13 @@ export function ProjectWorkspacePage() {
               </div>
               <span className="rounded-full bg-slate-100 px-3 py-1 text-sm text-slate-600">{projects.length}개</span>
             </div>
+            <input
+              className="input mb-4"
+              placeholder="이름/part id 검색"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+            {projectsQuery.isError ? <ErrorMessage message={getApiErrorMessage(projectsQuery.error)} /> : null}
             {projects.length > 0 ? (
               <div className="grid gap-2 md:grid-cols-2">
                 {projects.map((project) => (
@@ -169,7 +183,15 @@ function ProcessSummary({ process }: { process: ProcessOut | null }) {
   )
 }
 
-function ProjectCard({ project, selected, onSelect }: { project: ProjectOut; selected: boolean; onSelect: () => void }) {
+function ProjectCard({
+  project,
+  selected,
+  onSelect,
+}: {
+  project: ProjectSummaryOut
+  selected: boolean
+  onSelect: () => void
+}) {
   return (
     <button
       type="button"

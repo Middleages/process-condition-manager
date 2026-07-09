@@ -15,7 +15,9 @@ from app.features.projects.schema import (
     MatchPreviewIn,
     MatchPreviewOut,
     ProjectCreate,
+    ProjectListOut,
     ProjectOut,
+    ProjectSummaryOut,
 )
 from app.features.projects.service import ProjectService
 from app.ingest.fixture_reader import get_ingest_reader
@@ -67,9 +69,35 @@ async def replace_layer_backbone(
     return _project_out(project)
 
 
-@router.get("", response_model=list[ProjectOut])
-async def list_projects(service: ServiceDep) -> list[ProjectOut]:
-    return [_project_out(project) for project in await service.list_projects()]
+@router.get("", response_model=ProjectListOut)
+async def list_projects(
+    service: ServiceDep,
+    query: str | None = None,
+    status: str | None = None,
+    cursor: int | None = None,
+    limit: int = 50,
+) -> ProjectListOut:
+    limit = max(1, min(limit, 200))
+    summaries, next_cursor = await service.list_projects(
+        query=query, status=status, cursor=cursor, limit=limit
+    )
+    return ProjectListOut(
+        items=[
+            ProjectSummaryOut(
+                id=project.id,
+                line_id=project.line_id,
+                process_id=project.process_id,
+                part_id=project.part_id,
+                name=project.name,
+                description=project.description,
+                status=project.status.value,
+                layer_count=layer_count,
+                cell_count=cell_count,
+            )
+            for project, layer_count, cell_count in summaries
+        ],
+        next_cursor=next_cursor,
+    )
 
 
 @router.get("/{project_id}", response_model=ProjectOut)

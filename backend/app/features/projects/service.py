@@ -46,8 +46,17 @@ class ProjectService:
         self.repo = repo
         self.reader = reader
 
-    async def list_projects(self) -> list[Project]:
-        return await self.repo.list()
+    async def list_projects(
+        self,
+        *,
+        query: str | None = None,
+        status: str | None = None,
+        cursor: int | None = None,
+        limit: int = 50,
+    ) -> tuple[list[tuple[Project, int, int]], int | None]:
+        return await self.repo.list_summaries(
+            query=query, status=status, cursor=cursor, limit=limit
+        )
 
     async def get_project(self, project_id: int) -> Project:
         project = await self.repo.get(project_id)
