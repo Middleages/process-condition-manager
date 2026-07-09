@@ -1,5 +1,25 @@
 import { apiClient } from './client'
-import type { OptionIn, ParameterCreate, ParameterOut, ParameterUpdate } from './types'
+import type {
+  ImportResultOut,
+  OptionIn,
+  ParameterCreate,
+  ParameterOut,
+  ParameterUpdate,
+} from './types'
+
+export async function previewParameterImport(csvText: string): Promise<ImportResultOut> {
+  const response = await apiClient.post<ImportResultOut>('/parameters/import/preview', {
+    csv_text: csvText,
+  })
+  return response.data
+}
+
+export async function applyParameterImport(csvText: string): Promise<ImportResultOut> {
+  const response = await apiClient.post<ImportResultOut>('/parameters/import/apply', {
+    csv_text: csvText,
+  })
+  return response.data
+}
 
 export async function listParameters(includeInactive = false): Promise<ParameterOut[]> {
   const response = await apiClient.get<ParameterOut[]>('/parameters', {

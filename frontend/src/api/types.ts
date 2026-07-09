@@ -73,6 +73,20 @@ export interface ParameterUpdate {
   is_active?: boolean | null
 }
 
+export interface ImportRowOut {
+  line: number
+  code: string
+  action: 'create' | 'update' | 'error'
+  message: string | null
+}
+
+export interface ImportResultOut {
+  created_count: number
+  updated_count: number
+  error_count: number
+  rows: ImportRowOut[]
+}
+
 export interface ProcessOut {
   key: string
   line_id: string
