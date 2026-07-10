@@ -18,14 +18,7 @@ export default defineConfig({
       '/api': {
         target: 'http://backend:8000',
         changeOrigin: true,
-      },
-      '/parameters': {
-        target: 'http://backend:8000',
-        changeOrigin: true,
-      },
-      '/processes': {
-        target: 'http://backend:8000',
-        changeOrigin: true,
+        rewrite: (requestPath) => requestPath.replace(/^\/api/, ''),
       },
     },
   },

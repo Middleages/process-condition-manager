@@ -88,7 +88,7 @@ npm run dev
 - `GET /processes`
 - `GET /processes/{process_key}/layers`
 
-Vite 개발 서버는 `/parameters`, `/processes`, `/api` 요청을 backend 컨테이너로 프록시합니다.
+Vite 개발 서버는 `/api` 요청을 backend 컨테이너로 프록시하며, 프론트엔드 API 클라이언트는 기본적으로 `/api`를 base URL로 사용합니다.
 
 ## CI
 
