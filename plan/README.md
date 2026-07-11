@@ -58,6 +58,7 @@
 | D-16 | 다중 조건 행 + POR | 같은 layer/step에 **여러 조건 행**이 존재할 수 있다. 시트의 행 = 조건 행(`layer_condition`)이며, 조건 행에는 최소 라벨(`label`)을 둔다. 전부 표시하되 같은 layer·step임이 드러나게 그룹핑한다. **POR은 layer당 최대 1개** — `is_por`(por_yn) 플래그 + partial unique 제약으로 강제, 사용자가 조건 행 중 하나를 POR로 선택/이양(`change_event(por_change)`). UI 명칭은 **Layer/Step 병기** | 2026-07-07 확정 (P1-D3 병기 포함). 파생 정책도 확정: 백본 복사 시 조건 행 전부+POR 유지(P1-D8), 편집 중 POR 미지정 허용 + Review 게이트에서 완결성 검사(P5-D5), cross-layer 검증 참조는 POR 행 기준(P3-D5), 출력은 기본 POR 행만(P6-D5) |
 | D-17 | 파라미터 초기 주입 + 중복 프로젝트 정책 | 약 200개 파라미터의 초기 등록은 **CSV 붙여넣기 임포트 기능**(붙여넣기 → dry-run 미리보기 → code 기준 UPSERT)으로 처리 — 반복 사용 가능한 관리 기능으로 Phase 1에 배정 (D-07 "지속 추가/변경" 대응). 조건표가 이미 있는 process의 신규 프로젝트 생성은 **차단**하고 기존 프로젝트(Draft: 이어서 편집 / Approved: Revision)로 유도 | 2026-07-07 확정 |
 | D-18 | 그리드 라이브러리 | **Glide Data Grid 채택** (1순위), RevoGrid 대안 유지. 근거: 200 컬럼 성능(Canvas) + 엑셀 범위 붙여넣기 내장 + MIT/폐쇄망 적합. 그리드 어댑터(`frontend/src/grid/types.ts`) 뒤에 두어 교체 가능. 대화형 붙여넣기·성능 체감 검증은 Phase 2 편집기 착수 첫 스텝에서 확정 라이브러리로 재확인 | 2026-07-09 확정 (D-12 해소). [03-grid-evaluation.md](./03-grid-evaluation.md) §7 |
+| D-19 | API 진입점 | 백엔드 API를 **`/api` 단일 프리픽스**로 통합, URL 버저닝(v1)은 미도입 — 소비자가 동반 배포되는 자사 SPA 하나뿐이라 실익이 없다. SPA 페이지 경로(`/projects` 등)와 API 경로의 이름공간 충돌을 제거하고, dev proxy·운영 리버스 프록시 규칙을 1개로 줄인다. `/health`는 컨테이너 헬스체크용으로 루트 유지 | 2026-07-10 확정. 배경: 기능별 루트 경로가 쌓이며 vite proxy에 죽은 `/api` 항목·`/projects` 누락이 발생. [phase-2-tasks.md](./phase-2-tasks.md) P2-D5/T0에서 실행 |
 
 ## 미확정 항목
 
