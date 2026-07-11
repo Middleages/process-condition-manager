@@ -5,8 +5,10 @@
 - 행이 layer(sort_order)/condition(condition_index) 순으로 정렬
 - 셀 희소 표현 (빈 값 생략)
 - 존재하지 않는 project_id → 404
-- 잠금 요약이 스텁 값으로 항상 옴
+- 잠금 요약이 edit_lock 실조회를 반영 (미잠금/내 잠금/타인 잠금/만료)
 """
+
+from datetime import UTC, datetime, timedelta
 
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,11 +17,29 @@ from app.domain.parameters.types import ValueType
 from app.models.parameter import Parameter, ParameterCategory, ParameterOption
 from app.models.project import (
     CellValue,
+    EditLock,
     LayerCondition,
     Project,
     ProjectStatus,
     SheetLayer,
 )
+
+
+async def _seed_lock(
+    session: AsyncSession, project_id: int, *, locked_by: str, minutes: int = 5
+) -> None:
+    """edit_lock 행을 직접 심는다. minutes<0이면 만료 잠금을 만든다."""
+    now = datetime.now(UTC)
+    session.add(
+        EditLock(
+            project_id=project_id,
+            locked_by=locked_by,
+            lock_token="seed-token",
+            locked_at=now,
+            expires_at=now + timedelta(minutes=minutes),
+        )
+    )
+    await session.commit()
 
 
 async def _seed_parameters(session: AsyncSession) -> None:
@@ -193,7 +213,7 @@ async def test_sheet_cells_are_sparse(
     assert empty_row["cells"] == {}
 
 
-async def test_sheet_lock_summary_is_stub(
+async def test_sheet_lock_summary_unlocked(
     db_client: AsyncClient, db_session: AsyncSession
 ) -> None:
     await _seed_parameters(db_session)
@@ -201,12 +221,62 @@ async def test_sheet_lock_summary_is_stub(
 
     resp = await db_client.get(f"/api/projects/{project_id}/sheet")
 
-    lock = resp.json()["lock"]
-    assert lock == {
+    # 잠금이 없으면 전부 None + is_mine=False (누구나 획득 가능하다는 의미).
+    assert resp.json()["lock"] == {
         "locked_by": None,
         "locked_at": None,
         "expires_at": None,
-        "is_mine": True,
+        "is_mine": False,
+    }
+
+
+async def test_sheet_lock_summary_locked_by_me(
+    db_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    await _seed_parameters(db_session)
+    project_id = await _seed_project(db_session)
+    # 인증 스텁 사용자(dev-admin)가 보유 → is_mine=True.
+    await _seed_lock(db_session, project_id, locked_by="dev-admin")
+
+    resp = await db_client.get(f"/api/projects/{project_id}/sheet")
+
+    lock = resp.json()["lock"]
+    assert lock["locked_by"] == "dev-admin"
+    assert lock["is_mine"] is True
+    assert lock["locked_at"] is not None
+    assert lock["expires_at"] is not None
+
+
+async def test_sheet_lock_summary_locked_by_other(
+    db_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    await _seed_parameters(db_session)
+    project_id = await _seed_project(db_session)
+    await _seed_lock(db_session, project_id, locked_by="someone-else")
+
+    resp = await db_client.get(f"/api/projects/{project_id}/sheet")
+
+    lock = resp.json()["lock"]
+    assert lock["locked_by"] == "someone-else"
+    assert lock["is_mine"] is False
+    assert lock["expires_at"] is not None
+
+
+async def test_sheet_lock_summary_expired_reads_as_unlocked(
+    db_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    await _seed_parameters(db_session)
+    project_id = await _seed_project(db_session)
+    # 만료 잠금은 미잠금으로 취급된다.
+    await _seed_lock(db_session, project_id, locked_by="dev-admin", minutes=-5)
+
+    resp = await db_client.get(f"/api/projects/{project_id}/sheet")
+
+    assert resp.json()["lock"] == {
+        "locked_by": None,
+        "locked_at": None,
+        "expires_at": None,
+        "is_mine": False,
     }
 
 

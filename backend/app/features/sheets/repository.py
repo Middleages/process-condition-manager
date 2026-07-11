@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.parameter import Parameter, ParameterCategory
-from app.models.project import LayerCondition, Project, SheetLayer
+from app.models.project import EditLock, LayerCondition, Project, SheetLayer
 
 
 class SheetRepository:
@@ -50,3 +50,11 @@ class SheetRepository:
         """활성 카테고리 — 파라미터의 category_id를 category_code로 옮길 때 쓴다."""
         stmt = select(ParameterCategory).where(ParameterCategory.is_active.is_(True))
         return list((await self.session.execute(stmt)).scalars().all())
+
+    async def load_edit_lock(self, project_id: int) -> EditLock | None:
+        """프로젝트 편집 잠금 행을 직접 조회한다.
+
+        잠금 요약("누가 편집 중")의 데이터 공급 경로다. features/ 간 결합을 피하려고
+        locks 슬라이스를 import하지 않고 edit_lock 모델을 직접(PK) 조회한다.
+        """
+        return await self.session.get(EditLock, project_id)

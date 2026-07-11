@@ -165,6 +165,34 @@ class ChangeEvent(Base):
     )
     actor: Mapped[str] = mapped_column(String(128), default="system", server_default="system")
     payload: Mapped[dict] = mapped_column(_JSON_PAYLOAD, default=dict)
+    # 셀 단위 이벤트 전용 구조화 컬럼 (P2-D7). 벌크 이벤트는 기존처럼 payload를 쓴다.
+    # condition_id는 FK가 아니다 — 삭제된 조건 행의 이벤트도 남아야 하므로
+    # (cell_value.parameter_code가 FK가 아닌 것과 같은 이유).
+    condition_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    parameter_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    old_value: Mapped[str | None] = mapped_column(Text, nullable=True)
+    new_value: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+
+class EditLock(Base):
+    """프로젝트 편집 잠금 (P2-D6 / D-09).
+
+    프로젝트당 1개 — project_id가 PK. 소유는 사용자 + lock_token으로 식별한다.
+    lock_token은 획득 시 서버가 발급하는 불투명 토큰으로, 같은 계정의 다른 탭도
+    한쪽만 편집하도록 구분하고, TTL 만료 후 탈취된 잠금에 옛 탭이 뒤늦게 저장하는
+    사고를 막는다. locked_at/expires_at은 항상 UTC로 저장/비교한다
+    (app.core.locks 시간 헬퍼 참고 — SQLite는 naive, PG는 aware 반환).
+    """
+
+    __tablename__ = "edit_lock"
+
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("project.id", ondelete="CASCADE"), primary_key=True
+    )
+    locked_by: Mapped[str] = mapped_column(String(128))
+    lock_token: Mapped[str] = mapped_column(String(64))
+    locked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

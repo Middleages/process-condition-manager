@@ -6,7 +6,14 @@ Base.metadata에 등록한다.
 
 from app.core.db import Base
 from app.models.parameter import Parameter, ParameterCategory, ParameterOption
-from app.models.project import CellValue, ChangeEvent, LayerCondition, Project, SheetLayer
+from app.models.project import (
+    CellValue,
+    ChangeEvent,
+    EditLock,
+    LayerCondition,
+    Project,
+    SheetLayer,
+)
 
 __all__ = [
     "Base",
@@ -18,4 +25,5 @@ __all__ = [
     "LayerCondition",
     "CellValue",
     "ChangeEvent",
+    "EditLock",
 ]

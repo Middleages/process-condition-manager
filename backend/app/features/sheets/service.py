@@ -6,6 +6,7 @@
 """
 
 from app.core.errors import NotFoundError
+from app.core.locks import as_utc, is_expired, utcnow
 from app.domain.parameters.types import ValueType
 from app.features.sheets.repository import SheetRepository
 from app.features.sheets.schema import (
@@ -15,7 +16,7 @@ from app.features.sheets.schema import (
     SheetRowOut,
 )
 from app.models.parameter import Parameter
-from app.models.project import Project
+from app.models.project import EditLock, Project
 
 
 class SheetService:
@@ -35,7 +36,7 @@ class SheetService:
 
         columns = _build_live_columns(parameters, category_code_by_id)
         rows = _build_rows(project)
-        lock = _stub_lock_summary()
+        lock = _lock_summary(await self.repo.load_edit_lock(project_id), user_id=user_id)
         return SheetOut(columns=columns, rows=rows, lock=lock)
 
 
@@ -98,14 +99,22 @@ def _build_rows(project: Project) -> list[SheetRowOut]:
     return rows
 
 
-def _stub_lock_summary() -> SheetLockSummaryOut:
-    """미잠금 상태 스텁 (T5의 edit_lock 테이블이 이 부분만 교체한다).
+def _lock_summary(lock: EditLock | None, *, user_id: str) -> SheetLockSummaryOut:
+    """edit_lock 행을 시트 잠금 요약으로 변환한다 (T5).
 
-    DB 조회 없이 상수로 채운다. 필드 이름·구조는 T5 계약이므로 고정한다.
+    잠금이 없거나 만료면 미잠금(모두 None, is_mine=False)으로 본다 — 이때는 누구나
+    획득해 편집할 수 있다. 유효 잠금이면 보유자 정보를 채우고, is_mine은 현재 요청
+    사용자와 locked_by의 일치 여부다(토큰이 아닌 사용자 기준 — 시트 조회는 토큰을
+    싣지 않는 읽기 경로이며, 실제 편집 강제는 require_edit_lock의 토큰 검증이 한다).
+    datetime은 as_utc로 통일해 응답 JSON을 일관되게 한다.
     """
+    if lock is None or is_expired(lock, utcnow()):
+        return SheetLockSummaryOut(
+            locked_by=None, locked_at=None, expires_at=None, is_mine=False
+        )
     return SheetLockSummaryOut(
-        locked_by=None,
-        locked_at=None,
-        expires_at=None,
-        is_mine=True,
+        locked_by=lock.locked_by,
+        locked_at=as_utc(lock.locked_at),
+        expires_at=as_utc(lock.expires_at),
+        is_mine=lock.locked_by == user_id,
     )

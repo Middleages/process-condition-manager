@@ -47,6 +47,17 @@ class ConflictError(AppError):
     code = "conflict"
 
 
+class LockConflictError(AppError):
+    """편집 잠금 충돌 (미보유/토큰 불일치/만료).
+
+    프론트가 일반 409(conflict)와 구분해 "잠금 재획득" 흐름을 띄울 수 있도록
+    별도 code를 쓴다. 보유자 정보는 details에 (JSON 안전한 형태로) 싣는다.
+    """
+
+    status_code = 409
+    code = "lock_conflict"
+
+
 class DomainValidationError(AppError):
     """도메인 규칙 위반."""
 

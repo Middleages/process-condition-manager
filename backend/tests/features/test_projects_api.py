@@ -13,6 +13,13 @@ from app.models.project import (
 )
 
 
+async def _lock_headers(client: AsyncClient, project_id: int) -> dict[str, str]:
+    """편집 잠금을 획득해 backbone-replace(잠금 검사 소급 적용)용 토큰 헤더를 만든다."""
+    resp = await client.post(f"/api/projects/{project_id}/lock")
+    assert resp.status_code == 200, resp.text
+    return {"X-Lock-Token": resp.json()["lock_token"]}
+
+
 async def _seed_backbone_cells(
     session: AsyncSession, project_id: int, layer_key: str, cells: dict[str, str]
 ) -> None:
@@ -233,6 +240,7 @@ async def test_replace_layer_backbone_uses_source_layer_conditions(db_client: As
             "source_project_id": source["id"],
             "source_layer_key": source["layers"][0]["layer_key"],
         },
+        headers=await _lock_headers(db_client, target["id"]),
     )
 
     assert resp.status_code == 200, resp.text
@@ -372,9 +380,12 @@ async def test_self_layer_replace_is_rejected(db_client: AsyncClient) -> None:
     ).json()
     layer_key = project["layers"][0]["layer_key"]
 
+    # 잠금을 보유한 상태여도 자기 자신 교체는 도메인 규칙 위반(422)으로 막힌다
+    # (잠금 검사는 통과하고 그 다음 서비스 검증에서 걸린다).
     resp = await db_client.post(
         f"/api/projects/{project['id']}/layers/{layer_key}/backbone-replace",
         json={"source_project_id": project["id"], "source_layer_key": layer_key},
+        headers=await _lock_headers(db_client, project["id"]),
     )
 
     assert resp.status_code == 422, resp.text
