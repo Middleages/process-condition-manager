@@ -19,14 +19,6 @@ export default defineConfig({
         target: 'http://backend:8000',
         changeOrigin: true,
       },
-      '/parameters': {
-        target: 'http://backend:8000',
-        changeOrigin: true,
-      },
-      '/processes': {
-        target: 'http://backend:8000',
-        changeOrigin: true,
-      },
     },
   },
 })

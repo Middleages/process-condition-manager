@@ -26,10 +26,16 @@ def create_app() -> FastAPI:
     """앱 인스턴스를 생성/조립한다."""
     app = FastAPI(title=settings.app_name, debug=settings.debug)
     register_exception_handlers(app)
+
+    # 헬스체크는 루트 유지 (컨테이너 헬스체크가 /health 직접 조회).
     app.include_router(health_router)
-    app.include_router(parameters_router)
-    app.include_router(processes_router)
-    app.include_router(projects_router)
+
+    # 기능 라우터는 /api 아래로 통합 (SPA 페이지 경로와 이름공간 분리).
+    api_router = APIRouter(prefix="/api")
+    api_router.include_router(parameters_router)
+    api_router.include_router(processes_router)
+    api_router.include_router(projects_router)
+    app.include_router(api_router)
 
     # 이중 엔진 참조 보관 (실사용은 각 feature/ingest가 세션 의존성으로 접근)
     app.state.app_engine = app_engine
