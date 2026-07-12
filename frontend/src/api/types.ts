@@ -264,7 +264,7 @@ export interface SheetOut {
   lock: SheetLockSummaryOut
 }
 
-// --- 편집 잠금 (POST/DELETE /api/projects/{project_id}/lock) ---
+// --- 편집 잠금 (POST/DELETE /api/projects/{project_id}/lock, POST .../lock/heartbeat) ---
 
 /** 잠금 획득/하트비트 응답. LockOut. */
 export interface LockOut {
@@ -272,4 +272,34 @@ export interface LockOut {
   lock_token: string
   locked_at: string
   expires_at: string
+}
+
+// --- 셀 배치 편집 (PATCH /api/projects/{project_id}/cells) ---
+// 자동저장 파이프라인(T3). 백엔드와 동시 구현 중이라 계약대로 프론트를 먼저 맞춰 둔다.
+
+/** 편집 출처 — 수동 셀 편집인지 붙여넣기 적용(T4)인지 구분. */
+export type CellUpdateOrigin = 'manual' | 'paste'
+
+/**
+ * 셀 한 개의 갱신값(요청/응답 공용 형태).
+ *
+ * condition_id는 number다(그리드 계약의 문자열 id와 다름 — 경계에서 변환한다).
+ * value=null은 "셀 비우기"를 뜻한다(빈 문자열이 아니라 NULL).
+ */
+export interface CellUpdateIn {
+  condition_id: number
+  parameter_code: string
+  value: string | null
+}
+
+/** PATCH /cells 요청 바디. origin은 선택. */
+export interface CellsPatchIn {
+  cells: CellUpdateIn[]
+  origin?: CellUpdateOrigin
+}
+
+/** PATCH /cells 응답: 반영된 셀 + 배치 식별자. */
+export interface CellsPatchOut {
+  cells: CellUpdateIn[]
+  batch_id: string
 }

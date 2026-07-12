@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 
 import type { SheetOut } from '@/api/types'
 
-import { toConditionGridData, toLockView } from './sheetAdapter'
+import type { DirtyCell } from './editStore'
+import { applySavedToSheet, toConditionGridData, toLockView } from './sheetAdapter'
 
 const sheet: SheetOut = {
   columns: [
@@ -85,5 +86,29 @@ describe('toLockView', () => {
     expect(
       toLockView({ locked_by: 'someone', locked_at: '2026-07-11T00:00:00Z', expires_at: null, is_mine: false }),
     ).toEqual({ readOnly: true, editingBy: 'someone' })
+  })
+})
+
+describe('applySavedToSheet', () => {
+  it('writes saved values into the matching row cells, keeping others', () => {
+    const saved: DirtyCell[] = [{ conditionId: '11', parameterCode: 'spin_speed', value: '1600' }]
+    const next = applySavedToSheet(sheet, saved)
+    expect(next.rows[0].cells.spin_speed).toBe('1600')
+    expect(next.rows[0].cells.pr_type).toBe('pos')
+  })
+
+  it('removes the cell key when the saved value is null (sparse representation)', () => {
+    const saved: DirtyCell[] = [{ conditionId: '11', parameterCode: 'pr_type', value: null }]
+    const next = applySavedToSheet(sheet, saved)
+    expect('pr_type' in next.rows[0].cells).toBe(false)
+  })
+
+  it('does not mutate the source sheet', () => {
+    applySavedToSheet(sheet, [{ conditionId: '11', parameterCode: 'spin_speed', value: '9999' }])
+    expect(sheet.rows[0].cells.spin_speed).toBe('1500')
+  })
+
+  it('returns the same reference when there is nothing to apply', () => {
+    expect(applySavedToSheet(sheet, [])).toBe(sheet)
   })
 })

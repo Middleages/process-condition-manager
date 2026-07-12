@@ -7,6 +7,8 @@
 import type { SheetColumnOut, SheetLockSummaryOut, SheetOut, SheetRowOut } from '@/api/types'
 import type { ConditionGridColumn, ConditionGridData, ConditionGridRow } from '@/grid/types'
 
+import type { DirtyCell } from './editStore'
+
 /** 컬럼 정의를 sort_order 순으로 정렬해 도메인 컬럼으로 변환한다. */
 export function toConditionGridColumns(
   columns: readonly SheetColumnOut[],
@@ -55,4 +57,35 @@ export interface SheetLockView {
 export function toLockView(lock: SheetLockSummaryOut): SheetLockView {
   const lockedByOther = lock.locked_by !== null && !lock.is_mine
   return { readOnly: lockedByOther, editingBy: lockedByOther ? lock.locked_by : null }
+}
+
+/**
+ * 저장 성공분을 서버 스냅샷(`SheetOut`)에 반영한 새 스냅샷을 만든다(T3 자동저장).
+ *
+ * 자동저장은 더티 diff만 서버로 보내고, 성공하면 이 함수로 캐시된 서버 행에 그 값을 확정
+ * 반영한다. 그래야 더티 제거 후에도 그리드가 저장된 값을 계속 보여준다(스냅샷 되돌림 방지).
+ * value=null(셀 비우기)은 희소 표현을 지켜 키를 제거한다.
+ */
+export function applySavedToSheet(sheet: SheetOut, cells: readonly DirtyCell[]): SheetOut {
+  if (cells.length === 0) return sheet
+  const byCondition = new Map<number, DirtyCell[]>()
+  for (const cell of cells) {
+    const id = Number(cell.conditionId)
+    const list = byCondition.get(id)
+    if (list === undefined) byCondition.set(id, [cell])
+    else list.push(cell)
+  }
+  return {
+    ...sheet,
+    rows: sheet.rows.map((row) => {
+      const dirties = byCondition.get(row.condition_id)
+      if (dirties === undefined) return row
+      const nextCells: Record<string, string | null> = { ...row.cells }
+      for (const cell of dirties) {
+        if (cell.value === null) delete nextCells[cell.parameterCode]
+        else nextCells[cell.parameterCode] = cell.value
+      }
+      return { ...row, cells: nextCells }
+    }),
+  }
 }

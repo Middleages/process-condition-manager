@@ -13,6 +13,20 @@ export async function acquireLock(projectId: number): Promise<LockOut> {
   return response.data
 }
 
+/**
+ * 잠금 하트비트 — 보유 중인 잠금의 TTL을 연장한다. 시트 편집 화면이 열려 있는 동안
+ * 주기적으로(예: 45초) 호출한다(T3).
+ *
+ * 잠금을 잃었으면(예: TTL 만료 후 다른 세션이 탈취) 409로 응답한다 →
+ * 상위(SheetView)는 이를 "잠금 상실"로 해석해 편집을 중단하고 재획득 UI를 띄운다.
+ */
+export async function heartbeatLock(projectId: number, lockToken: string): Promise<LockOut> {
+  const response = await apiClient.post<LockOut>(`/projects/${projectId}/lock/heartbeat`, {
+    lock_token: lockToken,
+  })
+  return response.data
+}
+
 export async function releaseLock(projectId: number, lockToken: string): Promise<void> {
   await apiClient.delete(`/projects/${projectId}/lock`, { data: { lock_token: lockToken } })
 }
