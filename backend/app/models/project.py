@@ -41,6 +41,12 @@ class ChangeEventType(StrEnum):
     # 셀 단위 편집 (P2-T3). 구조화 컬럼(condition_id/parameter_code/old_value/
     # new_value)을 채우고 payload에는 batch_id/origin만 싣는다.
     CELL_UPDATE = "cell_update"
+    # 조건 행 관리 + POR 선택 (P2-T7 / D-16). 조건 행 단위 이벤트라 셀 전용
+    # 구조화 컬럼(condition_id 등)은 쓰지 않고, 백본 이벤트처럼 payload에 싣는다.
+    # (condition_remove는 삭제 전 스냅샷을, por_change는 old/new POR을 남긴다.)
+    CONDITION_ADD = "condition_add"
+    CONDITION_REMOVE = "condition_remove"
+    POR_CHANGE = "por_change"
 
 
 class Project(Base):
