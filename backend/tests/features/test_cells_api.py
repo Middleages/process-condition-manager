@@ -19,6 +19,8 @@ from httpx import AsyncClient, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.domain.parameters.types import ValueType
+from app.models.parameter import Parameter, ParameterOption
 from app.models.project import (
     CellValue,
     ChangeEvent,
@@ -83,6 +85,42 @@ async def _seed_lock(
             expires_at=now + timedelta(minutes=minutes),
         )
     )
+    await session.commit()
+
+
+async def _seed_parameters(session: AsyncSession) -> None:
+    """타입 검증 대상 파라미터를 레지스트리에 심는다.
+
+    - temp_c: number (float() 엄격 파싱 대상)
+    - pr_type: choice (활성 옵션 A/B, 비활성 옵션 LEGACY — 비활성은 선택 불가)
+    - memo: text (제약 없음 — 어떤 문자열이든 통과)
+
+    셀·이벤트는 code로만 파라미터를 참조하므로(FK 아님) 여기 없는 code는 검증에서
+    빠진다. db_client/db_session이 같은 엔진을 공유하니 커밋 후 API에서 읽힌다.
+    """
+    number_param = Parameter(
+        code="temp_c",
+        display_name="온도(C)",
+        value_type=ValueType.NUMBER,
+    )
+    text_param = Parameter(
+        code="memo",
+        display_name="메모",
+        value_type=ValueType.TEXT,
+    )
+    choice_param = Parameter(
+        code="pr_type",
+        display_name="PR 종류",
+        value_type=ValueType.CHOICE,
+    )
+    choice_param.options.extend(
+        [
+            ParameterOption(value="A", display_name="Type A", is_active=True),
+            ParameterOption(value="B", display_name="Type B", is_active=True),
+            ParameterOption(value="LEGACY", display_name="폐기", is_active=False),
+        ]
+    )
+    session.add_all([number_param, text_param, choice_param])
     await session.commit()
 
 
@@ -405,4 +443,262 @@ async def test_patch_cells_empty_list_is_noop(
     body = resp.json()
     assert body["cells"] == []
     assert body["batch_id"]
+    assert await _cell_events(db_session, project_id) == []
+
+
+# --- 타입 정합성 최종 검증 (P2-T4) ------------------------------------------
+# 붙여넣기는 셀 에디터를 거치지 않고 원시 문자열을 꽂으므로, 저장 시 서버가
+# 레지스트리 기준 value_type(number 파싱/choice 옵션 일치)만 최종 확인한다.
+# range/required/pattern 등은 Phase 3의 몫이라 여기서 보지 않는다.
+
+
+async def test_patch_cells_rejects_non_numeric_for_number_param(
+    db_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    project_id, cond1, _ = await _seed_project(db_session)
+    await _seed_parameters(db_session)
+    token = await _acquire(db_client, project_id)
+
+    resp = await _patch(
+        db_client,
+        project_id,
+        [{"condition_id": cond1, "parameter_code": "temp_c", "value": "abc"}],
+        token=token,
+    )
+
+    assert resp.status_code == 422, resp.text
+    body = resp.json()
+    assert body["code"] == "validation_error"
+    # 위반 상세에 해당 셀이 그대로(정규화된 값 포함) 담긴다.
+    assert body["details"]["invalid_cells"] == [
+        {
+            "condition_id": cond1,
+            "parameter_code": "temp_c",
+            "value": "abc",
+            "reason": "invalid_number",
+        }
+    ]
+    # 전체 거부 — 셀·이벤트 미반영.
+    assert (await _cell_value(db_session, cond1, "temp_c"))[0] is False
+    assert await _cell_events(db_session, project_id) == []
+
+
+async def test_patch_cells_rejects_comma_formatted_number(
+    db_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """콤마 포함 서식("1,234")은 엄격 파싱(float)에서 실패해 거부된다."""
+    project_id, cond1, _ = await _seed_project(db_session)
+    await _seed_parameters(db_session)
+    token = await _acquire(db_client, project_id)
+
+    resp = await _patch(
+        db_client,
+        project_id,
+        [{"condition_id": cond1, "parameter_code": "temp_c", "value": "1,234"}],
+        token=token,
+    )
+
+    assert resp.status_code == 422, resp.text
+    reasons = [c["reason"] for c in resp.json()["details"]["invalid_cells"]]
+    assert reasons == ["invalid_number"]
+    assert (await _cell_value(db_session, cond1, "temp_c"))[0] is False
+
+
+async def test_patch_cells_accepts_valid_number(
+    db_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """유효한 정수/실수 문자열은 통과해 그대로 저장된다."""
+    project_id, cond1, cond2 = await _seed_project(db_session)
+    await _seed_parameters(db_session)
+    token = await _acquire(db_client, project_id)
+
+    resp = await _patch(
+        db_client,
+        project_id,
+        [
+            {"condition_id": cond1, "parameter_code": "temp_c", "value": "1500"},
+            {"condition_id": cond2, "parameter_code": "temp_c", "value": "12.5"},
+        ],
+        token=token,
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert (await _cell_value(db_session, cond1, "temp_c"))[1] == "1500"
+    assert (await _cell_value(db_session, cond2, "temp_c"))[1] == "12.5"
+
+
+async def test_patch_cells_accepts_any_text_for_text_param(
+    db_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """text 파라미터는 제약이 없어 숫자로 안 읽히는 값이라도 그대로 통과한다."""
+    project_id, cond1, _ = await _seed_project(db_session)
+    await _seed_parameters(db_session)
+    token = await _acquire(db_client, project_id)
+
+    resp = await _patch(
+        db_client,
+        project_id,
+        [{"condition_id": cond1, "parameter_code": "memo", "value": "1,234 abc"}],
+        token=token,
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert (await _cell_value(db_session, cond1, "memo"))[1] == "1,234 abc"
+
+
+async def test_patch_cells_rejects_unknown_choice(
+    db_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """옵션 목록에 없는 값은 거부된다."""
+    project_id, cond1, _ = await _seed_project(db_session)
+    await _seed_parameters(db_session)
+    token = await _acquire(db_client, project_id)
+
+    resp = await _patch(
+        db_client,
+        project_id,
+        [{"condition_id": cond1, "parameter_code": "pr_type", "value": "Z"}],
+        token=token,
+    )
+
+    assert resp.status_code == 422, resp.text
+    assert resp.json()["details"]["invalid_cells"] == [
+        {
+            "condition_id": cond1,
+            "parameter_code": "pr_type",
+            "value": "Z",
+            "reason": "invalid_choice",
+        }
+    ]
+    assert (await _cell_value(db_session, cond1, "pr_type"))[0] is False
+
+
+async def test_patch_cells_accepts_valid_choice(
+    db_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """활성 옵션 값은 통과해 그대로 저장된다."""
+    project_id, cond1, _ = await _seed_project(db_session)
+    await _seed_parameters(db_session)
+    token = await _acquire(db_client, project_id)
+
+    resp = await _patch(
+        db_client,
+        project_id,
+        [{"condition_id": cond1, "parameter_code": "pr_type", "value": "A"}],
+        token=token,
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert (await _cell_value(db_session, cond1, "pr_type"))[1] == "A"
+
+
+async def test_patch_cells_rejects_inactive_choice_option(
+    db_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """옵션이 존재해도 비활성(is_active=False)이면 선택 불가로 거부된다."""
+    project_id, cond1, _ = await _seed_project(db_session)
+    await _seed_parameters(db_session)
+    token = await _acquire(db_client, project_id)
+
+    resp = await _patch(
+        db_client,
+        project_id,
+        [{"condition_id": cond1, "parameter_code": "pr_type", "value": "LEGACY"}],
+        token=token,
+    )
+
+    assert resp.status_code == 422, resp.text
+    reasons = [c["reason"] for c in resp.json()["details"]["invalid_cells"]]
+    assert reasons == ["invalid_choice"]
+    assert (await _cell_value(db_session, cond1, "pr_type"))[0] is False
+
+
+async def test_patch_cells_skips_validation_for_unknown_parameter_code(
+    db_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """레지스트리에 없는 code는 타입 검증 대상이 아니다 (스냅샷 독립성 설계 철학).
+
+    parameter_code는 FK가 아니라, 알 수 없는/폐기된 code도 원시 값 그대로 통과한다.
+    """
+    project_id, cond1, _ = await _seed_project(db_session)
+    await _seed_parameters(db_session)
+    token = await _acquire(db_client, project_id)
+
+    resp = await _patch(
+        db_client,
+        project_id,
+        # 숫자로도 옵션으로도 볼 수 없는 값이지만, 미등록 code라 검증하지 않는다.
+        [{"condition_id": cond1, "parameter_code": "ghost_code", "value": "anything"}],
+        token=token,
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert (await _cell_value(db_session, cond1, "ghost_code"))[1] == "anything"
+
+
+async def test_patch_cells_one_type_violation_rejects_whole_batch(
+    db_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """위반 1건이 섞이면 나머지 유효한 셀도 전부 저장되지 않는다 (all-or-nothing)."""
+    project_id, cond1, cond2 = await _seed_project(db_session)
+    await _seed_parameters(db_session)
+    token = await _acquire(db_client, project_id)
+
+    resp = await _patch(
+        db_client,
+        project_id,
+        [
+            {"condition_id": cond1, "parameter_code": "temp_c", "value": "1500"},  # 유효
+            {"condition_id": cond1, "parameter_code": "pr_type", "value": "A"},  # 유효
+            {"condition_id": cond2, "parameter_code": "temp_c", "value": "oops"},  # 위반
+        ],
+        token=token,
+    )
+
+    assert resp.status_code == 422, resp.text
+    # 위반은 딱 그 셀 1건.
+    assert resp.json()["details"]["invalid_cells"] == [
+        {
+            "condition_id": cond2,
+            "parameter_code": "temp_c",
+            "value": "oops",
+            "reason": "invalid_number",
+        }
+    ]
+    # 유효했던 두 셀도 저장되지 않고 이벤트도 없다.
+    assert (await _cell_value(db_session, cond1, "temp_c"))[0] is False
+    assert (await _cell_value(db_session, cond1, "pr_type"))[0] is False
+    assert (await _cell_value(db_session, cond2, "temp_c"))[0] is False
+    assert await _cell_events(db_session, project_id) == []
+
+
+async def test_patch_cells_clearing_skips_type_check(
+    db_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """셀 비우기(null/공백)는 number/choice 파라미터여도 타입 검사 없이 통과한다."""
+    project_id, cond1, cond2 = await _seed_project(db_session)
+    await _seed_parameters(db_session)
+    token = await _acquire(db_client, project_id)
+
+    resp = await _patch(
+        db_client,
+        project_id,
+        [
+            {"condition_id": cond1, "parameter_code": "temp_c", "value": None},
+            {"condition_id": cond1, "parameter_code": "pr_type", "value": "   "},
+            {"condition_id": cond2, "parameter_code": "temp_c", "value": ""},
+        ],
+        token=token,
+    )
+
+    assert resp.status_code == 200, resp.text
+    values = {
+        (c["condition_id"], c["parameter_code"]): c["value"] for c in resp.json()["cells"]
+    }
+    assert values == {
+        (cond1, "temp_c"): None,
+        (cond1, "pr_type"): None,
+        (cond2, "temp_c"): None,
+    }
+    # 신규 빈 값은 반영할 게 없어 행/이벤트를 만들지 않는다.
     assert await _cell_events(db_session, project_id) == []

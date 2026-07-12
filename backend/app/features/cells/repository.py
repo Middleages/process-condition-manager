@@ -10,6 +10,7 @@ from collections.abc import Collection
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.parameter import Parameter
 from app.models.project import CellValue, ChangeEvent, LayerCondition, Project, SheetLayer
 
 
@@ -50,6 +51,26 @@ class CellRepository:
             return []
         stmt = select(CellValue).where(CellValue.condition_id.in_(condition_ids))
         return list((await self.session.execute(stmt)).scalars().all())
+
+    async def active_parameters_by_code(
+        self, codes: Collection[str]
+    ) -> dict[str, Parameter]:
+        """요청에 등장한 code 중 활성 Parameter를 code로 인덱싱해 돌려준다.
+
+        저장 시 타입 정합성 최종 검증(value_type/choice 옵션)의 데이터 공급 경로다.
+        choice 옵션은 Parameter.options(lazy="selectin")로 함께 로드된다. 전체
+        파라미터가 많아야 ~200개라 요청에 등장한 code만(Parameter.code.in_) 좁혀
+        가져온다. cell/event가 code로만 파라미터를 참조하므로(FK 아님) 미존재·비활성
+        code는 결과에서 빠진다 — 호출측이 "레지스트리에 없으면 검증 생략"으로 본다.
+        """
+        if not codes:
+            return {}
+        stmt = select(Parameter).where(
+            Parameter.is_active.is_(True),
+            Parameter.code.in_(codes),
+        )
+        rows = (await self.session.execute(stmt)).scalars().all()
+        return {param.code: param for param in rows}
 
     def add_cell_value(self, cell: CellValue) -> None:
         self.session.add(cell)

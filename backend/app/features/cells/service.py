@@ -8,8 +8,10 @@ change_event(cell_update)로 남긴다 (P2-D7 구조화 컬럼 사용). 값 정�
 import uuid
 
 from app.core.errors import DomainValidationError, NotFoundError
+from app.domain.parameters.types import ValueType
 from app.features.cells.repository import CellRepository
-from app.features.cells.schema import CellOut, CellsPatchIn, CellsPatchOut
+from app.features.cells.schema import CellOut, CellsPatchIn, CellsPatchOut, CellUpdateIn
+from app.models.parameter import Parameter
 from app.models.project import CellValue, ChangeEvent, ChangeEventType
 
 
@@ -23,6 +25,63 @@ def _normalize(value: str | None) -> str | None:
         return None
     stripped = value.strip()
     return stripped or None
+
+
+def _type_violation(param: Parameter, value: str) -> str | None:
+    """정규화된(빈 값 아닌) 값의 value_type 정합성 위반 코드. 통과면 None.
+
+    - number: 파이썬 float() 엄격 파싱 — 콤마 서식("1,234")·통화 등도 실패시킨다.
+    - choice: 파라미터의 활성 옵션(ParameterOption.value, is_active) 목록에 있어야 함.
+    - text(그 외): 제약 없음.
+
+    range/required/pattern·cross-layer 같은 규칙은 Phase 3(검증 엔진)의 몫이라
+    여기서 보지 않는다.
+    """
+    if param.value_type == ValueType.NUMBER:
+        try:
+            float(value)
+        except ValueError:
+            return "invalid_number"
+        return None
+    if param.value_type == ValueType.CHOICE:
+        active_options = {opt.value for opt in param.options if opt.is_active}
+        if value not in active_options:
+            return "invalid_choice"
+        return None
+    return None
+
+
+def _collect_type_violations(
+    cells: list[CellUpdateIn],
+    params_by_code: dict[str, Parameter],
+) -> list[dict[str, str | int]]:
+    """타입 정합성 위반 셀을 전부 모은다 (실제 반영 전 일괄 검사).
+
+    정규화 후 값이 있는 셀만 검사한다 — 빈 값/None("셀 비우기")은 타입 검사 대상이
+    아니라 항상 통과한다. parameter_code가 활성 레지스트리에 없으면(미존재·비활성)
+    검증을 생략한다 (code는 FK가 아니다 — 스냅샷 독립성, 알 수 없는·폐기된 code도
+    허용). 반환 항목: {condition_id, parameter_code, value, reason} — reason은
+    "invalid_number"·"invalid_choice" 같은 짧은 코드.
+    """
+    violations: list[dict[str, str | int]] = []
+    for cell in cells:
+        value = _normalize(cell.value)
+        if value is None:
+            continue
+        param = params_by_code.get(cell.parameter_code)
+        if param is None:
+            continue
+        reason = _type_violation(param, value)
+        if reason is not None:
+            violations.append(
+                {
+                    "condition_id": cell.condition_id,
+                    "parameter_code": cell.parameter_code,
+                    "value": value,
+                    "reason": reason,
+                }
+            )
+    return violations
 
 
 class CellService:
@@ -51,6 +110,21 @@ class CellService:
             raise DomainValidationError(
                 "이 프로젝트 소속이 아닌 조건 행이 요청에 있다",
                 details={"invalid_condition_ids": sorted(invalid_ids)},
+            )
+
+        # 타입 정합성 최종 검증 (P2-D2: 저장 시 서버 최종 확인). 붙여넣기는 셀
+        # 에디터(number input/choice dropdown)를 거치지 않고 원시 문자열을 그대로
+        # 꽂는 유일한 경로라, 레지스트리 기준 value_type을 이 지점에서 확정한다.
+        # condition 소속 검증과 똑같이 실제 반영 전에 전부 검사해, 위반이 하나라도
+        # 있으면 전체 배치를 거부한다 (all-or-nothing, 부분 저장 없음).
+        params_by_code = await self.repo.active_parameters_by_code(
+            {cell.parameter_code for cell in data.cells}
+        )
+        type_violations = _collect_type_violations(data.cells, params_by_code)
+        if type_violations:
+            raise DomainValidationError(
+                "레지스트리 타입에 맞지 않는 셀 값이 요청에 있다",
+                details={"invalid_cells": type_violations},
             )
 
         # 대상 조건 행들의 기존 셀을 한 번에 로드해 (condition_id, code)로 인덱싱한다.
