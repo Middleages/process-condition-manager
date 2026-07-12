@@ -7,6 +7,7 @@ import {
   computeRowGroups,
   distinctCategories,
   formatNumberDisplay,
+  headerTooltip,
   indexStaging,
   indexStatuses,
   matrixToTsv,
@@ -196,5 +197,37 @@ describe('overlay indexing', () => {
     expect(staging.get(overlayKey('1', 'exposure'))?.valid).toBe(false)
     expect(indexStatuses(undefined).size).toBe(0)
     expect(indexStaging(undefined).size).toBe(0)
+  })
+})
+
+describe('headerTooltip', () => {
+  const described: ConditionGridColumn[] = [
+    {
+      key: 'exposure',
+      headerName: 'EXP',
+      valueType: 'number',
+      categoryCode: 'litho',
+      description: '노광량 (exposure dose)',
+    },
+    { key: 'spin_speed', headerName: 'SPN', valueType: 'number', categoryCode: 'coat', description: '   ' },
+    { key: 'pr_type', headerName: 'PR', valueType: 'choice', categoryCode: 'coat' },
+  ]
+
+  it('returns the description for a parameter header, offset by the identity count', () => {
+    expect(headerTooltip(IDENTITY_COLUMN_COUNT, described, IDENTITY_COLUMN_COUNT)).toBe('노광량 (exposure dose)')
+  })
+
+  it('returns null for the left-fixed identity columns', () => {
+    expect(headerTooltip(0, described, IDENTITY_COLUMN_COUNT)).toBeNull()
+    expect(headerTooltip(IDENTITY_COLUMN_COUNT - 1, described, IDENTITY_COLUMN_COUNT)).toBeNull()
+  })
+
+  it('returns null when the column has no description or only whitespace', () => {
+    expect(headerTooltip(IDENTITY_COLUMN_COUNT + 1, described, IDENTITY_COLUMN_COUNT)).toBeNull() // blank
+    expect(headerTooltip(IDENTITY_COLUMN_COUNT + 2, described, IDENTITY_COLUMN_COUNT)).toBeNull() // missing
+  })
+
+  it('returns null when the column index is out of range', () => {
+    expect(headerTooltip(999, described, IDENTITY_COLUMN_COUNT)).toBeNull()
   })
 })

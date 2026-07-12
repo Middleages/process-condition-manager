@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router-dom'
 
@@ -6,8 +6,13 @@ import { getApiErrorMessage } from '@/api/client'
 import { getSheet } from '@/api/sheets'
 import type { SheetOut } from '@/api/types'
 import { GlideConditionGrid } from '@/grid'
-import type { ConditionGridCallbacks, ConditionGridColumn, ConditionGridRow } from '@/grid'
-import { visibleParameterColumns } from '@/grid/model'
+import type {
+  ConditionGridCallbacks,
+  ConditionGridColumn,
+  ConditionGridHandle,
+  ConditionGridRow,
+} from '@/grid'
+import { distinctCategories, visibleParameterColumns } from '@/grid/model'
 import { ErrorMessage, LoadingMessage } from '@/shared/components/StatusMessage'
 
 import {
@@ -76,6 +81,13 @@ function SheetEditor({ projectId, sheet }: { projectId: number; sheet: SheetOut 
 
   const editing = useSheetEditing(projectId, { onPersisted: commitSaved })
 
+  // 컬럼 가독성(T6): 카테고리 탭으로 파라미터 컬럼 부분집합을 고르고, 컬럼 검색-점프로 특정
+  // 컬럼으로 스크롤한다. 좌측 식별 컬럼 고정·헤더 hover 툴팁은 어댑터가 내부에서 처리한다.
+  const gridRef = useRef<ConditionGridHandle>(null)
+  const categories = useMemo(() => distinctCategories(data.columns), [data.columns])
+  const [activeCategory, setActiveCategory] = useState<string | null>(null)
+  const [columnQuery, setColumnQuery] = useState('')
+
   // 서버 행 위에 더티 값을 얹어 표시(편집값 즉시 반영) + 더티 셀 상태 오버레이.
   const displayRows = useMemo(() => applyDirtyToRows(data.rows, dirtyCells), [data.rows, dirtyCells])
   const statuses = useMemo(() => toCellStatuses(dirtyCells), [dirtyCells])
@@ -84,9 +96,12 @@ function SheetEditor({ projectId, sheet }: { projectId: number; sheet: SheetOut 
     [data, displayRows, statuses],
   )
 
-  // 붙여넣기 대상 매핑 기준 컬럼 순서. 카테고리 탭 UI는 아직 이 화면에 없어(T6 범위) "전체 =
-  // 보이는 컬럼"으로 단순화한다 — 그리드가 대상 셀을 해석할 때 쓰는 컬럼 순서와 동일해야 한다.
-  const visibleColumns = useMemo(() => visibleParameterColumns(data.columns, null), [data.columns])
+  // 붙여넣기 대상 매핑 기준 컬럼 순서 — 그리드가 view.activeCategory로 거르는 것과 동일한
+  // 부분집합이어야 대상 셀 해석이 어긋나지 않는다(같은 activeCategory·같은 함수).
+  const visibleColumns = useMemo(
+    () => visibleParameterColumns(data.columns, activeCategory),
+    [data.columns, activeCategory],
+  )
 
   // 붙여넣기 스테이징(적용 전 미리보기). null = 대기 중인 붙여넣기 없음.
   const [paste, setPaste] = useState<PasteStagingResult | null>(null)
@@ -145,6 +160,18 @@ function SheetEditor({ projectId, sheet }: { projectId: number; sheet: SheetOut 
     }
   }, [paste, applyPaste, cancelPaste])
 
+  const jumpToColumn = useCallback(() => {
+    const query = columnQuery.trim().toLowerCase()
+    if (query === '') return
+    // headerName 또는 key(parameter_code) 부분 일치(대소문자 무시)로 첫 컬럼을 찾아 점프한다.
+    // 활성 카테고리에서 걸러진 컬럼이면 scrollToColumn이 조용히 무시한다(보이는 컬럼만 대상).
+    const match = data.columns.find(
+      (column) =>
+        column.key.toLowerCase().includes(query) || column.headerName.toLowerCase().includes(query),
+    )
+    if (match !== undefined) gridRef.current?.scrollToColumn(match.key)
+  }, [columnQuery, data.columns])
+
   return (
     <div className="space-y-3">
       <StatusBar
@@ -153,13 +180,52 @@ function SheetEditor({ projectId, sheet }: { projectId: number; sheet: SheetOut 
         rowCount={data.rows.length}
         colCount={data.columns.length}
       />
+      <div className="flex flex-wrap items-center gap-2" data-testid="sheet-category-tabs">
+        {categories.length > 0 ? (
+          <>
+            <CategoryTab active={activeCategory === null} onClick={() => setActiveCategory(null)}>
+              전체
+            </CategoryTab>
+            {categories.map((category) => (
+              <CategoryTab
+                key={category}
+                active={activeCategory === category}
+                onClick={() => setActiveCategory(category)}
+              >
+                {category}
+              </CategoryTab>
+            ))}
+          </>
+        ) : null}
+        <div className="ml-auto flex items-center gap-2">
+          <input
+            className="input w-56"
+            placeholder="컬럼 검색 (예: ETCH_P012)"
+            value={columnQuery}
+            data-testid="sheet-column-search"
+            onChange={(event) => setColumnQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') jumpToColumn()
+            }}
+          />
+          <button
+            type="button"
+            className="btn-secondary"
+            data-testid="sheet-column-jump"
+            onClick={jumpToColumn}
+          >
+            컬럼 점프
+          </button>
+        </div>
+      </div>
       <div
         className="h-[70vh] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"
         data-testid="sheet-view-grid"
       >
         <GlideConditionGrid
+          ref={gridRef}
           data={gridData}
-          view={{ readOnly }}
+          view={{ readOnly, activeCategory }}
           callbacks={gridCallbacks}
           pasteStaging={paste?.staging}
         />
@@ -376,6 +442,30 @@ function SaveStatus({ editing }: { editing: SheetEditing }) {
         </button>
       ) : null}
     </span>
+  )
+}
+
+/** 카테고리 필터 탭 버튼(전체 + 카테고리별). GridDemoPage의 동일 패턴을 실제 시트 화면에 이식. */
+function CategoryTab({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean
+  onClick: () => void
+  children: ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        'rounded-lg px-3 py-1.5 text-sm font-medium transition',
+        active ? 'bg-cyan-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200',
+      ].join(' ')}
+    >
+      {children}
+    </button>
   )
 }
 

@@ -14,7 +14,7 @@
  *   실제 스테이징/적용 파이프라인은 T4가 붙인다.
  * - 셀 상태/스테이징 오버레이: 지금은 themeOverride 렌더 슬롯만 — 데이터 연결은 Phase 3/5.
  */
-import { forwardRef, useCallback, useImperativeHandle, useMemo, useRef } from 'react'
+import { forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import {
   DataEditor,
   GridCellKind,
@@ -22,6 +22,7 @@ import {
   type EditableGridCell,
   type GridCell,
   type GridColumn,
+  type GridMouseEventArgs,
   type Item,
   type Theme,
 } from '@glideapps/glide-data-grid'
@@ -35,6 +36,7 @@ import {
   columnScrollIndex,
   computeRowGroups,
   formatNumberDisplay,
+  headerTooltip,
   indexStaging,
   indexStatuses,
   matrixToTsv,
@@ -97,6 +99,11 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
   const gridRef = useRef<DataEditorRef>(null)
   const readOnly = view?.readOnly ?? false
   const rows = data.rows
+
+  // 헤더 hover 툴팁: 컬럼 description(축약 컬럼명의 전체 의미). Glide는 캔버스 렌더라 native
+  // title 속성을 못 쓰므로 onItemHovered로 헤더 컬럼을 추적해 오버레이 div로 띄운다. 이 상태와
+  // 배선은 어댑터 내부에만 있고 상위(SheetEditor)는 이 존재를 모른다(어댑터 경계, P4).
+  const [tooltip, setTooltip] = useState<{ text: string; x: number; y: number } | null>(null)
 
   const visibleColumns = useMemo(
     () => visibleParameterColumns(data.columns, view?.activeCategory),
@@ -232,6 +239,24 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
     [visibleColumns, rows, callbacks],
   )
 
+  const handleItemHovered = useCallback(
+    (args: GridMouseEventArgs) => {
+      // 헤더가 아니면(셀/그룹헤더/영역 밖) 툴팁 해제. 이미 null이면 같은 참조를 반환해 리렌더 생략.
+      if (args.kind !== 'header') {
+        setTooltip((prev) => (prev === null ? prev : null))
+        return
+      }
+      const text = headerTooltip(args.location[0], visibleColumns, IDENTITY_COLUMN_COUNT)
+      if (text === null) {
+        setTooltip((prev) => (prev === null ? prev : null))
+        return
+      }
+      // Glide bounds는 뷰포트(client) 좌표 → position: fixed로 헤더 바로 아래에 그대로 배치.
+      setTooltip({ text, x: args.bounds.x, y: args.bounds.y + args.bounds.height })
+    },
+    [visibleColumns],
+  )
+
   useImperativeHandle(
     ref,
     (): ConditionGridHandle => ({
@@ -255,23 +280,51 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
   )
 
   return (
-    <DataEditor
-      ref={gridRef}
-      columns={gridColumns}
-      rows={rows.length}
-      getCellContent={getCellContent}
-      onCellEdited={readOnly ? undefined : handleCellEdited}
-      onPaste={handlePaste}
-      getCellsForSelection
-      freezeColumns={IDENTITY_COLUMN_COUNT}
-      rowMarkers="none"
-      smoothScrollX
-      smoothScrollY
-      rowHeight={32}
-      headerHeight={34}
-      width="100%"
-      height="100%"
-      customRenderers={[choiceCellRenderer]}
-    />
+    // position: relative 래퍼 — 마우스가 그리드를 벗어나면 툴팁을 확실히 해제(onMouseLeave).
+    // (툴팁은 fixed라 이 래퍼가 containing block이 되지는 않는다 — relative는 fixed에 영향 없음.)
+    <div style={{ position: 'relative', width: '100%', height: '100%' }} onMouseLeave={() => setTooltip(null)}>
+      <DataEditor
+        ref={gridRef}
+        columns={gridColumns}
+        rows={rows.length}
+        getCellContent={getCellContent}
+        onCellEdited={readOnly ? undefined : handleCellEdited}
+        onPaste={handlePaste}
+        onItemHovered={handleItemHovered}
+        getCellsForSelection
+        freezeColumns={IDENTITY_COLUMN_COUNT}
+        rowMarkers="none"
+        smoothScrollX
+        smoothScrollY
+        rowHeight={32}
+        headerHeight={34}
+        width="100%"
+        height="100%"
+        customRenderers={[choiceCellRenderer]}
+      />
+      {tooltip !== null ? (
+        <div
+          role="tooltip"
+          data-testid="header-tooltip"
+          style={{
+            position: 'fixed',
+            left: tooltip.x,
+            top: tooltip.y,
+            zIndex: 50,
+            maxWidth: 280,
+            pointerEvents: 'none',
+            borderRadius: 6,
+            background: '#0f172a',
+            color: '#f8fafc',
+            padding: '4px 8px',
+            fontSize: 12,
+            lineHeight: 1.4,
+            boxShadow: '0 4px 12px rgba(15, 23, 42, 0.25)',
+          }}
+        >
+          {tooltip.text}
+        </div>
+      ) : null}
+    </div>
   )
 })
