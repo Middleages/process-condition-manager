@@ -14,6 +14,7 @@ export function AppLayout() {
             <NavItem to="/projects">프로젝트</NavItem>
             <NavItem to="/parameters">파라미터 관리</NavItem>
             <NavItem to="/processes">공정 카탈로그</NavItem>
+            <NavItem to="/grid-demo">그리드 데모</NavItem>
           </nav>
         </div>
       </header>
