@@ -51,6 +51,12 @@ export interface SheetEditing {
   readOnly: boolean
   /** 셀 편집 확정(그리드 onCellEdit 연결). */
   setCell(conditionId: string, parameterCode: string, value: string | null): void
+  /**
+   * 붙여넣기 스테이징 적용 = 즉시 저장(origin=paste). 자동저장 디바운스를 우회해 단일 PATCH
+   * 배치로 바로 확정 저장한다. 더티 버퍼를 거치지 않는다(스테이징 → 서버 직행). 잠금 미보유
+   * 시 즉시 실패, 저장 중 409면 잠금 상실 처리 후 그대로 reject(상위가 스테이징을 유지·안내).
+   */
+  applyPaste(cells: DirtyCell[]): Promise<void>
   /** 변경 취소(더티 폐기 + 자동저장 중단). */
   discard(): void
   /** 저장 실패 수동 재시도. */
@@ -150,6 +156,29 @@ export function useSheetEditing(
     [],
   )
 
+  // 붙여넣기 적용: 자동저장 엔진(디바운스/백오프)을 타지 않는 별도 즉시 저장 경로. 스테이징
+  // 적용분은 더티 버퍼를 거치지 않고 곧장 서버로 확정 저장한다(origin=paste). 실패 시 스테이징을
+  // 유지해야 하므로 여기서는 재시도하지 않고 그대로 던진다 — 사용자가 "적용"을 다시 누르면 된다.
+  const applyPaste = useCallback(
+    async (cells: DirtyCell[]): Promise<void> => {
+      if (cells.length === 0) return
+      const token = lockTokenRef.current
+      if (token === null || lockStatusRef.current !== 'held') {
+        throw new LockRequiredError()
+      }
+      try {
+        await patchCells(projectIdRef.current, cells.map(toCellUpdateIn), 'paste', token)
+      } catch (error) {
+        // 저장 중 잠금 탈취(409) → 상실 처리(읽기 전용 전환) 후 그대로 던져 상위가 안내한다.
+        if (isLockConflict(error)) handleLockLost()
+        throw error
+      }
+      // 성공분을 서버 스냅샷(캐시)에 확정 반영 — 더티 버퍼는 관여하지 않는다.
+      onPersistedRef.current?.(cells)
+    },
+    [handleLockLost],
+  )
+
   const discard = useCallback(() => {
     useEditStore.getState().clearAll()
     engineRef.current?.cancel()
@@ -245,6 +274,7 @@ export function useSheetEditing(
     dirtyCount,
     readOnly: lockStatus !== 'held',
     setCell,
+    applyPaste,
     discard,
     retrySave,
     reacquire,

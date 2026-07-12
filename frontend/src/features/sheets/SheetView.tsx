@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router-dom'
 
@@ -6,7 +6,8 @@ import { getApiErrorMessage } from '@/api/client'
 import { getSheet } from '@/api/sheets'
 import type { SheetOut } from '@/api/types'
 import { GlideConditionGrid } from '@/grid'
-import type { ConditionGridCallbacks } from '@/grid'
+import type { ConditionGridCallbacks, ConditionGridColumn, ConditionGridRow } from '@/grid'
+import { visibleParameterColumns } from '@/grid/model'
 import { ErrorMessage, LoadingMessage } from '@/shared/components/StatusMessage'
 
 import {
@@ -16,6 +17,7 @@ import {
   useEditStore,
   type DirtyCell,
 } from './editStore'
+import { buildPasteStaging, parseTsv, type PasteStagingResult } from './pasteStaging'
 import {
   applySavedToSheet,
   toConditionGridData,
@@ -82,14 +84,66 @@ function SheetEditor({ projectId, sheet }: { projectId: number; sheet: SheetOut 
     [data, displayRows, statuses],
   )
 
-  const setCell = editing.setCell
+  // 붙여넣기 대상 매핑 기준 컬럼 순서. 카테고리 탭 UI는 아직 이 화면에 없어(T6 범위) "전체 =
+  // 보이는 컬럼"으로 단순화한다 — 그리드가 대상 셀을 해석할 때 쓰는 컬럼 순서와 동일해야 한다.
+  const visibleColumns = useMemo(() => visibleParameterColumns(data.columns, null), [data.columns])
+
+  // 붙여넣기 스테이징(적용 전 미리보기). null = 대기 중인 붙여넣기 없음.
+  const [paste, setPaste] = useState<PasteStagingResult | null>(null)
+  const [pasteError, setPasteError] = useState<string | null>(null)
+  const [applying, setApplying] = useState(false)
+
+  const { readOnly, setCell, applyPaste } = editing
+
   const gridCallbacks = useMemo<ConditionGridCallbacks>(
     () => ({
       onCellEdit: (cell) => setCell(cell.conditionId, cell.parameterCode, cell.value),
-      // onPaste는 T4(붙여넣기 스테이징)의 몫 — 지금은 미연결(그리드가 기본 붙여넣기만 막는다).
+      onPaste: (target, tsv) => {
+        // 편집 불가(읽기 전용) 상태에서는 붙여넣기를 스테이징하지 않는다(그리드가 기본 동작은 이미 막는다).
+        if (readOnly) return
+        const result = buildPasteStaging(target, parseTsv(tsv), visibleColumns, data.rows)
+        // 매핑되는 셀도 없고 잘린 것도 없으면(대상 밖 등) 무시.
+        if (result.staging.length === 0 && result.truncatedRows === 0 && result.truncatedCols === 0) {
+          return
+        }
+        setPasteError(null)
+        setPaste(result)
+      },
     }),
-    [setCell],
+    [setCell, readOnly, visibleColumns, data.rows],
   )
+
+  const cancelPaste = useCallback(() => {
+    setPaste(null)
+    setPasteError(null)
+  }, [])
+
+  const commitPaste = useCallback(async () => {
+    if (paste === null) return
+    // 유효한 셀만 적용 대상 — 불일치 셀은 제외하고 개수로만 안내한다.
+    const validCells: DirtyCell[] = paste.staging
+      .filter((cell) => cell.valid)
+      .map((cell) => ({
+        conditionId: cell.conditionId,
+        parameterCode: cell.parameterCode,
+        value: cell.value,
+      }))
+    if (validCells.length === 0) {
+      cancelPaste() // 적용할 유효 셀이 없으면 스테이징만 폐기
+      return
+    }
+    setApplying(true)
+    setPasteError(null)
+    try {
+      await applyPaste(validCells)
+      setPaste(null) // 성공 → 스테이징 종료(서버 스냅샷에 반영됨)
+    } catch (error) {
+      // 실패(네트워크/409 등): 스테이징 유지 + 에러 표시 → 사용자가 다시 "적용" 가능.
+      setPasteError(getApiErrorMessage(error))
+    } finally {
+      setApplying(false)
+    }
+  }, [paste, applyPaste, cancelPaste])
 
   return (
     <div className="space-y-3">
@@ -105,9 +159,127 @@ function SheetEditor({ projectId, sheet }: { projectId: number; sheet: SheetOut 
       >
         <GlideConditionGrid
           data={gridData}
-          view={{ readOnly: editing.readOnly }}
+          view={{ readOnly }}
           callbacks={gridCallbacks}
+          pasteStaging={paste?.staging}
         />
+      </div>
+      {paste !== null ? (
+        <PasteStagingPanel
+          result={paste}
+          columns={data.columns}
+          rows={data.rows}
+          applying={applying}
+          readOnly={readOnly}
+          error={pasteError}
+          onApply={commitPaste}
+          onCancel={cancelPaste}
+        />
+      ) : null}
+    </div>
+  )
+}
+
+/** 하단 붙여넣기 스테이징 패널: 대기/유효/불일치 개수 + 잘림 안내 + 불일치 목록 + 적용/취소. */
+const MAX_MISMATCH_ROWS = 6
+
+function PasteStagingPanel({
+  result,
+  columns,
+  rows,
+  applying,
+  readOnly,
+  error,
+  onApply,
+  onCancel,
+}: {
+  result: PasteStagingResult
+  columns: readonly ConditionGridColumn[]
+  rows: readonly ConditionGridRow[]
+  applying: boolean
+  readOnly: boolean
+  error: string | null
+  onApply: () => void
+  onCancel: () => void
+}) {
+  const columnNames = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const column of columns) map.set(column.key, column.headerName)
+    return map
+  }, [columns])
+  const rowLabels = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const row of rows) map.set(row.id, `${row.layerLabel} · ${row.conditionLabel}`)
+    return map
+  }, [rows])
+
+  const total = result.staging.length
+  const invalid = result.staging.filter((cell) => !cell.valid)
+  const validCount = total - invalid.length
+  const truncated = result.truncatedRows > 0 || result.truncatedCols > 0
+
+  return (
+    <div
+      className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm"
+      data-testid="paste-staging-panel"
+    >
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span className="font-semibold text-slate-700">붙여넣기 미리보기</span>
+        <span>
+          대기 <strong>{total}</strong>
+        </span>
+        <span className="text-emerald-700">적용 {validCount}</span>
+        {invalid.length > 0 ? <span className="text-rose-700">불일치 {invalid.length}</span> : null}
+      </div>
+
+      {truncated ? (
+        <p className="text-amber-700">
+          시트 경계를 넘는 데이터는 잘렸다
+          {result.truncatedRows > 0 ? ` · 행 ${result.truncatedRows}` : ''}
+          {result.truncatedCols > 0 ? ` · 컬럼 ${result.truncatedCols}` : ''}
+        </p>
+      ) : null}
+
+      {invalid.length > 0 ? (
+        <ul className="space-y-0.5 text-rose-700">
+          {invalid.slice(0, MAX_MISMATCH_ROWS).map((cell) => (
+            <li key={`${cell.conditionId} ${cell.parameterCode}`}>
+              {rowLabels.get(cell.conditionId) ?? cell.conditionId} ·{' '}
+              {columnNames.get(cell.parameterCode) ?? cell.parameterCode}:{' '}
+              <span className="font-mono">{cell.value ?? ''}</span>
+              {cell.message !== undefined ? ` — ${cell.message}` : ''}
+            </li>
+          ))}
+          {invalid.length > MAX_MISMATCH_ROWS ? (
+            <li className="text-rose-500">외 {invalid.length - MAX_MISMATCH_ROWS}건…</li>
+          ) : null}
+        </ul>
+      ) : null}
+
+      {invalid.length > 0 ? <p className="text-slate-500">불일치 셀은 적용에서 제외된다.</p> : null}
+
+      {error !== null ? <p className="text-rose-600">적용 실패: {error}</p> : null}
+
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onApply}
+          disabled={applying || readOnly || validCount === 0}
+          className="rounded-md bg-cyan-600 px-3 py-1 font-medium text-white hover:bg-cyan-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+        >
+          {applying ? '적용 중...' : `적용 (${validCount})`}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={applying}
+          className="rounded-md border border-slate-300 px-3 py-1 text-slate-600 hover:bg-slate-100 disabled:opacity-50"
+        >
+          취소
+        </button>
+        {readOnly ? (
+          <span className="text-amber-700">읽기 전용 — 잠금을 확보해야 적용할 수 있다</span>
+        ) : null}
       </div>
     </div>
   )
