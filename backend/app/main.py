@@ -9,6 +9,7 @@ from fastapi import APIRouter, FastAPI
 from app.core.config import settings
 from app.core.db import app_engine, ingest_engine
 from app.core.errors import register_exception_handlers
+from app.features.cells.router import router as cells_router
 from app.features.locks.router import router as locks_router
 from app.features.parameters.router import router as parameters_router
 from app.features.processes.router import router as processes_router
@@ -39,6 +40,7 @@ def create_app() -> FastAPI:
     api_router.include_router(projects_router)
     api_router.include_router(sheets_router)
     api_router.include_router(locks_router)
+    api_router.include_router(cells_router)
     app.include_router(api_router)
 
     # 이중 엔진 참조 보관 (실사용은 각 feature/ingest가 세션 의존성으로 접근)

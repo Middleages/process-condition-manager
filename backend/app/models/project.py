@@ -33,11 +33,14 @@ class ProjectStatus(StrEnum):
 
 
 class ChangeEventType(StrEnum):
-    """Phase 1에서 기록하는 변경 이벤트 유형."""
+    """기록하는 변경 이벤트 유형."""
 
     PROJECT_CREATE = "project_create"
     BACKBONE_COPY = "backbone_copy"
     BACKBONE_LAYER_REPLACE = "backbone_layer_replace"
+    # 셀 단위 편집 (P2-T3). 구조화 컬럼(condition_id/parameter_code/old_value/
+    # new_value)을 채우고 payload에는 batch_id/origin만 싣는다.
+    CELL_UPDATE = "cell_update"
 
 
 class Project(Base):
