@@ -69,7 +69,10 @@ export interface ParameterEditorDrawerProps {
   onClose: () => void
 }
 
-type ParameterDetailLoader = (parameterId: number) => Promise<ParameterOut>
+type ParameterDetailLoader = (
+  parameterId: number,
+  signal?: AbortSignal,
+) => Promise<ParameterOut>
 
 export function parameterDetailQueryOptions(
   parameterId: number | null,
@@ -77,7 +80,8 @@ export function parameterDetailQueryOptions(
 ) {
   return {
     queryKey: ['parameters', 'detail', parameterId] as const,
-    queryFn: () => loadParameter(parameterId as number),
+    queryFn: ({ signal }: { signal: AbortSignal }) =>
+      loadParameter(parameterId as number, signal),
     enabled: parameterId !== null,
     refetchOnMount: 'always' as const,
     retry: false,

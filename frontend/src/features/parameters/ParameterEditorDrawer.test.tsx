@@ -96,6 +96,57 @@ function renderMissingDetailError(): string {
 }
 
 describe('ParameterEditorDrawer', () => {
+  it('aborts mount A so a same-ID reopen issues and hydrates only request B', async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
+    })
+    const oldParameter = { ...parameter, display_name: 'Old request A' }
+    const updatedParameter = { ...parameter, display_name: 'Fresh request B' }
+    let firstSignal: AbortSignal | undefined
+    let resolveFirst: (value: ParameterOut) => void = () => undefined
+    const load = vi.fn(
+      (_parameterId: number, signal?: AbortSignal): Promise<ParameterOut> => {
+        if (load.mock.calls.length === 1) {
+          firstSignal = signal
+          return new Promise((resolve, reject) => {
+            resolveFirst = resolve
+            signal?.addEventListener(
+              'abort',
+              () => reject(new DOMException('Aborted', 'AbortError')),
+              { once: true },
+            )
+          })
+        }
+        return Promise.resolve(updatedParameter)
+      },
+    )
+
+    const firstObserver = new QueryObserver(
+      queryClient,
+      parameterDetailQueryOptions(42, load),
+    )
+    const unsubscribeFirst = firstObserver.subscribe(() => undefined)
+    expect(load).toHaveBeenCalledTimes(1)
+    unsubscribeFirst()
+
+    const reopenedObserver = new QueryObserver(
+      queryClient,
+      parameterDetailQueryOptions(42, load),
+    )
+    const unsubscribeReopened = reopenedObserver.subscribe(() => undefined)
+
+    try {
+      expect(firstSignal?.aborted).toBe(true)
+      expect(load).toHaveBeenCalledTimes(2)
+      const fresh = await waitForPostMountDetail(reopenedObserver)
+      expect(fresh.display_name).toBe('Fresh request B')
+      expect(fresh.display_name).not.toBe(oldParameter.display_name)
+    } finally {
+      resolveFirst(oldParameter)
+      unsubscribeReopened()
+    }
+  })
+
   it('hydrates fresh detail on every reopen instead of accepting invalidated cache', async () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },

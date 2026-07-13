@@ -83,6 +83,15 @@ describe('parameters api client', () => {
     expect(result).toEqual(sampleParameter)
   })
 
+  it('passes an abort signal only for query-owned detail requests', async () => {
+    get.mockResolvedValue(response(sampleParameter))
+    const controller = new AbortController()
+
+    await getParameter(42, controller.signal)
+
+    expect(get).toHaveBeenCalledWith('/parameters/42', { signal: controller.signal })
+  })
+
   it('posts CSV text to preview and apply endpoints', async () => {
     const result = { created_count: 0, updated_count: 0, error_count: 0, rows: [] }
     post.mockResolvedValue(response(result))
