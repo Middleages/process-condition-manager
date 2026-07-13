@@ -41,6 +41,7 @@ import {
   indexStatuses,
   matrixToTsv,
   overlayKey,
+  previewCellValue,
   resolveCellTarget,
   visibleParameterColumns,
 } from './model'
@@ -174,10 +175,12 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
       if (column === undefined) {
         return { kind: GridCellKind.Loading, allowOverlay: false }
       }
-      const raw = rowData.values[column.key] ?? null
+      const serverValue = rowData.values[column.key] ?? null
+      const staging = stagingIndex.get(overlayKey(rowData.id, column.key))
+      const raw = previewCellValue(serverValue, staging)
       const overlay = overlayTheme(
         statusIndex.get(overlayKey(rowData.id, column.key)),
-        stagingIndex.get(overlayKey(rowData.id, column.key)),
+        staging,
       )
       const oddGroup = groupMeta.groupIndexByRow[row] % 2 === 1
       const base = oddGroup ? GROUP_SHADE : undefined

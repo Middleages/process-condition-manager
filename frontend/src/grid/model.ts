@@ -185,6 +185,14 @@ export function indexStaging(
   return map
 }
 
+/** 서버 확정 값 위에 붙여넣기 스테이징 값을 미리보기한다. */
+export function previewCellValue(
+  serverValue: string | null,
+  staging: PasteStagingCell | undefined,
+): string | null {
+  return staging === undefined ? serverValue : staging.value
+}
+
 /**
  * 헤더 컬럼 인덱스 → 그 컬럼의 헤더 툴팁 텍스트(레지스트리 description, 축약 컬럼명의 전체
  * 의미). 컬럼 검색-점프와 같은 identityCount 오프셋 규약을 쓴다(컬럼 가독성 T6).

@@ -13,6 +13,7 @@ import {
   layersMissingPor,
   matrixToTsv,
   overlayKey,
+  previewCellValue,
   resolveCellTarget,
   visibleParameterColumns,
 } from './model'
@@ -230,6 +231,39 @@ describe('overlay indexing', () => {
     expect(staging.get(overlayKey('1', 'exposure'))?.valid).toBe(false)
     expect(indexStatuses(undefined).size).toBe(0)
     expect(indexStaging(undefined).size).toBe(0)
+  })
+})
+
+describe('previewCellValue', () => {
+  it('shows the staged value without mutating the server value', () => {
+    const staging = {
+      conditionId: '1',
+      parameterCode: 'exposure',
+      value: '42',
+      valid: true,
+    }
+    expect(previewCellValue('25', staging)).toBe('42')
+    expect(staging.value).toBe('42')
+  })
+
+  it('shows invalid and cleared staged values, and falls back when staging is absent', () => {
+    expect(
+      previewCellValue('25', {
+        conditionId: '1',
+        parameterCode: 'exposure',
+        value: 'abc',
+        valid: false,
+      }),
+    ).toBe('abc')
+    expect(
+      previewCellValue('25', {
+        conditionId: '1',
+        parameterCode: 'exposure',
+        value: null,
+        valid: true,
+      }),
+    ).toBeNull()
+    expect(previewCellValue('25', undefined)).toBe('25')
   })
 })
 
