@@ -7,6 +7,11 @@ import type { ProjectOut } from '@/api/types'
 
 import { ProjectDetailPage } from './ProjectDetailPage'
 
+const maximumLayerId = 'L'.repeat(64)
+const maximumStepSequence = 'S'.repeat(64)
+const maximumAreaName = 'A'.repeat(128)
+const maximumSourceKey = 'K'.repeat(256)
+
 const project: ProjectOut = {
   id: 42,
   line_id: 'L1',
@@ -18,17 +23,17 @@ const project: ProjectOut = {
   layers: [
     {
       id: 7,
-      layer_key: 'L1::coat::0010::LYR01',
-      step_seq: '0010',
-      layer_id: 'LYR01',
+      layer_key: 'X'.repeat(256),
+      step_seq: maximumStepSequence,
+      layer_id: maximumLayerId,
       eqp_type: null,
       eqp_type_desc: null,
-      area_name: 'PHOTO',
+      area_name: maximumAreaName,
       sort_order: 0,
       condition_count: 2,
       cell_count: 24,
-      source_project_id: null,
-      source_layer_key: null,
+      source_project_id: 41,
+      source_layer_key: maximumSourceKey,
     },
   ],
 }
@@ -63,5 +68,21 @@ describe('ProjectDetailPage', () => {
 
   it('does not announce the entire resolved detail table as a live region', () => {
     expect(renderDetail()).not.toContain('aria-live="polite"')
+  })
+
+  it('contains maximum-length Layer fields without losing their accessible text', () => {
+    const html = renderDetail()
+    const layerLabel = `${maximumLayerId} (${maximumStepSequence})`
+    const sourceLabel = `#41 · ${maximumSourceKey}`
+
+    expect(html).toContain('table-fixed')
+    expect(html).toContain(`title="${layerLabel}"`)
+    expect(html).toContain(`>${layerLabel}</span>`)
+    expect(html).toContain(`title="${maximumAreaName}"`)
+    expect(html).toContain(`>${maximumAreaName}</span>`)
+    expect(html).toContain(`title="${sourceLabel}"`)
+    expect(html).toContain(`>${sourceLabel}</span>`)
+    expect(html).toContain('min-w-0 overflow-hidden')
+    expect(html).toContain('truncate whitespace-nowrap')
   })
 })

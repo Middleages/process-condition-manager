@@ -114,62 +114,85 @@ function ProjectDetail({ project }: { project: ProjectOut }) {
         </div>
 
         <div className="max-w-full overflow-x-auto rounded-xl border border-border-subtle bg-surface">
-          <table className="w-full min-w-[820px] text-left text-sm">
+          <table className="w-full min-w-[820px] table-fixed text-left text-sm">
             <thead className="bg-canvas text-xs font-semibold uppercase tracking-wide text-muted">
               <tr className="h-9">
-                <th className="px-4 py-0" scope="col">
+                <th className="w-[22%] whitespace-nowrap px-4 py-0" scope="col">
                   Layer (Step)
                 </th>
-                <th className="px-4 py-0" scope="col">
+                <th className="w-[18%] whitespace-nowrap px-4 py-0" scope="col">
                   Area
                 </th>
-                <th className="px-4 py-0" scope="col">
+                <th className="w-[28%] whitespace-nowrap px-4 py-0" scope="col">
                   백본 소스
                 </th>
-                <th className="px-4 py-0 text-right" scope="col">
+                <th className="w-[12%] whitespace-nowrap px-4 py-0 text-right" scope="col">
                   조건 행
                 </th>
-                <th className="px-4 py-0 text-right" scope="col">
+                <th className="w-[10%] whitespace-nowrap px-4 py-0 text-right" scope="col">
                   Cell
                 </th>
-                <th className="px-4 py-0 text-right" scope="col">
+                <th className="w-[10%] whitespace-nowrap px-4 py-0 text-right" scope="col">
                   <span className="sr-only">작업</span>
                 </th>
               </tr>
             </thead>
             <tbody>
-              {project.layers.map((layer) => (
-                <tr
-                  key={layer.id}
-                  className="h-9 shadow-[inset_0_1px_0_var(--color-border-subtle)]"
-                >
-                  <td className="px-4 py-0 font-mono text-xs font-semibold text-brand-700">
-                    {layer.layer_id} ({layer.step_seq})
-                  </td>
-                  <td className="px-4 py-0 text-ink-950">{layer.area_name ?? '-'}</td>
-                  <td className="px-4 py-0 font-mono text-xs text-muted">
-                    {layer.source_layer_key
-                      ? `#${layer.source_project_id} · ${layer.source_layer_key}`
-                      : '빈 값'}
-                  </td>
-                  <td className="px-4 py-0 text-right font-mono text-xs tabular-nums">
-                    {layer.condition_count}
-                  </td>
-                  <td className="px-4 py-0 text-right font-mono text-xs tabular-nums">
-                    {layer.cell_count}
-                  </td>
-                  <td className="px-4 py-0 text-right">
-                    <Button
-                      className="h-9"
-                      size="compact"
-                      variant="secondary"
-                      onClick={() => setReplaceTarget(layer)}
-                    >
-                      교체
-                    </Button>
-                  </td>
-                </tr>
-              ))}
+              {project.layers.map((layer) => {
+                const layerLabel = `${layer.layer_id} (${layer.step_seq})`
+                const areaLabel = layer.area_name ?? '-'
+                const sourceLabel = layer.source_layer_key
+                  ? `#${layer.source_project_id} · ${layer.source_layer_key}`
+                  : '빈 값'
+
+                return (
+                  <tr
+                    key={layer.id}
+                    className="h-9 shadow-[inset_0_1px_0_var(--color-border-subtle)]"
+                  >
+                    <td className="min-w-0 overflow-hidden px-4 py-0 font-mono text-xs font-semibold text-brand-700">
+                      <span
+                        className="block min-w-0 truncate whitespace-nowrap"
+                        title={layerLabel}
+                      >
+                        {layerLabel}
+                      </span>
+                    </td>
+                    <td className="min-w-0 overflow-hidden px-4 py-0 text-ink-950">
+                      <span
+                        className="block min-w-0 truncate whitespace-nowrap"
+                        title={areaLabel}
+                      >
+                        {areaLabel}
+                      </span>
+                    </td>
+                    <td className="min-w-0 overflow-hidden px-4 py-0 font-mono text-xs text-muted">
+                      <span
+                        className="block min-w-0 truncate whitespace-nowrap"
+                        title={sourceLabel}
+                      >
+                        {sourceLabel}
+                      </span>
+                    </td>
+                    <td className="min-w-0 overflow-hidden whitespace-nowrap px-4 py-0 text-right font-mono text-xs tabular-nums">
+                      {layer.condition_count}
+                    </td>
+                    <td className="min-w-0 overflow-hidden whitespace-nowrap px-4 py-0 text-right font-mono text-xs tabular-nums">
+                      {layer.cell_count}
+                    </td>
+                    <td className="min-w-0 overflow-hidden whitespace-nowrap px-4 py-0 text-right">
+                      <Button
+                        className="h-9"
+                        size="compact"
+                        variant="secondary"
+                        onClick={() => setReplaceTarget(layer)}
+                      >
+                        교체
+                      </Button>
+                    </td>
+                  </tr>
+                )
+              })}
               {project.layers.length === 0 ? (
                 <tr className="border-t border-border-subtle">
                   <td className="px-4 py-8 text-center text-sm text-muted" colSpan={6}>
