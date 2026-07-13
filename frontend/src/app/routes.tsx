@@ -8,6 +8,7 @@ import { ProjectDetailPage } from '@/features/projects/ProjectDetailPage'
 import { ProjectListPage } from '@/features/projects/ProjectListPage'
 import { SheetViewPage } from '@/features/sheets/SheetView'
 import { AppLayout } from '@/shared/layout/AppLayout'
+import { FocusLayout } from '@/shared/layout/FocusLayout'
 import { RootLayout } from '@/shared/layout/RootLayout'
 
 const GridDemoPage = import.meta.env.DEV
@@ -37,15 +38,22 @@ export const appRoutes: RouteObject[] = [
     children: [
       {
         element: <AppLayout />,
+        handle: { shell: 'normal' },
         children: [
           { index: true, element: <Navigate to="/projects" replace /> },
           { path: 'projects', element: <ProjectListPage /> },
           { path: 'projects/new', element: <ProjectCreatePage /> },
           { path: 'projects/:projectId', element: <ProjectDetailPage /> },
-          { path: 'projects/:projectId/sheet', element: <SheetViewPage /> },
           { path: 'processes', element: <ProcessExplorerPage /> },
           { path: 'parameters', element: <ParameterAdminPage /> },
           ...developmentRoutes,
+        ],
+      },
+      {
+        element: <FocusLayout />,
+        handle: { shell: 'focus' },
+        children: [
+          { path: 'projects/:projectId/sheet', element: <SheetViewPage /> },
         ],
       },
     ],

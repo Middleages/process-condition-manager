@@ -1,11 +1,20 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router-dom'
 
 import { getApiErrorMessage } from '@/api/client'
 import { addCondition, deleteCondition, setConditionPor } from '@/api/conditions'
+import { getProject } from '@/api/projects'
 import { getSheet } from '@/api/sheets'
-import type { SheetOut } from '@/api/types'
+import type { ProjectOut, SheetOut } from '@/api/types'
 import { GlideConditionGrid } from '@/grid'
 import type {
   ConditionGridCallbacks,
@@ -14,7 +23,9 @@ import type {
   ConditionGridRow,
 } from '@/grid'
 import { distinctCategories, layersMissingPor, visibleParameterColumns } from '@/grid/model'
+import { InlineAlert } from '@/shared/components/InlineAlert'
 import { ErrorMessage, LoadingMessage } from '@/shared/components/StatusMessage'
+import { parsePositiveInt } from '@/shared/navigation/routeState'
 
 import {
   applyDirtyToRows,
@@ -24,6 +35,7 @@ import {
   type DirtyCell,
 } from './editStore'
 import { buildPasteStaging, parseTsv, type PasteStagingResult } from './pasteStaging'
+import { SheetFocusFrame } from './SheetFocusFrame'
 import {
   applySavedToSheet,
   shouldReplaceSheetWithError,
@@ -43,42 +55,100 @@ export function SheetView({ projectId }: { projectId: number }) {
     queryKey: ['sheet', projectId],
     queryFn: () => getSheet(projectId),
   })
+  const projectQuery = useQuery({
+    queryKey: ['project', projectId],
+    queryFn: () => getProject(projectId),
+  })
 
-  if (sheetQuery.isLoading) return <LoadingMessage>시트를 불러오는 중...</LoadingMessage>
-  if (shouldReplaceSheetWithError(sheetQuery.data, sheetQuery.isError)) {
-    return <ErrorMessage message={getApiErrorMessage(sheetQuery.error)} />
+  const project = projectQuery.isError ? undefined : projectQuery.data
+  const projectError = projectQuery.isError ? projectQuery.error : null
+
+  if (sheetQuery.isLoading) {
+    return (
+      <SheetStateFrame projectId={projectId} project={project} projectError={projectError}>
+        <LoadingMessage>시트를 불러오는 중입니다.</LoadingMessage>
+      </SheetStateFrame>
+    )
   }
-  if (!sheetQuery.data) return null
+
+  if (shouldReplaceSheetWithError(sheetQuery.data, sheetQuery.isError)) {
+    return (
+      <SheetStateFrame projectId={projectId} project={project} projectError={projectError}>
+        <ErrorMessage message={getApiErrorMessage(sheetQuery.error)} />
+      </SheetStateFrame>
+    )
+  }
+  if (!sheetQuery.data) {
+    return (
+      <SheetStateFrame projectId={projectId} project={project} projectError={projectError}>
+        <InlineAlert tone="info">조건표 데이터가 없습니다.</InlineAlert>
+      </SheetStateFrame>
+    )
+  }
 
   const sheet = sheetQuery.data
 
   if (sheet.columns.length === 0 || sheet.rows.length === 0) {
     return (
-      <p className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-500">
-        표시할 컬럼 또는 조건 행이 없다 (레지스트리 파라미터 또는 layer/조건 행 확인).
-      </p>
+      <SheetStateFrame projectId={projectId} project={project} projectError={projectError}>
+        <InlineAlert tone="info">
+          표시할 컬럼 또는 조건 행이 없습니다. 레지스트리 파라미터와 Layer 조건 행을 확인하세요.
+        </InlineAlert>
+      </SheetStateFrame>
     )
   }
 
   return (
-    <div className="space-y-3">
-      {sheetQuery.isError ? (
-        <div
-          className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800"
-          data-testid="sheet-refetch-warning"
-        >
-          최신 시트 조회에 실패했다. 화면의 기존 데이터와 미저장 편집은 유지된다:{' '}
-          {getApiErrorMessage(sheetQuery.error)}
-        </div>
-      ) : null}
-      <SheetEditor key={projectId} projectId={projectId} sheet={sheet} />
-    </div>
+    <SheetEditor
+      key={projectId}
+      projectId={projectId}
+      project={project}
+      projectError={projectError}
+      sheet={sheet}
+      sheetRefetchError={sheetQuery.isError ? sheetQuery.error : null}
+    />
+  )
+}
+
+function SheetStateFrame({
+  projectId,
+  project,
+  projectError,
+  children,
+}: {
+  projectId: number | null
+  project?: ProjectOut
+  projectError?: unknown
+  children: ReactNode
+}) {
+  return (
+    <SheetFocusFrame
+      header={<FocusHeader projectId={projectId} project={project} />}
+      controls={
+        projectError != null ? <ProjectMetadataWarning error={projectError} /> : null
+      }
+    >
+      <div className="h-full min-h-0 min-w-0 p-3">{children}</div>
+    </SheetFocusFrame>
   )
 }
 
 /** 편집 세션. 시트가 준비된 뒤에만 마운트된다(잠금/자동저장 훅 규칙 준수). */
-function SheetEditor({ projectId, sheet }: { projectId: number; sheet: SheetOut }) {
+function SheetEditor({
+  projectId,
+  project,
+  projectError,
+  sheet,
+  sheetRefetchError,
+}: {
+  projectId: number
+  project?: ProjectOut
+  projectError: unknown
+  sheet: SheetOut
+  sheetRefetchError: unknown
+}) {
   const queryClient = useQueryClient()
+  const liveTitleRef = useRef<HTMLHeadingElement>(null)
 
   const data = useMemo(() => toConditionGridData(sheet), [sheet])
   const dirtyCells = useEditStore(selectDirtyCells)
@@ -98,6 +168,18 @@ function SheetEditor({ projectId, sheet }: { projectId: number; sheet: SheetOut 
     heartbeatMs: sheet.lock.heartbeat_seconds * 1000,
     initialEditingBy: sheet.lock.locked_by,
   })
+
+  // Loading/error headers are replaced without a pathname change, so RootLayout's pathname-only
+  // focus effect does not run again. Restore focus once only when replacement left it on body (or
+  // on a detached fallback); never steal focus from a connected control on metadata/status rerenders.
+  useEffect(() => {
+    if (
+      typeof document !== 'undefined' &&
+      shouldFocusLiveSheetTitle(document.activeElement, document.body)
+    ) {
+      liveTitleRef.current?.focus()
+    }
+  }, [])
 
   // 컬럼 가독성(T6): 카테고리 탭으로 파라미터 컬럼 부분집합을 고르고, 컬럼 검색-점프로 특정
   // 컬럼으로 스크롤한다. 좌측 식별 컬럼 고정·헤더 hover 툴팁은 어댑터가 내부에서 처리한다.
@@ -277,87 +359,110 @@ function SheetEditor({ projectId, sheet }: { projectId: number; sheet: SheetOut 
   }, [columnQuery, data.columns])
 
   return (
-    <div className="space-y-3">
-      <StatusBar
-        editing={editing}
-        rowCount={data.rows.length}
-        colCount={data.columns.length}
-      />
-      {porGaps.length > 0 ? (
-        <div
-          className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800"
-          data-testid="por-warning"
-        >
-          POR 미지정 layer <strong>{porGaps.length}</strong>개 — {porGaps.map((group) => group.layerLabel).join(', ')}
-        </div>
-      ) : null}
-      <div className="flex flex-wrap items-center gap-2" data-testid="sheet-category-tabs">
-        {categories.length > 0 ? (
-          <>
-            <CategoryTab active={activeCategory === null} onClick={() => setActiveCategory(null)}>
-              전체
-            </CategoryTab>
-            {categories.map((category) => (
-              <CategoryTab
-                key={category}
-                active={activeCategory === category}
-                onClick={() => setActiveCategory(category)}
+    <SheetFocusFrame
+      header={
+        <FocusHeader
+          projectId={projectId}
+          project={project}
+          editing={editing}
+          titleRef={liveTitleRef}
+        />
+      }
+      controls={
+        <div className="space-y-2 border-b border-border-subtle bg-canvas px-3 py-2">
+          {projectError != null ? <ProjectMetadataWarning error={projectError} /> : null}
+          {sheetRefetchError != null ? (
+            <InlineAlert
+              className="rounded-md px-2 py-1.5 text-xs"
+              data-testid="sheet-refetch-warning"
+              tone="warning"
+            >
+              최신 시트 조회에 실패했습니다. 기존 데이터와 미저장 편집은 유지됩니다:{' '}
+              {getApiErrorMessage(sheetRefetchError)}
+            </InlineAlert>
+          ) : null}
+          {porGaps.length > 0 ? (
+            <InlineAlert
+              className="rounded-md px-2 py-1.5 text-xs"
+              data-testid="por-warning"
+              tone="warning"
+            >
+              POR 미지정 Layer <strong>{porGaps.length}</strong>개 —{' '}
+              {porGaps.map((group) => group.layerLabel).join(', ')}
+            </InlineAlert>
+          ) : null}
+          <div className="flex min-w-0 flex-wrap items-center gap-2" data-testid="sheet-category-tabs">
+            <SheetMetrics rowCount={data.rows.length} colCount={data.columns.length} />
+            {categories.length > 0 ? (
+              <>
+                <CategoryTab active={activeCategory === null} onClick={() => setActiveCategory(null)}>
+                  전체
+                </CategoryTab>
+                {categories.map((category) => (
+                  <CategoryTab
+                    key={category}
+                    active={activeCategory === category}
+                    onClick={() => setActiveCategory(category)}
+                  >
+                    {category}
+                  </CategoryTab>
+                ))}
+              </>
+            ) : null}
+            <div className="ml-auto flex min-w-0 items-center gap-2">
+              <input
+                className="input w-56 min-w-36"
+                placeholder="컬럼 검색 (예: ETCH_P012)"
+                value={columnQuery}
+                data-testid="sheet-column-search"
+                onChange={(event) => setColumnQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') jumpToColumn()
+                }}
+              />
+              <button
+                type="button"
+                className="btn-secondary shrink-0"
+                data-testid="sheet-column-jump"
+                onClick={jumpToColumn}
               >
-                {category}
-              </CategoryTab>
-            ))}
-          </>
-        ) : null}
-        <div className="ml-auto flex items-center gap-2">
-          <input
-            className="input w-56"
-            placeholder="컬럼 검색 (예: ETCH_P012)"
-            value={columnQuery}
-            data-testid="sheet-column-search"
-            onChange={(event) => setColumnQuery(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') jumpToColumn()
-            }}
-          />
-          <button
-            type="button"
-            className="btn-secondary"
-            data-testid="sheet-column-jump"
-            onClick={jumpToColumn}
-          >
-            컬럼 점프
-          </button>
+                컬럼 점프
+              </button>
+            </div>
+          </div>
+          {paste !== null ? (
+            <PasteStagingPanel
+              result={paste}
+              columns={data.columns}
+              rows={data.rows}
+              applying={applying}
+              readOnly={readOnly}
+              error={pasteError}
+              onApply={commitPaste}
+              onCancel={cancelPaste}
+            />
+          ) : null}
+          {!readOnly ? (
+            <ConditionRowManager
+              activeLabel={activeRowLabel}
+              busy={structBusy}
+              error={structError}
+              onAddEmpty={handleAddEmpty}
+              onDuplicate={handleDuplicate}
+              onDelete={handleDelete}
+              onClear={clearActive}
+            />
+          ) : null}
+          <p className="text-xs text-muted" data-testid="sheet-interaction-guide">
+            범위 복사 Ctrl+C · 붙여넣기 Ctrl+V · 조건 행은 왼쪽 Layer/조건 셀 선택 · POR는 빈 원(○)
+            클릭
+          </p>
         </div>
-      </div>
-      {paste !== null ? (
-        <PasteStagingPanel
-          result={paste}
-          columns={data.columns}
-          rows={data.rows}
-          applying={applying}
-          readOnly={readOnly}
-          error={pasteError}
-          onApply={commitPaste}
-          onCancel={cancelPaste}
-        />
-      ) : null}
-      {!readOnly ? (
-        <ConditionRowManager
-          activeLabel={activeRowLabel}
-          busy={structBusy}
-          error={structError}
-          onAddEmpty={handleAddEmpty}
-          onDuplicate={handleDuplicate}
-          onDelete={handleDelete}
-          onClear={clearActive}
-        />
-      ) : null}
-      <p className="text-xs text-slate-500" data-testid="sheet-interaction-guide">
-        범위 복사 Ctrl+C · 붙여넣기 Ctrl+V · 조건 행은 왼쪽 Layer/조건 셀 선택 · POR는 빈 원(○)
-        클릭
-      </p>
+      }
+    >
       <div
-        className="h-[70vh] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"
+        className="h-full min-h-0 min-w-0 overflow-hidden bg-surface"
+        data-sheet-editor
         data-testid="sheet-view-grid"
       >
         <GlideConditionGrid
@@ -368,7 +473,7 @@ function SheetEditor({ projectId, sheet }: { projectId: number; sheet: SheetOut 
           pasteStaging={paste?.staging}
         />
       </div>
-    </div>
+    </SheetFocusFrame>
   )
 }
 
@@ -397,26 +502,26 @@ function ConditionRowManager({
   const noSelection = activeLabel === null
   return (
     <div
-      className="space-y-2 rounded-xl border border-slate-200 bg-white p-3 text-sm shadow-sm"
+      className="flex min-w-0 flex-wrap items-center gap-2 rounded-lg border border-border-subtle bg-surface px-3 py-2 text-sm shadow-sm"
       data-testid="condition-row-manager"
     >
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="font-semibold text-slate-700">조건 행 관리</span>
-        {noSelection ? (
-          <span className="text-slate-400">Layer/조건 셀을 클릭해 대상 행을 선택한다</span>
-        ) : (
-          <span className="text-slate-600">
-            선택: <strong>{activeLabel}</strong>
-          </span>
-        )}
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
+      <span className="shrink-0 font-semibold text-ink-950">조건 행 관리</span>
+      {noSelection ? (
+        <span className="min-w-0 flex-1 truncate text-muted">
+          Layer/조건 셀을 클릭해 대상 행을 선택합니다.
+        </span>
+      ) : (
+        <span className="min-w-0 flex-1 truncate text-muted" title={activeLabel}>
+          선택: <strong className="text-ink-950">{activeLabel}</strong>
+        </span>
+      )}
+      <div className="ml-auto flex shrink-0 flex-wrap items-center gap-2">
         <button
           type="button"
           onClick={onAddEmpty}
           disabled={busy || noSelection}
           data-testid="condition-add"
-          className="rounded-md bg-cyan-600 px-3 py-1 font-medium text-white hover:bg-cyan-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+          className="h-[34px] rounded-md bg-brand-700 px-3 text-xs font-semibold text-white hover:bg-ink-950 disabled:cursor-not-allowed disabled:opacity-50"
         >
           빈 행 추가
         </button>
@@ -425,7 +530,7 @@ function ConditionRowManager({
           onClick={onDuplicate}
           disabled={busy || noSelection}
           data-testid="condition-duplicate"
-          className="rounded-md border border-cyan-600 px-3 py-1 font-medium text-cyan-700 hover:bg-cyan-50 disabled:cursor-not-allowed disabled:border-slate-300 disabled:text-slate-400"
+          className="h-[34px] rounded-md border border-border-control bg-surface px-3 text-xs font-semibold text-ink-950 hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-50"
         >
           복제
         </button>
@@ -434,7 +539,7 @@ function ConditionRowManager({
           onClick={onDelete}
           disabled={busy || noSelection}
           data-testid="condition-delete"
-          className="rounded-md border border-rose-300 px-3 py-1 font-medium text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:border-slate-300 disabled:text-slate-400"
+          className="h-[34px] rounded-md border border-error bg-error-surface px-3 text-xs font-semibold text-error hover:bg-error hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
         >
           삭제
         </button>
@@ -443,15 +548,15 @@ function ConditionRowManager({
             type="button"
             onClick={onClear}
             disabled={busy}
-            className="rounded-md border border-slate-300 px-3 py-1 text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+            className="h-[34px] rounded-md border border-border-control bg-surface px-3 text-xs font-semibold text-muted hover:bg-canvas disabled:opacity-50"
           >
             선택 해제
           </button>
         ) : null}
-        {busy ? <span className="text-slate-500">처리 중...</span> : null}
+        {busy ? <span className="text-xs text-muted">처리 중...</span> : null}
       </div>
       {error !== null ? (
-        <p className="text-rose-600" data-testid="condition-error">
+        <p className="basis-full text-xs font-medium text-error" data-testid="condition-error">
           {error}
         </p>
       ) : null}
@@ -564,26 +669,99 @@ function PasteStagingPanel({
   )
 }
 
-/** 상단 상태 표시줄: 행/컬럼 수 + 잠금 상태 + 저장 상태 + 더티/재시도/재획득 액션. */
-function StatusBar({
+function FocusHeader({
+  projectId,
+  project,
   editing,
-  rowCount,
-  colCount,
+  titleRef,
 }: {
-  editing: SheetEditing
-  rowCount: number
-  colCount: number
+  projectId: number | null
+  project?: ProjectOut
+  editing?: SheetEditing
+  titleRef?: RefObject<HTMLHeadingElement>
 }) {
+  const title = project?.name ?? `프로젝트 #${projectId ?? '?'}`
+  const detailPath = projectId === null ? '/projects' : `/projects/${projectId}`
+
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-600">
+    <header
+      className="focus-surface-dark flex h-10 min-w-0 items-center justify-between gap-3 overflow-hidden bg-ink-950 px-2 text-white sm:px-3"
+      data-sheet-focus-header
+    >
+      <div className="flex min-w-0 items-center gap-2">
+        <Link
+          aria-label={projectId === null ? '프로젝트 목록으로 돌아가기' : '프로젝트 상세로 돌아가기'}
+          className="inline-flex h-8 shrink-0 items-center rounded-md px-2 text-xs font-semibold text-brand-100 hover:bg-white/10"
+          to={detailPath}
+        >
+          ← 상세
+        </Link>
+        <Link
+          aria-label="PCM 프로젝트 목록"
+          className="inline-flex h-8 shrink-0 items-center rounded-md px-1 font-bold tracking-[0.12em] text-white hover:bg-white/10"
+          to="/projects"
+        >
+          PCM
+        </Link>
+        <span aria-hidden="true" className="h-4 w-px shrink-0 bg-white/25" />
+        <h1
+          ref={titleRef}
+          className="min-w-0 truncate rounded-sm text-sm font-semibold focus:outline-2 focus:outline-offset-2 focus:outline-brand-500"
+          data-page-title
+          tabIndex={-1}
+          title={title}
+        >
+          {title}
+        </h1>
+        {project?.status === 'draft' ? (
+          <span className="shrink-0 rounded-full border border-brand-500/70 bg-brand-500/15 px-2 py-0.5 text-[11px] font-semibold leading-4 text-brand-100">
+            초안
+          </span>
+        ) : null}
+      </div>
+      {editing ? (
+        <div
+          aria-label="편집 및 저장 상태"
+          className="flex min-w-0 shrink-0 items-center gap-2 text-xs"
+          data-sheet-editing-status
+        >
+          <LockChip editing={editing} />
+          {editing.lockStatus === 'held' ? <SaveStatus editing={editing} /> : null}
+        </div>
+      ) : null}
+    </header>
+  )
+}
+
+export function shouldFocusLiveSheetTitle(
+  activeElement: Element | null,
+  body: HTMLElement,
+): boolean {
+  return activeElement === null || activeElement === body || !activeElement.isConnected
+}
+
+function ProjectMetadataWarning({ error }: { error: unknown }) {
+  return (
+    <InlineAlert
+      className="rounded-none border-x-0 border-t-0 px-3 py-1.5 text-xs"
+      data-testid="project-metadata-warning"
+      tone="warning"
+    >
+      프로젝트 정보 조회에 실패했습니다. ID 기반 제목으로 계속 편집할 수 있습니다:{' '}
+      {getApiErrorMessage(error)}
+    </InlineAlert>
+  )
+}
+
+function SheetMetrics({ rowCount, colCount }: { rowCount: number; colCount: number }) {
+  return (
+    <div className="flex shrink-0 items-center gap-3 text-xs text-muted">
       <span>
         행 <strong>{rowCount}</strong>
       </span>
       <span>
         컬럼 <strong>{colCount}</strong>
       </span>
-      <LockChip editing={editing} />
-      {editing.lockStatus === 'held' ? <SaveStatus editing={editing} /> : null}
     </div>
   )
 }
@@ -591,38 +769,38 @@ function StatusBar({
 function LockChip({ editing }: { editing: SheetEditing }) {
   switch (editing.lockStatus) {
     case 'acquiring':
-      return <span className="rounded-full bg-slate-100 px-2 py-0.5">잠금 획득 중...</span>
+      return <span className="rounded-full bg-white/10 px-2 py-0.5 text-white">잠금 확인 중</span>
     case 'held':
       return (
-        <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-700">편집 중 (내 잠금)</span>
+        <span className="rounded-full bg-brand-500/20 px-2 py-0.5 text-brand-100">편집 잠금</span>
       )
     case 'readonly':
       return (
-        <span className="flex items-center gap-2">
-          <span className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-700">
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="max-w-64 truncate rounded-full bg-warning-surface px-2 py-0.5 text-warning">
             {editing.editingBy !== null
               ? `읽기 전용 · 편집 중: ${editing.editingBy}`
-              : '읽기 전용 (잠금 획득 실패)'}
+              : '읽기 전용 · 잠금 필요'}
           </span>
           <button
             type="button"
             onClick={editing.reacquire}
-            className="rounded-md border border-amber-300 px-2 py-0.5 text-amber-700 hover:bg-amber-50"
+            className="h-7 shrink-0 rounded-md border border-brand-500 px-2 font-semibold text-brand-100 hover:bg-white/10"
           >
-            지금 재시도
+            재시도
           </button>
         </span>
       )
     case 'lost':
       return (
         <span className="flex items-center gap-2">
-          <span className="rounded-full bg-rose-50 px-2 py-0.5 text-rose-700">
-            잠금을 잃었다 — 재획득이 필요하다
+          <span className="rounded-full bg-error-surface px-2 py-0.5 text-error">
+            잠금 상실
           </span>
           <button
             type="button"
             onClick={editing.reacquire}
-            className="rounded-md border border-rose-300 px-2 py-0.5 text-rose-700 hover:bg-rose-50"
+            className="h-7 shrink-0 rounded-md border border-brand-500 px-2 font-semibold text-brand-100 hover:bg-white/10"
           >
             재획득
           </button>
@@ -634,21 +812,21 @@ function LockChip({ editing }: { editing: SheetEditing }) {
 function SaveStatus({ editing }: { editing: SheetEditing }) {
   const { saveStatus, dirtyCount, discard, retrySave } = editing
   return (
-    <span className="flex items-center gap-2">
+    <span className="flex min-w-0 items-center gap-2">
       {dirtyCount > 0 ? (
-        <span className="rounded-full bg-slate-100 px-2 py-0.5">미저장 {dirtyCount}</span>
+        <span className="rounded-full bg-white/10 px-2 py-0.5 text-white">미저장 {dirtyCount}</span>
       ) : null}
-      {saveStatus === 'saving' ? <span className="text-slate-500">저장 중...</span> : null}
+      {saveStatus === 'saving' ? <span className="text-brand-100">저장 중...</span> : null}
       {saveStatus === 'saved' && dirtyCount === 0 ? (
-        <span className="text-emerald-600">저장됨</span>
+        <span className="text-brand-100">저장됨</span>
       ) : null}
       {saveStatus === 'error' ? (
         <span className="flex items-center gap-2">
-          <span className="text-rose-600">저장 실패</span>
+          <span className="text-error-surface">저장 실패</span>
           <button
             type="button"
             onClick={retrySave}
-            className="rounded-md border border-rose-300 px-2 py-0.5 text-rose-700 hover:bg-rose-50"
+            className="h-7 rounded-md border border-brand-500 px-2 font-semibold text-brand-100 hover:bg-white/10"
           >
             재시도
           </button>
@@ -658,7 +836,7 @@ function SaveStatus({ editing }: { editing: SheetEditing }) {
         <button
           type="button"
           onClick={discard}
-          className="rounded-md border border-slate-300 px-2 py-0.5 text-slate-600 hover:bg-slate-50"
+          className="h-7 rounded-md border border-white/40 px-2 font-semibold text-white hover:bg-white/10"
         >
           변경 취소
         </button>
@@ -694,25 +872,13 @@ function CategoryTab({
 /** 라우트 래퍼: `/projects/:projectId/sheet`. */
 export function SheetViewPage() {
   const params = useParams()
-  const projectId = Number(params.projectId)
-  const valid = Number.isInteger(projectId) && projectId > 0
+  const projectId = parsePositiveInt(params.projectId)
 
-  return (
-    <section className="space-y-4">
-      <div>
-        <Link to="/projects" className="text-sm text-cyan-700">
-          ← 프로젝트 목록
-        </Link>
-        <h2 className="mt-1 text-2xl font-semibold">조건표 시트 #{valid ? projectId : '?'}</h2>
-        <p className="mt-2 text-sm text-slate-500">
-          시트 조회 API를 어댑터로 렌더링하고, 잠금을 잡아 셀을 편집·자동저장한다.
-        </p>
-      </div>
-      {valid ? (
-        <SheetView projectId={projectId} />
-      ) : (
-        <ErrorMessage message="잘못된 프로젝트 id다." />
-      )}
-    </section>
+  return projectId === null ? (
+    <SheetStateFrame projectId={null}>
+      <ErrorMessage message="올바른 프로젝트 ID가 아닙니다. 프로젝트 목록에서 다시 선택하세요." />
+    </SheetStateFrame>
+  ) : (
+    <SheetView projectId={projectId} />
   )
 }
