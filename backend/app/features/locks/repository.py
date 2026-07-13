@@ -18,10 +18,16 @@ class EditLockRepository:
         """PK(project_id) 단건 조회 (identity map 우선)."""
         return await self.session.get(EditLock, project_id)
 
-    async def project_exists(self, project_id: int) -> bool:
-        """잠금 대상 프로젝트 실재 여부 (FK 위반 전에 깔끔한 404를 내기 위함)."""
+    async def lock_project(self, project_id: int) -> bool:
+        """프로젝트 행을 트랜잭션 종료까지 잠가 잠금 생명주기를 직렬화한다.
+
+        edit_lock은 최초 획득 전에는 행이 없으므로 그 행 자체를 잠글 수 없다. 항상 존재하는
+        project 행을 잠금 mutex로 사용하면 최초 INSERT, 만료 탈취, heartbeat/release와 편집
+        요청을 프로젝트 단위로 같은 순서에 세울 수 있다. SQLite 테스트에서는 FOR UPDATE가
+        무시되지만 운영 PostgreSQL에서는 실제 행 잠금으로 동작한다.
+        """
         result = await self.session.execute(
-            select(Project.id).where(Project.id == project_id)
+            select(Project.id).where(Project.id == project_id).with_for_update()
         )
         return result.scalar_one_or_none() is not None
 

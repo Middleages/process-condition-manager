@@ -23,7 +23,9 @@ class LockService:
         self.repo = repo
 
     async def acquire(self, project_id: int, *, user_id: str) -> EditLock:
-        if not await self.repo.project_exists(project_id):
+        # edit_lock 최초 행은 아직 없을 수 있으므로 항상 존재하는 project 행을 mutex로 쓴다.
+        # 이 트랜잭션이 commit될 때까지 동시 acquire/heartbeat/release/edit 요청이 직렬화된다.
+        if not await self.repo.lock_project(project_id):
             raise NotFoundError(f"프로젝트를 찾을 수 없다: {project_id}")
 
         now = utcnow()
@@ -56,6 +58,7 @@ class LockService:
     async def heartbeat(
         self, project_id: int, *, user_id: str, lock_token: str
     ) -> EditLock:
+        await self.repo.lock_project(project_id)
         now = utcnow()
         lock = await self.repo.get(project_id)
         if not is_valid_holder(lock, user_id=user_id, token=lock_token, now=now):
@@ -69,6 +72,7 @@ class LockService:
         return lock
 
     async def release(self, project_id: int, *, user_id: str, lock_token: str) -> None:
+        await self.repo.lock_project(project_id)
         lock = await self.repo.get(project_id)
         if lock is None:
             return  # 이미 없음 — idempotent

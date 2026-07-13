@@ -12,12 +12,13 @@ from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import Depends, Header
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import UserContext, get_current_user
 from app.core.db import get_app_session
 from app.core.errors import LockConflictError
-from app.models.project import EditLock
+from app.models.project import EditLock, Project
 
 
 def utcnow() -> datetime:
@@ -79,6 +80,12 @@ async def require_edit_lock(
     미획득/미보유/토큰 불일치/만료면 409(LockConflictError)로 거절한다.
     같은 앱 세션을 다른 의존성과 공유하므로(FastAPI 캐시) 추가 커넥션을 쓰지 않는다.
     """
+    # edit_lock은 최초 획득 전에는 행이 없으므로 항상 존재하는 project 행을 mutex로 쓴다.
+    # 같은 세션을 실제 편집 서비스까지 공유해 commit 시점까지 행 잠금을 유지함으로써,
+    # 검증 직후 TTL 탈취가 일어나 옛 토큰의 쓰기가 뒤늦게 커밋되는 TOCTOU를 막는다.
+    await session.execute(
+        select(Project.id).where(Project.id == project_id).with_for_update()
+    )
     lock = await session.get(EditLock, project_id)
     if not is_valid_holder(lock, user_id=user.id, token=x_lock_token, now=utcnow()):
         raise LockConflictError(
