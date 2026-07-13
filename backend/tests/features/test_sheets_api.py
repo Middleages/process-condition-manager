@@ -67,6 +67,12 @@ async def _seed_parameters(session: AsyncSession) -> None:
         [
             ParameterOption(value="A", display_name="A", sort_order=0),
             ParameterOption(value="B", display_name="B", sort_order=1),
+            ParameterOption(
+                value="LEGACY",
+                display_name="Legacy",
+                sort_order=2,
+                is_active=False,
+            ),
         ]
     )
     inactive_param = Parameter(

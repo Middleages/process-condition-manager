@@ -5,6 +5,7 @@ SQLite 인메모리에 확정 스키마(f_stpes)를 심어 판독 로직(DISTINC
 """
 
 import os
+from collections.abc import AsyncIterator
 
 import pytest
 from sqlalchemy import text
@@ -29,7 +30,7 @@ _ROWS = [
 
 
 @pytest.fixture
-async def ingest_session() -> AsyncSession:
+async def ingest_session() -> AsyncIterator[AsyncSession]:
     engine = create_async_engine(
         "sqlite+aiosqlite://",
         connect_args={"check_same_thread": False},
@@ -116,6 +117,7 @@ _PG_URL = os.environ.get("INGEST_TEST_DATABASE_URL")
 
 @pytest.mark.skipif(_PG_URL is None, reason="INGEST_TEST_DATABASE_URL 미설정")
 async def test_pg_schema_qualified_read() -> None:
+    assert _PG_URL is not None
     engine = create_async_engine(_PG_URL, poolclass=StaticPool)
     try:
         async with engine.begin() as conn:

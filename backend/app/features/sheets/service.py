@@ -62,7 +62,7 @@ def _build_live_columns(
             unit=parameter.unit,
             description=parameter.description,
             choice_options=(
-                [option.value for option in parameter.options]
+                [option.value for option in parameter.options if option.is_active]
                 if parameter.value_type == ValueType.CHOICE
                 else []
             ),
