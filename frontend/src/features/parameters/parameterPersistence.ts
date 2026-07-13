@@ -47,7 +47,9 @@ export async function persistParameter(
   }
 
   const baseParameter = await api.update(input.parameterId, input.plan.payload)
-  if (input.valueType !== 'choice') return { kind: 'saved', parameter: baseParameter }
+  if (input.valueType !== 'choice' || !input.plan.optionsDirty) {
+    return { kind: 'saved', parameter: baseParameter }
+  }
 
   try {
     const parameter = await api.replaceOptions(input.parameterId, input.plan.options)

@@ -379,6 +379,62 @@ describe('parameter safe update plans', () => {
       { value: 'pos', display_name: 'pos', sort_order: 1 },
       { value: 'neutral', display_name: 'neutral', sort_order: 2 },
     ])
+    expect(plan.optionsDirty).toBe(true)
+    expect(plan.dirty).toBe(true)
+  })
+
+  it.each([
+    {
+      operation: 'adds',
+      optionsText: 'alpha, beta, gamma',
+      expected: [
+        { value: 'alpha', display_name: 'Alpha label', sort_order: 0 },
+        { value: 'beta', display_name: 'Beta label', sort_order: 1 },
+        { value: 'gamma', display_name: 'gamma', sort_order: 2 },
+      ],
+    },
+    {
+      operation: 'removes',
+      optionsText: 'beta',
+      expected: [{ value: 'beta', display_name: 'Beta label', sort_order: 0 }],
+    },
+    {
+      operation: 'reorders',
+      optionsText: 'beta, alpha',
+      expected: [
+        { value: 'beta', display_name: 'Beta label', sort_order: 0 },
+        { value: 'alpha', display_name: 'Alpha label', sort_order: 1 },
+      ],
+    },
+  ])('$operation options without resetting retained custom labels', ({ optionsText, expected }) => {
+    const original: ParameterOut = {
+      ...choiceParameter,
+      options: [
+        {
+          id: 1,
+          value: 'alpha',
+          display_name: 'Alpha label',
+          sort_order: 4,
+          is_active: true,
+        },
+        {
+          id: 2,
+          value: 'beta',
+          display_name: 'Beta label',
+          sort_order: 8,
+          is_active: true,
+        },
+      ],
+    }
+
+    const plan = buildParameterUpdatePlan(original, {
+      ...stateFromParameter(original),
+      optionsText,
+    })
+
+    expect(plan.options).toEqual(expected)
+    expect(plan.fieldErrors).toEqual({})
+    expect(plan.optionsDirty).toBe(true)
     expect(plan.dirty).toBe(true)
   })
 
@@ -413,7 +469,43 @@ describe('parameter safe update plans', () => {
       { value: ' cool ', display_name: 'Cool label', sort_order: 12 },
     ])
     expect(cleanPlan.dirty).toBe(false)
+    expect(cleanPlan.optionsDirty).toBe(false)
     expect(plan.fieldErrors).toEqual({})
+    expect(plan.optionsDirty).toBe(false)
+    expect(plan.dirty).toBe(true)
+  })
+
+  it('blocks ambiguous edits instead of splitting an original comma-containing value', () => {
+    const original: ParameterOut = {
+      ...choiceParameter,
+      options: [
+        {
+          id: 1,
+          value: 'warm,high',
+          display_name: 'Warm / high',
+          sort_order: 0,
+          is_active: true,
+        },
+        {
+          id: 2,
+          value: 'cool',
+          display_name: 'Cool label',
+          sort_order: 1,
+          is_active: true,
+        },
+      ],
+    }
+    const plan = buildParameterUpdatePlan(original, {
+      ...stateFromParameter(original),
+      optionsText: 'cool, warm, high',
+    })
+
+    expect(plan.options).toEqual([
+      { value: 'warm,high', display_name: 'Warm / high', sort_order: 0 },
+      { value: 'cool', display_name: 'Cool label', sort_order: 1 },
+    ])
+    expect(plan.fieldErrors).toHaveProperty('optionsText')
+    expect(plan.optionsDirty).toBe(true)
     expect(plan.dirty).toBe(true)
   })
 })

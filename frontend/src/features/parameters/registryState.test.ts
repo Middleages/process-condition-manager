@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import {
   canonicalizeParameterRegistryState,
@@ -188,6 +188,25 @@ describe('parameter registry filtering', () => {
         active: 'all',
       }).map((parameter) => parameter.id),
     ).toEqual([31, 18, 7])
+  })
+
+  it('does not depend on host locale rules for case folding', () => {
+    const localeLowerCase = vi
+      .spyOn(String.prototype, 'toLocaleLowerCase')
+      .mockImplementation(() => {
+        throw new Error('locale-sensitive lowercasing used')
+      })
+
+    try {
+      expect(
+        filterParameterRegistry(parameters, categories, {
+          ...defaultState,
+          query: 'EXPOSURE',
+        }).map((parameter) => parameter.id),
+      ).toEqual([31])
+    } finally {
+      localeLowerCase.mockRestore()
+    }
   })
 
   it('only asks the server for inactive data when the filter needs it', () => {

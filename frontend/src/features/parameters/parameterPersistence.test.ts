@@ -125,6 +125,35 @@ describe('parameter persistence', () => {
     )
   })
 
+  it('patches choice metadata without PUT so inactive options cannot be reactivated', async () => {
+    const api = fakeApi()
+    const original: ParameterOut = {
+      ...choiceParameter,
+      options: [
+        ...choiceParameter.options,
+        { id: 2, value: 'old', display_name: 'Deprecated', sort_order: 1, is_active: false },
+      ],
+    }
+    const updated = { ...original, display_name: 'Updated polarity' }
+    vi.mocked(api.update).mockResolvedValue(updated)
+    const plan = buildParameterUpdatePlan(original, {
+      ...stateFromParameter(original),
+      displayName: 'Updated polarity',
+    })
+
+    expect(plan.optionsDirty).toBe(false)
+    await expect(
+      persistParameter(
+        { mode: 'edit', parameterId: original.id, valueType: 'choice', plan },
+        api,
+      ),
+    ).resolves.toEqual({ kind: 'saved', parameter: updated })
+
+    expect(api.update).toHaveBeenCalledTimes(1)
+    expect(api.update).toHaveBeenCalledWith(original.id, plan.payload)
+    expect(api.replaceOptions).not.toHaveBeenCalled()
+  })
+
   it('does not replace choice options when PATCH rejects', async () => {
     const api = fakeApi()
     const error = new Error('PATCH failed')
@@ -206,5 +235,42 @@ describe('parameter persistence', () => {
       expect(api.update).not.toHaveBeenCalled()
       expect(api.replaceOptions).not.toHaveBeenCalled()
     }
+  })
+
+  it('makes zero API calls when comma-delimited option editing is ambiguous', async () => {
+    const api = fakeApi()
+    const original: ParameterOut = {
+      ...choiceParameter,
+      options: [
+        {
+          id: 1,
+          value: 'warm,high',
+          display_name: 'Warm / high',
+          sort_order: 0,
+          is_active: true,
+        },
+        {
+          id: 2,
+          value: 'cool',
+          display_name: 'Cool label',
+          sort_order: 1,
+          is_active: true,
+        },
+      ],
+    }
+    const plan = buildParameterUpdatePlan(original, {
+      ...stateFromParameter(original),
+      optionsText: 'cool, warm, high',
+    })
+
+    await expect(
+      persistParameter(
+        { mode: 'edit', parameterId: original.id, valueType: 'choice', plan },
+        api,
+      ),
+    ).rejects.toThrow()
+    expect(api.create).not.toHaveBeenCalled()
+    expect(api.update).not.toHaveBeenCalled()
+    expect(api.replaceOptions).not.toHaveBeenCalled()
   })
 })

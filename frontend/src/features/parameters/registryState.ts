@@ -76,7 +76,7 @@ export function filterParameterRegistry(
   state: ParameterRegistryState,
 ): ParameterOut[] {
   const categoriesById = new Map(categories.map((category) => [category.id, category]))
-  const query = state.query.trim().toLocaleLowerCase()
+  const query = state.query.trim().toLowerCase()
 
   return parameters.filter((parameter) => {
     const category =
@@ -95,7 +95,7 @@ export function filterParameterRegistry(
       category?.display_name,
       parameter.unit,
       parameter.description,
-    ].some((value) => value?.toLocaleLowerCase().includes(query) === true)
+    ].some((value) => value?.toLowerCase().includes(query) === true)
   })
 }
 

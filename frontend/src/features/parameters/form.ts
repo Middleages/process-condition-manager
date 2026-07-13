@@ -32,6 +32,7 @@ export interface ParameterUpdatePlan {
   fieldErrors: ParameterFieldErrors
   unsupportedClears: ClearLimitedField[]
   options: OptionIn[]
+  optionsDirty: boolean
   dirty: boolean
 }
 
@@ -107,8 +108,12 @@ export function buildParameterUpdatePlan(
   state: ParameterFormState,
 ): ParameterUpdatePlan {
   const payload: ParameterUpdate = {}
-  const options = buildUpdateOptions(original, state.optionsText)
-  const fieldErrors = validateForm(state, original.value_type, false, options)
+  const optionPlan = buildUpdateOptions(original, state.optionsText)
+  const fieldErrors = validateForm(state, original.value_type, false, optionPlan.options)
+  if (optionPlan.ambiguous) {
+    fieldErrors.optionsText =
+      '쉼표나 바깥 공백이 포함된 기존 선택지는 이 입력 방식에서 안전하게 변경할 수 없습니다.'
+  }
   const unsupportedClears: ClearLimitedField[] = []
 
   const displayName = state.displayName.trim()
@@ -158,9 +163,12 @@ export function buildParameterUpdatePlan(
     payload,
     fieldErrors,
     unsupportedClears,
-    options,
+    options: optionPlan.options,
+    optionsDirty: optionPlan.dirty,
     dirty:
-      updateFingerprint(state, original.value_type, options) !== originalFingerprint(original),
+      optionPlan.dirty ||
+      updateFingerprint(state, original.value_type, optionPlan.options) !==
+        originalFingerprint(original),
   }
 }
 
@@ -360,22 +368,56 @@ function optionValues(options: OptionIn[]): string[] {
   return options.map((option) => option.value)
 }
 
-function buildUpdateOptions(original: ParameterOut, optionsText: string): OptionIn[] {
-  if (original.value_type !== 'choice') return []
+interface UpdateOptionsPlan {
+  options: OptionIn[]
+  dirty: boolean
+  ambiguous: boolean
+}
 
-  const parsed = parseOptions(optionsText)
+function buildUpdateOptions(original: ParameterOut, optionsText: string): UpdateOptionsPlan {
+  if (original.value_type !== 'choice') {
+    return { options: [], dirty: false, ambiguous: false }
+  }
+
   const originalValues = original.options.map((option) => option.value)
   const sourceText = originalValues.join(', ')
-  const valuesAreUnchanged =
-    optionsText === sourceText || arraysEqual(optionValues(parsed), originalValues)
-
-  if (!valuesAreUnchanged) return parsed
-
-  return original.options.map((option) => ({
+  const originalDraft = original.options.map((option) => ({
     value: option.value,
     display_name: option.display_name,
     sort_order: option.sort_order,
   }))
+
+  if (optionsText === sourceText) {
+    return { options: originalDraft, dirty: false, ambiguous: false }
+  }
+
+  if (originalValues.some(isAmbiguousDelimitedValue)) {
+    return { options: originalDraft, dirty: true, ambiguous: true }
+  }
+
+  const parsed = parseOptions(optionsText)
+  const parsedValues = optionValues(parsed)
+  if (arraysEqual(parsedValues, originalValues)) {
+    return { options: originalDraft, dirty: false, ambiguous: false }
+  }
+
+  const originalByValue = new Map(
+    original.options.map((option) => [option.value, option] as const),
+  )
+  const merged = parsed.map((option, index) => {
+    const retained = originalByValue.get(option.value)
+    return {
+      value: option.value,
+      display_name: retained?.display_name ?? option.value,
+      sort_order: index,
+    }
+  })
+
+  return { options: merged, dirty: true, ambiguous: false }
+}
+
+function isAmbiguousDelimitedValue(value: string): boolean {
+  return value.includes(',') || value.trim() !== value
 }
 
 function arraysEqual(left: readonly string[], right: readonly string[]): boolean {
