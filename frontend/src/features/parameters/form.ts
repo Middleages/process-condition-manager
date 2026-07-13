@@ -110,7 +110,11 @@ export function buildParameterUpdatePlan(
   const payload: ParameterUpdate = {}
   const optionPlan = buildUpdateOptions(original, state.optionsText)
   const fieldErrors = validateForm(state, original.value_type, false, optionPlan.options)
-  if (optionPlan.ambiguous) {
+  if (optionPlan.blockedBy === 'inactive-options') {
+    fieldErrors.optionsText =
+      '비활성 선택지가 포함된 기존 목록은 현재 API에서 상태를 보존하며 변경할 수 없습니다.'
+  }
+  if (optionPlan.blockedBy === 'delimited-value') {
     fieldErrors.optionsText =
       '쉼표나 바깥 공백이 포함된 기존 선택지는 이 입력 방식에서 안전하게 변경할 수 없습니다.'
   }
@@ -371,12 +375,12 @@ function optionValues(options: OptionIn[]): string[] {
 interface UpdateOptionsPlan {
   options: OptionIn[]
   dirty: boolean
-  ambiguous: boolean
+  blockedBy: 'inactive-options' | 'delimited-value' | null
 }
 
 function buildUpdateOptions(original: ParameterOut, optionsText: string): UpdateOptionsPlan {
   if (original.value_type !== 'choice') {
-    return { options: [], dirty: false, ambiguous: false }
+    return { options: [], dirty: false, blockedBy: null }
   }
 
   const originalValues = original.options.map((option) => option.value)
@@ -388,17 +392,21 @@ function buildUpdateOptions(original: ParameterOut, optionsText: string): Update
   }))
 
   if (optionsText === sourceText) {
-    return { options: originalDraft, dirty: false, ambiguous: false }
+    return { options: originalDraft, dirty: false, blockedBy: null }
+  }
+
+  if (original.options.some((option) => !option.is_active)) {
+    return { options: originalDraft, dirty: true, blockedBy: 'inactive-options' }
   }
 
   if (originalValues.some(isAmbiguousDelimitedValue)) {
-    return { options: originalDraft, dirty: true, ambiguous: true }
+    return { options: originalDraft, dirty: true, blockedBy: 'delimited-value' }
   }
 
   const parsed = parseOptions(optionsText)
   const parsedValues = optionValues(parsed)
   if (arraysEqual(parsedValues, originalValues)) {
-    return { options: originalDraft, dirty: false, ambiguous: false }
+    return { options: originalDraft, dirty: false, blockedBy: null }
   }
 
   const originalByValue = new Map(
@@ -413,7 +421,7 @@ function buildUpdateOptions(original: ParameterOut, optionsText: string): Update
     }
   })
 
-  return { options: merged, dirty: true, ambiguous: false }
+  return { options: merged, dirty: true, blockedBy: null }
 }
 
 function isAmbiguousDelimitedValue(value: string): boolean {

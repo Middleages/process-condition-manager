@@ -508,4 +508,60 @@ describe('parameter safe update plans', () => {
     expect(plan.optionsDirty).toBe(true)
     expect(plan.dirty).toBe(true)
   })
+
+  it.each([
+    ['adds', 'pos, deprecated, neg, neutral'],
+    ['removes', 'pos, neg'],
+    ['reorders', 'neg, pos, deprecated'],
+    ['edits a value in', 'pos, replacement, neg'],
+  ])('blocks option-list edits when the original %s inactive options', (_operation, optionsText) => {
+    const original: ParameterOut = {
+      ...choiceParameter,
+      options: [
+        { id: 1, value: 'pos', display_name: 'Positive', sort_order: 0, is_active: true },
+        {
+          id: 2,
+          value: 'deprecated',
+          display_name: 'Deprecated',
+          sort_order: 1,
+          is_active: false,
+        },
+        { id: 3, value: 'neg', display_name: 'Negative', sort_order: 2, is_active: true },
+      ],
+    }
+    const plan = buildParameterUpdatePlan(original, {
+      ...stateFromParameter(original),
+      optionsText,
+    })
+
+    expect(plan.options).toEqual([
+      { value: 'pos', display_name: 'Positive', sort_order: 0 },
+      { value: 'deprecated', display_name: 'Deprecated', sort_order: 1 },
+      { value: 'neg', display_name: 'Negative', sort_order: 2 },
+    ])
+    expect(plan.fieldErrors.optionsText).toContain('비활성')
+    expect(plan.optionsDirty).toBe(true)
+    expect(plan.dirty).toBe(true)
+  })
+
+  it('keeps an untouched option list with inactive records clean', () => {
+    const original: ParameterOut = {
+      ...choiceParameter,
+      options: [
+        ...choiceParameter.options,
+        {
+          id: 2,
+          value: 'deprecated',
+          display_name: 'Deprecated',
+          sort_order: 1,
+          is_active: false,
+        },
+      ],
+    }
+    const plan = buildParameterUpdatePlan(original, stateFromParameter(original))
+
+    expect(plan.fieldErrors).toEqual({})
+    expect(plan.optionsDirty).toBe(false)
+    expect(plan.dirty).toBe(false)
+  })
 })

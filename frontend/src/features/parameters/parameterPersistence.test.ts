@@ -273,4 +273,41 @@ describe('parameter persistence', () => {
     expect(api.update).not.toHaveBeenCalled()
     expect(api.replaceOptions).not.toHaveBeenCalled()
   })
+
+  it.each([
+    ['add', 'pos, deprecated, neg, neutral'],
+    ['remove', 'pos, neg'],
+    ['reorder', 'neg, pos, deprecated'],
+    ['value edit', 'pos, replacement, neg'],
+  ])('makes zero API calls for an inactive-option %s', async (_operation, optionsText) => {
+    const api = fakeApi()
+    const original: ParameterOut = {
+      ...choiceParameter,
+      options: [
+        { id: 1, value: 'pos', display_name: 'Positive', sort_order: 0, is_active: true },
+        {
+          id: 2,
+          value: 'deprecated',
+          display_name: 'Deprecated',
+          sort_order: 1,
+          is_active: false,
+        },
+        { id: 3, value: 'neg', display_name: 'Negative', sort_order: 2, is_active: true },
+      ],
+    }
+    const plan = buildParameterUpdatePlan(original, {
+      ...stateFromParameter(original),
+      optionsText,
+    })
+
+    await expect(
+      persistParameter(
+        { mode: 'edit', parameterId: original.id, valueType: 'choice', plan },
+        api,
+      ),
+    ).rejects.toThrow()
+    expect(api.create).not.toHaveBeenCalled()
+    expect(api.update).not.toHaveBeenCalled()
+    expect(api.replaceOptions).not.toHaveBeenCalled()
+  })
 })
