@@ -210,3 +210,4 @@ pgdata/
 backend/.claude/
 backend/.moai/
 frontend/.claude/
+.superpowers/

@@ -20,7 +20,8 @@
 |------|------|
 | [phase-0-tasks.md](./phase-0-tasks.md) — 리셋 + 기반 | 완료 (2026-07-05 점검) |
 | [phase-1-tasks.md](./phase-1-tasks.md) — 프로젝트 + 백본 (그리드 PoC 병행) | 구현 완료 (2026-07-09 검토 반영, EC1~EC6 충족) |
-| [phase-2-tasks.md](./phase-2-tasks.md) — 조건표 편집기 | 계획 |
+| [phase-2-tasks.md](./phase-2-tasks.md) — 조건표 편집기 | 구현 완료 (2026-07-13, EC1~EC6 충족) |
+| [Phase 2.5 UI/UX 설계](../docs/superpowers/specs/2026-07-13-phase-2-5-ui-ux-design.md) — 구조개편 + 디자인 시스템 | 설계 승인 (2026-07-13), 실행 계획 작성 전 |
 | [phase-3-tasks.md](./phase-3-tasks.md) — 검증 엔진 | 계획 |
 | [phase-4-tasks.md](./phase-4-tasks.md) — 변경 이력 | 계획 |
 | [phase-5-tasks.md](./phase-5-tasks.md) — 승인 + Revision | 계획 |
@@ -59,6 +60,7 @@
 | D-17 | 파라미터 초기 주입 + 중복 프로젝트 정책 | 약 200개 파라미터의 초기 등록은 **CSV 붙여넣기 임포트 기능**(붙여넣기 → dry-run 미리보기 → code 기준 UPSERT)으로 처리 — 반복 사용 가능한 관리 기능으로 Phase 1에 배정 (D-07 "지속 추가/변경" 대응). 조건표가 이미 있는 process의 신규 프로젝트 생성은 **차단**하고 기존 프로젝트(Draft: 이어서 편집 / Approved: Revision)로 유도 | 2026-07-07 확정 |
 | D-18 | 그리드 라이브러리 | **Glide Data Grid 채택** (1순위), RevoGrid 대안 유지. 근거: 200 컬럼 성능(Canvas) + 엑셀 범위 붙여넣기 내장 + MIT/폐쇄망 적합. 그리드 어댑터(`frontend/src/grid/types.ts`) 뒤에 두어 교체 가능. 대화형 붙여넣기·성능 체감 검증은 Phase 2 편집기 착수 첫 스텝에서 확정 라이브러리로 재확인 | 2026-07-09 확정 (D-12 해소). [03-grid-evaluation.md](./03-grid-evaluation.md) §7 |
 | D-19 | API 진입점 | 백엔드 API를 **`/api` 단일 프리픽스**로 통합, URL 버저닝(v1)은 미도입 — 소비자가 동반 배포되는 자사 SPA 하나뿐이라 실익이 없다. SPA 페이지 경로(`/projects` 등)와 API 경로의 이름공간 충돌을 제거하고, dev proxy·운영 리버스 프록시 규칙을 1개로 줄인다. `/health`는 컨테이너 헬스체크용으로 루트 유지 | 2026-07-10 확정. 배경: 기능별 루트 경로가 쌓이며 vite proxy에 죽은 `/api` 항목·`/projects` 누락이 발생. [phase-2-tasks.md](./phase-2-tasks.md) P2-D5/T0에서 실행 |
+| D-20 | Phase 2.5 UI/UX | **상단 전역 내비 + 조건표 집중 모드**, Precision Teal 디자인 시스템, 프로젝트 목록/생성/상세 route 분리, 목록 중심 파라미터 관리 drawer를 채택한다. 향후 검증·이력·코멘트는 content가 있을 때만 열리는 하단 반응형 workbench가 수용한다. 백엔드/API와 Phase 2 persistence/domain/lock/autosave 정책은 변경하지 않는다 | 2026-07-13 사용자 승인. [`DESIGN.md`](../DESIGN.md), [상세 설계](../docs/superpowers/specs/2026-07-13-phase-2-5-ui-ux-design.md) |
 
 ## 미확정 항목
 
