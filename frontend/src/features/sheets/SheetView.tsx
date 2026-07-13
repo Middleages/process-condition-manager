@@ -329,29 +329,6 @@ function SheetEditor({ projectId, sheet }: { projectId: number; sheet: SheetOut 
           </button>
         </div>
       </div>
-      <div
-        className="h-[70vh] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"
-        data-testid="sheet-view-grid"
-      >
-        <GlideConditionGrid
-          ref={gridRef}
-          data={gridData}
-          view={{ readOnly: readOnly || writeBusy, activeCategory }}
-          callbacks={gridCallbacks}
-          pasteStaging={paste?.staging}
-        />
-      </div>
-      {!readOnly ? (
-        <ConditionRowManager
-          activeLabel={activeRowLabel}
-          busy={structBusy}
-          error={structError}
-          onAddEmpty={handleAddEmpty}
-          onDuplicate={handleDuplicate}
-          onDelete={handleDelete}
-          onClear={clearActive}
-        />
-      ) : null}
       {paste !== null ? (
         <PasteStagingPanel
           result={paste}
@@ -364,6 +341,33 @@ function SheetEditor({ projectId, sheet }: { projectId: number; sheet: SheetOut 
           onCancel={cancelPaste}
         />
       ) : null}
+      {!readOnly ? (
+        <ConditionRowManager
+          activeLabel={activeRowLabel}
+          busy={structBusy}
+          error={structError}
+          onAddEmpty={handleAddEmpty}
+          onDuplicate={handleDuplicate}
+          onDelete={handleDelete}
+          onClear={clearActive}
+        />
+      ) : null}
+      <p className="text-xs text-slate-500" data-testid="sheet-interaction-guide">
+        범위 복사 Ctrl+C · 붙여넣기 Ctrl+V · 조건 행은 왼쪽 Layer/조건 셀 선택 · POR는 빈 원(○)
+        클릭
+      </p>
+      <div
+        className="h-[70vh] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"
+        data-testid="sheet-view-grid"
+      >
+        <GlideConditionGrid
+          ref={gridRef}
+          data={gridData}
+          view={{ readOnly: readOnly || writeBusy, activeCategory }}
+          callbacks={gridCallbacks}
+          pasteStaging={paste?.staging}
+        />
+      </div>
     </div>
   )
 }
@@ -455,7 +459,7 @@ function ConditionRowManager({
   )
 }
 
-/** 하단 붙여넣기 스테이징 패널: 대기/유효/불일치 개수 + 잘림 안내 + 불일치 목록 + 적용/취소. */
+/** 상단 붙여넣기 스테이징 패널: 대기/유효/불일치 개수 + 잘림 안내 + 불일치 목록 + 적용/취소. */
 const MAX_MISMATCH_ROWS = 6
 
 function PasteStagingPanel({
