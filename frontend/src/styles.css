@@ -34,19 +34,19 @@
 
 @layer components {
   .input {
-    @apply w-full rounded-md border border-border-control bg-surface px-3 py-2 text-sm text-ink-950 transition-colors duration-150 placeholder:text-muted disabled:cursor-not-allowed disabled:bg-canvas disabled:opacity-70;
+    @apply box-border h-9 w-full rounded-md border border-border-control bg-surface px-3 py-1.5 text-sm text-ink-950 transition-colors duration-150 placeholder:text-muted disabled:cursor-not-allowed disabled:bg-canvas disabled:opacity-70;
   }
 
   .btn-primary {
-    @apply inline-flex min-h-9 items-center justify-center rounded-md bg-brand-700 px-4 py-2 text-sm font-semibold text-white transition-colors duration-150 hover:bg-ink-950 disabled:cursor-not-allowed disabled:opacity-60;
+    @apply box-border inline-flex h-9 items-center justify-center rounded-md bg-brand-700 px-4 py-2 text-sm font-semibold text-white transition-colors duration-150 hover:bg-ink-950 disabled:cursor-not-allowed disabled:opacity-60;
   }
 
   .btn-secondary {
-    @apply inline-flex min-h-8 items-center justify-center rounded-md border border-border-control bg-surface px-3 py-1.5 text-sm font-medium text-ink-950 transition-colors duration-150 hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-60;
+    @apply box-border inline-flex h-9 items-center justify-center rounded-md border border-border-control bg-surface px-3 py-1.5 text-sm font-medium text-ink-950 transition-colors duration-150 hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-60;
   }
 
   .btn-danger {
-    @apply inline-flex min-h-8 items-center justify-center rounded-md border border-error bg-error-surface px-3 py-1.5 text-sm font-medium text-error transition-colors duration-150 hover:bg-error hover:text-white disabled:cursor-not-allowed disabled:opacity-50;
+    @apply box-border inline-flex h-9 items-center justify-center rounded-md border border-error bg-error-surface px-3 py-1.5 text-sm font-medium text-error transition-colors duration-150 hover:bg-error hover:text-white disabled:cursor-not-allowed disabled:opacity-50;
   }
 }
 

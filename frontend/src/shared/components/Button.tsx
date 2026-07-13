@@ -19,8 +19,8 @@ const VARIANT_CLASSES: Record<ButtonVariant, string> = {
 }
 
 const SIZE_CLASSES: Record<ButtonSize, string> = {
-  compact: 'min-h-8 px-3 py-1.5 text-xs',
-  default: 'min-h-9 px-4 py-2 text-sm',
+  compact: 'h-[34px] px-3 text-xs',
+  default: 'h-9 px-4 text-sm',
 }
 
 export function Button({
@@ -39,20 +39,22 @@ export function Button({
       {...buttonProps}
       aria-busy={ariaBusy}
       className={cn(
-        'inline-flex min-w-0 items-center justify-center gap-2 rounded-md font-semibold transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-60',
+        'relative inline-flex min-w-0 items-center justify-center rounded-md font-semibold transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-60',
         VARIANT_CLASSES[variant],
         SIZE_CLASSES[size],
         className,
       )}
       disabled={disabled || loading}
     >
+      <span className={cn('inline-flex min-w-0 items-center gap-2', loading && 'opacity-0')}>{children}</span>
       {loading ? (
         <span
           aria-hidden="true"
-          className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-current border-r-transparent"
-        />
+          className="pointer-events-none absolute inset-0 flex items-center justify-center"
+        >
+          <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-r-transparent" />
+        </span>
       ) : null}
-      {children}
     </button>
   )
 }

@@ -47,6 +47,26 @@ describe('shared primitives', () => {
     expect(html).toContain('disabled=""')
   })
 
+  it('reserves the label width while showing an absolute loading indicator', () => {
+    const idleHtml = renderToStaticMarkup(<Button>긴 저장 작업</Button>)
+    const loadingHtml = renderToStaticMarkup(<Button loading>긴 저장 작업</Button>)
+
+    expect(idleHtml).toContain('class="inline-flex min-w-0 items-center gap-2"')
+    expect(loadingHtml).toContain('class="inline-flex min-w-0 items-center gap-2 opacity-0"')
+    expect(loadingHtml).toContain('aria-hidden="true" class="pointer-events-none absolute inset-0')
+    expect(loadingHtml).toContain('긴 저장 작업')
+  })
+
+  it('uses the approved exact shared-button heights', () => {
+    const compactHtml = renderToStaticMarkup(<Button size="compact">수정</Button>)
+    const defaultHtml = renderToStaticMarkup(<Button>저장</Button>)
+
+    expect(compactHtml).toContain(' h-[34px] ')
+    expect(defaultHtml).toContain(' h-9 ')
+    expect(compactHtml).not.toContain('min-h-')
+    expect(defaultHtml).not.toContain('min-h-')
+  })
+
   it('retains native button props and caller classes', () => {
     const html = renderToStaticMarkup(
       <Button className="justify-start" name="action" type="submit" value="save">

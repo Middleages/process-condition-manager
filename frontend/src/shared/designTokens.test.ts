@@ -36,4 +36,16 @@ describe('design tokens', () => {
   it('provides a reduced-motion fallback', () => {
     expect(css).toContain('@media (prefers-reduced-motion: reduce)')
   })
+
+  it('keeps legacy control surfaces at a 36px border-box height', () => {
+    for (const selector of ['.input', '.btn-primary', '.btn-secondary', '.btn-danger']) {
+      const start = css.indexOf(`${selector} {`)
+      const rule = css.slice(start, css.indexOf('}', start))
+
+      expect(start, `${selector} rule`).toBeGreaterThanOrEqual(0)
+      expect(rule, `${selector} box sizing`).toMatch(/\sbox-border(?:\s|;)/)
+      expect(rule, `${selector} height`).toMatch(/\sh-9(?:\s|;)/)
+      expect(rule, `${selector} minimum height`).not.toContain('min-h-')
+    }
+  })
 })
