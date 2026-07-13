@@ -27,6 +27,7 @@ import type {
   BackboneCandidateOut,
   MatchOut,
   MatchType,
+  ProjectCreate,
   ProcessDetailOut,
   ProcessOut,
 } from '@/api/types'
@@ -44,10 +45,14 @@ import {
   type ProjectCreateRouteState,
 } from './urlState'
 import {
+  getProjectCreateRouteReconciliation,
   getCreateDisabledReason,
+  invalidateProjectCreationQueries,
+  isWizardInteractionLocked,
   previewFingerprint,
   selectBackbone,
   selectProcess,
+  shouldApplyRouteReconciliation,
   toManualOverrides,
   type CreateDisabledReason,
 } from './wizardState'
@@ -77,6 +82,11 @@ interface PreviewResult {
   preview: Awaited<ReturnType<typeof previewBackbone>>
 }
 
+interface ProjectCreateSubmission {
+  payload: ProjectCreate
+  process: Pick<ProcessDetailOut, 'key' | 'line_id' | 'process_id'>
+}
+
 export function ProjectCreateWizard({ onCreated }: { onCreated: (projectId: number) => void }) {
   const queryClient = useQueryClient()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -92,6 +102,7 @@ export function ProjectCreateWizard({ onCreated }: { onCreated: (projectId: numb
   const submitLockRef = useRef(false)
   const completionStartedRef = useRef(false)
   const reconciledDownstream404Ref = useRef<unknown>(null)
+  const appliedRouteReconciliationRef = useRef<string | null>(null)
   const previousSelectionRef = useRef({
     processKey: routeState.processKey,
     backboneId: routeState.backboneId,
@@ -162,17 +173,9 @@ export function ProjectCreateWizard({ onCreated }: { onCreated: (projectId: numb
   })
 
   const createMutation = useMutation({
-    mutationFn: () =>
-      createProject({
-        line_id: selectedProcess!.line_id,
-        process_id: selectedProcess!.process_id,
-        part_id: partId.trim(),
-        name: name.trim(),
-        backbone_project_id: routeState.backboneId,
-        manual_overrides: manualOverrides,
-      }),
-    onSuccess: (project) => {
-      void queryClient.invalidateQueries({ queryKey: ['projects'] })
+    mutationFn: (submission: ProjectCreateSubmission) => createProject(submission.payload),
+    onSuccess: (project, submission) => {
+      void invalidateProjectCreationQueries(queryClient, submission.process)
       setIsDirty(false)
       setCreatedProjectId(project.id)
     },
@@ -180,6 +183,11 @@ export function ProjectCreateWizard({ onCreated }: { onCreated: (projectId: numb
       submitLockRef.current = false
       setSubmitLocked(false)
     },
+  })
+  const interactionLocked = isWizardInteractionLocked({
+    submitLatched: submitLocked || submitLockRef.current,
+    mutationPending: createMutation.isPending,
+    completionPending: createdProjectId !== null,
   })
 
   useEffect(() => {
@@ -195,7 +203,7 @@ export function ProjectCreateWizard({ onCreated }: { onCreated: (projectId: numb
       previous.processKey !== routeState.processKey ||
       previous.backboneId !== routeState.backboneId
     ) {
-      setOverrides({})
+      setOverrides((current) => (Object.keys(current).length === 0 ? current : {}))
       previousSelectionRef.current = {
         processKey: routeState.processKey,
         backboneId: routeState.backboneId,
@@ -203,37 +211,58 @@ export function ProjectCreateWizard({ onCreated }: { onCreated: (projectId: numb
     }
   }, [routeState.backboneId, routeState.processKey])
 
+  const routeReconciliation =
+    createdProjectId === null
+      ? getProjectCreateRouteReconciliation({
+          routeState,
+          processNotFound:
+            selectedProcessQuery.isError &&
+            getApiErrorStatus(selectedProcessQuery.error) === 404,
+          processHasProject: selectedProcess?.has_project === true,
+          backboneNotFound:
+            processReady &&
+            backboneDetailQuery.isError &&
+            getApiErrorStatus(backboneDetailQuery.error) === 404,
+        })
+      : null
+  const reconciliationKey = routeReconciliation?.key ?? null
+  const reconciliationKind = routeReconciliation?.kind ?? null
+  const reconciledStep = routeReconciliation?.routeState.step ?? null
+  const reconciledProcessKey = routeReconciliation?.routeState.processKey ?? null
+  const reconciledBackboneId = routeReconciliation?.routeState.backboneId ?? null
+
   useEffect(() => {
-    if (routeState.step === 1) return
-
-    const processCannotAdvance =
-      routeState.processKey === null ||
-      (selectedProcessQuery.isError && getApiErrorStatus(selectedProcessQuery.error) === 404) ||
-      selectedProcess?.has_project === true
-
-    if (processCannotAdvance) {
-      setRouteState({ ...routeState, step: 1, backboneId: null }, true)
+    if (reconciliationKey === null || reconciliationKind === null || reconciledStep === null) {
+      appliedRouteReconciliationRef.current = null
+      return
     }
-  }, [
-    routeState,
-    selectedProcess?.has_project,
-    selectedProcessQuery.error,
-    selectedProcessQuery.isError,
-  ])
-
-  useEffect(() => {
     if (
-      routeState.backboneId === null ||
-      !backboneDetailQuery.isError ||
-      getApiErrorStatus(backboneDetailQuery.error) !== 404
+      !shouldApplyRouteReconciliation(
+        appliedRouteReconciliationRef.current,
+        reconciliationKey,
+      )
     ) {
       return
     }
 
-    setOverrides({})
-    setStaleBackboneCleared(true)
-    setRouteState({ ...routeState, step: 2, backboneId: null }, true)
-  }, [backboneDetailQuery.error, backboneDetailQuery.isError, routeState])
+    appliedRouteReconciliationRef.current = reconciliationKey
+    if (reconciliationKind === 'backbone') setStaleBackboneCleared(true)
+    setSearchParams(
+      serializeProjectCreateSearch({
+        step: reconciledStep,
+        processKey: reconciledProcessKey,
+        backboneId: reconciledBackboneId,
+      }),
+      { replace: true },
+    )
+  }, [
+    reconciliationKey,
+    reconciliationKind,
+    reconciledBackboneId,
+    reconciledProcessKey,
+    reconciledStep,
+    setSearchParams,
+  ])
 
   const downstream404Error =
     previewQuery.isError && getApiErrorStatus(previewQuery.error) === 404
@@ -241,6 +270,8 @@ export function ProjectCreateWizard({ onCreated }: { onCreated: (projectId: numb
       : createMutation.isError && getApiErrorStatus(createMutation.error) === 404
         ? createMutation.error
         : null
+  const refetchSelectedProcess = selectedProcessQuery.refetch
+  const refetchBackbone = backboneDetailQuery.refetch
 
   useEffect(() => {
     if (downstream404Error === null) {
@@ -250,14 +281,9 @@ export function ProjectCreateWizard({ onCreated }: { onCreated: (projectId: numb
     if (reconciledDownstream404Ref.current === downstream404Error) return
 
     reconciledDownstream404Ref.current = downstream404Error
-    void selectedProcessQuery.refetch()
-    if (routeState.backboneId !== null) void backboneDetailQuery.refetch()
-  }, [
-    backboneDetailQuery,
-    downstream404Error,
-    routeState.backboneId,
-    selectedProcessQuery,
-  ])
+    void refetchSelectedProcess()
+    if (routeState.backboneId !== null) void refetchBackbone()
+  }, [downstream404Error, refetchBackbone, refetchSelectedProcess, routeState.backboneId])
 
   const renderedStep = getRenderedStep(routeState, selectedProcessQuery, selectedProcess)
   const stepHeadingRef = useRef<HTMLHeadingElement>(null)
@@ -285,14 +311,20 @@ export function ProjectCreateWizard({ onCreated }: { onCreated: (projectId: numb
     previewFingerprint: previewQuery.data?.fingerprint ?? null,
     currentFingerprint,
     requiredFieldsComplete: partId.trim() !== '' && name.trim() !== '',
-    isSubmitting: submitLocked || createMutation.isPending,
+    isSubmitting: interactionLocked,
   })
 
   function setRouteState(next: ProjectCreateRouteState, replace = false) {
     setSearchParams(serializeProjectCreateSearch(next), { replace })
   }
 
+  function updateProcessQuery(value: string) {
+    if (submitLockRef.current || interactionLocked) return
+    setProcessQuery(value)
+  }
+
   function chooseProcess(processKey: string) {
+    if (submitLockRef.current || interactionLocked) return
     if (processKey === routeState.processKey) return
 
     const next = selectProcess(
@@ -310,6 +342,7 @@ export function ProjectCreateWizard({ onCreated }: { onCreated: (projectId: numb
   }
 
   function chooseBackbone(backboneId: number | null) {
+    if (submitLockRef.current || interactionLocked || !processReady) return
     if (backboneId === routeState.backboneId) {
       setStaleBackboneCleared(false)
       return
@@ -330,11 +363,13 @@ export function ProjectCreateWizard({ onCreated }: { onCreated: (projectId: numb
   }
 
   function goToStep(step: 1 | 2 | 3) {
+    if (submitLockRef.current || interactionLocked) return
     if (step === routeState.step || !canVisitStep(step, processReady, explicitBackboneReady)) return
     setRouteState({ ...routeState, step })
   }
 
   function updateOverride(targetLayerKey: string, sourceLayerKey: string) {
+    if (submitLockRef.current || interactionLocked) return
     setIsDirty(true)
     createMutation.reset()
     setOverrides((current) => {
@@ -345,13 +380,49 @@ export function ProjectCreateWizard({ onCreated }: { onCreated: (projectId: numb
     })
   }
 
+  function updatePartId(value: string) {
+    if (submitLockRef.current || interactionLocked) return
+    setPartId(value)
+    setIsDirty(true)
+    createMutation.reset()
+  }
+
+  function updateName(value: string) {
+    if (submitLockRef.current || interactionLocked) return
+    setName(value)
+    setIsDirty(true)
+    createMutation.reset()
+  }
+
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (submitLockRef.current || createDisabledReason !== null) return
+    if (
+      submitLockRef.current ||
+      createDisabledReason !== null ||
+      selectedProcess === null
+    ) {
+      return
+    }
+
+    const submission: ProjectCreateSubmission = {
+      payload: {
+        line_id: selectedProcess.line_id,
+        process_id: selectedProcess.process_id,
+        part_id: partId.trim(),
+        name: name.trim(),
+        backbone_project_id: routeState.backboneId,
+        manual_overrides: toManualOverrides(overrides),
+      },
+      process: {
+        key: selectedProcess.key,
+        line_id: selectedProcess.line_id,
+        process_id: selectedProcess.process_id,
+      },
+    }
 
     submitLockRef.current = true
     setSubmitLocked(true)
-    createMutation.mutate()
+    createMutation.mutate(submission)
   }
 
   return (
@@ -360,6 +431,7 @@ export function ProjectCreateWizard({ onCreated }: { onCreated: (projectId: numb
         currentStep={renderedStep}
         processReady={processReady}
         backboneReady={explicitBackboneReady}
+        interactionLocked={interactionLocked}
         onStepChange={goToStep}
       />
 
@@ -367,8 +439,9 @@ export function ProjectCreateWizard({ onCreated }: { onCreated: (projectId: numb
         {renderedStep === 1 ? (
           <ProcessStep
             headingRef={stepHeadingRef}
+            controlsDisabled={interactionLocked}
             processQuery={processQuery}
-            onProcessQueryChange={setProcessQuery}
+            onProcessQueryChange={updateProcessQuery}
             processes={processes}
             selectedProcessKey={routeState.processKey}
             selectedProcess={selectedProcess}
@@ -393,6 +466,8 @@ export function ProjectCreateWizard({ onCreated }: { onCreated: (projectId: numb
             selectedBackboneId={routeState.backboneId}
             candidates={candidatesQuery.data ?? []}
             processIsPending={selectedProcessQuery.isPending}
+            controlsDisabled={interactionLocked || !processReady}
+            navigationLocked={interactionLocked}
             candidatesIsPending={processReady && candidatesQuery.isPending}
             candidatesError={candidatesQuery.isError ? candidatesQuery.error : null}
             staleBackboneCleared={staleBackboneCleared}
@@ -411,6 +486,7 @@ export function ProjectCreateWizard({ onCreated }: { onCreated: (projectId: numb
         {renderedStep === 3 ? (
           <PreviewStep
             headingRef={stepHeadingRef}
+            controlsDisabled={interactionLocked || !processReady}
             selectedProcess={selectedProcess}
             selectedProcessIsPending={
               routeState.processKey !== null && selectedProcessQuery.isPending
@@ -436,16 +512,8 @@ export function ProjectCreateWizard({ onCreated }: { onCreated: (projectId: numb
             createError={createMutation.isError ? createMutation.error : null}
             selectedProcessId={selectedProcess?.process_id ?? null}
             onOverrideChange={updateOverride}
-            onPartIdChange={(value) => {
-              setPartId(value)
-              setIsDirty(true)
-              createMutation.reset()
-            }}
-            onNameChange={(value) => {
-              setName(value)
-              setIsDirty(true)
-              createMutation.reset()
-            }}
+            onPartIdChange={updatePartId}
+            onNameChange={updateName}
             onRetryProcess={() => selectedProcessQuery.refetch()}
             onRetryBackbone={() => backboneDetailQuery.refetch()}
             onRetryPreview={() => previewQuery.refetch()}
@@ -467,11 +535,13 @@ function WizardStepper({
   currentStep,
   processReady,
   backboneReady,
+  interactionLocked,
   onStepChange,
 }: {
   currentStep: 1 | 2 | 3
   processReady: boolean
   backboneReady: boolean
+  interactionLocked: boolean
   onStepChange: (step: 1 | 2 | 3) => void
 }) {
   return (
@@ -495,7 +565,7 @@ function WizardStepper({
                       ? 'border-border-control bg-surface text-ink-950 hover:bg-canvas'
                       : 'border-transparent bg-canvas text-muted',
                 )}
-                disabled={!enabled || isCurrent}
+                disabled={interactionLocked || !enabled || isCurrent}
                 type="button"
                 onClick={() => onStepChange(step.index)}
               >
@@ -525,6 +595,7 @@ function WizardStepper({
 
 function ProcessStep({
   headingRef,
+  controlsDisabled,
   processQuery,
   onProcessQueryChange,
   processes,
@@ -539,6 +610,7 @@ function ProcessStep({
   onContinue,
 }: {
   headingRef: React.RefObject<HTMLHeadingElement>
+  controlsDisabled: boolean
   processQuery: string
   onProcessQueryChange: (value: string) => void
   processes: ProcessOut[]
@@ -578,6 +650,7 @@ function ProcessStep({
               <input
                 autoComplete="off"
                 className="input pl-9"
+                disabled={controlsDisabled}
                 id="process-picker-query"
                 placeholder="Line 또는 Process ID"
                 type="search"
@@ -608,6 +681,7 @@ function ProcessStep({
                           ? 'border-brand-700 bg-brand-100'
                           : 'border-border-subtle bg-surface hover:border-border-control hover:bg-canvas',
                       )}
+                      disabled={controlsDisabled}
                       type="button"
                       onClick={() => onChooseProcess(process.key)}
                     >
@@ -642,6 +716,7 @@ function ProcessStep({
           {processResults.hasNextPage ? (
             <Button
               loading={processResults.isFetchingNextPage}
+              disabled={controlsDisabled}
               variant="secondary"
               onClick={() => processResults.fetchNextPage()}
             >
@@ -692,7 +767,7 @@ function ProcessStep({
       </div>
 
       <div className="flex justify-end border-t border-border-subtle pt-4">
-        <Button disabled={!selectedProcessReady} onClick={onContinue}>
+        <Button disabled={controlsDisabled || !selectedProcessReady} onClick={onContinue}>
           백본 선택으로
           <ArrowRight aria-hidden="true" size={16} />
         </Button>
@@ -703,6 +778,8 @@ function ProcessStep({
 
 function BackboneStep({
   headingRef,
+  controlsDisabled,
+  navigationLocked,
   selectedProcess,
   selectedBackboneId,
   candidates,
@@ -719,6 +796,8 @@ function BackboneStep({
   onContinue,
 }: {
   headingRef: React.RefObject<HTMLHeadingElement>
+  controlsDisabled: boolean
+  navigationLocked: boolean
   selectedProcess: ProcessDetailOut | null
   selectedBackboneId: number | null
   candidates: BackboneCandidateOut[]
@@ -766,6 +845,7 @@ function BackboneStep({
 
       <div className="grid gap-2 lg:grid-cols-2 xl:grid-cols-3">
         <BackboneOption
+          disabled={controlsDisabled}
           selected={selectedBackboneId === null}
           onSelect={() => onChooseBackbone(null)}
           title="백본 없이 시작"
@@ -774,6 +854,7 @@ function BackboneStep({
         {candidates.map((candidate) => (
           <BackboneOption
             key={candidate.id}
+            disabled={controlsDisabled}
             selected={selectedBackboneId === candidate.id}
             onSelect={() => onChooseBackbone(candidate.id)}
             title={candidate.name}
@@ -790,11 +871,14 @@ function BackboneStep({
       ) : null}
 
       <div className="flex flex-wrap justify-between gap-2 border-t border-border-subtle pt-4">
-        <Button variant="secondary" onClick={onBack}>
+        <Button disabled={navigationLocked} variant="secondary" onClick={onBack}>
           <ArrowLeft aria-hidden="true" size={16} />
           Process로
         </Button>
-        <Button disabled={backboneIsPending || Boolean(backboneError)} onClick={onContinue}>
+        <Button
+          disabled={controlsDisabled || backboneIsPending || Boolean(backboneError)}
+          onClick={onContinue}
+        >
           매칭 확인으로
           <ArrowRight aria-hidden="true" size={16} />
         </Button>
@@ -805,6 +889,7 @@ function BackboneStep({
 
 function PreviewStep({
   headingRef,
+  controlsDisabled,
   selectedProcess,
   selectedProcessIsPending,
   selectedProcessError,
@@ -833,6 +918,7 @@ function PreviewStep({
   onSubmit,
 }: {
   headingRef: React.RefObject<HTMLHeadingElement>
+  controlsDisabled: boolean
   selectedProcess: ProcessDetailOut | null
   selectedProcessIsPending: boolean
   selectedProcessError: unknown
@@ -928,6 +1014,7 @@ function PreviewStep({
                     match={match}
                     backboneId={backboneId}
                     backboneLayers={backboneLayers}
+                    disabled={controlsDisabled}
                     selectedSource={overrides[match.target_layer_key] ?? ''}
                     onOverrideChange={onOverrideChange}
                   />
@@ -942,6 +1029,7 @@ function PreviewStep({
         <Field inputId="project-part-id" label="Part ID">
           <input
             className="input"
+            disabled={controlsDisabled}
             required
             value={partId}
             onChange={(event) => onPartIdChange(event.target.value)}
@@ -950,6 +1038,7 @@ function PreviewStep({
         <Field inputId="project-name" label="프로젝트명">
           <input
             className="input"
+            disabled={controlsDisabled}
             required
             value={name}
             onChange={(event) => onNameChange(event.target.value)}
@@ -977,7 +1066,7 @@ function PreviewStep({
       ) : null}
 
       <div className="flex flex-wrap justify-between gap-2 border-t border-border-subtle pt-4">
-        <Button type="button" variant="secondary" onClick={onBack}>
+        <Button disabled={controlsDisabled} type="button" variant="secondary" onClick={onBack}>
           <ArrowLeft aria-hidden="true" size={16} />
           백본으로
         </Button>
@@ -1023,12 +1112,14 @@ function DetailStat({ label, value }: { label: string; value: ReactNode }) {
 }
 
 function BackboneOption({
+  disabled,
   selected,
   onSelect,
   title,
   subtitle,
   meta,
 }: {
+  disabled: boolean
   selected: boolean
   onSelect: () => void
   title: string
@@ -1044,6 +1135,7 @@ function BackboneOption({
           ? 'border-brand-700 bg-brand-100'
           : 'border-border-subtle bg-surface hover:border-border-control hover:bg-canvas',
       )}
+      disabled={disabled}
       type="button"
       onClick={onSelect}
     >
@@ -1065,12 +1157,14 @@ function PreviewMatchRow({
   match,
   backboneId,
   backboneLayers,
+  disabled,
   selectedSource,
   onOverrideChange,
 }: {
   match: MatchOut
   backboneId: number | null
   backboneLayers: Array<{ layer_key: string; step_seq: string; layer_id: string }>
+  disabled: boolean
   selectedSource: string
   onOverrideChange: (targetLayerKey: string, sourceLayerKey: string) => void
 }) {
@@ -1083,14 +1177,19 @@ function PreviewMatchRow({
         <MatchBadge type={match.match_type} />
       </td>
       <td className="px-3">
-        {backboneId !== null && match.match_type !== 'auto' ? (
+        {backboneId !== null ? (
           <select
             aria-label={`${match.target_layer_key} 수동 매칭`}
             className="input h-[30px] py-0 text-xs"
+            disabled={disabled}
             value={selectedSource}
             onChange={(event) => onOverrideChange(match.target_layer_key, event.target.value)}
           >
-            <option value="">미매칭 · 빈 값</option>
+            <option value="">
+              {match.match_type === 'auto' && match.source_layer_key
+                ? `자동 매칭 유지 · ${match.source_layer_key}`
+                : '미매칭 · 빈 값'}
+            </option>
             {backboneLayers.map((layer) => (
               <option key={layer.layer_key} value={layer.layer_key}>
                 {layer.step_seq}/{layer.layer_id}

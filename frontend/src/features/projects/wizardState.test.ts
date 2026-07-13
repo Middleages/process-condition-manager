@@ -1,10 +1,14 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import {
+  getProjectCreateRouteReconciliation,
   getCreateDisabledReason,
+  invalidateProjectCreationQueries,
+  isWizardInteractionLocked,
   previewFingerprint,
   selectBackbone,
   selectProcess,
+  shouldApplyRouteReconciliation,
   toManualOverrides,
   type CreateGuardState,
 } from './wizardState'
@@ -90,5 +94,147 @@ describe('project create guard', () => {
 
   it('allows an empty candidate path with a null backbone', () => {
     expect(getCreateDisabledReason(ready)).toBeNull()
+  })
+})
+
+describe('project create route reconciliation', () => {
+  it('normalizes one deleted backbone only once for repeated error renders', () => {
+    const reconciliation = getProjectCreateRouteReconciliation({
+      routeState: { step: 3, processKey: 'A::P', backboneId: 999 },
+      processNotFound: false,
+      processHasProject: false,
+      backboneNotFound: true,
+    })
+
+    expect(reconciliation).toEqual({
+      key: 'backbone:999:not-found',
+      kind: 'backbone',
+      routeState: { step: 2, processKey: 'A::P', backboneId: null },
+    })
+    expect(shouldApplyRouteReconciliation(null, reconciliation!.key)).toBe(true)
+    expect(shouldApplyRouteReconciliation(reconciliation!.key, reconciliation!.key)).toBe(false)
+  })
+
+  it('prioritizes a missing Process over a simultaneous missing backbone', () => {
+    expect(
+      getProjectCreateRouteReconciliation({
+        routeState: { step: 3, processKey: 'A::P', backboneId: 999 },
+        processNotFound: true,
+        processHasProject: false,
+        backboneNotFound: true,
+      }),
+    ).toEqual({
+      key: 'process:A::P:not-found',
+      kind: 'process',
+      routeState: { step: 1, processKey: 'A::P', backboneId: null },
+    })
+  })
+
+  it.each([
+    ['missing', true, false, 'process:A::P:not-found'],
+    ['duplicate', false, true, 'process:A::P:duplicate'],
+  ] as const)(
+    'keeps a %s Process at step one when a cached backbone error also exists',
+    (_label, processNotFound, processHasProject, key) => {
+      expect(
+        getProjectCreateRouteReconciliation({
+          routeState: { step: 1, processKey: 'A::P', backboneId: 999 },
+          processNotFound,
+          processHasProject,
+          backboneNotFound: true,
+        }),
+      ).toEqual({
+        key,
+        kind: 'process',
+        routeState: { step: 1, processKey: 'A::P', backboneId: null },
+      })
+    },
+  )
+
+  it('clears an orphaned backbone instead of advancing a missing Process', () => {
+    expect(
+      getProjectCreateRouteReconciliation({
+        routeState: { step: 1, processKey: null, backboneId: 999 },
+        processNotFound: false,
+        processHasProject: false,
+        backboneNotFound: true,
+      }),
+    ).toEqual({
+      key: 'process:missing',
+      kind: 'process',
+      routeState: { step: 1, processKey: null, backboneId: null },
+    })
+  })
+
+  it('reapplies a retained Process error after revisiting a later step', () => {
+    let appliedKey: string | null = null
+    const invalidRoute = { step: 3, processKey: 'A::P', backboneId: null } as const
+    const first = getProjectCreateRouteReconciliation({
+      routeState: invalidRoute,
+      processNotFound: true,
+      processHasProject: false,
+      backboneNotFound: false,
+    })
+
+    expect(first).not.toBeNull()
+    expect(shouldApplyRouteReconciliation(appliedKey, first!.key)).toBe(true)
+    appliedKey = first!.key
+
+    const normalized = getProjectCreateRouteReconciliation({
+      routeState: first!.routeState,
+      processNotFound: true,
+      processHasProject: false,
+      backboneNotFound: false,
+    })
+    expect(normalized).toBeNull()
+    if (normalized === null) appliedKey = null
+
+    const revisited = getProjectCreateRouteReconciliation({
+      routeState: invalidRoute,
+      processNotFound: true,
+      processHasProject: false,
+      backboneNotFound: false,
+    })
+    expect(shouldApplyRouteReconciliation(appliedKey, revisited!.key)).toBe(true)
+  })
+
+  it('does not normalize transient entity failures', () => {
+    expect(
+      getProjectCreateRouteReconciliation({
+        routeState: { step: 3, processKey: 'A::P', backboneId: 999 },
+        processNotFound: false,
+        processHasProject: false,
+        backboneNotFound: false,
+      }),
+    ).toBeNull()
+  })
+})
+
+describe('project creation mutation boundaries', () => {
+  it('keeps interaction locked when a deferred mutation observer temporarily appears idle', () => {
+    expect(
+      isWizardInteractionLocked({
+        submitLatched: true,
+        mutationPending: false,
+        completionPending: false,
+      }),
+    ).toBe(true)
+  })
+
+  it('invalidates every Process cache that could preserve a stale D-17 decision', async () => {
+    const invalidateQueries = vi.fn().mockResolvedValue(undefined)
+
+    await invalidateProjectCreationQueries(
+      { invalidateQueries },
+      { key: 'L1::PROC_ALPHA', line_id: 'L1', process_id: 'PROC_ALPHA' },
+    )
+
+    expect(invalidateQueries.mock.calls.map(([options]) => options.queryKey)).toEqual([
+      ['projects'],
+      ['process', 'L1::PROC_ALPHA'],
+      ['processes', 'picker'],
+      ['process-catalog'],
+      ['backbone-candidates', 'L1', 'PROC_ALPHA'],
+    ])
   })
 })

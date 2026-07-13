@@ -48,6 +48,21 @@ const preview: MatchPreviewOut = {
   ],
 }
 
+const automaticPreview: MatchPreviewOut = {
+  match_rate: 1,
+  matched_count: 1,
+  unmatched_count: 0,
+  copy_condition_count: 1,
+  copy_cell_count: 2,
+  matches: [
+    {
+      target_layer_key: '4::ETCH',
+      source_layer_key: 'SOURCE::AUTO',
+      match_type: 'auto',
+    },
+  ],
+}
+
 function renderWizard(location: string, seedSelectedProcess: boolean): string {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -98,6 +113,95 @@ function renderWizard(location: string, seedSelectedProcess: boolean): string {
   }
 }
 
+function renderAutomaticBackbonePreview(): string {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, staleTime: Number.POSITIVE_INFINITY },
+      mutations: { retry: false },
+    },
+  })
+  const fingerprint = previewFingerprint(directProcess.key, 7, {})
+  queryClient.setQueryData(['processes', 'picker', ''], {
+    pages: [firstPage],
+    pageParams: [null],
+  })
+  queryClient.setQueryData(['process', directProcess.key], directProcess)
+  queryClient.setQueryData(['project', 7], {
+    id: 7,
+    line_id: 'SOURCE',
+    process_id: 'BASE',
+    part_id: 'BASE-1',
+    name: 'Source backbone',
+    description: null,
+    status: 'draft',
+    layers: [
+      {
+        id: 70,
+        layer_key: 'SOURCE::AUTO',
+        step_seq: '10',
+        layer_id: 'AUTO',
+        eqp_type: null,
+        eqp_type_desc: null,
+        area_name: null,
+        sort_order: 1,
+        condition_count: 1,
+        cell_count: 2,
+        source_project_id: null,
+        source_layer_key: null,
+      },
+      {
+        id: 71,
+        layer_key: 'SOURCE::MANUAL',
+        step_seq: '20',
+        layer_id: 'MANUAL',
+        eqp_type: null,
+        eqp_type_desc: null,
+        area_name: null,
+        sort_order: 2,
+        condition_count: 0,
+        cell_count: 0,
+        source_project_id: null,
+        source_layer_key: null,
+      },
+    ],
+  })
+  queryClient.setQueryData(['backbone-preview', fingerprint], {
+    fingerprint,
+    preview: automaticPreview,
+  })
+
+  const params = new URLSearchParams({
+    step: '3',
+    process: directProcess.key,
+    backbone: '7',
+  })
+  const router = createMemoryRouter(
+    [
+      {
+        path: '/projects/new',
+        element: <ProjectCreateWizard onCreated={vi.fn()} />,
+      },
+    ],
+    { initialEntries: [`/projects/new?${params}`] },
+  )
+
+  const originalConsoleError = console.error
+  const consoleError = vi.spyOn(console, 'error').mockImplementation((message, ...args) => {
+    if (String(message).includes('useLayoutEffect does nothing on the server')) return
+    originalConsoleError(message, ...args)
+  })
+
+  try {
+    return renderToStaticMarkup(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+  } finally {
+    consoleError.mockRestore()
+  }
+}
+
 describe('ProjectCreateWizard route restoration', () => {
   it('restores a direct Process outside picker results without selecting the first result', () => {
     const params = new URLSearchParams({ step: '3', process: directProcess.key })
@@ -116,5 +220,19 @@ describe('ProjectCreateWizard route restoration', () => {
 
     expect(html).toContain('매칭 확인 · 프로젝트 정보</h2>')
     expect(html).toContain('URL에서 선택한 Process를 복원하는 중입니다.')
+    expect(html).toMatch(
+      /<input(?=[^>]*id="project-part-id")(?=[^>]*disabled="")[^>]*>/,
+    )
+    expect(html).toMatch(
+      /<input(?=[^>]*id="project-name")(?=[^>]*disabled="")[^>]*>/,
+    )
+  })
+
+  it('offers a manual override for an automatic match with an accurate default', () => {
+    const html = renderAutomaticBackbonePreview()
+
+    expect(html).toContain('aria-label="4::ETCH 수동 매칭"')
+    expect(html).toContain('<option value="" selected="">자동 매칭 유지 · SOURCE::AUTO</option>')
+    expect(html).toContain('value="SOURCE::MANUAL"')
   })
 })

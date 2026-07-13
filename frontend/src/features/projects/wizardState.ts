@@ -1,5 +1,7 @@
 import type { ManualOverrideIn } from '@/api/types'
 
+import type { ProjectCreateRouteState } from './urlState'
+
 export interface WizardSelectionState {
   processKey: string | null
   backboneId: number | null
@@ -93,4 +95,98 @@ export function getCreateDisabledReason(state: CreateGuardState): CreateDisabled
   if (!state.requiredFieldsComplete) return 'required-fields'
 
   return null
+}
+
+export interface ProjectCreateRouteReconciliation {
+  key: string
+  kind: 'process' | 'backbone'
+  routeState: ProjectCreateRouteState
+}
+
+export function getProjectCreateRouteReconciliation({
+  routeState,
+  processNotFound,
+  processHasProject,
+  backboneNotFound,
+}: {
+  routeState: ProjectCreateRouteState
+  processNotFound: boolean
+  processHasProject: boolean
+  backboneNotFound: boolean
+}): ProjectCreateRouteReconciliation | null {
+  if (
+    routeState.processKey === null &&
+    (routeState.step !== 1 || routeState.backboneId !== null)
+  ) {
+    return {
+      key: 'process:missing',
+      kind: 'process',
+      routeState: { step: 1, processKey: null, backboneId: null },
+    }
+  }
+  if (routeState.processKey !== null && (processNotFound || processHasProject)) {
+    if (routeState.step === 1 && routeState.backboneId === null) return null
+
+    return {
+      key: `process:${routeState.processKey}:${processNotFound ? 'not-found' : 'duplicate'}`,
+      kind: 'process',
+      routeState: {
+        step: 1,
+        processKey: routeState.processKey,
+        backboneId: null,
+      },
+    }
+  }
+
+  if (routeState.backboneId !== null && backboneNotFound) {
+    return {
+      key: `backbone:${routeState.backboneId}:not-found`,
+      kind: 'backbone',
+      routeState: {
+        step: 2,
+        processKey: routeState.processKey,
+        backboneId: null,
+      },
+    }
+  }
+
+  return null
+}
+
+export function shouldApplyRouteReconciliation(
+  appliedKey: string | null,
+  reconciliationKey: string | null,
+): boolean {
+  return reconciliationKey !== null && reconciliationKey !== appliedKey
+}
+
+export function isWizardInteractionLocked({
+  submitLatched,
+  mutationPending,
+  completionPending,
+}: {
+  submitLatched: boolean
+  mutationPending: boolean
+  completionPending: boolean
+}): boolean {
+  return submitLatched || mutationPending || completionPending
+}
+
+interface QueryInvalidator {
+  invalidateQueries(options: { queryKey: readonly unknown[] }): Promise<unknown>
+}
+
+export async function invalidateProjectCreationQueries(
+  queryClient: QueryInvalidator,
+  process: { key: string; line_id: string; process_id: string },
+): Promise<void> {
+  const queryKeys = [
+    ['projects'],
+    ['process', process.key],
+    ['processes', 'picker'],
+    ['process-catalog'],
+    ['backbone-candidates', process.line_id, process.process_id],
+  ] as const
+
+  await Promise.all(queryKeys.map((queryKey) => queryClient.invalidateQueries({ queryKey })))
 }
