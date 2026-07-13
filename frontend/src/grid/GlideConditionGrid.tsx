@@ -14,7 +14,14 @@
  *   실제 스테이징/적용 파이프라인은 T4가 붙인다.
  * - 셀 상태/스테이징 오버레이: 지금은 themeOverride 렌더 슬롯만 — 데이터 연결은 Phase 3/5.
  */
-import { forwardRef, useCallback, useImperativeHandle, useMemo, useRef, useState } from 'react'
+import {
+  forwardRef,
+  useCallback,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import {
   DataEditor,
   GridCellKind,
@@ -28,17 +35,21 @@ import {
 } from '@glideapps/glide-data-grid'
 import '@glideapps/glide-data-grid/dist/index.css'
 
+import { useIsomorphicLayoutEffect } from '@/shared/lib/useIsomorphicLayoutEffect'
+
 import { choiceCellRenderer, isChoiceCell, makeChoiceCell } from './choiceCell'
 import {
   IDENTITY_COLUMN_COUNT,
   IDENTITY_COLUMNS,
   cellScrollTarget,
   columnScrollIndex,
+  commitPasteCallbackRuntime,
   computeRowGroups,
   formatNumberDisplay,
   headerTooltip,
   indexStaging,
   indexStatuses,
+  isCurrentPasteCallback,
   matrixToTsv,
   overlayKey,
   previewCellValue,
@@ -141,6 +152,19 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
     () => visibleParameterColumns(data.columns, view?.activeCategory),
     [data.columns, view?.activeCategory],
   )
+  // Glide의 클립보드 읽기가 끝날 때까지 readOnly/열/행 문맥이 유지됐는지 확인한다. 이전
+  // render의 handlePaste가 남아 실행돼도 현재 ref와 generation이 다르면 좌표 해석 전에 폐기.
+  const pasteCallbackGeneration = useMemo(
+    () => Symbol('glide-paste-context'),
+    [readOnly, visibleColumns, rows],
+  )
+  const pasteCallbackRuntimeRef = useRef({ generation: pasteCallbackGeneration, readOnly })
+  useIsomorphicLayoutEffect(() => {
+    commitPasteCallbackRuntime(pasteCallbackRuntimeRef, {
+      generation: pasteCallbackGeneration,
+      readOnly,
+    })
+  }, [pasteCallbackGeneration, readOnly])
   const groupMeta = useMemo(() => computeRowGroups(rows), [rows])
   const statusIndex = useMemo(() => indexStatuses(data.statuses), [data.statuses])
   const stagingIndex = useMemo(() => indexStaging(pasteStaging), [pasteStaging])
@@ -266,6 +290,16 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
 
   const handlePaste = useCallback(
     (target: Item, values: readonly (readonly string[])[]): boolean => {
+      const current = pasteCallbackRuntimeRef.current
+      if (
+        !isCurrentPasteCallback(
+          pasteCallbackGeneration,
+          current.generation,
+          !current.readOnly,
+        )
+      ) {
+        return false
+      }
       if (readOnly) return false
       const cellTarget = resolveCellTarget(target[0], target[1], visibleColumns, rows, IDENTITY_COLUMN_COUNT)
       if (cellTarget !== null) {
@@ -274,7 +308,7 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
       // 항상 기본 붙여넣기를 막는다 — 실제 적용(스테이징 → 더티 버퍼)은 T4가 담당.
       return false
     },
-    [readOnly, visibleColumns, rows, callbacks],
+    [readOnly, visibleColumns, rows, callbacks, pasteCallbackGeneration],
   )
 
   const handleItemHovered = useCallback(

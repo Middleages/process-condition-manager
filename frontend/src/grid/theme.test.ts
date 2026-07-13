@@ -36,6 +36,13 @@ describe('GRID_COLORS', () => {
     expect(glideSource).toContain('bgCell: GRID_COLORS.warningSurface')
     expect(glideSource).toContain('bgCell: GRID_COLORS.errorSurface')
     expect(glideSource).toContain('if (readOnly) return false')
+    expect(glideSource).toMatch(
+      /useIsomorphicLayoutEffect\(\(\) => \{\s*commitPasteCallbackRuntime\(pasteCallbackRuntimeRef/,
+    )
+    expect(glideSource).not.toContain('pasteCallbackRuntimeRef.current =')
+    expect(glideSource).toMatch(
+      /isCurrentPasteCallback\([\s\S]*?pasteCallbackGeneration[\s\S]*?current\.generation[\s\S]*?!current\.readOnly[\s\S]*?\)[\s\S]*?resolveCellTarget/,
+    )
     expect(glideSource).not.toMatch(
       /#(?:0891b2|0f172a|94a3b8|f1f5f9|f8fafc|ecfdf5|fffbeb|eff6ff)/i,
     )

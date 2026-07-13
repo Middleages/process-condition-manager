@@ -159,6 +159,36 @@ export function matrixToTsv(values: readonly (readonly string[])[]): string {
 }
 
 /**
+ * 비동기 클립보드 콜백이 시작 당시의 시트 문맥에서 아직 유효한지 판정한다.
+ *
+ * 붙여넣기 권한이나 보이는 컬럼/행이 바뀌면 호출자가 새 generation을 발급한다. 콜백은
+ * 시작할 때 캡처한 generation과 현재 generation이 같고, 현재 정책도 허용할 때만 좌표를
+ * 해석할 수 있다. 라이브러리와 React 상태를 모르는 작은 공용 가드로 두어 어댑터와 상위
+ * 스테이징 경계에서 같은 규칙을 적용한다.
+ */
+export function isCurrentPasteCallback(
+  snapshotGeneration: symbol,
+  currentGeneration: symbol,
+  enabled: boolean,
+): boolean {
+  return enabled && snapshotGeneration === currentGeneration
+}
+
+/**
+ * 커밋된 붙여넣기 문맥만 runtime ref에 게시한다.
+ *
+ * React 호출자는 반드시 layout effect 같은 commit 단계에서 이 함수를 호출한다. render 중
+ * 만들어졌다가 폐기된 snapshot은 이 함수를 통과하지 않으므로, 이미 커밋된 콜백의 generation을
+ * 오염시키지 않는다. 작은 production primitive로 분리해 그 경계를 순수 테스트할 수 있게 한다.
+ */
+export function commitPasteCallbackRuntime<T extends { generation: symbol }>(
+  runtimeRef: { current: T },
+  committed: T,
+): void {
+  runtimeRef.current = committed
+}
+
+/**
  * Glide의 [col, row] 인덱스를 도메인 셀 대상(조건 행 × 파라미터)으로 해석한다.
  * 셀 편집·붙여넣기 대상 해석에 공용으로 쓴다. 식별 컬럼(col < identityCount)은 대상이
  * 아니다 → null.

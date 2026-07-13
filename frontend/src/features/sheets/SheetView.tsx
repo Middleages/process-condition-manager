@@ -23,7 +23,9 @@ import type {
   ConditionGridRow,
 } from '@/grid'
 import {
+  commitPasteCallbackRuntime,
   distinctCategories,
+  isCurrentPasteCallback,
   layersMissingPor,
   resolveColumnJump,
   visibleParameterColumns,
@@ -32,6 +34,7 @@ import { Badge } from '@/shared/components/Badge'
 import { Button } from '@/shared/components/Button'
 import { InlineAlert } from '@/shared/components/InlineAlert'
 import { ErrorMessage, LoadingMessage } from '@/shared/components/StatusMessage'
+import { useIsomorphicLayoutEffect } from '@/shared/lib/useIsomorphicLayoutEffect'
 import { parsePositiveInt } from '@/shared/navigation/routeState'
 
 import {
@@ -230,6 +233,25 @@ function SheetEditor({
     hasPaste: paste !== null,
   })
 
+  // 클립보드 읽기는 비동기로 끝날 수 있으므로, 시작 시점의 좌표/권한 문맥을 generation으로
+  // 캡처한다. 권한·카테고리·보이는 컬럼·행 중 하나라도 바뀐 뒤 도착한 콜백은 스테이징 전에
+  // 폐기한다. ref는 layout effect에서만 게시해 concurrent WIP/aborted render가 현재 문맥을
+  // 오염시키지 않으며, commit 뒤 브라우저가 다음 callback을 실행하기 전에는 최신화된다.
+  const pasteCallbackGeneration = useMemo(
+    () => Symbol('sheet-paste-context'),
+    [interaction.canStagePaste, activeCategory, visibleColumns, data.rows],
+  )
+  const pasteCallbackRuntimeRef = useRef({
+    generation: pasteCallbackGeneration,
+    canStagePaste: interaction.canStagePaste,
+  })
+  useIsomorphicLayoutEffect(() => {
+    commitPasteCallbackRuntime(pasteCallbackRuntimeRef, {
+      generation: pasteCallbackGeneration,
+      canStagePaste: interaction.canStagePaste,
+    })
+  }, [pasteCallbackGeneration, interaction.canStagePaste])
+
   const setPaste = useCallback((next: PasteStagingResult | null) => {
     pasteRef.current = next
     setPasteState(next)
@@ -336,7 +358,18 @@ function SheetEditor({
       },
       onPaste: (target, tsv) => {
         // ref 가드는 첫 paste setState가 commit되기 전 들어오는 두 번째 Canvas callback도 막는다.
-        if (!interaction.canStagePaste || pasteRef.current !== null) return
+        if (!interaction.canStagePaste) return
+        const current = pasteCallbackRuntimeRef.current
+        if (
+          !isCurrentPasteCallback(
+            pasteCallbackGeneration,
+            current.generation,
+            current.canStagePaste,
+          ) ||
+          pasteRef.current !== null
+        ) {
+          return
+        }
         const result = buildPasteStaging(target, parseTsv(tsv), visibleColumns, data.rows)
         // 매핑되는 셀도 없고 잘린 것도 없으면(대상 밖 등) 무시.
         if (result.staging.length === 0 && result.truncatedRows === 0 && result.truncatedCols === 0) {
@@ -358,7 +391,16 @@ function SheetEditor({
         setActiveRow(payload)
       },
     }),
-    [interaction, setCell, visibleColumns, data.rows, performStructural, projectId, setPaste],
+    [
+      interaction,
+      setCell,
+      visibleColumns,
+      data.rows,
+      performStructural,
+      projectId,
+      setPaste,
+      pasteCallbackGeneration,
+    ],
   )
 
   const cancelPaste = useCallback(() => {

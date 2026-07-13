@@ -233,6 +233,13 @@ describe('SheetView focus shell integration', () => {
     expect(sheetViewSource).toContain('if (!interaction.canApplyPaste')
     expect(sheetViewSource).toContain('if (!interaction.canCancelPaste')
     expect(sheetViewSource).toContain('readOnly: !interaction.canEditCells')
+    expect(sheetViewSource).toMatch(
+      /useIsomorphicLayoutEffect\(\(\) => \{\s*commitPasteCallbackRuntime\(pasteCallbackRuntimeRef/,
+    )
+    expect(sheetViewSource).not.toContain('pasteCallbackRuntimeRef.current =')
+    expect(sheetViewSource).toMatch(
+      /isCurrentPasteCallback\([\s\S]*?pasteCallbackGeneration[\s\S]*?current\.generation[\s\S]*?current\.canStagePaste[\s\S]*?\)[\s\S]*?buildPasteStaging/,
+    )
 
     const categoryChange = sheetViewSource.indexOf('setPendingColumnJump(result.parameterCode)')
     const effectScroll = sheetViewSource.indexOf(
