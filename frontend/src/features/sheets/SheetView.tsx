@@ -722,8 +722,11 @@ function FocusHeader({
       {editing ? (
         <div
           aria-label="편집 및 저장 상태"
+          aria-atomic="false"
+          aria-live="polite"
           className="flex min-w-0 shrink-0 items-center gap-2 text-xs"
           data-sheet-editing-status
+          role="status"
         >
           <LockChip editing={editing} />
           {editing.lockStatus === 'held' ? <SaveStatus editing={editing} /> : null}

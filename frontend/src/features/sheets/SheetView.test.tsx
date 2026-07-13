@@ -166,7 +166,13 @@ describe('SheetView focus shell integration', () => {
     expect(html).toContain('프로젝트 #7')
     expect(html).toContain('프로젝트 정보 조회에 실패')
     expect(html).toContain('metadata unavailable')
-    expect(html).toContain('role="status"')
+    const editingStatusTag = html.match(
+      /<div[^>]*data-sheet-editing-status="true"[^>]*>/,
+    )?.[0]
+    expect(editingStatusTag).toBeDefined()
+    expect(editingStatusTag).toContain('role="status"')
+    expect(editingStatusTag).toContain('aria-live="polite"')
+    expect(editingStatusTag).toContain('aria-atomic="false"')
     expect(html).toContain('data-sheet-editor="true"')
     expect(html).toContain('data-sheet-editing-status="true"')
     expect(html).toContain('data-testid="rendered-condition-grid"')
