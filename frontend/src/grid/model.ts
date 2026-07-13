@@ -15,7 +15,7 @@ import type { CellStatus, ConditionGridColumn, ConditionGridRow, PasteStagingCel
 export const IDENTITY_COLUMNS = [
   { id: '__layer__', title: 'Layer / Step' },
   { id: '__condition__', title: '조건' },
-  { id: '__por__', title: 'POR' },
+  { id: '__por__', title: 'POR (○ 선택)' },
 ] as const
 
 export const IDENTITY_COLUMN_COUNT = IDENTITY_COLUMNS.length
@@ -40,6 +40,48 @@ export function distinctCategories(columns: readonly ConditionGridColumn[]): str
     }
   }
   return result
+}
+
+export type ColumnJumpResult =
+  | { kind: 'empty' }
+  | { kind: 'not-found' }
+  | {
+      kind: 'match'
+      parameterCode: string
+      categoryCode: string | null
+      requiresCategoryChange: boolean
+    }
+
+/**
+ * 컬럼 검색 결과를 현재 카테고리와 함께 해석한다.
+ *
+ * 같은 검색어가 여러 컬럼에 걸리면 현재 보이는 컬럼을 먼저 고른다. 숨겨진 결과만 있으면 그
+ * 컬럼의 카테고리(null이면 전체 보기)로 전환해야 함을 호출자에게 알린다. 실제 상태 전환과
+ * scroll 명령은 React commit 경계가 있으므로 이 순수 함수가 수행하지 않는다.
+ */
+export function resolveColumnJump(
+  columns: readonly ConditionGridColumn[],
+  activeCategory: string | null,
+  rawQuery: string,
+): ColumnJumpResult {
+  const query = rawQuery.trim().toLocaleLowerCase()
+  if (query === '') return { kind: 'empty' }
+
+  const matches = (column: ConditionGridColumn): boolean =>
+    column.key.trim().toLocaleLowerCase().includes(query) ||
+    column.headerName.trim().toLocaleLowerCase().includes(query)
+  const isVisible = (column: ConditionGridColumn): boolean =>
+    activeCategory === null || column.categoryCode === activeCategory
+
+  const match = columns.find((column) => isVisible(column) && matches(column)) ?? columns.find(matches)
+  if (match === undefined) return { kind: 'not-found' }
+
+  return {
+    kind: 'match',
+    parameterCode: match.key,
+    categoryCode: match.categoryCode,
+    requiresCategoryChange: !isVisible(match),
+  }
 }
 
 /** 연속된 같은 layerKey 행의 그룹 한 개. */

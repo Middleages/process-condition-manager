@@ -206,4 +206,56 @@ describe('SheetView focus shell integration', () => {
       /const commitSaved = useCallback\([\s\S]*?\[queryClient, projectId\],\s*\)/,
     )
   })
+
+  it('renders truthful read-only discovery controls with accessible pressed and status semantics', () => {
+    const queryClient = client()
+    queryClient.setQueryData(['project', 7], project)
+    queryClient.setQueryData(['sheet', 7], sheet)
+
+    const html = renderSheet(queryClient)
+
+    expect(html).toMatch(/<label[^>]*for="sheet-column-search"/)
+    expect(html).toContain('컬럼 검색</label>')
+    expect(html).toContain('aria-pressed="true"')
+    expect(html).toContain('id="sheet-column-search-status"')
+    expect(html).toContain('role="status"')
+    expect(html).toContain('잠금을 확인 중입니다')
+    expect(html).not.toContain('범위 복사 Ctrl+C')
+    expect(html).not.toContain('POR 이양')
+  })
+
+  it('gates every sheet mutation through one policy and delays hidden-column scrolling', () => {
+    expect(sheetViewSource.match(/resolveSheetInteraction\s*\(/g)).toHaveLength(1)
+    expect(sheetViewSource).toContain('if (!interaction.canEditCells) return')
+    expect(sheetViewSource).toContain('if (!interaction.canStagePaste')
+    expect(sheetViewSource).toContain('if (!interaction.canTransferPor) return')
+    expect(sheetViewSource.match(/if \(!interaction\.canManageConditions\) return/g)).toHaveLength(3)
+    expect(sheetViewSource).toContain('if (!interaction.canApplyPaste')
+    expect(sheetViewSource).toContain('if (!interaction.canCancelPaste')
+    expect(sheetViewSource).toContain('readOnly: !interaction.canEditCells')
+
+    const categoryChange = sheetViewSource.indexOf('setPendingColumnJump(result.parameterCode)')
+    const effectScroll = sheetViewSource.indexOf(
+      'gridRef.current?.scrollToColumn(pendingColumnJump)',
+    )
+    expect(categoryChange).toBeGreaterThan(-1)
+    expect(effectScroll).toBeGreaterThan(-1)
+    expect(sheetViewSource).toMatch(
+      /if \(result\.requiresCategoryChange\) \{[\s\S]*?setPendingColumnJump\(result\.parameterCode\)[\s\S]*?setActiveCategory\(result\.categoryCode\)[\s\S]*?return\s*\}\s*gridRef\.current\?\.scrollToColumn\(result\.parameterCode\)/,
+    )
+  })
+
+  it('uses the approved controls, POR copy, and semantic sheet palette', () => {
+    expect(sheetViewSource).toContain('적용 또는 취소 후 계속')
+    expect(sheetViewSource).toContain('빈 원(○)을 선택하면 POR 이양')
+    expect(sheetViewSource).toContain('aria-describedby={COLUMN_SEARCH_STATUS_ID}')
+    expect(sheetViewSource).toContain('aria-pressed={active}')
+    expect(sheetViewSource).toContain('columnSearchRef.current?.focus()')
+    expect(sheetViewSource.indexOf('columnSearchRef.current?.focus()')).toBeLessThan(
+      sheetViewSource.indexOf("if (result.kind === 'empty')"),
+    )
+    expect(sheetViewSource).not.toMatch(
+      /(?:cyan|slate|emerald|amber|rose|blue)-(?:[1-9]00|50)/,
+    )
+  })
 })

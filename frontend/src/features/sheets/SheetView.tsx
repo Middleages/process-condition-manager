@@ -22,7 +22,14 @@ import type {
   ConditionGridHandle,
   ConditionGridRow,
 } from '@/grid'
-import { distinctCategories, layersMissingPor, visibleParameterColumns } from '@/grid/model'
+import {
+  distinctCategories,
+  layersMissingPor,
+  resolveColumnJump,
+  visibleParameterColumns,
+} from '@/grid/model'
+import { Badge } from '@/shared/components/Badge'
+import { Button } from '@/shared/components/Button'
 import { InlineAlert } from '@/shared/components/InlineAlert'
 import { ErrorMessage, LoadingMessage } from '@/shared/components/StatusMessage'
 import { parsePositiveInt } from '@/shared/navigation/routeState'
@@ -35,6 +42,7 @@ import {
   type DirtyCell,
 } from './editStore'
 import { buildPasteStaging, parseTsv, type PasteStagingResult } from './pasteStaging'
+import { resolveSheetInteraction } from './sheetInteraction'
 import { SheetFocusFrame } from './SheetFocusFrame'
 import {
   applySavedToSheet,
@@ -42,6 +50,8 @@ import {
   toConditionGridData,
 } from './sheetAdapter'
 import { useSheetEditing, type SheetEditing } from './useSheetEditing'
+
+const COLUMN_SEARCH_STATUS_ID = 'sheet-column-search-status'
 
 /**
  * 시트 조회 → 편집 가능한 그리드 렌더링 (T3 범위).
@@ -184,9 +194,12 @@ function SheetEditor({
   // 컬럼 가독성(T6): 카테고리 탭으로 파라미터 컬럼 부분집합을 고르고, 컬럼 검색-점프로 특정
   // 컬럼으로 스크롤한다. 좌측 식별 컬럼 고정·헤더 hover 툴팁은 어댑터가 내부에서 처리한다.
   const gridRef = useRef<ConditionGridHandle>(null)
+  const columnSearchRef = useRef<HTMLInputElement>(null)
   const categories = useMemo(() => distinctCategories(data.columns), [data.columns])
   const [activeCategory, setActiveCategory] = useState<string | null>(null)
   const [columnQuery, setColumnQuery] = useState('')
+  const [columnSearchStatus, setColumnSearchStatus] = useState('')
+  const [pendingColumnJump, setPendingColumnJump] = useState<string | null>(null)
 
   // 서버 행 위에 더티 값을 얹어 표시(편집값 즉시 반영) + 더티 셀 상태 오버레이.
   const displayRows = useMemo(() => applyDirtyToRows(data.rows, dirtyCells), [data.rows, dirtyCells])
@@ -204,11 +217,32 @@ function SheetEditor({
   )
 
   // 붙여넣기 스테이징(적용 전 미리보기). null = 대기 중인 붙여넣기 없음.
-  const [paste, setPaste] = useState<PasteStagingResult | null>(null)
+  const [paste, setPasteState] = useState<PasteStagingResult | null>(null)
+  const pasteRef = useRef<PasteStagingResult | null>(null)
   const [pasteError, setPasteError] = useState<string | null>(null)
   const [applying, setApplying] = useState(false)
+  const applyingRef = useRef(false)
 
   const { readOnly, writeBusy, setCell, applyPaste, runStructuralChange } = editing
+  const interaction = resolveSheetInteraction({
+    readOnly,
+    writeBusy,
+    hasPaste: paste !== null,
+  })
+
+  const setPaste = useCallback((next: PasteStagingResult | null) => {
+    pasteRef.current = next
+    setPasteState(next)
+  }, [])
+
+  // 숨겨진 category 결과는 category state가 실제 commit되어 visibleColumns가 바뀐 뒤에만
+  // 스크롤한다. setActiveCategory 직후의 오래된 adapter ref에는 명령하지 않는다.
+  useEffect(() => {
+    if (pendingColumnJump === null) return
+    if (!visibleColumns.some((column) => column.key === pendingColumnJump)) return
+    gridRef.current?.scrollToColumn(pendingColumnJump)
+    setPendingColumnJump(null)
+  }, [pendingColumnJump, visibleColumns])
 
   // 조건 행 관리(T7): 추가/복제/삭제 대상은 좌측 식별 컬럼 클릭으로 활성화한 행 하나다.
   // POR 이양은 활성 행과 무관하게 POR 컬럼 클릭으로 바로 실행한다. 구조 변경은 더티 셀 버퍼와
@@ -261,26 +295,32 @@ function SheetEditor({
   )
 
   const handleAddEmpty = useCallback(() => {
+    if (!interaction.canManageConditions) return
+    if (pasteRef.current !== null) return
     if (activeRow === null) return
     const layerKey = activeRow.layerKey
     void performStructural((token) => addCondition(projectId, layerKey, null, token))
-  }, [activeRow, performStructural, projectId])
+  }, [activeRow, interaction.canManageConditions, performStructural, projectId])
 
   const handleDuplicate = useCallback(() => {
+    if (!interaction.canManageConditions) return
+    if (pasteRef.current !== null) return
     if (activeRow === null) return
     const { layerKey } = activeRow
     const sourceId = Number(activeRow.conditionId)
     void performStructural((token) => addCondition(projectId, layerKey, sourceId, token))
-  }, [activeRow, performStructural, projectId])
+  }, [activeRow, interaction.canManageConditions, performStructural, projectId])
 
   const handleDelete = useCallback(async () => {
+    if (!interaction.canManageConditions) return
+    if (pasteRef.current !== null) return
     if (activeRow === null) return
     // 하드 삭제(셀 값까지 캐스케이드)라 되돌릴 수 없다 — 실행 전 한 번 확인한다.
     if (!window.confirm('이 조건 행을 삭제한다. 되돌릴 수 없다. 계속할까?')) return
     const conditionId = Number(activeRow.conditionId)
     const ok = await performStructural((token) => deleteCondition(projectId, conditionId, token))
     if (ok) setActiveRow(null)
-  }, [activeRow, performStructural, projectId])
+  }, [activeRow, interaction.canManageConditions, performStructural, projectId])
 
   const clearActive = useCallback(() => {
     setActiveRow(null)
@@ -289,10 +329,14 @@ function SheetEditor({
 
   const gridCallbacks = useMemo<ConditionGridCallbacks>(
     () => ({
-      onCellEdit: (cell) => setCell(cell.conditionId, cell.parameterCode, cell.value),
+      onCellEdit: (cell) => {
+        if (!interaction.canEditCells) return
+        if (pasteRef.current !== null) return
+        setCell(cell.conditionId, cell.parameterCode, cell.value)
+      },
       onPaste: (target, tsv) => {
-        // 편집 불가(읽기 전용) 상태에서는 붙여넣기를 스테이징하지 않는다(그리드가 기본 동작은 이미 막는다).
-        if (readOnly || writeBusy) return
+        // ref 가드는 첫 paste setState가 commit되기 전 들어오는 두 번째 Canvas callback도 막는다.
+        if (!interaction.canStagePaste || pasteRef.current !== null) return
         const result = buildPasteStaging(target, parseTsv(tsv), visibleColumns, data.rows)
         // 매핑되는 셀도 없고 잘린 것도 없으면(대상 밖 등) 무시.
         if (result.staging.length === 0 && result.truncatedRows === 0 && result.truncatedCols === 0) {
@@ -303,26 +347,31 @@ function SheetEditor({
       },
       // POR 이양: 클릭된 행을 POR로. 성공 시 두 행(기존/신규)의 is_por가 바뀌므로 재조회한다.
       onPorChange: (_layerKey, conditionId) => {
+        if (!interaction.canTransferPor) return
+        if (pasteRef.current !== null) return
         void performStructural((token) => setConditionPor(projectId, Number(conditionId), token))
       },
       // 좌측 식별 컬럼 클릭 → 그 행을 추가/복제/삭제 대상으로 활성화(하단 액션 바에 노출).
       onConditionActivate: (payload) => {
+        if (!interaction.canManageConditions || pasteRef.current !== null) return
         setStructError(null)
         setActiveRow(payload)
       },
     }),
-    [setCell, readOnly, writeBusy, visibleColumns, data.rows, performStructural, projectId],
+    [interaction, setCell, visibleColumns, data.rows, performStructural, projectId, setPaste],
   )
 
   const cancelPaste = useCallback(() => {
+    if (!interaction.canCancelPaste || applyingRef.current) return
     setPaste(null)
     setPasteError(null)
-  }, [])
+  }, [interaction.canCancelPaste, setPaste])
 
   const commitPaste = useCallback(async () => {
-    if (paste === null) return
+    if (!interaction.canApplyPaste || pasteRef.current === null || applyingRef.current) return
+    const currentPaste = pasteRef.current
     // 유효한 셀만 적용 대상 — 불일치 셀은 제외하고 개수로만 안내한다.
-    const validCells: DirtyCell[] = paste.staging
+    const validCells: DirtyCell[] = currentPaste.staging
       .filter((cell) => cell.valid)
       .map((cell) => ({
         conditionId: cell.conditionId,
@@ -330,9 +379,11 @@ function SheetEditor({
         value: cell.value,
       }))
     if (validCells.length === 0) {
-      cancelPaste() // 적용할 유효 셀이 없으면 스테이징만 폐기
+      setPaste(null) // 적용할 유효 셀이 없으면 스테이징만 폐기
+      setPasteError(null)
       return
     }
+    applyingRef.current = true
     setApplying(true)
     setPasteError(null)
     try {
@@ -342,21 +393,43 @@ function SheetEditor({
       // 실패(네트워크/409 등): 스테이징 유지 + 에러 표시 → 사용자가 다시 "적용" 가능.
       setPasteError(getApiErrorMessage(error))
     } finally {
+      applyingRef.current = false
       setApplying(false)
     }
-  }, [paste, applyPaste, cancelPaste])
+  }, [interaction.canApplyPaste, applyPaste, setPaste])
 
   const jumpToColumn = useCallback(() => {
-    const query = columnQuery.trim().toLowerCase()
-    if (query === '') return
-    // headerName 또는 key(parameter_code) 부분 일치(대소문자 무시)로 첫 컬럼을 찾아 점프한다.
-    // 활성 카테고리에서 걸러진 컬럼이면 scrollToColumn이 조용히 무시한다(보이는 컬럼만 대상).
-    const match = data.columns.find(
-      (column) =>
-        column.key.toLowerCase().includes(query) || column.headerName.toLowerCase().includes(query),
-    )
-    if (match !== undefined) gridRef.current?.scrollToColumn(match.key)
-  }, [columnQuery, data.columns])
+    if (!interaction.canSwitchCategory || pasteRef.current !== null) return
+    const result = resolveColumnJump(data.columns, activeCategory, columnQuery)
+    columnSearchRef.current?.focus()
+    if (result.kind === 'empty') {
+      setColumnSearchStatus('검색어를 입력하세요.')
+      return
+    }
+    if (result.kind === 'not-found') {
+      setColumnSearchStatus(`“${columnQuery.trim()}”에 맞는 컬럼이 없습니다.`)
+      return
+    }
+
+    const match = data.columns.find((column) => column.key === result.parameterCode)
+    setColumnSearchStatus(`${match?.headerName ?? result.parameterCode} 컬럼으로 이동했습니다.`)
+    if (result.requiresCategoryChange) {
+      setPendingColumnJump(result.parameterCode)
+      setActiveCategory(result.categoryCode)
+      return
+    }
+    gridRef.current?.scrollToColumn(result.parameterCode)
+  }, [interaction.canSwitchCategory, columnQuery, data.columns, activeCategory])
+
+  const selectCategory = useCallback(
+    (category: string | null) => {
+      if (!interaction.canSwitchCategory || pasteRef.current !== null) return
+      setPendingColumnJump(null)
+      setColumnSearchStatus('')
+      setActiveCategory(category)
+    },
+    [interaction.canSwitchCategory],
+  )
 
   return (
     <SheetFocusFrame
@@ -389,30 +462,46 @@ function SheetEditor({
             >
               POR 미지정 Layer <strong>{porGaps.length}</strong>개 —{' '}
               {porGaps.map((group) => group.layerLabel).join(', ')}
+              {interaction.canTransferPor ? ' — 빈 원(○)을 선택하면 POR 이양' : null}
             </InlineAlert>
           ) : null}
           <div className="flex min-w-0 flex-wrap items-center gap-2" data-testid="sheet-category-tabs">
             <SheetMetrics rowCount={data.rows.length} colCount={data.columns.length} />
             {categories.length > 0 ? (
               <>
-                <CategoryTab active={activeCategory === null} onClick={() => setActiveCategory(null)}>
+                <CategoryTab
+                  active={activeCategory === null}
+                  disabled={!interaction.canSwitchCategory}
+                  onClick={() => selectCategory(null)}
+                >
                   전체
                 </CategoryTab>
                 {categories.map((category) => (
                   <CategoryTab
                     key={category}
                     active={activeCategory === category}
-                    onClick={() => setActiveCategory(category)}
+                    disabled={!interaction.canSwitchCategory}
+                    onClick={() => selectCategory(category)}
                   >
                     {category}
                   </CategoryTab>
                 ))}
               </>
             ) : null}
-            <div className="ml-auto flex min-w-0 items-center gap-2">
+            <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2">
+              <label
+                className="shrink-0 text-xs font-semibold text-ink-950"
+                htmlFor="sheet-column-search"
+              >
+                컬럼 검색
+              </label>
               <input
+                aria-describedby={COLUMN_SEARCH_STATUS_ID}
                 className="input w-56 min-w-36"
+                disabled={!interaction.canSwitchCategory}
+                id="sheet-column-search"
                 placeholder="컬럼 검색 (예: ETCH_P012)"
+                ref={columnSearchRef}
                 value={columnQuery}
                 data-testid="sheet-column-search"
                 onChange={(event) => setColumnQuery(event.target.value)}
@@ -420,14 +509,26 @@ function SheetEditor({
                   if (event.key === 'Enter') jumpToColumn()
                 }}
               />
-              <button
-                type="button"
-                className="btn-secondary shrink-0"
+              <Button
+                className="shrink-0"
                 data-testid="sheet-column-jump"
+                disabled={!interaction.canSwitchCategory}
                 onClick={jumpToColumn}
+                size="compact"
+                type="button"
+                variant="secondary"
               >
                 컬럼 점프
-              </button>
+              </Button>
+              <span
+                aria-atomic="true"
+                aria-live="polite"
+                className="max-w-64 truncate text-xs text-muted"
+                id={COLUMN_SEARCH_STATUS_ID}
+                role="status"
+              >
+                {columnSearchStatus}
+              </span>
             </div>
           </div>
           {paste !== null ? (
@@ -436,13 +537,14 @@ function SheetEditor({
               columns={data.columns}
               rows={data.rows}
               applying={applying}
-              readOnly={readOnly}
+              canApply={interaction.canApplyPaste}
+              canCancel={interaction.canCancelPaste}
               error={pasteError}
               onApply={commitPaste}
               onCancel={cancelPaste}
             />
           ) : null}
-          {!readOnly ? (
+          {interaction.canManageConditions ? (
             <ConditionRowManager
               activeLabel={activeRowLabel}
               busy={structBusy}
@@ -453,10 +555,7 @@ function SheetEditor({
               onClear={clearActive}
             />
           ) : null}
-          <p className="text-xs text-muted" data-testid="sheet-interaction-guide">
-            범위 복사 Ctrl+C · 붙여넣기 Ctrl+V · 조건 행은 왼쪽 Layer/조건 셀 선택 · POR는 빈 원(○)
-            클릭
-          </p>
+          <InteractionGuide editing={editing} mode={interaction.mode} />
         </div>
       }
     >
@@ -468,7 +567,7 @@ function SheetEditor({
         <GlideConditionGrid
           ref={gridRef}
           data={gridData}
-          view={{ readOnly: readOnly || writeBusy, activeCategory }}
+          view={{ readOnly: !interaction.canEditCells, activeCategory }}
           callbacks={gridCallbacks}
           pasteStaging={paste?.staging}
         />
@@ -516,49 +615,60 @@ function ConditionRowManager({
         </span>
       )}
       <div className="ml-auto flex shrink-0 flex-wrap items-center gap-2">
-        <button
+        <Button
           type="button"
           onClick={onAddEmpty}
           disabled={busy || noSelection}
           data-testid="condition-add"
-          className="h-[34px] rounded-md bg-brand-700 px-3 text-xs font-semibold text-white hover:bg-ink-950 disabled:cursor-not-allowed disabled:opacity-50"
+          size="compact"
         >
           빈 행 추가
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
           onClick={onDuplicate}
           disabled={busy || noSelection}
           data-testid="condition-duplicate"
-          className="h-[34px] rounded-md border border-border-control bg-surface px-3 text-xs font-semibold text-ink-950 hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-50"
+          size="compact"
+          variant="secondary"
         >
           복제
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
           onClick={onDelete}
           disabled={busy || noSelection}
           data-testid="condition-delete"
-          className="h-[34px] rounded-md border border-error bg-error-surface px-3 text-xs font-semibold text-error hover:bg-error hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+          size="compact"
+          variant="danger"
         >
           삭제
-        </button>
+        </Button>
         {!noSelection ? (
-          <button
+          <Button
             type="button"
             onClick={onClear}
             disabled={busy}
-            className="h-[34px] rounded-md border border-border-control bg-surface px-3 text-xs font-semibold text-muted hover:bg-canvas disabled:opacity-50"
+            size="compact"
+            variant="secondary"
           >
             선택 해제
-          </button>
+          </Button>
         ) : null}
-        {busy ? <span className="text-xs text-muted">처리 중...</span> : null}
+        {busy ? (
+          <span aria-live="polite" className="text-xs text-muted" role="status">
+            처리 중...
+          </span>
+        ) : null}
       </div>
       {error !== null ? (
-        <p className="basis-full text-xs font-medium text-error" data-testid="condition-error">
+        <InlineAlert
+          className="basis-full rounded-md px-2 py-1.5 text-xs"
+          data-testid="condition-error"
+          tone="error"
+        >
           {error}
-        </p>
+        </InlineAlert>
       ) : null}
     </div>
   )
@@ -572,7 +682,8 @@ function PasteStagingPanel({
   columns,
   rows,
   applying,
-  readOnly,
+  canApply,
+  canCancel,
   error,
   onApply,
   onCancel,
@@ -581,7 +692,8 @@ function PasteStagingPanel({
   columns: readonly ConditionGridColumn[]
   rows: readonly ConditionGridRow[]
   applying: boolean
-  readOnly: boolean
+  canApply: boolean
+  canCancel: boolean
   error: string | null
   onApply: () => void
   onCancel: () => void
@@ -604,28 +716,33 @@ function PasteStagingPanel({
 
   return (
     <div
-      className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm"
+      className="space-y-2 rounded-lg border border-border-subtle bg-surface p-3 text-sm text-ink-950"
       data-testid="paste-staging-panel"
     >
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <span className="font-semibold text-slate-700">붙여넣기 미리보기</span>
-        <span>
-          대기 <strong>{total}</strong>
-        </span>
-        <span className="text-emerald-700">적용 {validCount}</span>
-        {invalid.length > 0 ? <span className="text-rose-700">불일치 {invalid.length}</span> : null}
+      <div
+        aria-atomic="true"
+        aria-live="polite"
+        className="flex flex-wrap items-center gap-2"
+        role="status"
+      >
+        <span className="font-semibold text-ink-950">붙여넣기 미리보기</span>
+        <Badge tone="neutral">대기 {total}</Badge>
+        <Badge className="border-success bg-success-surface text-success" tone="neutral">
+          적용 {validCount}
+        </Badge>
+        {invalid.length > 0 ? <Badge tone="error">불일치 {invalid.length}</Badge> : null}
       </div>
 
       {truncated ? (
-        <p className="text-amber-700">
+        <InlineAlert className="rounded-md px-2 py-1.5 text-xs" tone="warning">
           시트 경계를 넘는 데이터는 잘렸다
           {result.truncatedRows > 0 ? ` · 행 ${result.truncatedRows}` : ''}
           {result.truncatedCols > 0 ? ` · 컬럼 ${result.truncatedCols}` : ''}
-        </p>
+        </InlineAlert>
       ) : null}
 
       {invalid.length > 0 ? (
-        <ul className="space-y-0.5 text-rose-700">
+        <ul className="space-y-0.5 text-error">
           {invalid.slice(0, MAX_MISMATCH_ROWS).map((cell) => (
             <li key={`${cell.conditionId} ${cell.parameterCode}`}>
               {rowLabels.get(cell.conditionId) ?? cell.conditionId} ·{' '}
@@ -635,37 +752,98 @@ function PasteStagingPanel({
             </li>
           ))}
           {invalid.length > MAX_MISMATCH_ROWS ? (
-            <li className="text-rose-500">외 {invalid.length - MAX_MISMATCH_ROWS}건…</li>
+            <li>외 {invalid.length - MAX_MISMATCH_ROWS}건…</li>
           ) : null}
         </ul>
       ) : null}
 
-      {invalid.length > 0 ? <p className="text-slate-500">불일치 셀은 적용에서 제외된다.</p> : null}
+      {invalid.length > 0 ? <p className="text-muted">불일치 셀은 적용에서 제외된다.</p> : null}
 
-      {error !== null ? <p className="text-rose-600">적용 실패: {error}</p> : null}
+      {error !== null ? (
+        <InlineAlert className="rounded-md px-2 py-1.5 text-xs" tone="error">
+          적용 실패: {error}
+        </InlineAlert>
+      ) : null}
 
-      <div className="flex items-center gap-2">
-        <button
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
           type="button"
           onClick={onApply}
-          disabled={applying || readOnly || validCount === 0}
-          className="rounded-md bg-cyan-600 px-3 py-1 font-medium text-white hover:bg-cyan-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+          disabled={!canApply || validCount === 0}
+          loading={applying}
+          size="compact"
         >
           {applying ? '적용 중...' : `적용 (${validCount})`}
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
           onClick={onCancel}
-          disabled={applying}
-          className="rounded-md border border-slate-300 px-3 py-1 text-slate-600 hover:bg-slate-100 disabled:opacity-50"
+          disabled={applying || !canCancel}
+          size="compact"
+          variant="secondary"
         >
           취소
-        </button>
-        {readOnly ? (
-          <span className="text-amber-700">읽기 전용 — 잠금을 확보해야 적용할 수 있다</span>
+        </Button>
+        {!canApply && !applying ? (
+          <span aria-live="polite" className="text-xs text-warning" role="status">
+            현재 잠금 상태에서는 적용할 수 없습니다. 취소하거나 헤더에서 잠금을 다시 확보하세요.
+          </span>
         ) : null}
       </div>
     </div>
+  )
+}
+
+function InteractionGuide({
+  editing,
+  mode,
+}: {
+  editing: SheetEditing
+  mode: 'editable' | 'read-only' | 'write-busy' | 'paste-review'
+}) {
+  let message: string
+  switch (mode) {
+    case 'paste-review':
+      message = '적용 또는 취소 후 계속'
+      break
+    case 'write-busy':
+      message = '변경사항을 처리 중입니다. 완료되면 편집을 계속할 수 있습니다.'
+      break
+    case 'read-only':
+      switch (editing.lockStatus) {
+        case 'acquiring':
+          message = '잠금을 확인 중입니다. 확보되면 셀 편집을 시작할 수 있습니다.'
+          break
+        case 'readonly':
+          message =
+            editing.editingBy === null
+              ? '현재 읽기 전용입니다. 잠금이 풀리면 자동으로 다시 확인하며, 헤더의 재시도로 바로 확인할 수 있습니다.'
+              : `${editing.editingBy} 사용자가 편집 중입니다. 잠금이 풀리면 자동으로 다시 확인하며, 헤더의 재시도로 바로 확인할 수 있습니다.`
+          break
+        case 'lost':
+          message = '편집 잠금을 잃어 읽기 전용입니다. 헤더의 재획득으로 다시 시도하세요.'
+          break
+        case 'held':
+          message = '현재 읽기 전용입니다. 잠금 상태가 갱신되면 편집을 다시 시작할 수 있습니다.'
+          break
+      }
+      break
+    case 'editable':
+      message =
+        '범위 복사 Ctrl+C · 붙여넣기 Ctrl+V · 조건 행은 왼쪽 Layer/조건 셀 선택 · 빈 원(○)을 선택하면 POR 이양'
+      break
+  }
+
+  return (
+    <p
+      aria-atomic="true"
+      aria-live="polite"
+      className="text-xs text-muted"
+      data-testid="sheet-interaction-guide"
+      role="status"
+    >
+      {message}
+    </p>
   )
 }
 
@@ -851,24 +1029,27 @@ function SaveStatus({ editing }: { editing: SheetEditing }) {
 /** 카테고리 필터 탭 버튼(전체 + 카테고리별). GridDemoPage의 동일 패턴을 실제 시트 화면에 이식. */
 function CategoryTab({
   active,
+  disabled,
   onClick,
   children,
 }: {
   active: boolean
+  disabled: boolean
   onClick: () => void
   children: ReactNode
 }) {
   return (
-    <button
+    <Button
+      aria-pressed={active}
+      className="shrink-0"
+      disabled={disabled}
       type="button"
       onClick={onClick}
-      className={[
-        'rounded-lg px-3 py-1.5 text-sm font-medium transition',
-        active ? 'bg-cyan-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200',
-      ].join(' ')}
+      size="compact"
+      variant={active ? 'primary' : 'secondary'}
     >
       {children}
-    </button>
+    </Button>
   )
 }
 

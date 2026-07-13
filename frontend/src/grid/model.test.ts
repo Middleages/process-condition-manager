@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   IDENTITY_COLUMN_COUNT,
+  IDENTITY_COLUMNS,
   cellScrollTarget,
   columnScrollIndex,
   computeRowGroups,
@@ -14,6 +15,7 @@ import {
   matrixToTsv,
   overlayKey,
   previewCellValue,
+  resolveColumnJump,
   resolveCellTarget,
   visibleParameterColumns,
 } from './model'
@@ -31,6 +33,12 @@ const rows: ConditionGridRow[] = [
   { id: '2', layerKey: 'L1', layerLabel: 'L1 (S01)', conditionLabel: 'C2', isPor: false, values: {} },
   { id: '3', layerKey: 'L2', layerLabel: 'L2 (S02)', conditionLabel: 'C1', isPor: true, values: { spin_speed: '1500' } },
 ]
+
+describe('identity columns', () => {
+  it('states the POR interaction truth in the exact header copy', () => {
+    expect(IDENTITY_COLUMNS[2]).toEqual({ id: '__por__', title: 'POR (○ 선택)' })
+  })
+})
 
 describe('visibleParameterColumns', () => {
   it('returns all columns when no category is active', () => {
@@ -194,6 +202,72 @@ describe('columnScrollIndex', () => {
     expect(columnScrollIndex('nope', visible, IDENTITY_COLUMN_COUNT)).toBeNull()
     const coatOnly = visibleParameterColumns(columns, 'coat')
     expect(columnScrollIndex('exposure', coatOnly, IDENTITY_COLUMN_COUNT)).toBeNull()
+  })
+})
+
+describe('resolveColumnJump', () => {
+  it('returns empty for a blank query', () => {
+    expect(resolveColumnJump(columns, 'coat', '   ')).toEqual({ kind: 'empty' })
+  })
+
+  it('finds a visible key without changing category', () => {
+    expect(resolveColumnJump(columns, 'coat', 'spin')).toEqual({
+      kind: 'match',
+      parameterCode: 'spin_speed',
+      categoryCode: 'coat',
+      requiresCategoryChange: false,
+    })
+  })
+
+  it('finds a hidden category and requests the category change before the jump', () => {
+    expect(resolveColumnJump(columns, 'litho', 'spin')).toEqual({
+      kind: 'match',
+      parameterCode: 'spin_speed',
+      categoryCode: 'coat',
+      requiresCategoryChange: true,
+    })
+  })
+
+  it('changes to the all-columns view for an uncategorized hidden column', () => {
+    expect(resolveColumnJump(columns, 'coat', 'memo')).toEqual({
+      kind: 'match',
+      parameterCode: 'memo',
+      categoryCode: null,
+      requiresCategoryChange: true,
+    })
+  })
+
+  it('returns not-found for an unknown query', () => {
+    expect(resolveColumnJump(columns, null, 'missing')).toEqual({ kind: 'not-found' })
+  })
+
+  it('prefers a later visible match over an earlier hidden match', () => {
+    const duplicateMatches: ConditionGridColumn[] = [
+      { key: 'spin_hidden', headerName: 'Spin hidden', valueType: 'number', categoryCode: 'litho' },
+      { key: 'spin_visible', headerName: 'Spin visible', valueType: 'number', categoryCode: 'coat' },
+    ]
+
+    expect(resolveColumnJump(duplicateMatches, 'coat', '  SPIN  ')).toEqual({
+      kind: 'match',
+      parameterCode: 'spin_visible',
+      categoryCode: 'coat',
+      requiresCategoryChange: false,
+    })
+  })
+
+  it('matches trimmed keys and headers case-insensitively', () => {
+    const padded: ConditionGridColumn[] = [
+      { key: '  TEMP_CODE  ', headerName: '  Bake Temperature  ', valueType: 'number', categoryCode: 'bake' },
+    ]
+
+    expect(resolveColumnJump(padded, null, 'temperature')).toMatchObject({
+      kind: 'match',
+      parameterCode: '  TEMP_CODE  ',
+    })
+    expect(resolveColumnJump(padded, null, 'temp_code')).toMatchObject({
+      kind: 'match',
+      parameterCode: '  TEMP_CODE  ',
+    })
   })
 })
 
