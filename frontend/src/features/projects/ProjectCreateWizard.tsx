@@ -1118,7 +1118,11 @@ const StepHeading = forwardRef<
   return (
     <div>
       <p className="text-xs font-bold text-brand-700">{index}단계</p>
-      <h2 ref={ref} className="mt-1 rounded-sm text-xl font-bold text-ink-950" tabIndex={-1}>
+      <h2
+        ref={ref}
+        className="mt-1 rounded-sm text-xl font-bold text-ink-950 focus:outline-2 focus:outline-offset-2 focus:outline-brand-700"
+        tabIndex={-1}
+      >
         {title}
       </h2>
       <p className="mt-1 text-sm text-muted">{description}</p>

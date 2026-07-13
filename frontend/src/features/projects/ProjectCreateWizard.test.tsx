@@ -228,6 +228,15 @@ describe('ProjectCreateWizard route restoration', () => {
     )
   })
 
+  it('uses the approved tokenized focus ring on a programmatically focused step heading', () => {
+    const params = new URLSearchParams({ step: '3', process: directProcess.key })
+    const html = renderWizard(`/projects/new?${params}`, true)
+
+    expect(html).toMatch(
+      /<h2(?=[^>]*tabindex="-1")(?=[^>]*focus:outline-2)(?=[^>]*focus:outline-offset-2)(?=[^>]*focus:outline-brand-700)[^>]*>/,
+    )
+  })
+
   it('offers a manual override for an automatic match with an accurate default', () => {
     const html = renderAutomaticBackbonePreview()
 
