@@ -15,7 +15,7 @@
 - [x] EC5. 카테고리 탭·컬럼 고정·헤더 툴팁·컬럼 검색-점프가 레지스트리 데이터 기반으로 동적으로 동작한다 · `SheetEditor` 카테고리 탭(`distinctCategories`) + `freezeColumns` + 헤더 hover 툴팁(`headerTooltip`) + `scrollToColumn`
 - [x] EC6. 같은 layer/step의 다중 조건 행이 그룹핑되어 표시되고, 조건 행 추가/복제/삭제와 POR 이양이 동작하며, layer당 POR 1개가 서버에서 강제된다 (D-16) · `features/conditions/` API + partial unique index + `test_conditions_api.py` + `ConditionRowManager` UI
 
-Phase 2 완료 확인: 2026-07-13. 전체 T0~T7 커밋 완료, backend pytest 146 passed/1 skipped·ruff clean, frontend vitest 103 passed·typecheck/build 통과.
+Phase 2 완료 확인: 2026-07-13. 전체 T0~T7 및 머지 전 보강 커밋 완료. PostgreSQL 동시성 회귀를 포함한 backend pytest 149 passed/1 skipped·Ruff·Pyright 통과, frontend Vitest 110 passed·typecheck/build 통과. 잠금 획득/탈취는 project row lock으로 직렬화하고, 붙여넣기·구조 변경·화면 이탈 저장은 단일 세션 쓰기 큐로 순서를 보장한다. CI도 전용 PostgreSQL 서비스에서 잠금 회귀를 필수 실행한다.
 
 ## 결정 항목 (2026-07-10 확정)
 
@@ -123,7 +123,7 @@ Phase 1 인터페이스 초안(`frontend/src/grid/types.ts`)을 Glide Data Grid�
 - **0003 마이그레이션 (Alembic)**: `edit_lock`(project_id PK, locked_by, **lock_token**, locked_at, expires_at) + `change_event` 구조화 컬럼(P2-D7) 동승
 - API: 획득 `POST /api/projects/{id}/lock`(토큰 발급, 만료 잠금 탈취 허용, 충돌 시 409 + 보유자 정보) / 하트비트(연장) / 해제
 - **잠금 검사 적용 범위**: 공용 의존성(require_edit_lock — 토큰 헤더 검증)으로 편집 계열 API 전체에 적용 — cells(T3), **조건 행 CRUD·POR(T7)**, 그리고 **Phase 1의 backbone-replace 소급 적용**. 비보유·토큰 불일치 시 409
-- UI: 편집 화면 진입 시 획득, 주기 하트비트(45초), 이탈 시 해제 — beforeunload는 `sendBeacon`(keepalive)으로 해제 시도 + TTL 만료가 최종 보험. 비보유자: 읽기 전용 + "누가 편집 중" 표시(시트 응답 잠금 요약) + 하트비트 주기와 같은 간격의 폴링으로 해제 감지
+- UI: 편집 화면 진입 시 획득, 주기 하트비트(45초), SPA 이탈 시 즉시 쓰기 큐와 더티 flush 성공 후 해제. beforeunload는 대기 중인 쓰기가 없을 때만 `sendBeacon`(keepalive) 해제를 시도하고, 쓰기/전송 실패 시 TTL 만료가 데이터 보존 우선의 최종 보험이다. 비보유자: 읽기 전용 + 충돌 응답의 "누가 편집 중" 표시 + 하트비트 주기와 같은 간격의 잠금 재획득 시도로 해제 감지
 - 검증: 두 세션(서로 다른 lock_token) 시뮬레이션 테스트 — dev 스텁 고정 사용자(dev-admin)여도 토큰으로 구분되어 EC3 검증 가능
 
 산출물: 잠금 API + UI + 동시 접근 테스트(두 세션 시뮬레이션). **EC3 충족.**
