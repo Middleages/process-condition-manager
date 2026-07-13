@@ -1,6 +1,6 @@
 import { X } from 'lucide-react'
 import { useEffect, useId, useRef } from 'react'
-import type { ReactNode, RefObject } from 'react'
+import type { MutableRefObject, ReactNode, RefObject } from 'react'
 
 import { cn } from '../lib/cn'
 
@@ -31,7 +31,7 @@ export function ModalSurface({
 }: ModalSurfaceProps) {
   const dialogRef = useRef<HTMLDialogElement>(null)
   const titleRef = useRef<HTMLHeadingElement>(null)
-  const capturedFocusRef = useRef<HTMLElement | null>(null)
+  const capturedFocusRef = useRef<HTMLElement | null | undefined>(undefined)
   const fallbackRef = useRef(fallbackFocusRef)
   const titleId = useId()
 
@@ -44,8 +44,9 @@ export function ModalSurface({
     if (open) {
       if (!dialog.open) {
         const activeElement = document.activeElement
-        capturedFocusRef.current = activeElement instanceof HTMLElement ? activeElement : null
+        const capturedFocus = activeElement instanceof HTMLElement ? activeElement : null
         dialog.showModal()
+        capturedFocusRef.current = capturedFocus
       }
 
       ;(initialFocusRef?.current ?? titleRef.current)?.focus()
@@ -131,10 +132,13 @@ export function Drawer(props: ModalVariantProps) {
 }
 
 function restoreCapturedFocus(
-  capturedFocusRef: RefObject<HTMLElement | null>,
+  capturedFocusRef: MutableRefObject<HTMLElement | null | undefined>,
   fallbackFocusRef?: RefObject<HTMLElement>,
 ) {
   const capturedFocus = capturedFocusRef.current
+  if (capturedFocus === undefined) return
+
+  capturedFocusRef.current = undefined
   if (capturedFocus?.isConnected && capturedFocus !== document.body) {
     capturedFocus.focus()
   } else {
