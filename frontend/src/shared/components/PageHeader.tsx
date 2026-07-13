@@ -13,7 +13,10 @@ export function PageHeader({ eyebrow, title, description, actions, className, ..
   return (
     <header
       {...headerProps}
-      className={cn('flex flex-col gap-4 border-b border-border-subtle pb-5 sm:flex-row sm:items-end sm:justify-between', className)}
+      className={cn(
+        'flex flex-col gap-4 rounded-sm border-b border-border-subtle pb-5 focus:outline-2 focus:outline-offset-2 focus:outline-brand-700 sm:flex-row sm:items-end sm:justify-between',
+        className,
+      )}
     >
       <div className="min-w-0">
         {eyebrow ? <div className="mb-1 text-xs font-semibold text-brand-700">{eyebrow}</div> : null}

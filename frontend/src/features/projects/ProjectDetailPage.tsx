@@ -69,7 +69,7 @@ export function ProjectDetailPage() {
         }
       />
 
-      <div aria-live="polite">
+      <div>
         {projectId === null ? (
           <InlineAlert tone="error">올바른 프로젝트 ID가 아닙니다. 목록에서 다시 선택하세요.</InlineAlert>
         ) : projectQuery.isPending ? (
@@ -116,47 +116,55 @@ function ProjectDetail({ project }: { project: ProjectOut }) {
         <div className="max-w-full overflow-x-auto rounded-xl border border-border-subtle bg-surface">
           <table className="w-full min-w-[820px] text-left text-sm">
             <thead className="bg-canvas text-xs font-semibold uppercase tracking-wide text-muted">
-              <tr>
-                <th className="px-4 py-2.5" scope="col">
+              <tr className="h-9">
+                <th className="px-4 py-0" scope="col">
                   Layer (Step)
                 </th>
-                <th className="px-4 py-2.5" scope="col">
+                <th className="px-4 py-0" scope="col">
                   Area
                 </th>
-                <th className="px-4 py-2.5" scope="col">
+                <th className="px-4 py-0" scope="col">
                   백본 소스
                 </th>
-                <th className="px-4 py-2.5 text-right" scope="col">
+                <th className="px-4 py-0 text-right" scope="col">
                   조건 행
                 </th>
-                <th className="px-4 py-2.5 text-right" scope="col">
+                <th className="px-4 py-0 text-right" scope="col">
                   Cell
                 </th>
-                <th className="px-4 py-2.5 text-right" scope="col">
+                <th className="px-4 py-0 text-right" scope="col">
                   <span className="sr-only">작업</span>
                 </th>
               </tr>
             </thead>
             <tbody>
               {project.layers.map((layer) => (
-                <tr key={layer.id} className="border-t border-border-subtle">
-                  <td className="px-4 py-2.5 font-mono text-xs font-semibold text-brand-700">
+                <tr
+                  key={layer.id}
+                  className="h-9 shadow-[inset_0_1px_0_var(--color-border-subtle)]"
+                >
+                  <td className="px-4 py-0 font-mono text-xs font-semibold text-brand-700">
                     {layer.layer_id} ({layer.step_seq})
                   </td>
-                  <td className="px-4 py-2.5 text-ink-950">{layer.area_name ?? '-'}</td>
-                  <td className="px-4 py-2.5 font-mono text-xs text-muted">
+                  <td className="px-4 py-0 text-ink-950">{layer.area_name ?? '-'}</td>
+                  <td className="px-4 py-0 font-mono text-xs text-muted">
                     {layer.source_layer_key
                       ? `#${layer.source_project_id} · ${layer.source_layer_key}`
                       : '빈 값'}
                   </td>
-                  <td className="px-4 py-2.5 text-right font-mono text-xs tabular-nums">
+                  <td className="px-4 py-0 text-right font-mono text-xs tabular-nums">
                     {layer.condition_count}
                   </td>
-                  <td className="px-4 py-2.5 text-right font-mono text-xs tabular-nums">
+                  <td className="px-4 py-0 text-right font-mono text-xs tabular-nums">
                     {layer.cell_count}
                   </td>
-                  <td className="px-4 py-2 text-right">
-                    <Button size="compact" variant="secondary" onClick={() => setReplaceTarget(layer)}>
+                  <td className="px-4 py-0 text-right">
+                    <Button
+                      className="h-9"
+                      size="compact"
+                      variant="secondary"
+                      onClick={() => setReplaceTarget(layer)}
+                    >
                       교체
                     </Button>
                   </td>

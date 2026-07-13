@@ -95,6 +95,8 @@ describe('shared primitives', () => {
   it('renders badge text and a page-level heading with actions', () => {
     const html = renderToStaticMarkup(
       <PageHeader
+        data-page-title
+        tabIndex={-1}
         eyebrow={<Badge tone="draft">초안</Badge>}
         title="프로젝트"
         description="조건표 작업을 선택하세요."
@@ -106,5 +108,11 @@ describe('shared primitives', () => {
     expect(html).toContain('프로젝트')
     expect(html).toContain('조건표 작업을 선택하세요.')
     expect(html).toContain('프로젝트 생성')
+    expect(html).toContain('data-page-title="true"')
+    expect(html).toContain('tabindex="-1"')
+    expect(html).toContain('rounded-sm')
+    expect(html).toContain('focus:outline-2')
+    expect(html).toContain('focus:outline-offset-2')
+    expect(html).toContain('focus:outline-brand-700')
   })
 })
