@@ -85,7 +85,7 @@ export function LayerReplaceModal({
             loading={replaceMutation.isPending}
             onClick={() => replaceMutation.mutate()}
           >
-            {replaceMutation.isPending ? '교체 중...' : '교체 적용'}
+            교체 적용
           </Button>
         </>
       }

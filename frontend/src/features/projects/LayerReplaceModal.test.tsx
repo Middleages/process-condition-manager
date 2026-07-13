@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { ProjectLayerOut, ProjectOut } from '@/api/types'
+import { Button } from '@/shared/components/Button'
 
 import { LayerReplaceModal } from './LayerReplaceModal'
 import layerReplaceModalSource from './LayerReplaceModal.tsx?raw'
@@ -60,5 +61,18 @@ describe('LayerReplaceModal semantic UI contract', () => {
     expect(layerReplaceModalSource).toContain('loading={replaceMutation.isPending}')
     expect(html).toContain('bg-brand-700')
     expect(html).toMatch(/<button[^>]*disabled=""[^>]*>.*교체 적용.*<\/button>/)
+  })
+
+  it('keeps the apply name and reserved width stable while loading', () => {
+    const loadingButtonHtml = renderToStaticMarkup(<Button loading>교체 적용</Button>)
+
+    expect(layerReplaceModalSource).toMatch(
+      /loading=\{replaceMutation\.isPending\}[\s\S]*?>\s*교체 적용\s*<\/Button>/,
+    )
+    expect(layerReplaceModalSource).not.toContain('교체 중...')
+    expect(loadingButtonHtml).toContain('aria-busy="true"')
+    expect(loadingButtonHtml).toContain('disabled=""')
+    expect(loadingButtonHtml).toMatch(/<span class="[^"]*opacity-0[^"]*">교체 적용<\/span>/)
+    expect(loadingButtonHtml).toContain('aria-hidden="true"')
   })
 })
