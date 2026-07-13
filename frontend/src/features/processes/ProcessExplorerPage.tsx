@@ -11,6 +11,7 @@ import { PageHeader } from '@/shared/components/PageHeader'
 import { cn } from '@/shared/lib/cn'
 
 import { getProcessProjectHref } from './processProjectLink'
+import { getSettledProcessSelection } from './processSelection'
 
 export function ProcessExplorerPage() {
   const [query, setQuery] = useState('')
@@ -25,22 +26,26 @@ export function ProcessExplorerPage() {
   const [selectedProcessKey, setSelectedProcessKey] = useState<string | null>(
     () => processes[0]?.key ?? null,
   )
+  const listSettledSuccessfully = processesQuery.isSuccess && !processesQuery.isFetching
+  const activeProcessKey = listSettledSuccessfully
+    ? getSettledProcessSelection(selectedProcessKey, processes)
+    : selectedProcessKey
 
   useEffect(() => {
-    if (processes[0] && !processes.some((process) => process.key === selectedProcessKey)) {
-      setSelectedProcessKey(processes[0].key)
-    }
-  }, [processes, selectedProcessKey])
+    if (!listSettledSuccessfully) return
+
+    setSelectedProcessKey((currentKey) => getSettledProcessSelection(currentKey, processes))
+  }, [listSettledSuccessfully, processes])
 
   const detailQuery = useQuery({
-    queryKey: ['process', selectedProcessKey],
-    queryFn: () => getProcess(selectedProcessKey as string),
-    enabled: selectedProcessKey !== null,
+    queryKey: ['process', activeProcessKey],
+    queryFn: () => getProcess(activeProcessKey as string),
+    enabled: activeProcessKey !== null,
   })
   const layersQuery = useQuery({
-    queryKey: ['process-layers', selectedProcessKey],
-    queryFn: () => getProcessLayers(selectedProcessKey as string),
-    enabled: selectedProcessKey !== null,
+    queryKey: ['process-layers', activeProcessKey],
+    queryFn: () => getProcessLayers(activeProcessKey as string),
+    enabled: activeProcessKey !== null,
   })
 
   return (
@@ -93,7 +98,7 @@ export function ProcessExplorerPage() {
               <ProcessResultButton
                 key={process.key}
                 process={process}
-                selected={process.key === selectedProcessKey}
+                selected={process.key === activeProcessKey}
                 onSelect={() => setSelectedProcessKey(process.key)}
               />
             ))}
@@ -108,7 +113,7 @@ export function ProcessExplorerPage() {
         <div className="min-w-0 space-y-4">
           <section className="rounded-xl border border-border-subtle bg-surface p-4">
             <h2 className="mb-3 font-semibold text-ink-950">구조 요약</h2>
-            {detailQuery.isPending && selectedProcessKey !== null ? (
+            {detailQuery.isPending && activeProcessKey !== null ? (
               <LoadingMessage>Process 구조를 불러오는 중입니다.</LoadingMessage>
             ) : null}
             {detailQuery.isError ? (
@@ -148,7 +153,7 @@ export function ProcessExplorerPage() {
                   {detailQuery.data.has_project ? '기존 프로젝트 찾기' : '이 구조로 프로젝트 생성'}
                 </Link>
               </div>
-            ) : selectedProcessKey === null ? (
+            ) : activeProcessKey === null ? (
               <p className="text-sm text-muted">왼쪽 목록에서 Process를 선택하세요.</p>
             ) : null}
           </section>
@@ -156,7 +161,7 @@ export function ProcessExplorerPage() {
           <section className="rounded-xl border border-border-subtle bg-surface p-4">
             <h2 className="mb-3 font-semibold text-ink-950">Layer 구조</h2>
             <p className="mb-3 text-xs text-muted">조건 값 없이 Step과 Layer 구조만 표시합니다.</p>
-            {layersQuery.isPending && selectedProcessKey !== null ? (
+            {layersQuery.isPending && activeProcessKey !== null ? (
               <LoadingMessage>Layer 구조를 불러오는 중입니다.</LoadingMessage>
             ) : null}
             {layersQuery.isError ? (
