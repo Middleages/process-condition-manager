@@ -11,6 +11,8 @@ function leafPath(pathname: string): string | undefined {
 describe('app routes', () => {
   it('keeps the current primary routes reachable', () => {
     expect(leafPath('/projects')).toBe('projects')
+    expect(leafPath('/projects/new')).toBe('projects/new')
+    expect(leafPath('/projects/7')).toBe('projects/:projectId')
     expect(leafPath('/processes')).toBe('processes')
     expect(leafPath('/parameters')).toBe('parameters')
     expect(leafPath('/projects/7/sheet')).toBe('projects/:projectId/sheet')

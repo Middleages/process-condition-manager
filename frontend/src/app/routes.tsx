@@ -3,7 +3,9 @@ import { Navigate, type RouteObject } from 'react-router-dom'
 
 import { ParameterAdminPage } from '@/features/parameters/ParameterAdminPage'
 import { ProcessExplorerPage } from '@/features/processes/ProcessExplorerPage'
-import { ProjectWorkspacePage } from '@/features/projects/ProjectWorkspacePage'
+import { ProjectCreatePage } from '@/features/projects/ProjectCreatePage'
+import { ProjectDetailPage } from '@/features/projects/ProjectDetailPage'
+import { ProjectListPage } from '@/features/projects/ProjectListPage'
 import { SheetViewPage } from '@/features/sheets/SheetView'
 import { AppLayout } from '@/shared/layout/AppLayout'
 import { RootLayout } from '@/shared/layout/RootLayout'
@@ -37,10 +39,12 @@ export const appRoutes: RouteObject[] = [
         element: <AppLayout />,
         children: [
           { index: true, element: <Navigate to="/projects" replace /> },
-          { path: 'projects', element: <ProjectWorkspacePage /> },
+          { path: 'projects', element: <ProjectListPage /> },
+          { path: 'projects/new', element: <ProjectCreatePage /> },
+          { path: 'projects/:projectId', element: <ProjectDetailPage /> },
+          { path: 'projects/:projectId/sheet', element: <SheetViewPage /> },
           { path: 'processes', element: <ProcessExplorerPage /> },
           { path: 'parameters', element: <ParameterAdminPage /> },
-          { path: 'projects/:projectId/sheet', element: <SheetViewPage /> },
           ...developmentRoutes,
         ],
       },
