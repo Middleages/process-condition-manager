@@ -227,6 +227,7 @@ async def test_sheet_lock_summary_unlocked(
         "locked_at": None,
         "expires_at": None,
         "is_mine": False,
+        "heartbeat_seconds": 45,
     }
 
 
@@ -245,6 +246,7 @@ async def test_sheet_lock_summary_locked_by_me(
     assert lock["is_mine"] is True
     assert lock["locked_at"] is not None
     assert lock["expires_at"] is not None
+    assert lock["heartbeat_seconds"] == 45
 
 
 async def test_sheet_lock_summary_locked_by_other(
@@ -277,6 +279,7 @@ async def test_sheet_lock_summary_expired_reads_as_unlocked(
         "locked_at": None,
         "expires_at": None,
         "is_mine": False,
+        "heartbeat_seconds": 45,
     }
 
 

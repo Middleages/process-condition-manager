@@ -178,6 +178,20 @@ async def test_release_wrong_token_keeps_lock(db_client: AsyncClient) -> None:
     assert (await _heartbeat(db_client, project["id"], token)).status_code == 200
 
 
+async def test_beacon_release_endpoint_releases_lock(db_client: AsyncClient) -> None:
+    """beforeunload sendBeacon이 쓸 POST 경로도 동일한 토큰 규칙으로 잠금을 해제한다."""
+    project = await _create_project(db_client)
+    token = await _acquire(db_client, project["id"])
+
+    released = await db_client.post(
+        f"/api/projects/{project['id']}/lock/release",
+        json={"lock_token": token},
+    )
+
+    assert released.status_code == 204
+    assert (await _heartbeat(db_client, project["id"], token)).status_code == 409
+
+
 async def test_expired_lock_can_be_stolen(
     db_client: AsyncClient, db_session: AsyncSession
 ) -> None:

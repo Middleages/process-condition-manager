@@ -60,6 +60,18 @@ async def release_lock(
     await service.release(project_id, user_id=user.id, lock_token=data.lock_token)
 
 
+@router.post("/{project_id}/lock/release", status_code=status.HTTP_204_NO_CONTENT)
+async def release_lock_beacon(
+    project_id: int, data: LockReleaseIn, service: ServiceDep, user: UserDep
+) -> None:
+    """탭 종료 sendBeacon용 POST 해제 경로.
+
+    sendBeacon은 메서드를 DELETE로 바꿀 수 없으므로 전송 보장이 필요한 unload 경로만
+    POST 별칭을 쓴다. 토큰/보유자 판정은 일반 DELETE와 동일한 service.release가 담당한다.
+    """
+    await service.release(project_id, user_id=user.id, lock_token=data.lock_token)
+
+
 def _lock_out(lock: EditLock) -> LockOut:
     # 응답 datetime을 aware UTC로 통일한다 (SQLite naive/PG aware 차이 흡수).
     return LockOut(

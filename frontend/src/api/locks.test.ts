@@ -6,11 +6,12 @@ vi.mock('./client', () => ({
   apiClient: {
     post: vi.fn(),
     delete: vi.fn(),
+    defaults: { baseURL: '/api' },
   },
 }))
 
 import { apiClient } from './client'
-import { acquireLock, heartbeatLock, releaseLock } from './locks'
+import { acquireLock, heartbeatLock, releaseLock, releaseLockOnUnload } from './locks'
 import type { LockOut } from './types'
 
 function response<T>(data: T): AxiosResponse<T> {
@@ -56,5 +57,18 @@ describe('locks api client', () => {
     await releaseLock(7, 'tok')
 
     expect(del).toHaveBeenCalledWith('/projects/7/lock', { data: { lock_token: 'tok' } })
+  })
+
+  it('uses the beacon-specific POST release endpoint during unload', async () => {
+    const sendBeacon = vi.fn((_url: string | URL, _data?: BodyInit | null) => true)
+
+    const queued = releaseLockOnUnload(7, 'tok', sendBeacon)
+
+    expect(queued).toBe(true)
+    expect(sendBeacon).toHaveBeenCalledTimes(1)
+    const [url, body] = sendBeacon.mock.calls[0]
+    expect(url).toBe('/api/projects/7/lock/release')
+    expect(body).toBeInstanceOf(Blob)
+    expect(await (body as Blob).text()).toBe('{"lock_token":"tok"}')
   })
 })

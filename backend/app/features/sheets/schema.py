@@ -49,6 +49,7 @@ class SheetLockSummaryOut(BaseModel):
     locked_at: datetime | None
     expires_at: datetime | None
     is_mine: bool
+    heartbeat_seconds: int
 
 
 class SheetOut(BaseModel):

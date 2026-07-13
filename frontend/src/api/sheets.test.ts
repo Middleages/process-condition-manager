@@ -44,6 +44,7 @@ const sampleSheet: SheetOut = {
     locked_at: null,
     expires_at: null,
     is_mine: true,
+    heartbeat_seconds: 45,
   },
 }
 

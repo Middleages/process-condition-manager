@@ -255,6 +255,8 @@ export interface SheetLockSummaryOut {
   locked_at: string | null
   expires_at: string | null
   is_mine: boolean
+  /** 서버 설정에서 내려오는 잠금 heartbeat/readonly 재시도 주기. */
+  heartbeat_seconds: number
 }
 
 /** 시트 조회 응답: 컬럼 정의 + 본문 행 + 잠금 요약. SheetOut. */

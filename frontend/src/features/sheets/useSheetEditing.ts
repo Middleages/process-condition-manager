@@ -11,9 +11,9 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { apiClient, isLockConflict } from '@/api/client'
+import { isLockConflict } from '@/api/client'
 import { patchCells } from '@/api/cells'
-import { acquireLock, heartbeatLock, releaseLock } from '@/api/locks'
+import { acquireLock, heartbeatLock, releaseLock, releaseLockOnUnload } from '@/api/locks'
 
 import { createAutosaveEngine, type AutosaveEngine, type SaveState } from './autosave'
 import { dirtyCellList, toCellUpdateIn, useEditStore, type DirtyCell } from './editStore'
@@ -25,7 +25,7 @@ export type LockStatus =
   | 'readonly' // 획득 실패(타인 편집 중 등) → 읽기 전용
   | 'lost' // 보유 중 상실 → 읽기 전용, 재획득 필요(더티 보존)
 
-const HEARTBEAT_MS = 45_000
+const DEFAULT_HEARTBEAT_MS = 45_000
 const AUTOSAVE_DEBOUNCE_MS = 3_000
 const AUTOSAVE_BACKOFF_MS = 500
 const AUTOSAVE_MAX_RETRIES = 3
@@ -41,6 +41,8 @@ class LockRequiredError extends Error {
 export interface UseSheetEditingOptions {
   /** 저장 성공분을 서버 스냅샷(react-query 캐시)에 반영하는 콜백. markSaved 전에 호출된다. */
   onPersisted?: (cells: DirtyCell[]) => void
+  /** 서버가 시트 잠금 요약으로 공급한 heartbeat/readonly 재획득 주기. */
+  heartbeatMs?: number
 }
 
 export interface SheetEditing {
@@ -82,11 +84,13 @@ export function useSheetEditing(
   const [lockStatus, setLockStatus] = useState<LockStatus>('acquiring')
   const [saveStatus, setSaveStatus] = useState<SaveState>('idle')
   const dirtyCount = useEditStore((state) => state.dirtyCells.size)
+  const heartbeatMs = options.heartbeatMs ?? DEFAULT_HEARTBEAT_MS
 
   const lockTokenRef = useRef<string | null>(null)
   const lockStatusRef = useRef<LockStatus>('acquiring') // 비동기 콜백 내부 로직용 미러
   const projectIdRef = useRef(projectId)
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const acquireInFlightRef = useRef(false)
   const engineRef = useRef<AutosaveEngine | null>(null)
   const onPersistedRef = useRef(options.onPersisted)
   const saveOriginRef = useRef<'manual' | 'paste'>('manual')
@@ -126,8 +130,8 @@ export function useSheetEditing(
           // 409 = 잠금 상실. 그 외(네트워크 일시 오류)는 무시 — 다음 주기 재시도, TTL이 최종 보험.
           if (isLockConflict(error)) handleLockLost()
         })
-    }, HEARTBEAT_MS)
-  }, [stopHeartbeat, handleLockLost])
+    }, heartbeatMs)
+  }, [stopHeartbeat, handleLockLost, heartbeatMs])
 
   // 자동저장 엔진은 한 번만 생성한다(안정 클로저 — 위 useCallback들은 deps가 안정적이다).
   if (engineRef.current === null) {
@@ -255,6 +259,10 @@ export function useSheetEditing(
   }, [])
 
   const reacquire = useCallback(() => {
+    if (acquireInFlightRef.current) return
+    const fallbackStatus: LockStatus =
+      lockStatusRef.current === 'readonly' ? 'readonly' : 'lost'
+    acquireInFlightRef.current = true
     updateLockStatus('acquiring')
     acquireLock(projectIdRef.current)
       .then((lock) => {
@@ -265,7 +273,10 @@ export function useSheetEditing(
         if (useEditStore.getState().dirtyCells.size > 0) engineRef.current?.schedule()
       })
       .catch(() => {
-        updateLockStatus('lost')
+        updateLockStatus(fallbackStatus)
+      })
+      .finally(() => {
+        acquireInFlightRef.current = false
       })
   }, [updateLockStatus, startHeartbeat])
 
@@ -279,6 +290,7 @@ export function useSheetEditing(
     updateLockStatus('acquiring')
     setSaveStatus('idle')
 
+    acquireInFlightRef.current = true
     acquireLock(projectId)
       .then((lock) => {
         if (cancelled) {
@@ -294,9 +306,40 @@ export function useSheetEditing(
         lockTokenRef.current = null
         updateLockStatus('readonly') // 획득 실패(타인 편집 중 등) → 읽기 전용
       })
+      .finally(() => {
+        acquireInFlightRef.current = false
+      })
+
+    // 비보유자는 서버가 공급한 heartbeat 주기로 조용히 재획득을 시도한다. 성공하면
+    // 새로고침 없이 편집 모드로 전환하고, 실패 중에는 readonly 표시를 유지한다.
+    const readonlyRetry = setInterval(() => {
+      if (
+        cancelled ||
+        acquireInFlightRef.current ||
+        lockStatusRef.current !== 'readonly'
+      ) {
+        return
+      }
+      acquireInFlightRef.current = true
+      acquireLock(projectId)
+        .then((lock) => {
+          if (cancelled) {
+            void releaseLock(projectId, lock.lock_token)
+            return
+          }
+          lockTokenRef.current = lock.lock_token
+          updateLockStatus('held')
+          startHeartbeat()
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          acquireInFlightRef.current = false
+        })
+    }, heartbeatMs)
 
     return () => {
       cancelled = true
+      clearInterval(readonlyRetry)
       stopHeartbeat()
       const token = lockTokenRef.current
       if (lockStatusRef.current === 'held' && token !== null) {
@@ -315,20 +358,15 @@ export function useSheetEditing(
         if (token !== null) void releaseLock(projectId, token)
       }
     }
-  }, [projectId, updateLockStatus, startHeartbeat, stopHeartbeat])
+  }, [projectId, updateLockStatus, startHeartbeat, stopHeartbeat, heartbeatMs])
 
-  // 탭 종료 대비: sendBeacon으로 해제 시도. sendBeacon은 POST 전용이라 정확한 해제(DELETE)는
-  // 못 하지만, 안 되더라도 잠금 TTL 만료가 최종 보험이다(과도 구현 금지 — 훅 하나로 충분).
+  // 탭 종료 대비: sendBeacon 전용 POST release 별칭으로 해제를 큐에 넣는다. 전송 자체가
+  // 거부되거나 브라우저가 종료되면 TTL 만료가 최종 보험이다.
   useEffect(() => {
     const handler = (): void => {
       const token = lockTokenRef.current
       if (token === null || lockStatusRef.current !== 'held') return
-      const base = apiClient.defaults.baseURL ?? '/api'
-      const url = `${base}/projects/${projectIdRef.current}/lock`
-      const blob = new Blob([JSON.stringify({ lock_token: token })], {
-        type: 'application/json',
-      })
-      navigator.sendBeacon(url, blob)
+      releaseLockOnUnload(projectIdRef.current, token)
     }
     window.addEventListener('beforeunload', handler)
     return () => window.removeEventListener('beforeunload', handler)

@@ -5,6 +5,7 @@
 동결된 parameter_snapshot을 쓰도록 이 함수 교체만으로 경계가 갈리도록 하기 위함이다.
 """
 
+from app.core.config import settings
 from app.core.errors import NotFoundError
 from app.core.locks import as_utc, is_expired, utcnow
 from app.domain.parameters.types import ValueType
@@ -110,11 +111,16 @@ def _lock_summary(lock: EditLock | None, *, user_id: str) -> SheetLockSummaryOut
     """
     if lock is None or is_expired(lock, utcnow()):
         return SheetLockSummaryOut(
-            locked_by=None, locked_at=None, expires_at=None, is_mine=False
+            locked_by=None,
+            locked_at=None,
+            expires_at=None,
+            is_mine=False,
+            heartbeat_seconds=settings.edit_lock_heartbeat_seconds,
         )
     return SheetLockSummaryOut(
         locked_by=lock.locked_by,
         locked_at=as_utc(lock.locked_at),
         expires_at=as_utc(lock.expires_at),
         is_mine=lock.locked_by == user_id,
+        heartbeat_seconds=settings.edit_lock_heartbeat_seconds,
     )

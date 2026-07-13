@@ -46,17 +46,15 @@ export function toConditionGridData(sheet: SheetOut): ConditionGridData {
 }
 
 export interface SheetLockView {
-  /** 비보유자에게는 읽기 전용. (T2에서는 편집 미구현이라 화면이 항상 읽기 전용이지만,
-   *  잠금 요약의 의미는 T5 계약대로 여기서 해석해 둔다.) */
-  readOnly: boolean
   /** "누가 편집 중" 배너 텍스트 — 타인이 편집 중일 때만 채워진다. */
   editingBy: string | null
 }
 
 /** 잠금 요약을 화면용 표현으로 변환한다. */
 export function toLockView(lock: SheetLockSummaryOut): SheetLockView {
-  const lockedByOther = lock.locked_by !== null && !lock.is_mine
-  return { readOnly: lockedByOther, editingBy: lockedByOther ? lock.locked_by : null }
+  // 실제 편집 소유권은 사용자+토큰이다. 같은 사용자라도 다른 탭이면 현재 세션의 잠금이
+  // 아니므로, 획득 실패(readonly) UI가 보유자명을 표시할 수 있게 이름은 항상 보존한다.
+  return { editingBy: lock.locked_by }
 }
 
 /**

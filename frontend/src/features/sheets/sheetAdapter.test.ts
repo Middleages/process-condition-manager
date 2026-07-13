@@ -38,7 +38,7 @@ const sheet: SheetOut = {
       cells: { spin_speed: '1500', pr_type: 'pos' },
     },
   ],
-  lock: { locked_by: null, locked_at: null, expires_at: null, is_mine: true },
+  lock: { locked_by: null, locked_at: null, expires_at: null, is_mine: true, heartbeat_seconds: 45 },
 }
 
 describe('toConditionGridData', () => {
@@ -72,20 +72,31 @@ describe('toConditionGridData', () => {
 })
 
 describe('toLockView', () => {
-  it('is not read-only when the lock is mine or absent', () => {
-    expect(toLockView({ locked_by: null, locked_at: null, expires_at: null, is_mine: true })).toEqual({
-      readOnly: false,
-      editingBy: null,
-    })
+  it('preserves the holder name even when the same user owns another session', () => {
     expect(
-      toLockView({ locked_by: 'dev-admin', locked_at: null, expires_at: null, is_mine: true }),
-    ).toEqual({ readOnly: false, editingBy: null })
+      toLockView({ locked_by: null, locked_at: null, expires_at: null, is_mine: true, heartbeat_seconds: 45 }),
+    ).toEqual({ editingBy: null })
+    expect(
+      toLockView({
+        locked_by: 'dev-admin',
+        locked_at: null,
+        expires_at: null,
+        is_mine: true,
+        heartbeat_seconds: 45,
+      }),
+    ).toEqual({ editingBy: 'dev-admin' })
   })
 
-  it('is read-only and names the editor when someone else holds the lock', () => {
+  it('names the editor when someone else holds the lock', () => {
     expect(
-      toLockView({ locked_by: 'someone', locked_at: '2026-07-11T00:00:00Z', expires_at: null, is_mine: false }),
-    ).toEqual({ readOnly: true, editingBy: 'someone' })
+      toLockView({
+        locked_by: 'someone',
+        locked_at: '2026-07-11T00:00:00Z',
+        expires_at: null,
+        is_mine: false,
+        heartbeat_seconds: 45,
+      }),
+    ).toEqual({ editingBy: 'someone' })
   })
 })
 

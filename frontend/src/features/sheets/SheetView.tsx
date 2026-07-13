@@ -43,6 +43,8 @@ export function SheetView({ projectId }: { projectId: number }) {
   const sheetQuery = useQuery({
     queryKey: ['sheet', projectId],
     queryFn: () => getSheet(projectId),
+    refetchInterval: (query) =>
+      ((query.state.data as SheetOut | undefined)?.lock.heartbeat_seconds ?? 45) * 1000,
   })
 
   if (sheetQuery.isLoading) return <LoadingMessage>시트를 불러오는 중...</LoadingMessage>
@@ -80,7 +82,10 @@ function SheetEditor({ projectId, sheet }: { projectId: number; sheet: SheetOut 
     [queryClient, projectId],
   )
 
-  const editing = useSheetEditing(projectId, { onPersisted: commitSaved })
+  const editing = useSheetEditing(projectId, {
+    onPersisted: commitSaved,
+    heartbeatMs: sheet.lock.heartbeat_seconds * 1000,
+  })
 
   // 컬럼 가독성(T6): 카테고리 탭으로 파라미터 컬럼 부분집합을 고르고, 컬럼 검색-점프로 특정
   // 컬럼으로 스크롤한다. 좌측 식별 컬럼 고정·헤더 hover 툴팁은 어댑터가 내부에서 처리한다.
@@ -580,8 +585,19 @@ function LockChip({ editing, lock }: { editing: SheetEditing; lock: SheetLockVie
       )
     case 'readonly':
       return (
-        <span className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-700">
-          {lock.editingBy !== null ? `읽기 전용 · 편집 중: ${lock.editingBy}` : '읽기 전용 (잠금 획득 실패)'}
+        <span className="flex items-center gap-2">
+          <span className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-700">
+            {lock.editingBy !== null
+              ? `읽기 전용 · 편집 중: ${lock.editingBy}`
+              : '읽기 전용 (잠금 획득 실패)'}
+          </span>
+          <button
+            type="button"
+            onClick={editing.reacquire}
+            className="rounded-md border border-amber-300 px-2 py-0.5 text-amber-700 hover:bg-amber-50"
+          >
+            지금 재시도
+          </button>
         </span>
       )
     case 'lost':

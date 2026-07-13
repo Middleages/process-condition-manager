@@ -30,3 +30,18 @@ export async function heartbeatLock(projectId: number, lockToken: string): Promi
 export async function releaseLock(projectId: number, lockToken: string): Promise<void> {
   await apiClient.delete(`/projects/${projectId}/lock`, { data: { lock_token: lockToken } })
 }
+
+type BeaconSender = (url: string | URL, data?: BodyInit | null) => boolean
+
+/** 탭 종료 시에도 브라우저가 전송을 이어 가는 잠금 해제 요청. */
+export function releaseLockOnUnload(
+  projectId: number,
+  lockToken: string,
+  sendBeacon: BeaconSender = navigator.sendBeacon.bind(navigator),
+): boolean {
+  const base = (apiClient.defaults.baseURL ?? '/api').replace(/\/$/, '')
+  const body = new Blob([JSON.stringify({ lock_token: lockToken })], {
+    type: 'application/json',
+  })
+  return sendBeacon(`${base}/projects/${projectId}/lock/release`, body)
+}
