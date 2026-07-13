@@ -8,18 +8,34 @@ export interface UseUnsavedChangesOptions {
   when: boolean
   message: string
   allowPath?: string
+  freezeWhen?: boolean
 }
 
-export function useUnsavedChanges({ when, message, allowPath }: UseUnsavedChangesOptions) {
+export type UnsavedNavigationAction = 'allow' | 'confirm' | 'reset'
+
+export function getUnsavedNavigationAction({
+  when,
+  freezeWhen = false,
+}: Pick<UseUnsavedChangesOptions, 'when' | 'freezeWhen'>): UnsavedNavigationAction {
+  if (freezeWhen) return 'reset'
+  return when ? 'confirm' : 'allow'
+}
+
+export function useUnsavedChanges({
+  when,
+  message,
+  allowPath,
+  freezeWhen = false,
+}: UseUnsavedChangesOptions) {
   const shouldBlock = useCallback<BlockerFunction>(
     ({ currentLocation, nextLocation }) =>
       shouldBlockNavigation(
-        when,
+        when || freezeWhen,
         locationUrl(currentLocation),
         locationUrl(nextLocation),
         allowPath,
       ),
-    [allowPath, when],
+    [allowPath, freezeWhen, when],
   )
   const blocker = useBlocker(shouldBlock)
   const handledBlockRef = useRef<string | null>(null)
@@ -27,12 +43,12 @@ export function useUnsavedChanges({ when, message, allowPath }: UseUnsavedChange
   useBeforeUnload(
     useCallback(
       (event: BeforeUnloadEvent) => {
-        if (!when) return
+        if (!when && !freezeWhen) return
 
         event.preventDefault()
         event.returnValue = true
       },
-      [when],
+      [freezeWhen, when],
     ),
   )
 
@@ -45,12 +61,15 @@ export function useUnsavedChanges({ when, message, allowPath }: UseUnsavedChange
     if (handledBlockRef.current === blocker.location.key) return
     handledBlockRef.current = blocker.location.key
 
-    if (window.confirm(message)) {
+    const action = getUnsavedNavigationAction({ when, freezeWhen })
+    if (action === 'reset') {
+      blocker.reset()
+    } else if (action === 'confirm' && window.confirm(message)) {
       blocker.proceed()
     } else {
       blocker.reset()
     }
-  }, [blocker, message])
+  }, [blocker, freezeWhen, message, when])
 }
 
 function locationUrl(location: Location): string {

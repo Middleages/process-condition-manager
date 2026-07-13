@@ -1,9 +1,39 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 
-import { Dialog, Drawer } from './ModalSurface'
+import {
+  Dialog,
+  Drawer,
+  resolveModalTabTarget,
+  restoreModalFocus,
+} from './ModalSurface'
 
 describe('ModalSurface', () => {
+  it('wraps Tab at both modal boundaries and enters from programmatic heading focus', () => {
+    expect(resolveModalTabTarget(-1, 4, false)).toBe(0)
+    expect(resolveModalTabTarget(-1, 4, true)).toBe(3)
+    expect(resolveModalTabTarget(0, 4, true)).toBe(3)
+    expect(resolveModalTabTarget(3, 4, false)).toBe(0)
+    expect(resolveModalTabTarget(1, 4, false)).toBeNull()
+  })
+
+  it('can deliberately return direct-entry work to a stable page heading', () => {
+    const captured = { isConnected: true, focus: vi.fn() }
+    const fallback = { isConnected: true, focus: vi.fn() }
+    const returnTarget = { isConnected: true, focus: vi.fn() }
+    const capturedRef = { current: captured as unknown as HTMLElement | null | undefined }
+
+    restoreModalFocus(
+      capturedRef,
+      { current: fallback as unknown as HTMLElement },
+      { current: returnTarget as unknown as HTMLElement },
+    )
+
+    expect(returnTarget.focus).toHaveBeenCalledOnce()
+    expect(captured.focus).not.toHaveBeenCalled()
+    expect(fallback.focus).not.toHaveBeenCalled()
+  })
+
   it('labels the modal drawer', () => {
     const html = renderToStaticMarkup(
       <Drawer open title="파라미터 수정" onRequestClose={vi.fn()}>

@@ -13,6 +13,7 @@ export interface ModalSurfaceProps {
   onRequestClose: (reason: ModalCloseReason) => void
   initialFocusRef?: RefObject<HTMLElement>
   fallbackFocusRef?: RefObject<HTMLElement>
+  returnFocusRef?: RefObject<HTMLElement>
   children: ReactNode
   footer?: ReactNode
 }
@@ -26,6 +27,7 @@ export function ModalSurface({
   onRequestClose,
   initialFocusRef,
   fallbackFocusRef,
+  returnFocusRef,
   children,
   footer,
 }: ModalSurfaceProps) {
@@ -54,14 +56,14 @@ export function ModalSurface({
     }
 
     if (dialog.open) dialog.close()
-    restoreCapturedFocus(capturedFocusRef, fallbackRef.current)
-  }, [initialFocusRef, open])
+    restoreModalFocus(capturedFocusRef, fallbackRef.current, returnFocusRef)
+  }, [initialFocusRef, open, returnFocusRef])
 
   useEffect(
     () => () => {
       const dialog = dialogRef.current
       if (dialog?.open) dialog.close()
-      restoreCapturedFocus(capturedFocusRef, fallbackRef.current)
+      restoreModalFocus(capturedFocusRef, fallbackRef.current, returnFocusRef)
     },
     [],
   )
@@ -80,6 +82,24 @@ export function ModalSurface({
       onCancel={(event) => {
         event.preventDefault()
         onRequestClose('escape')
+      }}
+      onKeyDown={(event) => {
+        if (event.key !== 'Tab') return
+
+        // Native <dialog> focus wrapping is inconsistent across browser automation
+        // and embedded WebViews. Keep every Tab transition inside the topmost surface.
+        event.stopPropagation()
+        const focusable = Array.from(
+          event.currentTarget.querySelectorAll<HTMLElement>(
+            'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [contenteditable="true"], [tabindex]:not([tabindex="-1"])',
+          ),
+        ).filter((element) => element.getClientRects().length > 0)
+        const activeIndex = focusable.indexOf(document.activeElement as HTMLElement)
+        const targetIndex = resolveModalTabTarget(activeIndex, focusable.length, event.shiftKey)
+
+        if (targetIndex === null) return
+        event.preventDefault()
+        focusable[targetIndex]?.focus()
       }}
       onPointerDown={(event) => {
         if (event.target === event.currentTarget) onRequestClose('backdrop')
@@ -131,17 +151,34 @@ export function Drawer(props: ModalVariantProps) {
   return <ModalSurface {...props} variant="drawer" />
 }
 
-function restoreCapturedFocus(
+export function restoreModalFocus(
   capturedFocusRef: MutableRefObject<HTMLElement | null | undefined>,
   fallbackFocusRef?: RefObject<HTMLElement>,
+  returnFocusRef?: RefObject<HTMLElement>,
 ) {
   const capturedFocus = capturedFocusRef.current
   if (capturedFocus === undefined) return
 
   capturedFocusRef.current = undefined
+  if (returnFocusRef?.current?.isConnected) {
+    returnFocusRef.current.focus()
+    return
+  }
   if (capturedFocus?.isConnected && capturedFocus !== document.body) {
     capturedFocus.focus()
   } else {
     fallbackFocusRef?.current?.focus()
   }
+}
+
+export function resolveModalTabTarget(
+  activeIndex: number,
+  focusableCount: number,
+  backwards: boolean,
+): number | null {
+  if (focusableCount <= 0) return null
+  if (activeIndex < 0) return backwards ? focusableCount - 1 : 0
+  if (backwards && activeIndex === 0) return focusableCount - 1
+  if (!backwards && activeIndex === focusableCount - 1) return 0
+  return null
 }
