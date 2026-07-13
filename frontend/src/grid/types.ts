@@ -104,6 +104,13 @@ export interface ConditionGridCallbacks {
   onPaste?(target: { conditionId: string; parameterCode: string }, tsv: string): void
   /** POR 이양(T7) — layer당 1개 강제는 서버가 담당. */
   onPorChange?(layerKey: string, conditionId: string): void
+  /**
+   * 조건 행 관리(추가/복제/삭제) 대상 활성화(T7). 좌측 식별 컬럼(Layer/조건) 클릭 시 그 행을
+   * 관리 대상으로 올린다. 실제 추가/복제/삭제 UI와 API 호출은 상위(SheetEditor)의 몫 —
+   * 그리드는 어떤 행이 선택됐는지 도메인 좌표(conditionId, layerKey)로만 보고한다(픽셀 좌표
+   * 같은 라이브러리/표현 세부는 경계 밖으로 내보내지 않는다, P4).
+   */
+  onConditionActivate?(payload: { conditionId: string; layerKey: string }): void
 }
 
 export interface ConditionGridViewState {

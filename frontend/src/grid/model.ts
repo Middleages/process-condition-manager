@@ -89,6 +89,21 @@ export function computeRowGroups(rows: readonly ConditionGridRow[]): RowGroupMet
   return { groups, groupIndexByRow, isGroupStart }
 }
 
+/**
+ * POR이 지정되지 않은 layer 그룹 목록을 등장 순서로 뽑는다(T7 경고 표시 근거).
+ *
+ * `computeRowGroups`의 그룹 경계를 재사용해, 각 그룹(=layer)에 `isPor=true`인 조건 행이
+ * 하나도 없으면 "POR 미지정"으로 본다. 시트 응답은 layer→조건 순서로 정렬돼 있어 layer가
+ * 연속이므로(한 layer=한 그룹) 그룹 단위 판정이 곧 layer 단위 판정이다. 순수 함수라 node에서
+ * 단위 테스트한다. (Review 완결성 게이트는 Phase 5의 몫 — 여기서는 경고 근거만 제공하고 막지 않는다.)
+ */
+export function layersMissingPor(rows: readonly ConditionGridRow[]): LayerGroup[] {
+  const { groups } = computeRowGroups(rows)
+  return groups.filter(
+    (group) => !rows.slice(group.startRow, group.startRow + group.rowCount).some((row) => row.isPor),
+  )
+}
+
 /** number 셀 표시 문자열: 값 + 단위. 값은 파싱하지 않고 그대로 두어 정밀도/서식 손실을 피한다. */
 export function formatNumberDisplay(value: string | null | undefined, unit?: string | null): string {
   const trimmed = (value ?? '').trim()

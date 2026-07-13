@@ -1,8 +1,9 @@
-import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router-dom'
 
 import { getApiErrorMessage } from '@/api/client'
+import { addCondition, deleteCondition, setConditionPor } from '@/api/conditions'
 import { getSheet } from '@/api/sheets'
 import type { SheetOut } from '@/api/types'
 import { GlideConditionGrid } from '@/grid'
@@ -12,7 +13,7 @@ import type {
   ConditionGridHandle,
   ConditionGridRow,
 } from '@/grid'
-import { distinctCategories, visibleParameterColumns } from '@/grid/model'
+import { distinctCategories, layersMissingPor, visibleParameterColumns } from '@/grid/model'
 import { ErrorMessage, LoadingMessage } from '@/shared/components/StatusMessage'
 
 import {
@@ -108,7 +109,84 @@ function SheetEditor({ projectId, sheet }: { projectId: number; sheet: SheetOut 
   const [pasteError, setPasteError] = useState<string | null>(null)
   const [applying, setApplying] = useState(false)
 
-  const { readOnly, setCell, applyPaste } = editing
+  const { readOnly, setCell, applyPaste, runStructuralChange } = editing
+
+  // 조건 행 관리(T7): 추가/복제/삭제 대상은 좌측 식별 컬럼 클릭으로 활성화한 행 하나다.
+  // POR 이양은 활성 행과 무관하게 POR 컬럼 클릭으로 바로 실행한다. 구조 변경은 더티 셀 버퍼와
+  // 분리된 즉시 API 호출(runStructuralChange)이고, 성공하면 시트 쿼리를 무효화해 다시 조회한다
+  // (행 수/POR 지정이 바뀌는 구조적 변화라 부분 캐시 반영보다 재조회가 안전·단순).
+  const [activeRow, setActiveRow] = useState<{ conditionId: string; layerKey: string } | null>(null)
+  const [structError, setStructError] = useState<string | null>(null)
+  const [structBusy, setStructBusy] = useState(false)
+  const structInFlightRef = useRef(false) // 구조 변경 중복 실행(빠른 연타) 방지 — 동기 가드.
+
+  const porGaps = useMemo(() => layersMissingPor(data.rows), [data.rows])
+  const activeRowLabel = useMemo(() => {
+    if (activeRow === null) return null
+    const row = data.rows.find((candidate) => candidate.id === activeRow.conditionId)
+    return row === undefined ? null : `${row.layerLabel} · ${row.conditionLabel}`
+  }, [activeRow, data.rows])
+
+  // 활성 행이 (삭제·외부 변경으로) 시트에서 사라지면 선택을 정리한다 — 없는 행에 대한 조작 방지.
+  useEffect(() => {
+    if (activeRow !== null && !data.rows.some((row) => row.id === activeRow.conditionId)) {
+      setActiveRow(null)
+    }
+  }, [activeRow, data.rows])
+
+  const refreshSheet = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ['sheet', projectId] })
+  }, [queryClient, projectId])
+
+  // 구조 변경 공용 실행: 잠금 검사·더티 flush·잠금 상실 처리(runStructuralChange)를 감싸
+  // UI 상태(진행 중/에러)와 재조회를 얹는다. 성공하면 true, 실패하면 에러를 표시하고 false.
+  const performStructural = useCallback(
+    async (fn: (token: string) => Promise<unknown>): Promise<boolean> => {
+      if (structInFlightRef.current) return false
+      structInFlightRef.current = true
+      setStructBusy(true)
+      setStructError(null)
+      try {
+        await runStructuralChange(fn)
+        refreshSheet()
+        return true
+      } catch (error) {
+        setStructError(getApiErrorMessage(error))
+        return false
+      } finally {
+        structInFlightRef.current = false
+        setStructBusy(false)
+      }
+    },
+    [runStructuralChange, refreshSheet],
+  )
+
+  const handleAddEmpty = useCallback(() => {
+    if (activeRow === null) return
+    const layerKey = activeRow.layerKey
+    void performStructural((token) => addCondition(projectId, layerKey, null, token))
+  }, [activeRow, performStructural, projectId])
+
+  const handleDuplicate = useCallback(() => {
+    if (activeRow === null) return
+    const { layerKey } = activeRow
+    const sourceId = Number(activeRow.conditionId)
+    void performStructural((token) => addCondition(projectId, layerKey, sourceId, token))
+  }, [activeRow, performStructural, projectId])
+
+  const handleDelete = useCallback(async () => {
+    if (activeRow === null) return
+    // 하드 삭제(셀 값까지 캐스케이드)라 되돌릴 수 없다 — 실행 전 한 번 확인한다.
+    if (!window.confirm('이 조건 행을 삭제한다. 되돌릴 수 없다. 계속할까?')) return
+    const conditionId = Number(activeRow.conditionId)
+    const ok = await performStructural((token) => deleteCondition(projectId, conditionId, token))
+    if (ok) setActiveRow(null)
+  }, [activeRow, performStructural, projectId])
+
+  const clearActive = useCallback(() => {
+    setActiveRow(null)
+    setStructError(null)
+  }, [])
 
   const gridCallbacks = useMemo<ConditionGridCallbacks>(
     () => ({
@@ -124,8 +202,17 @@ function SheetEditor({ projectId, sheet }: { projectId: number; sheet: SheetOut 
         setPasteError(null)
         setPaste(result)
       },
+      // POR 이양: 클릭된 행을 POR로. 성공 시 두 행(기존/신규)의 is_por가 바뀌므로 재조회한다.
+      onPorChange: (_layerKey, conditionId) => {
+        void performStructural((token) => setConditionPor(projectId, Number(conditionId), token))
+      },
+      // 좌측 식별 컬럼 클릭 → 그 행을 추가/복제/삭제 대상으로 활성화(하단 액션 바에 노출).
+      onConditionActivate: (payload) => {
+        setStructError(null)
+        setActiveRow(payload)
+      },
     }),
-    [setCell, readOnly, visibleColumns, data.rows],
+    [setCell, readOnly, visibleColumns, data.rows, performStructural, projectId],
   )
 
   const cancelPaste = useCallback(() => {
@@ -180,6 +267,14 @@ function SheetEditor({ projectId, sheet }: { projectId: number; sheet: SheetOut 
         rowCount={data.rows.length}
         colCount={data.columns.length}
       />
+      {porGaps.length > 0 ? (
+        <div
+          className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800"
+          data-testid="por-warning"
+        >
+          POR 미지정 layer <strong>{porGaps.length}</strong>개 — {porGaps.map((group) => group.layerLabel).join(', ')}
+        </div>
+      ) : null}
       <div className="flex flex-wrap items-center gap-2" data-testid="sheet-category-tabs">
         {categories.length > 0 ? (
           <>
@@ -230,6 +325,17 @@ function SheetEditor({ projectId, sheet }: { projectId: number; sheet: SheetOut 
           pasteStaging={paste?.staging}
         />
       </div>
+      {!readOnly ? (
+        <ConditionRowManager
+          activeLabel={activeRowLabel}
+          busy={structBusy}
+          error={structError}
+          onAddEmpty={handleAddEmpty}
+          onDuplicate={handleDuplicate}
+          onDelete={handleDelete}
+          onClear={clearActive}
+        />
+      ) : null}
       {paste !== null ? (
         <PasteStagingPanel
           result={paste}
@@ -241,6 +347,93 @@ function SheetEditor({ projectId, sheet }: { projectId: number; sheet: SheetOut 
           onApply={commitPaste}
           onCancel={cancelPaste}
         />
+      ) : null}
+    </div>
+  )
+}
+
+/**
+ * 조건 행 관리 액션 바(T7): 좌측 식별 컬럼 클릭으로 활성화한 행에 대해 빈 행 추가/복제/삭제를
+ * 노출한다. 잠금 보유(편집 가능) 상태에서만 렌더된다. 실제 API 호출·재조회는 상위(SheetEditor)가
+ * runStructuralChange로 처리하고, 여기서는 버튼과 진행/에러 표시만 담당한다.
+ */
+function ConditionRowManager({
+  activeLabel,
+  busy,
+  error,
+  onAddEmpty,
+  onDuplicate,
+  onDelete,
+  onClear,
+}: {
+  activeLabel: string | null
+  busy: boolean
+  error: string | null
+  onAddEmpty: () => void
+  onDuplicate: () => void
+  onDelete: () => void
+  onClear: () => void
+}) {
+  const noSelection = activeLabel === null
+  return (
+    <div
+      className="space-y-2 rounded-xl border border-slate-200 bg-white p-3 text-sm shadow-sm"
+      data-testid="condition-row-manager"
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-semibold text-slate-700">조건 행 관리</span>
+        {noSelection ? (
+          <span className="text-slate-400">Layer/조건 셀을 클릭해 대상 행을 선택한다</span>
+        ) : (
+          <span className="text-slate-600">
+            선택: <strong>{activeLabel}</strong>
+          </span>
+        )}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={onAddEmpty}
+          disabled={busy || noSelection}
+          data-testid="condition-add"
+          className="rounded-md bg-cyan-600 px-3 py-1 font-medium text-white hover:bg-cyan-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+        >
+          빈 행 추가
+        </button>
+        <button
+          type="button"
+          onClick={onDuplicate}
+          disabled={busy || noSelection}
+          data-testid="condition-duplicate"
+          className="rounded-md border border-cyan-600 px-3 py-1 font-medium text-cyan-700 hover:bg-cyan-50 disabled:cursor-not-allowed disabled:border-slate-300 disabled:text-slate-400"
+        >
+          복제
+        </button>
+        <button
+          type="button"
+          onClick={onDelete}
+          disabled={busy || noSelection}
+          data-testid="condition-delete"
+          className="rounded-md border border-rose-300 px-3 py-1 font-medium text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:border-slate-300 disabled:text-slate-400"
+        >
+          삭제
+        </button>
+        {!noSelection ? (
+          <button
+            type="button"
+            onClick={onClear}
+            disabled={busy}
+            className="rounded-md border border-slate-300 px-3 py-1 text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+          >
+            선택 해제
+          </button>
+        ) : null}
+        {busy ? <span className="text-slate-500">처리 중...</span> : null}
+      </div>
+      {error !== null ? (
+        <p className="text-rose-600" data-testid="condition-error">
+          {error}
+        </p>
       ) : null}
     </div>
   )

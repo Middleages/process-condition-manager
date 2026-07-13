@@ -157,7 +157,7 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
         }
       }
       if (col === 2) {
-        // POR 표식 ●/○ — T2에서는 읽기 전용 표시. 이양(클릭)은 T7이 붙인다.
+        // POR 표식 ●/○ — 표시는 읽기 전용 셀이고, 이양은 onCellClicked(col===2)가 처리한다(T7).
         const mark = rowData.isPor ? '●' : '○'
         return {
           kind: GridCellKind.Text,
@@ -257,6 +257,27 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
     [visibleColumns],
   )
 
+  // 식별 컬럼 클릭 처리(T7). Glide는 캔버스 렌더라 네이티브 컨텍스트 메뉴가 없으므로 셀 클릭을
+  // 도메인 이벤트로 올린다: POR 컬럼(col===2)은 POR 이양, Layer/조건 컬럼(col 0·1)은 행 관리
+  // 대상 활성화. 읽기 전용이거나 파라미터 셀(col>=3)이면 관여하지 않는다(편집은 onCellEdit 담당).
+  const handleCellClicked = useCallback(
+    (item: Item) => {
+      if (readOnly) return
+      const [col, row] = item
+      const rowData = rows[row]
+      if (rowData === undefined) return
+      if (col === 2) {
+        // 이미 POR인 행은 무시 — 이양 대상이 아니고 불필요한 재조회를 피한다(POR 해제는 없다).
+        if (!rowData.isPor) callbacks?.onPorChange?.(rowData.layerKey, rowData.id)
+        return
+      }
+      if (col === 0 || col === 1) {
+        callbacks?.onConditionActivate?.({ conditionId: rowData.id, layerKey: rowData.layerKey })
+      }
+    },
+    [readOnly, rows, callbacks],
+  )
+
   useImperativeHandle(
     ref,
     (): ConditionGridHandle => ({
@@ -289,6 +310,7 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
         rows={rows.length}
         getCellContent={getCellContent}
         onCellEdited={readOnly ? undefined : handleCellEdited}
+        onCellClicked={readOnly ? undefined : handleCellClicked}
         onPaste={handlePaste}
         onItemHovered={handleItemHovered}
         getCellsForSelection

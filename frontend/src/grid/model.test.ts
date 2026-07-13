@@ -10,6 +10,7 @@ import {
   headerTooltip,
   indexStaging,
   indexStatuses,
+  layersMissingPor,
   matrixToTsv,
   overlayKey,
   resolveCellTarget,
@@ -85,6 +86,38 @@ describe('computeRowGroups', () => {
 
   it('handles empty rows', () => {
     expect(computeRowGroups([])).toEqual({ groups: [], groupIndexByRow: [], isGroupStart: [] })
+  })
+})
+
+describe('layersMissingPor', () => {
+  it('returns layer groups that have no POR row', () => {
+    // L1 has a POR row (id 1); L2 has none.
+    const withGap: ConditionGridRow[] = [
+      { id: '1', layerKey: 'L1', layerLabel: 'L1 (S01)', conditionLabel: 'C1', isPor: true, values: {} },
+      { id: '2', layerKey: 'L1', layerLabel: 'L1 (S01)', conditionLabel: 'C2', isPor: false, values: {} },
+      { id: '3', layerKey: 'L2', layerLabel: 'L2 (S02)', conditionLabel: 'C1', isPor: false, values: {} },
+      { id: '4', layerKey: 'L2', layerLabel: 'L2 (S02)', conditionLabel: 'C2', isPor: false, values: {} },
+    ]
+    const missing = layersMissingPor(withGap)
+    expect(missing.map((group) => group.layerKey)).toEqual(['L2'])
+    expect(missing[0]).toMatchObject({ layerLabel: 'L2 (S02)', startRow: 2, rowCount: 2 })
+  })
+
+  it('returns an empty list when every layer has a POR row', () => {
+    // `rows` fixture: L1 (POR on id 1) and L2 (POR on id 3).
+    expect(layersMissingPor(rows)).toEqual([])
+  })
+
+  it('flags every layer when none has a POR row', () => {
+    const none: ConditionGridRow[] = [
+      { id: '1', layerKey: 'L1', layerLabel: 'L1', conditionLabel: 'C1', isPor: false, values: {} },
+      { id: '2', layerKey: 'L2', layerLabel: 'L2', conditionLabel: 'C1', isPor: false, values: {} },
+    ]
+    expect(layersMissingPor(none).map((group) => group.layerKey)).toEqual(['L1', 'L2'])
+  })
+
+  it('handles empty rows', () => {
+    expect(layersMissingPor([])).toEqual([])
   })
 })
 

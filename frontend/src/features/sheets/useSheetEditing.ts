@@ -57,6 +57,16 @@ export interface SheetEditing {
    * 시 즉시 실패, 저장 중 409면 잠금 상실 처리 후 그대로 reject(상위가 스테이징을 유지·안내).
    */
   applyPaste(cells: DirtyCell[]): Promise<void>
+  /**
+   * 구조 변경(조건 행 추가/복제/삭제·POR 이양) 즉시 실행 헬퍼(T7). 더티 셀 버퍼와 분리된
+   * 별도 API 호출을 감싸 잠금 검사·순서 보장·잠금 상실 처리를 재사용한다:
+   *  1. 잠금 미보유면 즉시 실패(`LockRequiredError`).
+   *  2. **진행 중인 더티 셀을 먼저 확정 저장**(자동저장 flushNow 재사용) — 구조 변경 API가
+   *     최신 셀 상태 위에서 동작하도록 순서를 보장한다.
+   *  3. `fn(token)` 호출 → 결과 반환.
+   *  4. 저장 중 409(잠금 상실)면 상실 처리 후 그대로 reject(상위가 UI로 안내).
+   */
+  runStructuralChange<T>(fn: (lockToken: string) => Promise<T>): Promise<T>
   /** 변경 취소(더티 폐기 + 자동저장 중단). */
   discard(): void
   /** 저장 실패 수동 재시도. */
@@ -179,6 +189,34 @@ export function useSheetEditing(
     [handleLockLost],
   )
 
+  // 구조 변경(조건 행 추가/복제/삭제·POR 이양) 즉시 실행: 더티 셀 버퍼와 분리된 별도 API
+  // 호출(T7 즉시 커밋). applyPaste와 같은 즉시-호출 패턴이되, 구조 변경 전에 진행 중인 셀
+  // 편집을 먼저 확정 저장해(flushNow) 순서를 보장한다. flushNow는 실패해도 reject하지 않고
+  // 엔진 내부에서 상태를 전이하므로(409면 handleLockLost까지 수행), flush 뒤 잠금을 다시
+  // 확인한 다음에만 구조 변경 API를 호출한다.
+  const runStructuralChange = useCallback(
+    async <T,>(fn: (lockToken: string) => Promise<T>): Promise<T> => {
+      if (lockTokenRef.current === null || lockStatusRef.current !== 'held') {
+        throw new LockRequiredError()
+      }
+      // 진행 중인 더티 셀을 먼저 확정 저장(디바운스 우회). 없으면 즉시 resolve.
+      await (engineRef.current?.flushNow() ?? Promise.resolve())
+      const token = lockTokenRef.current
+      if (token === null || lockStatusRef.current !== 'held') {
+        // flush 중 잠금 상실(409) → 구조 변경을 진행하지 않는다(handleLockLost는 이미 수행됨).
+        throw new LockRequiredError()
+      }
+      try {
+        return await fn(token)
+      } catch (error) {
+        // 구조 변경 중 잠금 탈취(409) → 상실 처리(읽기 전용 전환) 후 그대로 던져 상위가 안내한다.
+        if (isLockConflict(error)) handleLockLost()
+        throw error
+      }
+    },
+    [handleLockLost],
+  )
+
   const discard = useCallback(() => {
     useEditStore.getState().clearAll()
     engineRef.current?.cancel()
@@ -275,6 +313,7 @@ export function useSheetEditing(
     readOnly: lockStatus !== 'held',
     setCell,
     applyPaste,
+    runStructuralChange,
     discard,
     retrySave,
     reacquire,

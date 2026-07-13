@@ -303,3 +303,26 @@ export interface CellsPatchOut {
   cells: CellUpdateIn[]
   batch_id: string
 }
+
+// --- 조건 행 관리 (POST .../layers/{layer_key}/conditions, DELETE .../conditions/{id}, PUT .../por) ---
+// backend `features/conditions/schema.py`(ConditionCreateIn/ConditionOut)와 1:1 대응 (snake_case).
+// 구조 변경(추가/복제/삭제/POR 이양)은 더티 셀 버퍼와 분리된 즉시 API 호출이다(T7 즉시 커밋 원칙).
+
+/**
+ * 조건 행 추가/복제 요청 바디.
+ *
+ * source_condition_id가 null/생략이면 빈 조건 행을 추가하고, 값이 있으면 그 조건 행(같은
+ * layer 소속이어야 함)의 셀 값을 전부 복사해 새 행을 만든다.
+ */
+export interface ConditionCreateIn {
+  source_condition_id?: number | null
+}
+
+/** 조건 행 한 개의 최소 표현 (추가/복제·POR 이양 응답). ConditionOut. */
+export interface ConditionOut {
+  id: number
+  layer_key: string
+  label: string
+  condition_index: number
+  is_por: boolean
+}
