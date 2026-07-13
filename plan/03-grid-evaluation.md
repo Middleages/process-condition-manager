@@ -87,6 +87,15 @@
 
 **채택: Glide Data Grid.** 근거 — 200 컬럼 × 다중 조건 행 규모에서 성능(C3)이 핵심이고 Canvas 렌더링이 유리하며, 엑셀 범위 붙여넣기(C1)를 기본 제공한다. MIT·npm 자체 번들이라 폐쇄망(C8)에도 적합하다. 커스텀 에디터/셀 상태 렌더링을 직접 그려야 하는 비용은 위 어댑터 인터페이스가 흡수한다.
 
+### 7.3 확인 게이트 결과 (Phase 2 T2, 2026-07-12)
+
+Phase 2 편집기 착수 첫 스텝에서 확정 라이브러리로 재확인 — **Glide Data Grid 유지, RevoGrid 전환 불필요**.
+
+- Playwright(headless Chromium)로 합성 60행×200컬럼 데모(`/grid-demo`) 검증: 렌더/스크롤/카테고리 필터/컬럼 검색-점프/실 클립보드 붙여넣기(Ctrl+V → `onPaste` 가로채기 → TSV 전달) 9/9 통과, 콘솔 에러 0
+- choice(선택지) 에디터: 공식 애드온 `@glideapps/glide-data-grid-cells`의 `DropdownCell`이 `react-select`+`@toast-ui/editor`(마크다운 WYSIWYG)까지 의존성으로 끌어와 폐쇄망 배포(C8/D-12)에 과함 → **코어만으로 커스텀 셀 자체 구현**(`frontend/src/grid/choiceCell.tsx`, 캔버스 렌더 + 네이티브 `<select>` 편집 오버레이)
+- 헤더 hover 툴팁(T6)도 네이티브 HTML `title` 속성이 안 되는 캔버스 렌더 특성상 `onItemHovered` + 절대 위치 오버레이로 직접 구현(`GlideConditionGrid.tsx`) — 어댑터 경계 안에 격리
+- 결론: 어댑터 인터페이스가 Glide의 특이점(row span 없음, 네이티브 툴팁/드롭다운 불가)을 전부 흡수했고, 상위 코드(SheetEditor 등)는 Glide API를 전혀 알지 못한다
+
 **대안 유지: RevoGrid.** 엑셀 유사 UX·컬럼 그룹 기본 기능을 그대로 쓰는 이점이 Phase 2 편집기 구현 중 더 크다고 판단되면 어댑터 구현체만 교체한다.
 
 > 확인 게이트: 시나리오 3(붙여넣기)·2(성능)의 대화형 체감 검증은 Phase 2 편집기 착수 첫 스텝에서 확정 라이브러리로 재확인한다. 판정이 뒤집히면 어댑터 뒤 구현체만 RevoGrid로 교체하며, 어댑터 계약·상위 코드는 불변이다.

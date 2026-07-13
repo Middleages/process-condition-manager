@@ -8,12 +8,14 @@
 
 ## 완료 기준 (Exit Criteria)
 
-- [ ] EC1. 엑셀에서 복사한 다중 행×열 데이터가 범위 선택 후 붙여넣기로 정확히 반영된다 (타입 불일치 셀은 적용 전 표시)
-- [ ] EC2. 200 컬럼 시트에서 편집·스크롤이 쾌적하다 (컬럼 가상화 동작 확인)
-- [ ] EC3. 두 브라우저로 동시 접근 시 한쪽만 편집 가능하고, 비보유자에게는 읽기 전용 + "누가 편집 중"이 표시된다
-- [ ] EC4. 더티 셀만 배치 UPSERT로 저장되고, 저장마다 `change_event(cell_update)`가 셀 단위로 남는다
-- [ ] EC5. 카테고리 탭·컬럼 고정·헤더 툴팁·컬럼 검색-점프가 레지스트리 데이터 기반으로 동적으로 동작한다
-- [ ] EC6. 같은 layer/step의 다중 조건 행이 그룹핑되어 표시되고, 조건 행 추가/복제/삭제와 POR 이양이 동작하며, layer당 POR 1개가 서버에서 강제된다 (D-16)
+- [x] EC1. 엑셀에서 복사한 다중 행×열 데이터가 범위 선택 후 붙여넣기로 정확히 반영된다 (타입 불일치 셀은 적용 전 표시) · `pasteStaging.ts`(buildPasteStaging) + `PasteStagingPanel` + 서버 최종 검증(`test_patch_cells_rejects_*`)
+- [x] EC2. 200 컬럼 시트에서 편집·스크롤이 쾌적하다 (컬럼 가상화 동작 확인) · Glide Data Grid 확정 유지(D-18 재확인 게이트 통과, 아래 §T2), 합성 60행×200컬럼 데모 Playwright 검증
+- [x] EC3. 두 브라우저로 동시 접근 시 한쪽만 편집 가능하고, 비보유자에게는 읽기 전용 + "누가 편집 중"이 표시된다 · `edit_lock`+`lock_token`, 두 세션 시뮬레이션 테스트(`test_locks_api.py`), `SheetView`의 `LockChip`/재획득 UI
+- [x] EC4. 더티 셀만 배치 UPSERT로 저장되고, 저장마다 `change_event(cell_update)`가 셀 단위로 남는다 · `PATCH /api/projects/{id}/cells`, `test_cells_api.py`(무변경 셀은 이벤트 미생성 포함)
+- [x] EC5. 카테고리 탭·컬럼 고정·헤더 툴팁·컬럼 검색-점프가 레지스트리 데이터 기반으로 동적으로 동작한다 · `SheetEditor` 카테고리 탭(`distinctCategories`) + `freezeColumns` + 헤더 hover 툴팁(`headerTooltip`) + `scrollToColumn`
+- [x] EC6. 같은 layer/step의 다중 조건 행이 그룹핑되어 표시되고, 조건 행 추가/복제/삭제와 POR 이양이 동작하며, layer당 POR 1개가 서버에서 강제된다 (D-16) · `features/conditions/` API + partial unique index + `test_conditions_api.py` + `ConditionRowManager` UI
+
+Phase 2 완료 확인: 2026-07-13. 전체 T0~T7 커밋 완료, backend pytest 146 passed/1 skipped·ruff clean, frontend vitest 103 passed·typecheck/build 통과.
 
 ## 결정 항목 (2026-07-10 확정)
 
@@ -88,6 +90,8 @@ Phase 1 인터페이스 초안(`frontend/src/grid/types.ts`)을 Glide Data Grid�
 - **라이브러리 API가 어댑터 밖으로 새어나가지 않는지**를 리뷰 기준으로 삼는다 (P4)
 
 산출물: 어댑터 구현 + 60행×200컬럼 렌더링 데모 (T1 시드 사용). **EC2 충족.**
+
+**D-18 확인 게이트 결과 (2026-07-12)**: Glide Data Grid 유지 확정, RevoGrid 전환 불필요. Playwright로 합성 60행×200컬럼 렌더/스크롤/카테고리 필터/컬럼 점프/실 클립보드 붙여넣기 훅을 확인(9/9 통과). choice 드롭다운은 공식 애드온(`glide-data-grid-cells`)이 `react-select`+`@toast-ui/editor`까지 끌고 와 폐쇄망(D-12)에 과해 코어만으로 자체 구현(`grid/choiceCell.tsx`). 상세: [03-grid-evaluation.md](./03-grid-evaluation.md) §7.3.
 
 ### T3. 셀 편집 + 저장 파이프라인
 
