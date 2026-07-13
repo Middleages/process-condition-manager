@@ -50,6 +50,17 @@ export interface ParameterEditorSession {
   optionsRetry: ParameterOptionsRetryState | null
 }
 
+export interface ParameterDetailHydrationSnapshot {
+  data: ParameterOut | undefined
+  isFetchedAfterMount: boolean
+  isSuccess: boolean
+}
+
+export type ExistingParameterDetailPresentation =
+  | { kind: 'loading' }
+  | { kind: 'fatal-error' }
+  | { kind: 'editor'; refetchError: boolean }
+
 export type ParameterEditorSessionAction =
   | { type: 'hydrate'; parameter: ParameterOut }
   | {
@@ -73,6 +84,30 @@ export function startParameterEditorSession(target: EditTarget): ParameterEditor
     hydrated: target.kind !== 'existing',
     optionsRetry: null,
   }
+}
+
+export function selectFreshParameterForHydration(
+  target: EditTarget,
+  snapshot: ParameterDetailHydrationSnapshot,
+): ParameterOut | null {
+  if (
+    target.kind !== 'existing' ||
+    !snapshot.isFetchedAfterMount ||
+    !snapshot.isSuccess ||
+    snapshot.data?.id !== target.id
+  ) {
+    return null
+  }
+
+  return snapshot.data
+}
+
+export function getExistingParameterDetailPresentation(
+  session: Pick<ParameterEditorSession, 'hydrated'>,
+  isError: boolean,
+): ExistingParameterDetailPresentation {
+  if (session.hydrated) return { kind: 'editor', refetchError: isError }
+  return isError ? { kind: 'fatal-error' } : { kind: 'loading' }
 }
 
 export function parameterEditorSessionReducer(

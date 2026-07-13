@@ -32,7 +32,9 @@ import {
   type ParameterFormState,
 } from './form'
 import {
+  getExistingParameterDetailPresentation,
   parameterEditorSessionReducer,
+  selectFreshParameterForHydration,
   startParameterEditorSession,
 } from './parameterAdminState'
 import {
@@ -67,9 +69,19 @@ export interface ParameterEditorDrawerProps {
   onClose: () => void
 }
 
-interface EditorInitializer {
-  target: OpenEditTarget
-  parameter: ParameterOut | undefined
+type ParameterDetailLoader = (parameterId: number) => Promise<ParameterOut>
+
+export function parameterDetailQueryOptions(
+  parameterId: number | null,
+  loadParameter: ParameterDetailLoader = getParameter,
+) {
+  return {
+    queryKey: ['parameters', 'detail', parameterId] as const,
+    queryFn: () => loadParameter(parameterId as number),
+    enabled: parameterId !== null,
+    refetchOnMount: 'always' as const,
+    retry: false,
+  }
 }
 
 export function ParameterEditorDrawer({
@@ -80,26 +92,22 @@ export function ParameterEditorDrawer({
 }: ParameterEditorDrawerProps) {
   const queryClient = useQueryClient()
   const parameterId = target.kind === 'existing' ? target.id : null
-  const detailQuery = useQuery({
-    queryKey: ['parameters', 'detail', parameterId],
-    queryFn: () => getParameter(parameterId as number),
-    enabled: parameterId !== null,
-    refetchOnMount: false,
-    retry: false,
-  })
+  const detailQuery = useQuery(parameterDetailQueryOptions(parameterId))
   const [session, dispatch] = useReducer(
     parameterEditorSessionReducer,
-    { target, parameter: detailQuery.data },
-    initializeEditorSession,
+    target,
+    startParameterEditorSession,
   )
   const [showValidation, setShowValidation] = useState(false)
   const [touched, setTouched] = useState<Set<keyof ParameterFormState>>(() => new Set())
   const [deactivateOpen, setDeactivateOpen] = useState(false)
   const [completionReady, setCompletionReady] = useState(false)
 
+  const freshParameter = selectFreshParameterForHydration(target, detailQuery)
+
   useEffect(() => {
-    if (detailQuery.data) dispatch({ type: 'hydrate', parameter: detailQuery.data })
-  }, [detailQuery.data])
+    if (freshParameter) dispatch({ type: 'hydrate', parameter: freshParameter })
+  }, [freshParameter])
 
   const createPlan = useMemo(
     () => (target.kind === 'new' ? buildParameterCreatePlan(session.form) : null),
@@ -414,16 +422,17 @@ function EditorBody({
     )
   }
 
-  if (target.kind === 'existing' && detailQuery.isPending) {
-    return <InlineAlert tone="info">파라미터 정보를 불러오는 중입니다.</InlineAlert>
-  }
+  const detailPresentation =
+    target.kind === 'existing'
+      ? getExistingParameterDetailPresentation(session, detailQuery.isError)
+      : null
 
-  if (target.kind === 'existing' && detailQuery.isError) {
+  if (detailPresentation?.kind === 'fatal-error') {
     return <ParameterDetailError error={detailQuery.error} onRetry={onRetryDetail} />
   }
 
-  if (target.kind === 'existing' && !session.hydrated) {
-    return <InlineAlert tone="info">파라미터 편집기를 준비하는 중입니다.</InlineAlert>
+  if (detailPresentation?.kind === 'loading') {
+    return <InlineAlert tone="info">최신 파라미터 정보를 불러오는 중입니다.</InlineAlert>
   }
 
   const form = session.form
@@ -449,6 +458,9 @@ function EditorBody({
       ) : null}
 
       {unsupportedClears ? <InlineAlert tone="warning">{UNSUPPORTED_CLEAR_MESSAGE}</InlineAlert> : null}
+      {detailPresentation?.kind === 'editor' && detailPresentation.refetchError ? (
+        <ParameterDetailRefetchError error={detailQuery.error} onRetry={onRetryDetail} />
+      ) : null}
       {session.optionsRetry ? (
         <InlineAlert tone="warning">
           <p>기본 정보는 저장됐지만 선택지는 저장되지 않았습니다.</p>
@@ -619,11 +631,25 @@ export function ParameterDetailError({
   )
 }
 
-function initializeEditorSession({ target, parameter }: EditorInitializer) {
-  const session = startParameterEditorSession(target)
-  return parameter
-    ? parameterEditorSessionReducer(session, { type: 'hydrate', parameter })
-    : session
+export function ParameterDetailRefetchError({
+  error,
+  onRetry,
+}: {
+  error: unknown
+  onRetry: () => void
+}) {
+  return (
+    <InlineAlert className="space-y-3" tone="error">
+      <div>
+        <p className="font-semibold">최신 상세 정보를 다시 불러오지 못했습니다.</p>
+        <p className="mt-1 font-normal">편집 중인 초안은 그대로 유지됩니다.</p>
+        <p className="mt-1 text-xs font-normal">{getApiErrorMessage(error)}</p>
+      </div>
+      <Button size="compact" type="button" variant="secondary" onClick={onRetry}>
+        다시 시도
+      </Button>
+    </InlineAlert>
+  )
 }
 
 function focusFirstInvalidField(errors: ParameterFieldErrors) {

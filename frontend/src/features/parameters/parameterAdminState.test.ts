@@ -6,8 +6,10 @@ import {
   canApplyCsvImport,
   csvImportReducer,
   deriveParameterRegistryRoute,
+  getExistingParameterDetailPresentation,
   initialCsvImportState,
   parameterEditorSessionReducer,
+  selectFreshParameterForHydration,
   startParameterEditorSession,
 } from './parameterAdminState'
 
@@ -81,6 +83,38 @@ describe('deriveParameterRegistryRoute', () => {
 })
 
 describe('parameter editor session', () => {
+  it('waits for a successful post-mount detail response and rejects a late old target', () => {
+    const target = { kind: 'existing' as const, id: 42 }
+    const cached = selectFreshParameterForHydration(target, {
+      data: choiceParameter,
+      isFetchedAfterMount: false,
+      isSuccess: true,
+    })
+    const failedRefetch = selectFreshParameterForHydration(target, {
+      data: choiceParameter,
+      isFetchedAfterMount: true,
+      isSuccess: false,
+    })
+    const fresh = selectFreshParameterForHydration(target, {
+      data: { ...choiceParameter, display_name: 'Fresh' },
+      isFetchedAfterMount: true,
+      isSuccess: true,
+    })
+    const lateOldTarget = selectFreshParameterForHydration(
+      { kind: 'existing', id: 43 },
+      {
+        data: choiceParameter,
+        isFetchedAfterMount: true,
+        isSuccess: true,
+      },
+    )
+
+    expect(cached).toBeNull()
+    expect(failedRefetch).toBeNull()
+    expect(fresh?.display_name).toBe('Fresh')
+    expect(lateOldTarget).toBeNull()
+  })
+
   it('hydrates an edit target once and never overwrites a changed draft on refetch', () => {
     const initial = startParameterEditorSession({ kind: 'existing', id: 42 })
     const hydrated = parameterEditorSessionReducer(initial, {
@@ -124,6 +158,16 @@ describe('parameter editor session', () => {
     expect(partial.form.optionsText).toBe('warm, cool')
     expect(partial.original?.description).toBe('saved base')
     expect(partial.optionsRetry?.draft).toEqual(optionsDraft)
+    expect(getExistingParameterDetailPresentation(partial, true)).toEqual({
+      kind: 'editor',
+      refetchError: true,
+    })
+    expect(
+      getExistingParameterDetailPresentation(
+        startParameterEditorSession({ kind: 'existing', id: 42 }),
+        true,
+      ),
+    ).toEqual({ kind: 'fatal-error' })
   })
 })
 

@@ -1,11 +1,21 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClient, QueryClientProvider, QueryObserver } from '@tanstack/react-query'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { CategoryOut, ParameterOut } from '@/api/types'
 
-import { ParameterDetailError, ParameterEditorDrawer } from './ParameterEditorDrawer'
+import {
+  parameterDetailQueryOptions,
+  ParameterDetailError,
+  ParameterDetailRefetchError,
+  ParameterEditorDrawer,
+} from './ParameterEditorDrawer'
+import {
+  parameterEditorSessionReducer,
+  selectFreshParameterForHydration,
+  startParameterEditorSession,
+} from './parameterAdminState'
 import type { EditTarget } from './registryState'
 
 const categories: CategoryOut[] = [
@@ -86,6 +96,54 @@ function renderMissingDetailError(): string {
 }
 
 describe('ParameterEditorDrawer', () => {
+  it('hydrates fresh detail on every reopen instead of accepting invalidated cache', async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
+    })
+    const queryKey = ['parameters', 'detail', 42] as const
+    const cached = { ...parameter, display_name: 'Cached' }
+    let backend = { ...parameter, display_name: 'First fresh' }
+    queryClient.setQueryData(queryKey, cached)
+
+    const firstObserver = new QueryObserver(
+      queryClient,
+      parameterDetailQueryOptions(42, async () => backend),
+    )
+    expect(parameterDetailQueryOptions(42).refetchOnMount).toBe('always')
+    expect(
+      selectFreshParameterForHydration(
+        { kind: 'existing', id: 42 },
+        firstObserver.getCurrentResult(),
+      ),
+    ).toBeNull()
+    const firstFresh = await waitForPostMountDetail(firstObserver)
+    const firstSession = parameterEditorSessionReducer(
+      startParameterEditorSession({ kind: 'existing', id: 42 }),
+      { type: 'hydrate', parameter: firstFresh },
+    )
+    expect(firstSession.form.displayName).toBe('First fresh')
+
+    backend = { ...parameter, display_name: 'Changed while closed' }
+    await queryClient.invalidateQueries({ queryKey, exact: true })
+    const reopenedObserver = new QueryObserver(
+      queryClient,
+      parameterDetailQueryOptions(42, async () => backend),
+    )
+    expect(
+      selectFreshParameterForHydration(
+        { kind: 'existing', id: 42 },
+        reopenedObserver.getCurrentResult(),
+      ),
+    ).toBeNull()
+    const reopenedFresh = await waitForPostMountDetail(reopenedObserver)
+    const reopenedSession = parameterEditorSessionReducer(
+      startParameterEditorSession({ kind: 'existing', id: 42 }),
+      { type: 'hydrate', parameter: reopenedFresh },
+    )
+
+    expect(reopenedSession.form.displayName).toBe('Changed while closed')
+  })
+
   it('renders invalid edit syntax as a drawer-local error', () => {
     const html = renderDrawer({ kind: 'invalid', raw: '0' })
 
@@ -102,20 +160,24 @@ describe('ParameterEditorDrawer', () => {
     expect(html).not.toContain('value="tone"')
   })
 
-  it('loads an existing parameter from its direct detail cache and permits deactivate only while active', () => {
-    const activeHtml = renderDrawer({ kind: 'existing', id: 42 })
-    const inactiveHtml = renderDrawer(
-      { kind: 'existing', id: 42 },
-      { ...parameter, is_active: false },
+  it('renders a hydrated refetch error as non-destructive draft context', () => {
+    const html = renderToStaticMarkup(
+      <ParameterDetailRefetchError error={new Error('GET failed')} onRetry={vi.fn()} />,
     )
 
+    expect(html).toContain('최신 상세 정보를 다시 불러오지 못했습니다.')
+    expect(html).toContain('편집 중인 초안은 그대로 유지됩니다.')
+    expect(html).toContain('GET failed')
+    expect(html).toContain('다시 시도')
+  })
+
+  it('does not expose cached existing detail before the post-mount response', () => {
+    const activeHtml = renderDrawer({ kind: 'existing', id: 42 })
+
     expect(activeHtml).toContain('파라미터 수정')
-    expect(activeHtml).toContain('value="tone"')
-    expect(activeHtml).toContain('value="choice"')
-    expect(activeHtml).toContain('비활성화')
-    expect(inactiveHtml).toContain('비활성 파라미터')
-    expect(inactiveHtml).not.toContain('>비활성화</')
-    expect(inactiveHtml).not.toContain('다시 활성화')
+    expect(activeHtml).toContain('최신 파라미터 정보를 불러오는 중입니다.')
+    expect(activeHtml).not.toContain('value="tone"')
+    expect(activeHtml).not.toContain('>비활성화</')
   })
 
   it('keeps category management create-only and omits unsupported schema fields', () => {
@@ -126,3 +188,31 @@ describe('ParameterEditorDrawer', () => {
     expect(html).not.toContain('다시 활성화')
   })
 })
+
+async function waitForPostMountDetail(
+  observer: QueryObserver<
+    ParameterOut,
+    Error,
+    ParameterOut,
+    ParameterOut,
+    readonly ['parameters', 'detail', number | null]
+  >,
+): Promise<ParameterOut> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      unsubscribe()
+      reject(new Error('Timed out waiting for a post-mount detail response.'))
+    }, 1_000)
+    const unsubscribe = observer.subscribe((result) => {
+      const fresh = selectFreshParameterForHydration(
+        { kind: 'existing', id: 42 },
+        result,
+      )
+      if (!fresh) return
+
+      clearTimeout(timeout)
+      unsubscribe()
+      resolve(fresh)
+    })
+  })
+}
