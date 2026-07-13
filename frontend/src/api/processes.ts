@@ -1,5 +1,5 @@
 import { apiClient } from './client'
-import type { LayerOut, ProcessDetailOut, ProcessListOut, ProcessOut } from './types'
+import type { LayerOut, ProcessDetailOut, ProcessListOut } from './types'
 
 export interface SearchProcessesParams {
   query?: string
@@ -13,11 +13,6 @@ export async function searchProcesses(
 ): Promise<ProcessListOut> {
   const response = await apiClient.get<ProcessListOut>('/processes', { params })
   return response.data
-}
-
-export async function listProcesses(): Promise<ProcessOut[]> {
-  const response = await searchProcesses({ limit: 200 })
-  return response.items
 }
 
 export async function getProcess(processKey: string): Promise<ProcessDetailOut> {
