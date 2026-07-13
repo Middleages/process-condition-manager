@@ -218,6 +218,7 @@ export interface ProjectListOut {
 export interface ApiErrorBody {
   code: string
   message: string
+  details?: Record<string, unknown>
 }
 
 // --- 시트 조회 (GET /api/projects/{project_id}/sheet) ---

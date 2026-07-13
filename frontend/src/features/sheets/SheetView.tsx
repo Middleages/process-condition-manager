@@ -26,9 +26,8 @@ import {
 import { buildPasteStaging, parseTsv, type PasteStagingResult } from './pasteStaging'
 import {
   applySavedToSheet,
+  shouldReplaceSheetWithError,
   toConditionGridData,
-  toLockView,
-  type SheetLockView,
 } from './sheetAdapter'
 import { useSheetEditing, type SheetEditing } from './useSheetEditing'
 
@@ -43,12 +42,12 @@ export function SheetView({ projectId }: { projectId: number }) {
   const sheetQuery = useQuery({
     queryKey: ['sheet', projectId],
     queryFn: () => getSheet(projectId),
-    refetchInterval: (query) =>
-      ((query.state.data as SheetOut | undefined)?.lock.heartbeat_seconds ?? 45) * 1000,
   })
 
   if (sheetQuery.isLoading) return <LoadingMessage>시트를 불러오는 중...</LoadingMessage>
-  if (sheetQuery.isError) return <ErrorMessage message={getApiErrorMessage(sheetQuery.error)} />
+  if (shouldReplaceSheetWithError(sheetQuery.data, sheetQuery.isError)) {
+    return <ErrorMessage message={getApiErrorMessage(sheetQuery.error)} />
+  }
   if (!sheetQuery.data) return null
 
   const sheet = sheetQuery.data
@@ -61,7 +60,20 @@ export function SheetView({ projectId }: { projectId: number }) {
     )
   }
 
-  return <SheetEditor key={projectId} projectId={projectId} sheet={sheet} />
+  return (
+    <div className="space-y-3">
+      {sheetQuery.isError ? (
+        <div
+          className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800"
+          data-testid="sheet-refetch-warning"
+        >
+          최신 시트 조회에 실패했다. 화면의 기존 데이터와 미저장 편집은 유지된다:{' '}
+          {getApiErrorMessage(sheetQuery.error)}
+        </div>
+      ) : null}
+      <SheetEditor key={projectId} projectId={projectId} sheet={sheet} />
+    </div>
+  )
 }
 
 /** 편집 세션. 시트가 준비된 뒤에만 마운트된다(잠금/자동저장 훅 규칙 준수). */
@@ -69,7 +81,6 @@ function SheetEditor({ projectId, sheet }: { projectId: number; sheet: SheetOut 
   const queryClient = useQueryClient()
 
   const data = useMemo(() => toConditionGridData(sheet), [sheet])
-  const lock = useMemo(() => toLockView(sheet.lock), [sheet.lock])
   const dirtyCells = useEditStore(selectDirtyCells)
 
   // 저장 성공분을 서버 스냅샷(캐시)에 확정 반영 → 더티 제거 후에도 저장값 유지.
@@ -85,6 +96,7 @@ function SheetEditor({ projectId, sheet }: { projectId: number; sheet: SheetOut 
   const editing = useSheetEditing(projectId, {
     onPersisted: commitSaved,
     heartbeatMs: sheet.lock.heartbeat_seconds * 1000,
+    initialEditingBy: sheet.lock.locked_by,
   })
 
   // 컬럼 가독성(T6): 카테고리 탭으로 파라미터 컬럼 부분집합을 고르고, 컬럼 검색-점프로 특정
@@ -114,7 +126,7 @@ function SheetEditor({ projectId, sheet }: { projectId: number; sheet: SheetOut 
   const [pasteError, setPasteError] = useState<string | null>(null)
   const [applying, setApplying] = useState(false)
 
-  const { readOnly, setCell, applyPaste, runStructuralChange } = editing
+  const { readOnly, writeBusy, setCell, applyPaste, runStructuralChange } = editing
 
   // 조건 행 관리(T7): 추가/복제/삭제 대상은 좌측 식별 컬럼 클릭으로 활성화한 행 하나다.
   // POR 이양은 활성 행과 무관하게 POR 컬럼 클릭으로 바로 실행한다. 구조 변경은 더티 셀 버퍼와
@@ -198,7 +210,7 @@ function SheetEditor({ projectId, sheet }: { projectId: number; sheet: SheetOut 
       onCellEdit: (cell) => setCell(cell.conditionId, cell.parameterCode, cell.value),
       onPaste: (target, tsv) => {
         // 편집 불가(읽기 전용) 상태에서는 붙여넣기를 스테이징하지 않는다(그리드가 기본 동작은 이미 막는다).
-        if (readOnly) return
+        if (readOnly || writeBusy) return
         const result = buildPasteStaging(target, parseTsv(tsv), visibleColumns, data.rows)
         // 매핑되는 셀도 없고 잘린 것도 없으면(대상 밖 등) 무시.
         if (result.staging.length === 0 && result.truncatedRows === 0 && result.truncatedCols === 0) {
@@ -217,7 +229,7 @@ function SheetEditor({ projectId, sheet }: { projectId: number; sheet: SheetOut 
         setActiveRow(payload)
       },
     }),
-    [setCell, readOnly, visibleColumns, data.rows, performStructural, projectId],
+    [setCell, readOnly, writeBusy, visibleColumns, data.rows, performStructural, projectId],
   )
 
   const cancelPaste = useCallback(() => {
@@ -268,7 +280,6 @@ function SheetEditor({ projectId, sheet }: { projectId: number; sheet: SheetOut 
     <div className="space-y-3">
       <StatusBar
         editing={editing}
-        lock={lock}
         rowCount={data.rows.length}
         colCount={data.columns.length}
       />
@@ -325,7 +336,7 @@ function SheetEditor({ projectId, sheet }: { projectId: number; sheet: SheetOut 
         <GlideConditionGrid
           ref={gridRef}
           data={gridData}
-          view={{ readOnly, activeCategory }}
+          view={{ readOnly: readOnly || writeBusy, activeCategory }}
           callbacks={gridCallbacks}
           pasteStaging={paste?.staging}
         />
@@ -552,12 +563,10 @@ function PasteStagingPanel({
 /** 상단 상태 표시줄: 행/컬럼 수 + 잠금 상태 + 저장 상태 + 더티/재시도/재획득 액션. */
 function StatusBar({
   editing,
-  lock,
   rowCount,
   colCount,
 }: {
   editing: SheetEditing
-  lock: SheetLockView
   rowCount: number
   colCount: number
 }) {
@@ -569,13 +578,13 @@ function StatusBar({
       <span>
         컬럼 <strong>{colCount}</strong>
       </span>
-      <LockChip editing={editing} lock={lock} />
+      <LockChip editing={editing} />
       {editing.lockStatus === 'held' ? <SaveStatus editing={editing} /> : null}
     </div>
   )
 }
 
-function LockChip({ editing, lock }: { editing: SheetEditing; lock: SheetLockView }) {
+function LockChip({ editing }: { editing: SheetEditing }) {
   switch (editing.lockStatus) {
     case 'acquiring':
       return <span className="rounded-full bg-slate-100 px-2 py-0.5">잠금 획득 중...</span>
@@ -587,8 +596,8 @@ function LockChip({ editing, lock }: { editing: SheetEditing; lock: SheetLockVie
       return (
         <span className="flex items-center gap-2">
           <span className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-700">
-            {lock.editingBy !== null
-              ? `읽기 전용 · 편집 중: ${lock.editingBy}`
+            {editing.editingBy !== null
+              ? `읽기 전용 · 편집 중: ${editing.editingBy}`
               : '읽기 전용 (잠금 획득 실패)'}
           </span>
           <button

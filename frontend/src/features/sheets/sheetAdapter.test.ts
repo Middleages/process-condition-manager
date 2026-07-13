@@ -3,7 +3,11 @@ import { describe, expect, it } from 'vitest'
 import type { SheetOut } from '@/api/types'
 
 import type { DirtyCell } from './editStore'
-import { applySavedToSheet, toConditionGridData, toLockView } from './sheetAdapter'
+import {
+  applySavedToSheet,
+  shouldReplaceSheetWithError,
+  toConditionGridData,
+} from './sheetAdapter'
 
 const sheet: SheetOut = {
   columns: [
@@ -71,32 +75,11 @@ describe('toConditionGridData', () => {
   })
 })
 
-describe('toLockView', () => {
-  it('preserves the holder name even when the same user owns another session', () => {
-    expect(
-      toLockView({ locked_by: null, locked_at: null, expires_at: null, is_mine: true, heartbeat_seconds: 45 }),
-    ).toEqual({ editingBy: null })
-    expect(
-      toLockView({
-        locked_by: 'dev-admin',
-        locked_at: null,
-        expires_at: null,
-        is_mine: true,
-        heartbeat_seconds: 45,
-      }),
-    ).toEqual({ editingBy: 'dev-admin' })
-  })
-
-  it('names the editor when someone else holds the lock', () => {
-    expect(
-      toLockView({
-        locked_by: 'someone',
-        locked_at: '2026-07-11T00:00:00Z',
-        expires_at: null,
-        is_mine: false,
-        heartbeat_seconds: 45,
-      }),
-    ).toEqual({ editingBy: 'someone' })
+describe('shouldReplaceSheetWithError', () => {
+  it('keeps cached sheet data mounted when a background refetch fails', () => {
+    expect(shouldReplaceSheetWithError(sheet, true)).toBe(false)
+    expect(shouldReplaceSheetWithError(undefined, true)).toBe(true)
+    expect(shouldReplaceSheetWithError(undefined, false)).toBe(false)
   })
 })
 

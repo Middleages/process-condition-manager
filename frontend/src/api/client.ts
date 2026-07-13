@@ -32,3 +32,10 @@ export function isLockConflict(error: unknown): boolean {
   if (!isApiError(error)) return false
   return error.response?.status === 409 || error.response?.data?.code === 'lock_conflict'
 }
+
+/** 잠금 충돌 응답에 보유자 정보가 있으면 읽기 전용 배너에 표시한다. */
+export function getLockConflictHolder(error: unknown): string | null {
+  if (!isLockConflict(error) || !isApiError(error)) return null
+  const holder = error.response?.data?.details?.locked_by
+  return typeof holder === 'string' && holder !== '' ? holder : null
+}

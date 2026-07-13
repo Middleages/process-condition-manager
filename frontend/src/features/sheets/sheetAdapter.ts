@@ -4,7 +4,7 @@
  * API 레이어(snake_case)와 그리드 계약(도메인 타입)의 경계. 순수 함수라 node에서 단위
  * 테스트한다. 편집/저장/붙여넣기는 이 변환의 관심사가 아니다(T3/T4).
  */
-import type { SheetColumnOut, SheetLockSummaryOut, SheetOut, SheetRowOut } from '@/api/types'
+import type { SheetColumnOut, SheetOut, SheetRowOut } from '@/api/types'
 import type { ConditionGridColumn, ConditionGridData, ConditionGridRow } from '@/grid/types'
 
 import type { DirtyCell } from './editStore'
@@ -45,16 +45,12 @@ export function toConditionGridData(sheet: SheetOut): ConditionGridData {
   }
 }
 
-export interface SheetLockView {
-  /** "누가 편집 중" 배너 텍스트 — 타인이 편집 중일 때만 채워진다. */
-  editingBy: string | null
-}
-
-/** 잠금 요약을 화면용 표현으로 변환한다. */
-export function toLockView(lock: SheetLockSummaryOut): SheetLockView {
-  // 실제 편집 소유권은 사용자+토큰이다. 같은 사용자라도 다른 탭이면 현재 세션의 잠금이
-  // 아니므로, 획득 실패(readonly) UI가 보유자명을 표시할 수 있게 이름은 항상 보존한다.
-  return { editingBy: lock.locked_by }
+/** 캐시된 시트가 있으면 백그라운드 재조회 오류로 편집기를 교체하지 않는다. */
+export function shouldReplaceSheetWithError(
+  sheet: SheetOut | undefined,
+  isError: boolean,
+): boolean {
+  return isError && sheet === undefined
 }
 
 /**

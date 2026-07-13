@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { createAutosaveEngine, type SaveState } from './autosave'
+import { createAsyncQueue, createAutosaveEngine, type SaveState } from './autosave'
 
 const DEBOUNCE = 3000
 const BACKOFF = 500
@@ -194,5 +194,51 @@ describe('createAutosaveEngine', () => {
     expect(engine.getState()).toBe('idle')
     await vi.advanceTimersByTimeAsync(DEBOUNCE)
     expect(flush).not.toHaveBeenCalled()
+  })
+})
+
+describe('createAsyncQueue', () => {
+  it('runs paste and structural work strictly in invocation order', async () => {
+    const queue = createAsyncQueue()
+    const events: string[] = []
+    let releaseFirst: (() => void) | undefined
+    const firstGate = new Promise<void>((resolve) => {
+      releaseFirst = resolve
+    })
+
+    const first = queue.run(async () => {
+      events.push('paste:start')
+      await firstGate
+      events.push('paste:end')
+    })
+    const second = queue.run(async () => {
+      events.push('structure:start')
+      events.push('structure:end')
+    })
+
+    await Promise.resolve()
+    expect(events).toEqual(['paste:start'])
+    let idle = false
+    void queue.whenIdle().then(() => {
+      idle = true
+    })
+    await Promise.resolve()
+    expect(idle).toBe(false)
+    releaseFirst?.()
+    await Promise.all([first, second])
+    await queue.whenIdle()
+    expect(idle).toBe(true)
+    expect(events).toEqual(['paste:start', 'paste:end', 'structure:start', 'structure:end'])
+  })
+
+  it('continues with later work after an earlier task fails', async () => {
+    const queue = createAsyncQueue()
+    const failed = queue.run(async () => {
+      throw new Error('paste failed')
+    })
+    const next = queue.run(async () => 'structure saved')
+
+    await expect(failed).rejects.toThrow('paste failed')
+    await expect(next).resolves.toBe('structure saved')
   })
 })

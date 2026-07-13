@@ -39,11 +39,7 @@ class SheetRowOut(BaseModel):
 
 
 class SheetLockSummaryOut(BaseModel):
-    """편집 잠금 요약 — 비보유자 "누가 편집 중" 표시용 데이터.
-
-    T5(edit_lock 테이블)가 실제 잠금을 구현하기 전까지 항상 미잠금 상태를 반환하는
-    스텁이다. 필드 이름·구조는 T5와의 계약이므로 바꾸지 않는다.
-    """
+    """편집 잠금 요약 — 보유자 표시와 클라이언트 heartbeat 주기용 데이터."""
 
     locked_by: str | None
     locked_at: datetime | None

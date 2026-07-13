@@ -47,6 +47,34 @@ export interface AutosaveEngine {
   getState(): SaveState
 }
 
+/**
+ * 서로 다른 종류의 즉시 쓰기(붙여넣기/구조 변경)를 호출 순서대로 실행하는 작은 큐.
+ * 앞 작업이 실패해도 큐 꼬리는 정상화해 다음 작업이 독립적으로 실행되게 한다.
+ */
+export interface AsyncQueue {
+  run<T>(task: () => Promise<T>): Promise<T>
+  /** 현재까지 큐에 들어온 작업이 성공/실패와 무관하게 모두 끝날 때 resolve한다. */
+  whenIdle(): Promise<void>
+}
+
+export function createAsyncQueue(): AsyncQueue {
+  let tail: Promise<void> = Promise.resolve()
+
+  return {
+    run<T>(task: () => Promise<T>): Promise<T> {
+      const result = tail.then(task, task)
+      tail = result.then(
+        () => undefined,
+        () => undefined,
+      )
+      return result
+    },
+    whenIdle(): Promise<void> {
+      return tail
+    },
+  }
+}
+
 export function createAutosaveEngine(options: AutosaveEngineOptions): AutosaveEngine {
   const { debounceMs, backoffMs, maxRetries, flush, hasPending, onStateChange, isFatal } = options
 
