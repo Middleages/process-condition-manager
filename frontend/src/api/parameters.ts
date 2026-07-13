@@ -28,6 +28,11 @@ export async function listParameters(includeInactive = false): Promise<Parameter
   return response.data
 }
 
+export async function getParameter(parameterId: number): Promise<ParameterOut> {
+  const response = await apiClient.get<ParameterOut>(`/parameters/${parameterId}`)
+  return response.data
+}
+
 export async function createParameter(data: ParameterCreate): Promise<ParameterOut> {
   const response = await apiClient.post<ParameterOut>('/parameters', data)
   return response.data

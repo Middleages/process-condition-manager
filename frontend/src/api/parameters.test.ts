@@ -13,9 +13,12 @@ vi.mock('./client', () => ({
 
 import { apiClient } from './client'
 import {
+  applyParameterImport,
   createParameter,
   deactivateParameter,
+  getParameter,
   listParameters,
+  previewParameterImport,
   replaceParameterOptions,
   updateParameter,
 } from './parameters'
@@ -68,6 +71,30 @@ describe('parameters api client', () => {
 
     expect(get).toHaveBeenCalledWith('/parameters', {
       params: { include_inactive: true },
+    })
+  })
+
+  it('gets a parameter directly by id', async () => {
+    get.mockResolvedValue(response(sampleParameter))
+
+    const result = await getParameter(42)
+
+    expect(get).toHaveBeenCalledWith('/parameters/42')
+    expect(result).toEqual(sampleParameter)
+  })
+
+  it('posts CSV text to preview and apply endpoints', async () => {
+    const result = { created_count: 0, updated_count: 0, error_count: 0, rows: [] }
+    post.mockResolvedValue(response(result))
+
+    await previewParameterImport('code,display_name,type')
+    await applyParameterImport('code,display_name,type')
+
+    expect(post).toHaveBeenNthCalledWith(1, '/parameters/import/preview', {
+      csv_text: 'code,display_name,type',
+    })
+    expect(post).toHaveBeenNthCalledWith(2, '/parameters/import/apply', {
+      csv_text: 'code,display_name,type',
     })
   })
 
