@@ -47,6 +47,7 @@ import {
 import {
   getProjectCreateRouteReconciliation,
   getCreateDisabledReason,
+  getManualOverrideDefaultLabel,
   invalidateProjectCreationQueries,
   isWizardInteractionLocked,
   previewFingerprint,
@@ -54,6 +55,7 @@ import {
   selectProcess,
   shouldApplyRouteReconciliation,
   toManualOverrides,
+  updateManualOverride,
   type CreateDisabledReason,
 } from './wizardState'
 
@@ -103,6 +105,7 @@ export function ProjectCreateWizard({ onCreated }: { onCreated: (projectId: numb
   const completionStartedRef = useRef(false)
   const reconciledDownstream404Ref = useRef<unknown>(null)
   const appliedRouteReconciliationRef = useRef<string | null>(null)
+  const baselineAutomaticSourcesRef = useRef<Record<string, string>>({})
   const previousSelectionRef = useRef({
     processKey: routeState.processKey,
     backboneId: routeState.backboneId,
@@ -152,6 +155,10 @@ export function ProjectCreateWizard({ onCreated }: { onCreated: (projectId: numb
   const currentFingerprint = useMemo(
     () => previewFingerprint(routeState.processKey, routeState.backboneId, overrides),
     [overrides, routeState.backboneId, routeState.processKey],
+  )
+  const baselineFingerprint = useMemo(
+    () => previewFingerprint(routeState.processKey, routeState.backboneId, {}),
+    [routeState.backboneId, routeState.processKey],
   )
   const explicitBackboneReady =
     routeState.backboneId === null || backboneDetailQuery.isSuccess
@@ -204,6 +211,7 @@ export function ProjectCreateWizard({ onCreated }: { onCreated: (projectId: numb
       previous.backboneId !== routeState.backboneId
     ) {
       setOverrides((current) => (Object.keys(current).length === 0 ? current : {}))
+      baselineAutomaticSourcesRef.current = {}
       previousSelectionRef.current = {
         processKey: routeState.processKey,
         backboneId: routeState.backboneId,
@@ -370,14 +378,26 @@ export function ProjectCreateWizard({ onCreated }: { onCreated: (projectId: numb
 
   function updateOverride(targetLayerKey: string, sourceLayerKey: string) {
     if (submitLockRef.current || interactionLocked) return
+
+    const baselinePreview = queryClient.getQueryData<PreviewResult>([
+      'backbone-preview',
+      baselineFingerprint,
+    ])
+    if (baselinePreview?.fingerprint === baselineFingerprint) {
+      baselineAutomaticSourcesRef.current = Object.fromEntries(
+        baselinePreview.preview.matches.flatMap((match) =>
+          match.match_type === 'auto' && match.source_layer_key
+            ? [[match.target_layer_key, match.source_layer_key]]
+            : [],
+        ),
+      )
+    }
+
     setIsDirty(true)
     createMutation.reset()
-    setOverrides((current) => {
-      const next = { ...current }
-      if (sourceLayerKey === '') delete next[targetLayerKey]
-      else next[targetLayerKey] = sourceLayerKey
-      return next
-    })
+    setOverrides((current) =>
+      updateManualOverride(current, targetLayerKey, sourceLayerKey),
+    )
   }
 
   function updatePartId(value: string) {
@@ -506,6 +526,7 @@ export function ProjectCreateWizard({ onCreated }: { onCreated: (projectId: numb
             previewError={previewQuery.isError ? previewQuery.error : null}
             currentFingerprint={currentFingerprint}
             overrides={overrides}
+            baselineAutomaticSources={baselineAutomaticSourcesRef.current}
             partId={partId}
             name={name}
             createDisabledReason={createDisabledReason}
@@ -903,6 +924,7 @@ function PreviewStep({
   previewError,
   currentFingerprint,
   overrides,
+  baselineAutomaticSources,
   partId,
   name,
   createDisabledReason,
@@ -932,6 +954,7 @@ function PreviewStep({
   previewError: unknown
   currentFingerprint: string
   overrides: Record<string, string>
+  baselineAutomaticSources: Record<string, string>
   partId: string
   name: string
   createDisabledReason: CreateDisabledReason | null
@@ -1014,6 +1037,9 @@ function PreviewStep({
                     match={match}
                     backboneId={backboneId}
                     backboneLayers={backboneLayers}
+                    baselineAutomaticSource={
+                      baselineAutomaticSources[match.target_layer_key] ?? null
+                    }
                     disabled={controlsDisabled}
                     selectedSource={overrides[match.target_layer_key] ?? ''}
                     onOverrideChange={onOverrideChange}
@@ -1157,6 +1183,7 @@ function PreviewMatchRow({
   match,
   backboneId,
   backboneLayers,
+  baselineAutomaticSource,
   disabled,
   selectedSource,
   onOverrideChange,
@@ -1164,6 +1191,7 @@ function PreviewMatchRow({
   match: MatchOut
   backboneId: number | null
   backboneLayers: Array<{ layer_key: string; step_seq: string; layer_id: string }>
+  baselineAutomaticSource: string | null
   disabled: boolean
   selectedSource: string
   onOverrideChange: (targetLayerKey: string, sourceLayerKey: string) => void
@@ -1186,9 +1214,11 @@ function PreviewMatchRow({
             onChange={(event) => onOverrideChange(match.target_layer_key, event.target.value)}
           >
             <option value="">
-              {match.match_type === 'auto' && match.source_layer_key
-                ? `자동 매칭 유지 · ${match.source_layer_key}`
-                : '미매칭 · 빈 값'}
+              {getManualOverrideDefaultLabel({
+                matchType: match.match_type,
+                sourceLayerKey: match.source_layer_key,
+                baselineAutomaticSource,
+              })}
             </option>
             {backboneLayers.map((layer) => (
               <option key={layer.layer_key} value={layer.layer_key}>

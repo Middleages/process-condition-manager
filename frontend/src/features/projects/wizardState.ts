@@ -1,4 +1,4 @@
-import type { ManualOverrideIn } from '@/api/types'
+import type { ManualOverrideIn, MatchType } from '@/api/types'
 
 import type { ProjectCreateRouteState } from './urlState'
 
@@ -34,6 +34,41 @@ export function toManualOverrides(overrides: Record<string, string>): ManualOver
       target_layer_key,
       source_layer_key,
     }))
+}
+
+export function updateManualOverride(
+  current: Record<string, string>,
+  targetLayerKey: string,
+  sourceLayerKey: string,
+): Record<string, string> {
+  if ((current[targetLayerKey] ?? '') === sourceLayerKey) return current
+
+  const next = { ...current }
+  if (sourceLayerKey === '') delete next[targetLayerKey]
+  else next[targetLayerKey] = sourceLayerKey
+  return next
+}
+
+export function getManualOverrideDefaultLabel({
+  matchType,
+  sourceLayerKey,
+  baselineAutomaticSource,
+}: {
+  matchType: MatchType
+  sourceLayerKey: string | null
+  baselineAutomaticSource: string | null
+}): string {
+  if (matchType === 'auto') {
+    return sourceLayerKey
+      ? `자동 매칭 유지 · ${sourceLayerKey}`
+      : '자동 매칭 유지'
+  }
+  if (matchType === 'manual') {
+    return baselineAutomaticSource
+      ? `수동 매칭 해제 · 자동 규칙 재적용 · ${baselineAutomaticSource}`
+      : '수동 매칭 해제 · 빈 값'
+  }
+  return '미매칭 · 빈 값'
 }
 
 export function previewFingerprint(

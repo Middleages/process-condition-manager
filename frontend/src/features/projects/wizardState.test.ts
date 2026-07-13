@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   getProjectCreateRouteReconciliation,
   getCreateDisabledReason,
+  getManualOverrideDefaultLabel,
   invalidateProjectCreationQueries,
   isWizardInteractionLocked,
   previewFingerprint,
@@ -10,6 +11,7 @@ import {
   selectProcess,
   shouldApplyRouteReconciliation,
   toManualOverrides,
+  updateManualOverride,
   type CreateGuardState,
 } from './wizardState'
 
@@ -50,6 +52,51 @@ describe('wizard dependent state', () => {
     expect(toManualOverrides({ EMPTY: '', TARGET: 'SOURCE' })).toEqual([
       { target_layer_key: 'TARGET', source_layer_key: 'SOURCE' },
     ])
+  })
+
+  it('returns an automatic match after a manual override is cleared', () => {
+    const targetLayerKey = '4::ETCH'
+
+    expect(
+      getManualOverrideDefaultLabel({
+        matchType: 'auto',
+        sourceLayerKey: 'SOURCE::AUTO',
+        baselineAutomaticSource: null,
+      }),
+    ).toBe('자동 매칭 유지 · SOURCE::AUTO')
+
+    const overridden = updateManualOverride({}, targetLayerKey, 'SOURCE::MANUAL')
+    expect(toManualOverrides(overridden)).toEqual([
+      { target_layer_key: targetLayerKey, source_layer_key: 'SOURCE::MANUAL' },
+    ])
+    expect(
+      getManualOverrideDefaultLabel({
+        matchType: 'manual',
+        sourceLayerKey: 'SOURCE::MANUAL',
+        baselineAutomaticSource: 'SOURCE::AUTO',
+      }),
+    ).toBe('수동 매칭 해제 · 자동 규칙 재적용 · SOURCE::AUTO')
+
+    const cleared = updateManualOverride(overridden, targetLayerKey, '')
+    expect(cleared).toEqual({})
+    expect(toManualOverrides(cleared)).toEqual([])
+  })
+
+  it('describes blank only when clearing cannot restore an automatic match', () => {
+    expect(
+      getManualOverrideDefaultLabel({
+        matchType: 'manual',
+        sourceLayerKey: 'SOURCE::MANUAL',
+        baselineAutomaticSource: null,
+      }),
+    ).toBe('수동 매칭 해제 · 빈 값')
+    expect(
+      getManualOverrideDefaultLabel({
+        matchType: 'unmatched',
+        sourceLayerKey: null,
+        baselineAutomaticSource: null,
+      }),
+    ).toBe('미매칭 · 빈 값')
   })
 })
 
