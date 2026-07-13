@@ -40,6 +40,13 @@ export function setDirtyCell(map: DirtyCellMap, cell: DirtyCell): DirtyCellMap {
   return next
 }
 
+/** 붙여넣기처럼 여러 셀을 한 상태 전이로 병합한다. 동일 셀은 배치의 마지막 값이 이긴다. */
+export function setDirtyCells(map: DirtyCellMap, cells: readonly DirtyCell[]): DirtyCellMap {
+  const next = new Map(map)
+  for (const cell of cells) next.set(dirtyKey(cell.conditionId, cell.parameterCode), cell)
+  return next
+}
+
 /**
  * 저장 성공분을 더티 맵에서 제거한 새 맵을 만든다.
  *
@@ -114,6 +121,8 @@ interface EditState {
   dirtyCells: DirtyCellMap
   /** 셀 편집 확정 → 더티 등록(마지막 값으로 합치기). */
   setCell(conditionId: string, parameterCode: string, value: string | null): void
+  /** 붙여넣기 배치 → 한 번에 더티 등록(기존 동일 셀은 붙여넣기 값으로 대체). */
+  setCells(cells: readonly DirtyCell[]): void
   /** 변경 취소 — 더티 버퍼 전체 폐기. */
   clearAll(): void
   /** 저장 성공분 제거(재편집분은 보존). */
@@ -125,6 +134,10 @@ export const useEditStore = create<EditState>((set) => ({
   setCell: (conditionId, parameterCode, value) =>
     set((state) => ({
       dirtyCells: setDirtyCell(state.dirtyCells, { conditionId, parameterCode, value }),
+    })),
+  setCells: (cells) =>
+    set((state) => ({
+      dirtyCells: setDirtyCells(state.dirtyCells, cells),
     })),
   clearAll: () => set({ dirtyCells: new Map() }),
   markSaved: (cells) => set((state) => ({ dirtyCells: removeSavedCells(state.dirtyCells, cells) })),

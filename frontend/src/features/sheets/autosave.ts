@@ -52,7 +52,9 @@ export function createAutosaveEngine(options: AutosaveEngineOptions): AutosaveEn
 
   let timer: ReturnType<typeof setTimeout> | null = null
   let attempts = 0 // 연속 실패 횟수
-  let inFlight = false // flush 진행 중
+  // 진행 중인 저장 Promise 자체를 보관한다. 구조 변경/언마운트의 flushNow가 단순히
+  // "저장 중" 플래그만 보고 지나가지 않고 실제 네트워크 완료까지 기다리기 위함이다.
+  let inFlight: Promise<void> | null = null
   let state: SaveState = 'idle'
 
   function setState(next: SaveState): void {
@@ -72,7 +74,9 @@ export function createAutosaveEngine(options: AutosaveEngineOptions): AutosaveEn
     clearTimer()
     timer = setTimeout(() => {
       timer = null
-      void run()
+      // 백그라운드 자동저장은 상태/재시도 타이머로 실패를 알린다. 호출자가 없는 Promise의
+      // rejection만 소비하고, flushNow 호출에는 같은 실패를 그대로 전파한다.
+      void run().catch(() => undefined)
     }, delayMs)
   }
 
@@ -89,58 +93,63 @@ export function createAutosaveEngine(options: AutosaveEngineOptions): AutosaveEn
 
   function run(): Promise<void> {
     clearTimer()
-    if (inFlight) return Promise.resolve() // 완료 시점에 hasPending으로 재실행 판단
+    if (inFlight !== null) return inFlight
     if (!hasPending()) {
       if (state !== 'idle') setState('saved')
       return Promise.resolve()
     }
 
-    inFlight = true
     setState('saving')
-    let failure: unknown = null
-
-    return flush()
-      .catch((error: unknown) => {
-        failure = error
-      })
+    const current = flush()
       .then(() => {
-        inFlight = false
-
-        if (failure === null) {
           attempts = 0
           if (hasPending()) {
             scheduleIn(debounceMs) // 저장 중 도착한 새 편집 → 다시 저장
           } else {
             setState('saved')
           }
-          return
-        }
-
-        if (isFatal?.(failure) === true) {
-          setState('idle') // 재시도 중단 — 상위가 잠금 상실 등 별도 처리
-          return
-        }
-
-        attempts += 1
-        if (attempts <= maxRetries) {
-          setState('saving') // 재시도 대기(스피너 유지)
-          scheduleIn(backoffMs * 2 ** (attempts - 1))
-        } else {
-          setState('error') // 포기 — 배너 + 수동 재시도
-        }
       })
+      .catch((error: unknown) => {
+        if (isFatal?.(error) === true) {
+          setState('idle') // 재시도 중단 — 상위가 잠금 상실 등 별도 처리
+        } else {
+          attempts += 1
+          if (attempts <= maxRetries) {
+            setState('saving') // 재시도 대기(스피너 유지)
+            scheduleIn(backoffMs * 2 ** (attempts - 1))
+          } else {
+            setState('error') // 포기 — 배너 + 수동 재시도
+          }
+        }
+        throw error
+      })
+      .finally(() => {
+        if (inFlight === current) inFlight = null
+      })
+    inFlight = current
+    return current
   }
 
   return {
     schedule,
-    flushNow(): Promise<void> {
+    async flushNow(): Promise<void> {
       clearTimer()
-      return run()
+      // 진행 중 요청을 기다린 뒤, 그 snapshot 이후 도착한 더티도 디바운스 없이 모두 비운다.
+      // 어느 요청이든 실패하면 rejection을 호출자에게 전파해 구조 변경/잠금 해제를 중단시킨다.
+      while (true) {
+        if (inFlight !== null) await inFlight
+        clearTimer() // 성공 처리에서 남은 더티용으로 잡은 debounce를 강제 flush가 대체한다.
+        if (!hasPending()) {
+          if (state !== 'idle') setState('saved')
+          return
+        }
+        await run()
+      }
     },
     retry(): void {
       attempts = 0
       clearTimer()
-      void run()
+      void run().catch(() => undefined)
     },
     cancel(): void {
       clearTimer()

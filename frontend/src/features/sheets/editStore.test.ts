@@ -140,6 +140,17 @@ describe('useEditStore', () => {
     expect(dirtyCellList(useEditStore.getState().dirtyCells)[0].value).toBe('1600')
   })
 
+  it('setCells stages a paste batch and lets the latest batch value win', () => {
+    useEditStore.getState().setCell('11', 'spin', '1500')
+    useEditStore.getState().setCells([
+      cell('11', 'spin', '1700'),
+      cell('12', 'pr', 'neg'),
+    ])
+
+    expect(selectDirtyCount(useEditStore.getState())).toBe(2)
+    expect(useEditStore.getState().dirtyCells.get(dirtyKey('11', 'spin'))?.value).toBe('1700')
+  })
+
   it('markSaved removes saved cells and clearAll empties the buffer', () => {
     useEditStore.getState().setCell('11', 'spin', '1500')
     useEditStore.getState().setCell('12', 'pr', 'pos')

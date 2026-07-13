@@ -74,13 +74,62 @@ describe('createAutosaveEngine', () => {
     expect(flush).toHaveBeenCalledTimes(1)
   })
 
+  it('flushNow waits for an in-flight save and immediately drains newer edits', async () => {
+    let version = 1
+    let savedVersion = 0
+    let releaseFirst: (() => void) | undefined
+    const firstGate = new Promise<void>((resolve) => {
+      releaseFirst = resolve
+    })
+    const flush = vi.fn(async () => {
+      const snapshot = version
+      if (snapshot === 1) await firstGate
+      savedVersion = snapshot
+    })
+    const engine = createAutosaveEngine({
+      debounceMs: DEBOUNCE,
+      backoffMs: BACKOFF,
+      maxRetries: MAX_RETRIES,
+      flush,
+      hasPending: () => savedVersion < version,
+    })
+
+    engine.schedule()
+    await vi.advanceTimersByTimeAsync(DEBOUNCE)
+    expect(flush).toHaveBeenCalledTimes(1)
+
+    version = 2 // 첫 저장 snapshot 이후 도착한 편집
+    let forceFinished = false
+    const forced = engine.flushNow().then(() => {
+      forceFinished = true
+    })
+    await Promise.resolve()
+    expect(forceFinished).toBe(false)
+
+    releaseFirst?.()
+    await forced
+    expect(flush).toHaveBeenCalledTimes(2)
+    expect(savedVersion).toBe(2)
+    expect(engine.getState()).toBe('saved')
+  })
+
+  it('flushNow rejects when persistence fails so a structural caller can abort', async () => {
+    const { engine } = harness({
+      flush: async () => {
+        throw new Error('network down')
+      },
+    })
+
+    await expect(engine.flushNow()).rejects.toThrow('network down')
+  })
+
   it('retries with exponential backoff, then gives up as error', async () => {
     const { engine, flush, states } = harness({
       flush: async () => {
         throw new Error('boom') // 항상 실패, pending 유지
       },
     })
-    await engine.flushNow() // 1차 시도
+    await expect(engine.flushNow()).rejects.toThrow('boom') // 1차 시도
     expect(flush).toHaveBeenCalledTimes(1)
     expect(engine.getState()).toBe('saving')
     await vi.advanceTimersByTimeAsync(BACKOFF) // 재시도 1 (500)
@@ -101,7 +150,7 @@ describe('createAutosaveEngine', () => {
       },
       isFatal: (error) => error instanceof Fatal,
     })
-    await engine.flushNow()
+    await expect(engine.flushNow()).rejects.toBeInstanceOf(Fatal)
     expect(flush).toHaveBeenCalledTimes(1)
     expect(engine.getState()).toBe('idle') // 재시도 없이 중단
     await vi.advanceTimersByTimeAsync(10_000)
@@ -124,7 +173,7 @@ describe('createAutosaveEngine', () => {
       hasPending: () => control.pending,
     })
 
-    await engine.flushNow()
+    await expect(engine.flushNow()).rejects.toThrow('boom')
     await vi.advanceTimersByTimeAsync(BACKOFF)
     await vi.advanceTimersByTimeAsync(BACKOFF * 2)
     await vi.advanceTimersByTimeAsync(BACKOFF * 4)

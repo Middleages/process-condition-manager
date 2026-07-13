@@ -89,6 +89,7 @@ export function useSheetEditing(
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const engineRef = useRef<AutosaveEngine | null>(null)
   const onPersistedRef = useRef(options.onPersisted)
+  const saveOriginRef = useRef<'manual' | 'paste'>('manual')
 
   projectIdRef.current = projectId
   onPersistedRef.current = options.onPersisted
@@ -144,8 +145,17 @@ export function useSheetEditing(
         }
         const snapshot = dirtyCellList(useEditStore.getState().dirtyCells)
         if (snapshot.length === 0) return
+        // origin은 이 snapshot 한 번에만 적용한다. paste 저장 중 도착한 후속 수동 편집은
+        // flushNow의 다음 반복에서 manual로 기록되어 audit batch 의미가 섞이지 않는다.
+        const origin = saveOriginRef.current
+        saveOriginRef.current = 'manual'
         try {
-          await patchCells(projectIdRef.current, snapshot.map(toCellUpdateIn), 'manual', token)
+          await patchCells(
+            projectIdRef.current,
+            snapshot.map(toCellUpdateIn),
+            origin,
+            token,
+          )
         } catch (error) {
           // 저장 중 잠금 탈취(409) → 상실 처리 후 치명 오류로 던져 재시도를 멈춘다.
           if (isLockConflict(error)) handleLockLost()
@@ -166,34 +176,51 @@ export function useSheetEditing(
     [],
   )
 
-  // 붙여넣기 적용: 자동저장 엔진(디바운스/백오프)을 타지 않는 별도 즉시 저장 경로. 스테이징
-  // 적용분은 더티 버퍼를 거치지 않고 곧장 서버로 확정 저장한다(origin=paste). 실패 시 스테이징을
-  // 유지해야 하므로 여기서는 재시도하지 않고 그대로 던진다 — 사용자가 "적용"을 다시 누르면 된다.
+  // 붙여넣기 적용: 기존 수동 더티를 먼저 확정한 뒤 붙여넣기 값을 같은 더티 버퍼에 병합하고
+  // origin=paste로 즉시 flush한다. 동일 셀의 이전 수동 값은 붙여넣기 값으로 대체되므로 나중에
+  // 옛 자동저장이 붙여넣기를 되돌릴 수 없다. 실패하면 스테이징 재시도를 위해 임시 더티만 걷어낸다.
   const applyPaste = useCallback(
     async (cells: DirtyCell[]): Promise<void> => {
       if (cells.length === 0) return
-      const token = lockTokenRef.current
-      if (token === null || lockStatusRef.current !== 'held') {
+      if (lockTokenRef.current === null || lockStatusRef.current !== 'held') {
         throw new LockRequiredError()
       }
-      try {
-        await patchCells(projectIdRef.current, cells.map(toCellUpdateIn), 'paste', token)
-      } catch (error) {
-        // 저장 중 잠금 탈취(409) → 상실 처리(읽기 전용 전환) 후 그대로 던져 상위가 안내한다.
-        if (isLockConflict(error)) handleLockLost()
-        throw error
+
+      // 붙여넣기보다 먼저 발생한 수동 편집은 먼저 저장한다. 진행 중 저장도 실제 완료까지 기다리고,
+      // 실패하면 rejection이 전파되어 붙여넣기를 시작하지 않는다.
+      await (engineRef.current?.flushNow() ?? Promise.resolve())
+      if (lockTokenRef.current === null || lockStatusRef.current !== 'held') {
+        throw new LockRequiredError()
       }
-      // 성공분을 서버 스냅샷(캐시)에 확정 반영 — 더티 버퍼는 관여하지 않는다.
-      onPersistedRef.current?.(cells)
+
+      saveOriginRef.current = 'paste'
+      useEditStore.getState().setCells(cells)
+      try {
+        await (engineRef.current?.flushNow() ?? Promise.resolve())
+      } catch (error) {
+        // 강제 flush 실패가 잡아 둔 백오프를 중단하고, 아직 같은 값인 붙여넣기 셀만 더티에서
+        // 제거한다. 저장 중 사용자가 다시 편집한 셀은 markSaved의 snapshot 보호로 남는다.
+        engineRef.current?.cancel()
+        useEditStore.getState().markSaved(cells)
+        throw error
+      } finally {
+        saveOriginRef.current = 'manual'
+        // 실패 중 새 편집이 들어왔다면 일반 수동 자동저장으로 다시 시작한다.
+        if (
+          lockStatusRef.current === 'held' &&
+          useEditStore.getState().dirtyCells.size > 0
+        ) {
+          engineRef.current?.schedule()
+        }
+      }
     },
-    [handleLockLost],
+    [],
   )
 
   // 구조 변경(조건 행 추가/복제/삭제·POR 이양) 즉시 실행: 더티 셀 버퍼와 분리된 별도 API
   // 호출(T7 즉시 커밋). applyPaste와 같은 즉시-호출 패턴이되, 구조 변경 전에 진행 중인 셀
-  // 편집을 먼저 확정 저장해(flushNow) 순서를 보장한다. flushNow는 실패해도 reject하지 않고
-  // 엔진 내부에서 상태를 전이하므로(409면 handleLockLost까지 수행), flush 뒤 잠금을 다시
-  // 확인한 다음에만 구조 변경 API를 호출한다.
+  // 편집을 먼저 확정 저장해(flushNow) 순서를 보장한다. flushNow는 진행 중 요청과 후속 더티를
+  // 모두 기다리고 실패를 reject하므로, 저장이 확정된 뒤에만 구조 변경 API를 호출한다.
   const runStructuralChange = useCallback(
     async <T,>(fn: (lockToken: string) => Promise<T>): Promise<T> => {
       if (lockTokenRef.current === null || lockStatusRef.current !== 'held') {
@@ -273,14 +300,15 @@ export function useSheetEditing(
       stopHeartbeat()
       const token = lockTokenRef.current
       if (lockStatusRef.current === 'held' && token !== null) {
-        // 남은 더티 best-effort flush 후 해제. flushNow()가 라이브 토큰을 동기적으로 읽은 뒤
-        // null 처리해야 flush가 토큰을 잃지 않는다. release는 flush 완료 뒤로 미뤄 저장 중
-        // 해제로 마지막 편집을 잃는 것을 막는다.
+        // 남은 더티 best-effort flush 후 해제. 진행 중 저장 뒤에 새 더티가 남아 있을 수 있으므로
+        // flushNow 전체가 끝날 때까지 토큰을 유지한다. release도 그 뒤로 미뤄 저장과 경합하지 않는다.
         const done = engine ? engine.flushNow() : Promise.resolve()
-        lockTokenRef.current = null
-        void done.finally(() => {
-          void releaseLock(projectId, token)
-        })
+        void done
+          .catch(() => undefined) // 화면은 이미 이탈했으므로 오류 UI 대신 더티/TTL을 최종 보험으로 둔다.
+          .finally(() => {
+            if (lockTokenRef.current === token) lockTokenRef.current = null
+            void releaseLock(projectId, token)
+          })
       } else {
         engine?.cancel()
         lockTokenRef.current = null
