@@ -19,6 +19,11 @@ export function getApiErrorMessage(error: unknown): string {
   return '알 수 없는 오류가 발생했다.'
 }
 
+export function getApiErrorStatus(error: unknown): number | null {
+  if (!isApiError(error)) return null
+  return error.response?.status ?? null
+}
+
 function isApiError(error: unknown): error is AxiosError<ApiErrorBody> {
   return axios.isAxiosError<ApiErrorBody>(error)
 }
@@ -38,4 +43,11 @@ export function getLockConflictHolder(error: unknown): string | null {
   if (!isLockConflict(error) || !isApiError(error)) return null
   const holder = error.response?.data?.details?.locked_by
   return typeof holder === 'string' && holder !== '' ? holder : null
+}
+
+export function getExistingProjectId(error: unknown): number | null {
+  if (!isApiError(error) || error.response?.status !== 409) return null
+
+  const projectId = error.response.data?.details?.existing_project_id
+  return Number.isInteger(projectId) && (projectId as number) > 0 ? (projectId as number) : null
 }

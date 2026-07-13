@@ -16,11 +16,9 @@ export function ProjectCreatePage() {
         title="새 프로젝트"
         description="Process 구조와 백본을 확인해 새 조건표 프로젝트를 만듭니다."
       />
-      <div className="max-w-5xl">
-        <ProjectCreateWizard
-          onCreated={(projectId) => navigate(`/projects/${projectId}`, { replace: true })}
-        />
-      </div>
+      <ProjectCreateWizard
+        onCreated={(projectId) => navigate(`/projects/${projectId}`, { replace: true })}
+      />
     </section>
   )
 }

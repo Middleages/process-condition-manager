@@ -21,11 +21,13 @@ export async function listProcesses(): Promise<ProcessOut[]> {
 }
 
 export async function getProcess(processKey: string): Promise<ProcessDetailOut> {
-  const response = await apiClient.get<ProcessDetailOut>(`/processes/${processKey}`)
+  const response = await apiClient.get<ProcessDetailOut>(`/processes/${encodeURIComponent(processKey)}`)
   return response.data
 }
 
 export async function getProcessLayers(processKey: string): Promise<LayerOut[]> {
-  const response = await apiClient.get<LayerOut[]>(`/processes/${processKey}/layers`)
+  const response = await apiClient.get<LayerOut[]>(
+    `/processes/${encodeURIComponent(processKey)}/layers`,
+  )
   return response.data
 }
