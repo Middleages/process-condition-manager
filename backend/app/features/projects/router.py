@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import UserContext, get_current_user
 from app.core.db import get_app_session
+from app.core.locks import require_edit_lock
 from app.features.projects.repository import ProjectRepository
 from app.features.projects.schema import (
     BackboneCandidateOut,
@@ -80,7 +81,11 @@ async def create_project(
     return _project_out(project)
 
 
-@router.post("/{project_id}/layers/{layer_key}/backbone-replace", response_model=ProjectOut)
+@router.post(
+    "/{project_id}/layers/{layer_key}/backbone-replace",
+    response_model=ProjectOut,
+    dependencies=[Depends(require_edit_lock)],
+)
 async def replace_layer_backbone(
     project_id: int,
     layer_key: str,

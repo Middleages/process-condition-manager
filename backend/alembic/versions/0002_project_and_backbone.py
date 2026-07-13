@@ -8,8 +8,9 @@ Create Date: Phase 1 T1
 from collections.abc import Sequence
 
 import sqlalchemy as sa
-from alembic import op
 from sqlalchemy.dialects import postgresql
+
+from alembic import op
 
 # change_event.payload: PostgreSQL은 JSONB, 그 외는 JSON.
 _JSON_PAYLOAD = sa.JSON().with_variant(postgresql.JSONB(), "postgresql")

@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 
 import { getApiErrorMessage } from '@/api/client'
+import { acquireLock, releaseLock } from '@/api/locks'
 import { getProject, listProjects, replaceLayerBackbone } from '@/api/projects'
 import type { ProjectLayerOut, ProjectOut } from '@/api/types'
 
@@ -35,11 +36,24 @@ export function LayerReplaceModal({
   )
 
   const replaceMutation = useMutation({
-    mutationFn: () =>
-      replaceLayerBackbone(project.id, targetLayer.layer_key, {
-        source_project_id: sourceProjectId as number,
-        source_layer_key: sourceLayerKey,
-      }),
+    // 이 교체 작업 하나만을 위해 잠금을 짧게 획득→해제한다(P2-D6). 다른 세션이
+    // 편집 중이면 acquireLock이 409로 실패하고 그대로 에러가 표시된다. 지속 보유 +
+    // 하트비트가 필요한 시트 편집 화면(T3/T4)과는 별개의 용도다.
+    mutationFn: async () => {
+      const lock = await acquireLock(project.id)
+      try {
+        return await replaceLayerBackbone(
+          project.id,
+          targetLayer.layer_key,
+          { source_project_id: sourceProjectId as number, source_layer_key: sourceLayerKey },
+          lock.lock_token,
+        )
+      } finally {
+        await releaseLock(project.id, lock.lock_token).catch(() => {
+          // 해제 실패는 무해하다 — TTL 만료가 최종 보험(P2-D4).
+        })
+      }
+    },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['project', project.id] })
       await queryClient.invalidateQueries({ queryKey: ['projects'] })

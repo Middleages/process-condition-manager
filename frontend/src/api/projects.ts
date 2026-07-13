@@ -57,10 +57,12 @@ export async function replaceLayerBackbone(
   projectId: number,
   layerKey: string,
   payload: BackboneReplaceIn,
+  lockToken: string,
 ): Promise<ProjectOut> {
   const response = await apiClient.post<ProjectOut>(
     `/projects/${projectId}/layers/${encodeURIComponent(layerKey)}/backbone-replace`,
     payload,
+    { headers: { 'X-Lock-Token': lockToken } },
   )
   return response.data
 }

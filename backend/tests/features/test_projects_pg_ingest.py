@@ -93,11 +93,11 @@ async def test_ec1_two_processes_yield_distinct_structures(
     pg_ingest_client: AsyncClient,
 ) -> None:
     alpha = await pg_ingest_client.post(
-        "/projects",
+        "/api/projects",
         json={"line_id": "L1", "process_id": "PROC_ALPHA", "part_id": "A", "name": "Alpha"},
     )
     beta = await pg_ingest_client.post(
-        "/projects",
+        "/api/projects",
         json={"line_id": "L1", "process_id": "PROC_BETA", "part_id": "B", "name": "Beta"},
     )
 
@@ -114,12 +114,12 @@ async def test_ec1_two_processes_yield_distinct_structures(
 async def test_process_catalog_reads_from_pg_reader(
     pg_ingest_client: AsyncClient,
 ) -> None:
-    listed = await pg_ingest_client.get("/processes")
+    listed = await pg_ingest_client.get("/api/processes")
     assert [p["key"] for p in listed.json()["items"]] == [
         "L1::PROC_ALPHA",
         "L1::PROC_BETA",
     ]
 
-    detail = await pg_ingest_client.get("/processes/L1::PROC_BETA")
+    detail = await pg_ingest_client.get("/api/processes/L1::PROC_BETA")
     assert detail.json()["step_count"] == 2
     assert detail.json()["area_names"] == ["CLEAN", "DEP"]

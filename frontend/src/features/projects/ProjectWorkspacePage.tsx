@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 
 import { getApiErrorMessage } from '@/api/client'
 import { getProject, listProjects } from '@/api/projects'
@@ -115,12 +116,17 @@ function ProjectDetail({ project }: { project: ProjectOut }) {
   const [replaceTarget, setReplaceTarget] = useState<ProjectLayerOut | null>(null)
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="mb-4">
-        <p className="text-sm text-cyan-700">Project #{project.id}</p>
-        <h3 className="text-lg font-semibold">{project.name}</h3>
-        <p className="mt-1 font-mono text-sm text-slate-500">
-          {project.line_id}/{project.process_id}/{project.part_id}
-        </p>
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm text-cyan-700">Project #{project.id}</p>
+          <h3 className="text-lg font-semibold">{project.name}</h3>
+          <p className="mt-1 font-mono text-sm text-slate-500">
+            {project.line_id}/{project.process_id}/{project.part_id}
+          </p>
+        </div>
+        <Link className="btn-primary whitespace-nowrap" to={`/projects/${project.id}/sheet`}>
+          조건표 시트 열기
+        </Link>
       </div>
       <div className="overflow-hidden rounded-lg border border-slate-200">
         <table className="w-full text-left text-sm">

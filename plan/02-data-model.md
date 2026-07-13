@@ -87,10 +87,11 @@ cell_value              -- 조건표 본문: narrow(long) 테이블
   id PK
   condition_id FK       -- layer_condition 참조 (행 = 조건 행, layer가 아님)
   parameter_code        -- parameter.code 참조 (FK 아님: 스냅샷 독립성)
-  value                 -- TEXT 저장, value_type에 따라 해석
-  updated_by, updated_at
+  value_text            -- TEXT 저장(NULL 허용 = 셀 비우기), value_type에 따라 해석
   UNIQUE (condition_id, parameter_code)
 ```
+
+> Phase 2 구현 정정: 컬럼명은 `value`가 아니라 `value_text`다. `updated_by`/`updated_at`는 두지 않는다 — 셀 단위 변경 이력은 아래 `change_event`(구조화 컬럼, P2-D7)가 전담하므로 `cell_value` 자체에 감사 컬럼을 중복 보관하지 않는다(현재 값의 "누가·언제"가 필요하면 `change_event`를 `condition_id`+`parameter_code`로 조회).
 
 ### 다중 조건과 POR (D-16)
 
@@ -117,26 +118,28 @@ cell_value              -- 조건표 본문: narrow(long) 테이블
 change_event
   id PK (bigserial)
   project_id FK
-  event_type            -- cell_update | backbone_copy | backbone_layer_replace
-                        --  | por_change | condition_add | condition_remove
+  event_type            -- project_create | backbone_copy | backbone_layer_replace
+                        --  | cell_update | condition_add | condition_remove | por_change
                         --  | status_change | revision_create | ...
-  layer_key, condition_id, parameter_code   -- 셀/조건 이벤트일 때
-  old_value, new_value
-  source                -- manual | backbone | recipe | system
+  condition_id, parameter_code, old_value, new_value  -- 셀 이벤트(cell_update) 전용 구조화 컬럼(P2-D7)
   actor, created_at
-  payload JSONB         -- 이벤트별 부가 정보
+  payload JSONB         -- 이벤트별 부가 정보 (벌크 이벤트의 batch_id, layer_key,
+                        -- condition_remove의 삭제 스냅샷, por_change의 old/new condition_id 등)
 ```
 
 - UPDATE/DELETE 금지. 변경 이력 화면(Phase 4), 감사 추적, Revision 비교가 전부 이 테이블 하나를 조회한다.
-- 벌크 작업(백본 복사, 엑셀 붙여넣기)은 셀 이벤트를 배치 insert하되 `payload`에 배치 식별자를 남겨 묶어 볼 수 있게 한다.
+- 벌크 작업(백본 복사, 엑셀 붙여넣기)은 셀 이벤트를 배치 insert하되 `payload`에 배치 식별자(`batch_id`)를 남겨 묶어 볼 수 있게 한다. 엑셀 붙여넣기로 저장된 셀 이벤트는 `payload.origin = "paste"`로 수동 편집과 구분한다(P2-D7).
+- Phase 2 구현 정정: 계획 초안의 `layer_key` 컬럼과 `source` 컬럼은 두지 않는다. `layer_key`는 조건/POR 이벤트의 `payload`에 싣고, 이벤트의 출처 구분은 `event_type` 자체(및 셀 이벤트의 `payload.origin`)로 충분해 별도 `source` 컬럼을 두지 않았다.
 
-## 6. 편집 잠금 (결정 D-09)
+## 6. 편집 잠금 (결정 D-09, lock_token은 P2-D6)
 
 ```
 edit_lock
   project_id PK/FK
-  locked_by, locked_at, expires_at   -- TTL + 하트비트 갱신
+  locked_by, lock_token, locked_at, expires_at   -- TTL + 하트비트 갱신
 ```
+
+- `lock_token`(P2-D6, Phase 2 구현): 획득 시 서버가 발급하는 불투명 토큰. 소유는 "사용자 + 토큰"으로 식별해 같은 계정의 다른 탭도 한쪽만 편집하도록 구분하고, TTL 만료 후 탈취된 잠금에 이전 세션이 뒤늦게 쓰는 사고를 막는다. 편집 계열 API는 헤더(`X-Lock-Token`)로 토큰을 검증한다.
 
 - 프로젝트 단위 단일 잠금. 편집 화면 진입 시 획득, 주기적 하트비트로 연장, 이탈/만료 시 해제.
 - 잠금 보유자가 아니면 편집 API는 409를 반환하고, UI는 읽기 전용 + "누가 편집 중" 표시.

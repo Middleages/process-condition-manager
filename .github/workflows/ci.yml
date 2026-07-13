@@ -11,6 +11,23 @@ jobs:
   backend:
     name: Backend lint, typecheck, test
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: pcm_test
+          POSTGRES_USER: pcm_user
+          POSTGRES_PASSWORD: pcm_pass
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pcm_user -d pcm_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # 동시성 테스트가 스키마를 생성/삭제하므로 애플리케이션 DB와 분리된 전용 DB만 쓴다.
+      APP_TEST_DATABASE_URL: postgresql+asyncpg://pcm_user:pcm_pass@localhost:5432/pcm_test
     defaults:
       run:
         working-directory: backend

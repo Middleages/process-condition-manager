@@ -13,6 +13,13 @@ from app.models.project import (
 )
 
 
+async def _lock_headers(client: AsyncClient, project_id: int) -> dict[str, str]:
+    """편집 잠금을 획득해 backbone-replace(잠금 검사 소급 적용)용 토큰 헤더를 만든다."""
+    resp = await client.post(f"/api/projects/{project_id}/lock")
+    assert resp.status_code == 200, resp.text
+    return {"X-Lock-Token": resp.json()["lock_token"]}
+
+
 async def _seed_backbone_cells(
     session: AsyncSession, project_id: int, layer_key: str, cells: dict[str, str]
 ) -> None:
@@ -37,7 +44,7 @@ async def _seed_backbone_cells(
 
 async def test_create_project_from_process_structure(db_client: AsyncClient) -> None:
     resp = await db_client.post(
-        "/projects",
+        "/api/projects",
         json={
             "line_id": "L1",
             "process_id": "PROC_ALPHA",
@@ -67,9 +74,9 @@ async def test_duplicate_project_identity_rejected(db_client: AsyncClient) -> No
         "part_id": "PART-001",
         "name": "Alpha 조건표",
     }
-    assert (await db_client.post("/projects", json=payload)).status_code == 201
+    assert (await db_client.post("/api/projects", json=payload)).status_code == 201
 
-    dup = await db_client.post("/projects", json=payload)
+    dup = await db_client.post("/api/projects", json=payload)
 
     assert dup.status_code == 409
     assert dup.json()["code"] == "conflict"
@@ -77,7 +84,7 @@ async def test_duplicate_project_identity_rejected(db_client: AsyncClient) -> No
 
 async def test_preview_without_backbone_returns_unmatched_layers(db_client: AsyncClient) -> None:
     resp = await db_client.post(
-        "/projects/backbone-preview",
+        "/api/projects/backbone-preview",
         json={"line_id": "L1", "process_id": "PROC_BETA"},
     )
 
@@ -96,7 +103,7 @@ async def test_preview_with_backbone_reports_match_and_copy_counts(
 ) -> None:
     backbone = (
         await db_client.post(
-            "/projects",
+            "/api/projects",
             json={"line_id": "L1", "process_id": "PROC_ALPHA", "part_id": "SRC", "name": "B"},
         )
     ).json()
@@ -105,7 +112,7 @@ async def test_preview_with_backbone_reports_match_and_copy_counts(
     )
 
     resp = await db_client.post(
-        "/projects/backbone-preview",
+        "/api/projects/backbone-preview",
         json={
             "line_id": "L1",
             "process_id": "PROC_BETA",
@@ -126,13 +133,13 @@ async def test_backbone_candidates_ranked_by_match_rate(db_client: AsyncClient) 
     # 백본 후보: PROC_ALPHA(001/CLN 공통) 하나. 대상 PROC_BETA 기준 매칭률 계산.
     alpha = (
         await db_client.post(
-            "/projects",
+            "/api/projects",
             json={"line_id": "L1", "process_id": "PROC_ALPHA", "part_id": "A", "name": "Alpha"},
         )
     ).json()
 
     resp = await db_client.get(
-        "/projects/backbone-candidates",
+        "/api/projects/backbone-candidates",
         params={"line_id": "L1", "process_id": "PROC_BETA"},
     )
 
@@ -149,7 +156,7 @@ async def test_backbone_candidates_ranked_by_match_rate(db_client: AsyncClient) 
 async def test_list_and_get_project(db_client: AsyncClient) -> None:
     created = (
         await db_client.post(
-            "/projects",
+            "/api/projects",
             json={
                 "line_id": "L1",
                 "process_id": "PROC_BETA",
@@ -159,14 +166,14 @@ async def test_list_and_get_project(db_client: AsyncClient) -> None:
         )
     ).json()
 
-    listed = await db_client.get("/projects")
+    listed = await db_client.get("/api/projects")
     assert listed.status_code == 200
     body = listed.json()
     assert [project["id"] for project in body["items"]] == [created["id"]]
     assert body["items"][0]["layer_count"] == 2
     assert body["next_cursor"] is None
 
-    fetched = await db_client.get(f"/projects/{created['id']}")
+    fetched = await db_client.get(f"/api/projects/{created['id']}")
     assert fetched.status_code == 200
     assert fetched.json()["name"] == "Beta 조건표"
 
@@ -174,7 +181,7 @@ async def test_list_and_get_project(db_client: AsyncClient) -> None:
 async def test_list_projects_search_and_cursor_paging(db_client: AsyncClient) -> None:
     for part in ("AAA", "BBB", "CCC"):
         await db_client.post(
-            "/projects",
+            "/api/projects",
             json={
                 "line_id": "L1",
                 "process_id": "PROC_ALPHA",
@@ -184,17 +191,17 @@ async def test_list_projects_search_and_cursor_paging(db_client: AsyncClient) ->
         )
 
     # 검색: part_id 부분 일치
-    searched = await db_client.get("/projects", params={"query": "BBB"})
+    searched = await db_client.get("/api/projects", params={"query": "BBB"})
     assert [p["part_id"] for p in searched.json()["items"]] == ["BBB"]
 
     # 커서 페이징: 최신순 2개 + next_cursor
-    page1 = (await db_client.get("/projects", params={"limit": 2})).json()
+    page1 = (await db_client.get("/api/projects", params={"limit": 2})).json()
     assert len(page1["items"]) == 2
     assert page1["next_cursor"] is not None
 
     page2 = (
         await db_client.get(
-            "/projects", params={"limit": 2, "cursor": page1["next_cursor"]}
+            "/api/projects", params={"limit": 2, "cursor": page1["next_cursor"]}
         )
     ).json()
     assert len(page2["items"]) == 1
@@ -206,7 +213,7 @@ async def test_list_projects_search_and_cursor_paging(db_client: AsyncClient) ->
 async def test_replace_layer_backbone_uses_source_layer_conditions(db_client: AsyncClient) -> None:
     source = (
         await db_client.post(
-            "/projects",
+            "/api/projects",
             json={
                 "line_id": "L1",
                 "process_id": "PROC_ALPHA",
@@ -217,7 +224,7 @@ async def test_replace_layer_backbone_uses_source_layer_conditions(db_client: As
     ).json()
     target = (
         await db_client.post(
-            "/projects",
+            "/api/projects",
             json={
                 "line_id": "L1",
                 "process_id": "PROC_BETA",
@@ -228,11 +235,12 @@ async def test_replace_layer_backbone_uses_source_layer_conditions(db_client: As
     ).json()
 
     resp = await db_client.post(
-        f"/projects/{target['id']}/layers/{target['layers'][1]['layer_key']}/backbone-replace",
+        f"/api/projects/{target['id']}/layers/{target['layers'][1]['layer_key']}/backbone-replace",
         json={
             "source_project_id": source["id"],
             "source_layer_key": source["layers"][0]["layer_key"],
         },
+        headers=await _lock_headers(db_client, target["id"]),
     )
 
     assert resp.status_code == 200, resp.text
@@ -247,7 +255,7 @@ async def test_backbone_copy_duplicates_conditions_and_cells(
 ) -> None:
     backbone = (
         await db_client.post(
-            "/projects",
+            "/api/projects",
             json={
                 "line_id": "L1",
                 "process_id": "PROC_ALPHA",
@@ -262,7 +270,7 @@ async def test_backbone_copy_duplicates_conditions_and_cells(
     )
 
     created = await db_client.post(
-        "/projects",
+        "/api/projects",
         json={
             "line_id": "L1",
             "process_id": "PROC_BETA",
@@ -289,12 +297,12 @@ async def test_backbone_copy_records_event_with_counts(
 ) -> None:
     backbone = (
         await db_client.post(
-            "/projects",
+            "/api/projects",
             json={"line_id": "L1", "process_id": "PROC_ALPHA", "part_id": "SRC", "name": "B"},
         )
     ).json()
     target = await db_client.post(
-        "/projects",
+        "/api/projects",
         json={
             "line_id": "L1",
             "process_id": "PROC_BETA",
@@ -321,7 +329,7 @@ async def test_create_without_backbone_records_project_create_event(
 ) -> None:
     created = (
         await db_client.post(
-            "/projects",
+            "/api/projects",
             json={"line_id": "L1", "process_id": "PROC_ALPHA", "part_id": "P", "name": "N"},
         )
     ).json()
@@ -338,13 +346,13 @@ async def test_create_without_backbone_records_project_create_event(
 async def test_invalid_manual_override_is_rejected(db_client: AsyncClient) -> None:
     backbone = (
         await db_client.post(
-            "/projects",
+            "/api/projects",
             json={"line_id": "L1", "process_id": "PROC_ALPHA", "part_id": "SRC", "name": "B"},
         )
     ).json()
 
     resp = await db_client.post(
-        "/projects",
+        "/api/projects",
         json={
             "line_id": "L1",
             "process_id": "PROC_BETA",
@@ -366,15 +374,18 @@ async def test_invalid_manual_override_is_rejected(db_client: AsyncClient) -> No
 async def test_self_layer_replace_is_rejected(db_client: AsyncClient) -> None:
     project = (
         await db_client.post(
-            "/projects",
+            "/api/projects",
             json={"line_id": "L1", "process_id": "PROC_ALPHA", "part_id": "P", "name": "N"},
         )
     ).json()
     layer_key = project["layers"][0]["layer_key"]
 
+    # 잠금을 보유한 상태여도 자기 자신 교체는 도메인 규칙 위반(422)으로 막힌다
+    # (잠금 검사는 통과하고 그 다음 서비스 검증에서 걸린다).
     resp = await db_client.post(
-        f"/projects/{project['id']}/layers/{layer_key}/backbone-replace",
+        f"/api/projects/{project['id']}/layers/{layer_key}/backbone-replace",
         json={"source_project_id": project["id"], "source_layer_key": layer_key},
+        headers=await _lock_headers(db_client, project["id"]),
     )
 
     assert resp.status_code == 422, resp.text
@@ -382,9 +393,9 @@ async def test_self_layer_replace_is_rejected(db_client: AsyncClient) -> None:
 
 async def test_duplicate_conflict_carries_existing_project(db_client: AsyncClient) -> None:
     payload = {"line_id": "L1", "process_id": "PROC_ALPHA", "part_id": "P", "name": "N"}
-    first = (await db_client.post("/projects", json=payload)).json()
+    first = (await db_client.post("/api/projects", json=payload)).json()
 
-    dup = await db_client.post("/projects", json=payload)
+    dup = await db_client.post("/api/projects", json=payload)
 
     assert dup.status_code == 409
     assert dup.json()["details"]["existing_project_id"] == first["id"]
