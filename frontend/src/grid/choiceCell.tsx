@@ -38,6 +38,7 @@ export function makeChoiceCell(
     kind: GridCellKind.Custom,
     allowOverlay: !readOnly,
     readonly: readOnly,
+    activationBehaviorOverride: readOnly ? undefined : 'single-click',
     copyData: value,
     themeOverride,
     data: { kind: 'choice-cell', value, options },
