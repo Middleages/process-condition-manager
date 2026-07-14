@@ -23,6 +23,7 @@ from app.features.locks.repository import EditLockRepository
 from app.features.locks.service import LockService
 from app.main import app
 from app.models.project import EditLock, Project, ProjectStatus
+from tests.factories import make_project_profile
 
 _PG_URL = os.environ.get("APP_TEST_DATABASE_URL")
 
@@ -60,6 +61,7 @@ async def test_concurrent_acquire_returns_one_success_and_only_conflicts(
             part_id="PART_LOCK",
             name="lock concurrency",
             status=ProjectStatus.DRAFT,
+            profile=make_project_profile(process_name="PROC_LOCK"),
         )
         session.add(project)
         await session.commit()
@@ -125,6 +127,7 @@ async def test_validated_edit_fences_expired_lock_takeover(
             part_id="PART_FENCE",
             name="lock fencing",
             status=ProjectStatus.DRAFT,
+            profile=make_project_profile(process_name="PROC_FENCE"),
         )
         session.add(project)
         await session.flush()

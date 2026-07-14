@@ -1,10 +1,19 @@
 """공정/layer 조회 API 테스트."""
 
+import pytest
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ingest.fixture_reader import FixtureIngestReader, get_ingest_reader
 from app.ingest.reader import ProcessInfo
 from app.main import app
+from tests.factories import seed_required_profile_choice_sets
+
+
+@pytest.fixture(autouse=True)
+async def _required_profile_choices(db_session: AsyncSession) -> None:
+    await seed_required_profile_choice_sets(db_session)
+    await db_session.commit()
 
 
 class _CatalogDisplayReader(FixtureIngestReader):
@@ -41,7 +50,14 @@ async def test_list_processes_search_and_without_project_filter(
     # ALPHA에 프로젝트를 만들면 "조건표 없는 것만" 필터에서 빠진다.
     await db_client.post(
         "/api/projects",
-        json={"line_id": "L1", "process_id": "PROC_ALPHA", "part_id": "P", "name": "N"},
+        json={
+            "line_id": "L1",
+            "process_id": "PROC_ALPHA",
+            "part_id": "P",
+            "name": "N",
+            "device_type_code": "DEFAULT",
+            "project_category_code": "DEFAULT",
+        },
     )
 
     searched = await db_client.get("/api/processes", params={"query": "BETA"})
@@ -71,7 +87,14 @@ async def test_process_detail_reports_structure_and_condition_table(
 
     await db_client.post(
         "/api/projects",
-        json={"line_id": "L1", "process_id": "PROC_ALPHA", "part_id": "P", "name": "N"},
+        json={
+            "line_id": "L1",
+            "process_id": "PROC_ALPHA",
+            "part_id": "P",
+            "name": "N",
+            "device_type_code": "DEFAULT",
+            "project_category_code": "DEFAULT",
+        },
     )
     after = await db_client.get("/api/processes/L1::PROC_ALPHA")
     assert after.json()["has_project"] is True

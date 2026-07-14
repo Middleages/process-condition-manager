@@ -26,7 +26,7 @@ from app.models.project import (
     ProjectStatus,
     SheetLayer,
 )
-from tests.factories import seed_choice_set, seed_parameter
+from tests.factories import make_project_profile, seed_choice_set, seed_parameter
 
 
 async def _seed_lock(
@@ -103,6 +103,7 @@ async def _seed_project(session: AsyncSession) -> int:
         part_id="PART-1",
         name="시트 테스트",
         status=ProjectStatus.DRAFT,
+        profile=make_project_profile(process_name="PROC_X"),
     )
 
     layer_a = SheetLayer(

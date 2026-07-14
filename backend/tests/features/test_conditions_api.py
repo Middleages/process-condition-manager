@@ -37,6 +37,7 @@ from app.models.project import (
     ProjectStatus,
     SheetLayer,
 )
+from tests.factories import make_project_profile
 
 
 @dataclass
@@ -74,6 +75,7 @@ async def _seed_project(
         part_id=part_id,
         name="cond test",
         status=ProjectStatus.DRAFT,
+        profile=make_project_profile(process_name=process_id),
     )
     layer = SheetLayer(layer_key=layer_key, step_seq="010", layer_id="ACT", sort_order=1)
     layer.conditions.extend(_build_conditions(conditions))

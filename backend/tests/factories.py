@@ -6,6 +6,20 @@ from app.domain.choices.constants import PROFILE_CHOICE_SET_FIELDS
 from app.domain.parameters.types import ValueType
 from app.models.choice import ChoiceOption, ChoiceSet
 from app.models.parameter import Parameter, ParameterCategory
+from app.models.project import ProjectProfile
+
+
+def make_project_profile(
+    *,
+    process_name: str = "Test process",
+    device_type_code: str = "DEFAULT",
+    project_category_code: str = "DEFAULT",
+) -> ProjectProfile:
+    return ProjectProfile(
+        process_name=process_name,
+        device_type_code=device_type_code,
+        project_category_code=project_category_code,
+    )
 
 
 async def seed_choice_set(

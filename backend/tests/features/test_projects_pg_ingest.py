@@ -20,6 +20,7 @@ from app.core.db import get_app_session
 from app.ingest.fixture_reader import get_ingest_reader
 from app.ingest.pg_reader import PgIngestReader
 from app.main import app
+from tests.factories import seed_required_profile_choice_sets
 
 _ROWS = [
     ("L1", "PROC_ALPHA", "001", "CLN", "CLEAN", "Initial Clean", "CLEAN"),
@@ -38,6 +39,12 @@ _COLUMNS = (
     "eqp_type_desc",
     "area_name",
 )
+
+
+@pytest.fixture(autouse=True)
+async def _required_profile_choices(db_session: AsyncSession) -> None:
+    await seed_required_profile_choice_sets(db_session)
+    await db_session.commit()
 
 
 @pytest.fixture
@@ -94,11 +101,25 @@ async def test_ec1_two_processes_yield_distinct_structures(
 ) -> None:
     alpha = await pg_ingest_client.post(
         "/api/projects",
-        json={"line_id": "L1", "process_id": "PROC_ALPHA", "part_id": "A", "name": "Alpha"},
+        json={
+            "line_id": "L1",
+            "process_id": "PROC_ALPHA",
+            "part_id": "A",
+            "name": "Alpha",
+            "device_type_code": "DEFAULT",
+            "project_category_code": "DEFAULT",
+        },
     )
     beta = await pg_ingest_client.post(
         "/api/projects",
-        json={"line_id": "L1", "process_id": "PROC_BETA", "part_id": "B", "name": "Beta"},
+        json={
+            "line_id": "L1",
+            "process_id": "PROC_BETA",
+            "part_id": "B",
+            "name": "Beta",
+            "device_type_code": "DEFAULT",
+            "project_category_code": "DEFAULT",
+        },
     )
 
     assert alpha.status_code == 201, alpha.text

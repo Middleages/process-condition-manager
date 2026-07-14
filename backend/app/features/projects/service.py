@@ -2,19 +2,27 @@
 
 import uuid
 from dataclasses import asdict, dataclass
+from typing import Any
 
 from sqlalchemy.exc import IntegrityError
 
 from app.core.errors import ConflictError, DomainValidationError, NotFoundError
+from app.core.locks import utcnow
 from app.domain.backbone import LayerMatchInput, ManualOverride, MatchResult, match_layers
-from app.features.projects.repository import ProjectRepository
+from app.domain.choices.rules import ResolvedChoice, normalize_choice_code
+from app.domain.decimal_values import normalize_optional_decimal
+from app.features.choice_sets.repository import ChoiceSetRepository
+from app.features.projects.repository import ProjectRepository, ProjectSummary
 from app.features.projects.schema import (
     BackboneReplaceIn,
+    ChoiceValueOut,
     ManualOverrideIn,
     MatchOut,
     MatchPreviewIn,
     MatchPreviewOut,
     ProjectCreate,
+    ProjectProfileOut,
+    ProjectProfilePatchIn,
 )
 from app.ingest.reader import IngestReader, LayerInfo
 from app.models.project import (
@@ -23,8 +31,62 @@ from app.models.project import (
     ChangeEventType,
     LayerCondition,
     Project,
+    ProjectProfile,
     ProjectStatus,
     SheetLayer,
+)
+from app.project_metadata import ProjectMetadataProvider, ProjectProfileSeed
+
+_CHOICE_FIELDS = {
+    "device_type_code": "device_type",
+    "project_category_code": "project_category",
+    "active_direction_code": "active_direction",
+    "gate_direction_code": "gate_direction",
+}
+_REQUIRED_CHOICE_FIELDS = frozenset({"device_type_code", "project_category_code"})
+_DECIMAL_FIELDS = frozenset(
+    {
+        "pitch_x",
+        "pitch_y",
+        "shot_x",
+        "shot_y",
+        "slit_occupancy",
+        "lens_occupancy",
+        "map_offset_x",
+        "map_offset_y",
+        "scribe_lane_x",
+        "scribe_lane_y",
+    }
+)
+_PATCH_FIELD_ORDER = (
+    "process_name",
+    "device_type_code",
+    "project_category_code",
+    "comment",
+    "active_direction_code",
+    "gate_direction_code",
+    "gross_die",
+    "pitch_x",
+    "pitch_y",
+    "shot_x",
+    "shot_y",
+    "slit_occupancy",
+    "lens_occupancy",
+    "map_offset_x",
+    "map_offset_y",
+    "scribe_lane_x",
+    "scribe_lane_y",
+    "shot_count",
+    "full_shot",
+    "layer_total",
+    "euv",
+    "imm",
+    "arf",
+    "krf",
+    "iline",
+    "soh",
+    "pspi",
+    "metal_layer_count",
 )
 
 
@@ -42,20 +104,34 @@ class _ConditionSnapshot:
 class ProjectService:
     """Phase 1 프로젝트/백본 오케스트레이션."""
 
-    def __init__(self, repo: ProjectRepository, reader: IngestReader) -> None:
+    def __init__(
+        self,
+        repo: ProjectRepository,
+        reader: IngestReader,
+        metadata_provider: ProjectMetadataProvider,
+    ) -> None:
         self.repo = repo
         self.reader = reader
+        self.metadata_provider = metadata_provider
+        self.choice_repo = ChoiceSetRepository(repo.session)
 
     async def list_projects(
         self,
         *,
         query: str | None = None,
         status: str | None = None,
+        device_type_code: str | None = None,
+        project_category_code: str | None = None,
         cursor: int | None = None,
         limit: int = 50,
-    ) -> tuple[list[tuple[Project, int, int]], int | None]:
+    ) -> tuple[list[ProjectSummary], int | None]:
         return await self.repo.list_summaries(
-            query=query, status=status, cursor=cursor, limit=limit
+            query=query,
+            status=status,
+            device_type_code=device_type_code,
+            project_category_code=project_category_code,
+            cursor=cursor,
+            limit=limit,
         )
 
     async def get_project(self, project_id: int) -> Project:
@@ -131,13 +207,51 @@ class ProjectService:
         )
 
     async def create_project(self, data: ProjectCreate, actor: str) -> Project:
-        existing = await self.repo.get_by_identity(
-            data.line_id, data.process_id, data.part_id
+        line_id = _normalize_required_text(data.line_id, "LINE", max_length=64)
+        process_id = _normalize_required_text(
+            data.process_id, "Process", max_length=128
         )
+        part_id = _normalize_required_text(data.part_id, "PARTID", max_length=128)
+        name = _normalize_required_text(data.name, "프로젝트 이름", max_length=256)
+
+        existing = await self.repo.get_by_identity(line_id, process_id, part_id)
         if existing is not None:
             raise _duplicate_conflict(existing)
 
-        target_layers = await self.reader.get_layers(data.line_id, data.process_id)
+        process = await self.reader.get_process(line_id, process_id)
+        device_type_code = normalize_choice_code(data.device_type_code, 128)
+        project_category_code = normalize_choice_code(data.project_category_code, 128)
+        await self.choice_repo.resolve_active_options(
+            {
+                ("device_type", device_type_code),
+                ("project_category", project_category_code),
+            },
+            for_write=True,
+        )
+
+        seed = await self.metadata_provider.load_seed(
+            line_id=line_id,
+            process_id=process_id,
+            part_id=part_id,
+        )
+        raw_seed = asdict(seed)
+        final_values = normalize_profile_seed(seed)
+        final_values["device_type_code"] = device_type_code
+        final_values["project_category_code"] = project_category_code
+        if "comment" in data.model_fields_set:
+            final_values["comment"] = normalize_optional_text(data.comment)
+
+        optional_choice_keys = {
+            (_CHOICE_FIELDS[field], value)
+            for field in ("active_direction_code", "gate_direction_code")
+            if (value := final_values[field]) is not None
+        }
+        await self.choice_repo.resolve_active_options(
+            optional_choice_keys, for_write=True
+        )
+
+        process_name = _normalize_required_text(process.display_name, "Process 이름")
+        target_layers = await self.reader.get_layers(line_id, process_id)
         backbone = (
             await self.get_project(data.backbone_project_id)
             if data.backbone_project_id is not None
@@ -159,12 +273,12 @@ class ProjectService:
         match_by_target = {match.target_layer_key: match for match in match_result.matches}
 
         project = Project(
-            line_id=data.line_id.strip(),
-            process_id=data.process_id.strip(),
-            part_id=data.part_id.strip(),
-            name=data.name.strip(),
-            description=data.description,
+            line_id=line_id,
+            process_id=process_id,
+            part_id=part_id,
+            name=name,
             status=ProjectStatus.DRAFT,
+            profile=ProjectProfile(process_name=process_name, **final_values),
         )
         for index, layer_info in enumerate(target_layers, start=1):
             layer = _sheet_layer_from_ingest(layer_info, index)
@@ -178,29 +292,179 @@ class ProjectService:
                 _apply_snapshots(_snapshot_conditions(source_layer), layer)
             project.layers.append(layer)
 
-        project = await self.repo.add(project)
         batch_id = uuid.uuid4().hex
-        event_type = (
-            ChangeEventType.BACKBONE_COPY
-            if backbone is not None
-            else ChangeEventType.PROJECT_CREATE
-        )
-        self.repo.session.add(
+        profile_final = {"process_name": process_name, **final_values}
+        project.events.append(
             ChangeEvent(
-                project_id=project.id,
-                event_type=event_type,
+                event_type=ChangeEventType.PROJECT_CREATE,
                 actor=actor,
                 payload={
                     "batch_id": batch_id,
+                    "identity": {
+                        "line_id": line_id,
+                        "process_id": process_id,
+                        "part_id": part_id,
+                        "name": name,
+                    },
+                    "metadata_provider": self.metadata_provider.identifier,
                     "backbone_project_id": data.backbone_project_id,
-                    "auto_count": match_result.auto_count,
-                    "manual_count": match_result.manual_count,
-                    "unmatched_count": match_result.unmatched_count,
+                    "profile_seed": raw_seed,
+                    "profile_final": profile_final,
                 },
             )
         )
+        if backbone is not None:
+            project.events.append(
+                ChangeEvent(
+                    event_type=ChangeEventType.BACKBONE_COPY,
+                    actor=actor,
+                    payload={
+                        "batch_id": batch_id,
+                        "backbone_project_id": data.backbone_project_id,
+                        "auto_count": match_result.auto_count,
+                        "manual_count": match_result.manual_count,
+                        "unmatched_count": match_result.unmatched_count,
+                    },
+                )
+            )
+
+        self.repo.add(project)
         await self._flush_or_conflict()
         return await self.get_project(project.id)
+
+    async def get_profile_out(self, project_id: int) -> ProjectProfileOut:
+        row = await self.repo.get_profile(project_id)
+        if row is None:
+            raise NotFoundError(f"프로젝트 Profile을 찾을 수 없다: {project_id}")
+        return await self.profile_out(row[1])
+
+    async def profile_out(self, profile: ProjectProfile) -> ProjectProfileOut:
+        resolved = await self._resolve_profile_choices(profile)
+        return _profile_out(profile, resolved)
+
+    async def patch_profile(
+        self, project_id: int, data: ProjectProfilePatchIn, *, actor: str
+    ) -> ProjectProfileOut:
+        row = await self.repo.get_profile(project_id)
+        if row is None:
+            raise NotFoundError(f"프로젝트 Profile을 찾을 수 없다: {project_id}")
+        project, profile = row
+
+        supplied = data.model_fields_set
+        candidates: dict[str, str | None] = {}
+        for field in _PATCH_FIELD_ORDER:
+            if field not in supplied:
+                continue
+            value = getattr(data, field)
+            if field == "process_name":
+                candidates[field] = _normalize_required_text(value, "Process 이름")
+            elif field in _CHOICE_FIELDS:
+                if field in _REQUIRED_CHOICE_FIELDS:
+                    candidates[field] = _normalize_required_choice(value, field)
+                else:
+                    candidates[field] = _normalize_optional_choice(value)
+            elif field in _DECIMAL_FIELDS:
+                candidates[field] = normalize_optional_decimal(value)
+            else:
+                candidates[field] = normalize_optional_text(value)
+
+        choice_keys: set[tuple[str, str]] = set()
+        for field in _CHOICE_FIELDS:
+            if field not in candidates:
+                continue
+            set_code = _CHOICE_FIELDS[field]
+            current = getattr(profile, field)
+            incoming = candidates[field]
+            if current is not None:
+                choice_keys.add((set_code, current))
+            if incoming is not None:
+                choice_keys.add((set_code, incoming))
+        resolved = await self.choice_repo.resolve_options(
+            choice_keys,
+            include_inactive=True,
+            for_write=True,
+        )
+        self._validate_patch_choices(profile, candidates, resolved)
+
+        changes: dict[str, dict[str, Any]] = {}
+        for field in _PATCH_FIELD_ORDER:
+            if field not in candidates:
+                continue
+            old = getattr(profile, field)
+            new = candidates[field]
+            if old == new:
+                continue
+            if field in _CHOICE_FIELDS:
+                set_code = _CHOICE_FIELDS[field]
+                changes[field] = {
+                    "old": _choice_event_value(resolved, set_code, old),
+                    "new": _choice_event_value(resolved, set_code, new),
+                }
+            else:
+                changes[field] = {"old": old, "new": new}
+
+        if not changes:
+            return await self.profile_out(profile)
+
+        for field in changes:
+            setattr(profile, field, candidates[field])
+        now = utcnow()
+        profile.updated_at = now
+        project.updated_at = now
+        self.repo.session.add(
+            ChangeEvent(
+                project=project,
+                event_type=ChangeEventType.PROJECT_PROFILE_UPDATE,
+                actor=actor,
+                payload={"changes": changes},
+            )
+        )
+        await self.repo.session.flush()
+        return await self.profile_out(profile)
+
+    def _validate_patch_choices(
+        self,
+        profile: ProjectProfile,
+        candidates: dict[str, str | None],
+        resolved: dict[tuple[str, str], ResolvedChoice],
+    ) -> None:
+        for field, set_code in _CHOICE_FIELDS.items():
+            if field not in candidates:
+                continue
+            old = getattr(profile, field)
+            new = candidates[field]
+            if new is None:
+                if old is not None and (set_code, old) not in resolved:
+                    raise DomainValidationError(
+                        f"저장된 선택지를 해석할 수 없다: {set_code}/{old}"
+                    )
+                continue
+            choice = resolved.get((set_code, new))
+            is_known_inactive_noop = new == old and choice is not None
+            is_active_new_value = (
+                new != old and choice is not None and choice.effective_is_active
+            )
+            if not is_known_inactive_noop and not is_active_new_value:
+                raise DomainValidationError(
+                    f"활성 선택지가 아니다: {set_code}/{new}"
+                )
+
+    async def _resolve_profile_choices(
+        self, profile: ProjectProfile
+    ) -> dict[tuple[str, str], ResolvedChoice]:
+        keys = {
+            (set_code, value)
+            for field, set_code in _CHOICE_FIELDS.items()
+            if (value := getattr(profile, field)) is not None
+        }
+        resolved = await self.choice_repo.resolve_options(
+            keys, include_inactive=True, for_write=False
+        )
+        missing = sorted(keys - set(resolved))
+        if missing:
+            identities = ", ".join(f"{set_code}/{code}" for set_code, code in missing)
+            raise DomainValidationError(f"Project Profile 선택지를 해석할 수 없다: {identities}")
+        return resolved
 
     async def replace_layer_backbone(
         self, project_id: int, layer_key: str, data: BackboneReplaceIn, actor: str
@@ -255,6 +519,133 @@ class ProjectService:
         except IntegrityError as exc:
             await self.repo.session.rollback()
             raise ConflictError("이미 존재하는 프로젝트 identity") from exc
+
+
+def normalize_optional_text(raw: str | None) -> str | None:
+    if raw is None:
+        return None
+    value = raw.strip()
+    return value or None
+
+
+def normalize_profile_seed(seed: ProjectProfileSeed) -> dict[str, str | None]:
+    """Normalize every provider field before any aggregate row is attached."""
+    normalized: dict[str, str | None] = {}
+    for field, value in asdict(seed).items():
+        if field in _CHOICE_FIELDS:
+            normalized[field] = _normalize_optional_choice(value)
+        elif field in _DECIMAL_FIELDS:
+            normalized[field] = normalize_optional_decimal(value)
+        else:
+            normalized[field] = normalize_optional_text(value)
+    return normalized
+
+
+def _normalize_required_text(
+    raw: str | None, field_name: str, *, max_length: int | None = None
+) -> str:
+    if raw is None:
+        raise DomainValidationError(f"{field_name}은(는) 비어 있을 수 없다")
+    value = raw.strip()
+    if not value:
+        raise DomainValidationError(f"{field_name}은(는) 비어 있을 수 없다")
+    if max_length is not None and len(value) > max_length:
+        raise DomainValidationError(
+            f"{field_name}은(는) {max_length}자 이하여야 한다"
+        )
+    return value
+
+
+def _normalize_required_choice(raw: str | None, field_name: str) -> str:
+    if raw is None or not raw.strip():
+        raise DomainValidationError(f"{field_name}은(는) 비어 있을 수 없다")
+    return normalize_choice_code(raw, 128)
+
+
+def _normalize_optional_choice(raw: str | None) -> str | None:
+    if raw is None or not raw.strip():
+        return None
+    return normalize_choice_code(raw, 128)
+
+
+def _choice_out(choice: ResolvedChoice) -> ChoiceValueOut:
+    return ChoiceValueOut(
+        code=choice.option_code,
+        label=choice.label,
+        is_active=choice.effective_is_active,
+    )
+
+
+def _optional_choice_out(
+    resolved: dict[tuple[str, str], ResolvedChoice],
+    set_code: str,
+    code: str | None,
+) -> ChoiceValueOut | None:
+    if code is None:
+        return None
+    return _choice_out(resolved[(set_code, code)])
+
+
+def _choice_event_value(
+    resolved: dict[tuple[str, str], ResolvedChoice],
+    set_code: str,
+    code: str | None,
+) -> dict[str, str] | None:
+    if code is None:
+        return None
+    choice = resolved.get((set_code, code))
+    if choice is None:
+        raise DomainValidationError(
+            f"Project Profile 선택지를 해석할 수 없다: {set_code}/{code}"
+        )
+    return {"code": code, "label": choice.label}
+
+
+def _profile_out(
+    profile: ProjectProfile,
+    resolved: dict[tuple[str, str], ResolvedChoice],
+) -> ProjectProfileOut:
+    return ProjectProfileOut(
+        project_id=profile.project_id,
+        process_name=profile.process_name,
+        device_type=_choice_out(
+            resolved[("device_type", profile.device_type_code)]
+        ),
+        project_category=_choice_out(
+            resolved[("project_category", profile.project_category_code)]
+        ),
+        comment=profile.comment,
+        active_direction=_optional_choice_out(
+            resolved, "active_direction", profile.active_direction_code
+        ),
+        gate_direction=_optional_choice_out(
+            resolved, "gate_direction", profile.gate_direction_code
+        ),
+        gross_die=profile.gross_die,
+        pitch_x=profile.pitch_x,
+        pitch_y=profile.pitch_y,
+        shot_x=profile.shot_x,
+        shot_y=profile.shot_y,
+        slit_occupancy=profile.slit_occupancy,
+        lens_occupancy=profile.lens_occupancy,
+        map_offset_x=profile.map_offset_x,
+        map_offset_y=profile.map_offset_y,
+        scribe_lane_x=profile.scribe_lane_x,
+        scribe_lane_y=profile.scribe_lane_y,
+        shot_count=profile.shot_count,
+        full_shot=profile.full_shot,
+        layer_total=profile.layer_total,
+        euv=profile.euv,
+        imm=profile.imm,
+        arf=profile.arf,
+        krf=profile.krf,
+        iline=profile.iline,
+        soh=profile.soh,
+        pspi=profile.pspi,
+        metal_layer_count=profile.metal_layer_count,
+        created_at=profile.created_at,
+        updated_at=profile.updated_at,
+    )
 
 
 def _status_priority(status: ProjectStatus) -> int:

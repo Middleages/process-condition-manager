@@ -32,7 +32,7 @@ from app.models.project import (
     ProjectStatus,
     SheetLayer,
 )
-from tests.factories import seed_choice_set, seed_parameter
+from tests.factories import make_project_profile, seed_choice_set, seed_parameter
 
 
 async def _seed_project(
@@ -49,6 +49,7 @@ async def _seed_project(
         part_id=part_id,
         name="cells test",
         status=ProjectStatus.DRAFT,
+        profile=make_project_profile(process_name=process_id),
     )
     layer = SheetLayer(
         layer_key=f"L1::{process_id}::010::ACT",

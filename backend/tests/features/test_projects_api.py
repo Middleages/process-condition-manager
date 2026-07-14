@@ -1,5 +1,6 @@
 """프로젝트 생성/백본 API 테스트."""
 
+import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,6 +12,18 @@ from app.models.project import (
     LayerCondition,
     SheetLayer,
 )
+from tests.factories import seed_required_profile_choice_sets
+
+_CORE_PROFILE = {
+    "device_type_code": "DEFAULT",
+    "project_category_code": "DEFAULT",
+}
+
+
+@pytest.fixture(autouse=True)
+async def _required_profile_choices(db_session: AsyncSession) -> None:
+    await seed_required_profile_choice_sets(db_session)
+    await db_session.commit()
 
 
 async def _lock_headers(client: AsyncClient, project_id: int) -> dict[str, str]:
@@ -46,6 +59,7 @@ async def test_create_project_from_process_structure(db_client: AsyncClient) -> 
     resp = await db_client.post(
         "/api/projects",
         json={
+            **_CORE_PROFILE,
             "line_id": "L1",
             "process_id": "PROC_ALPHA",
             "part_id": "PART-001",
@@ -69,6 +83,7 @@ async def test_create_project_from_process_structure(db_client: AsyncClient) -> 
 
 async def test_duplicate_project_identity_rejected(db_client: AsyncClient) -> None:
     payload = {
+        **_CORE_PROFILE,
         "line_id": "L1",
         "process_id": "PROC_ALPHA",
         "part_id": "PART-001",
@@ -104,7 +119,13 @@ async def test_preview_with_backbone_reports_match_and_copy_counts(
     backbone = (
         await db_client.post(
             "/api/projects",
-            json={"line_id": "L1", "process_id": "PROC_ALPHA", "part_id": "SRC", "name": "B"},
+            json={
+                **_CORE_PROFILE,
+                "line_id": "L1",
+                "process_id": "PROC_ALPHA",
+                "part_id": "SRC",
+                "name": "B",
+            },
         )
     ).json()
     await _seed_backbone_cells(
@@ -134,7 +155,13 @@ async def test_backbone_candidates_ranked_by_match_rate(db_client: AsyncClient) 
     alpha = (
         await db_client.post(
             "/api/projects",
-            json={"line_id": "L1", "process_id": "PROC_ALPHA", "part_id": "A", "name": "Alpha"},
+            json={
+                **_CORE_PROFILE,
+                "line_id": "L1",
+                "process_id": "PROC_ALPHA",
+                "part_id": "A",
+                "name": "Alpha",
+            },
         )
     ).json()
 
@@ -158,6 +185,7 @@ async def test_list_and_get_project(db_client: AsyncClient) -> None:
         await db_client.post(
             "/api/projects",
             json={
+                **_CORE_PROFILE,
                 "line_id": "L1",
                 "process_id": "PROC_BETA",
                 "part_id": "PART-002",
@@ -183,6 +211,7 @@ async def test_list_projects_search_and_cursor_paging(db_client: AsyncClient) ->
         await db_client.post(
             "/api/projects",
             json={
+                **_CORE_PROFILE,
                 "line_id": "L1",
                 "process_id": "PROC_ALPHA",
                 "part_id": part,
@@ -215,6 +244,7 @@ async def test_replace_layer_backbone_uses_source_layer_conditions(db_client: As
         await db_client.post(
             "/api/projects",
             json={
+                **_CORE_PROFILE,
                 "line_id": "L1",
                 "process_id": "PROC_ALPHA",
                 "part_id": "SRC",
@@ -226,6 +256,7 @@ async def test_replace_layer_backbone_uses_source_layer_conditions(db_client: As
         await db_client.post(
             "/api/projects",
             json={
+                **_CORE_PROFILE,
                 "line_id": "L1",
                 "process_id": "PROC_BETA",
                 "part_id": "TGT",
@@ -257,6 +288,7 @@ async def test_backbone_copy_duplicates_conditions_and_cells(
         await db_client.post(
             "/api/projects",
             json={
+                **_CORE_PROFILE,
                 "line_id": "L1",
                 "process_id": "PROC_ALPHA",
                 "part_id": "SRC",
@@ -272,6 +304,7 @@ async def test_backbone_copy_duplicates_conditions_and_cells(
     created = await db_client.post(
         "/api/projects",
         json={
+            **_CORE_PROFILE,
             "line_id": "L1",
             "process_id": "PROC_BETA",
             "part_id": "TGT",
@@ -298,12 +331,19 @@ async def test_backbone_copy_records_event_with_counts(
     backbone = (
         await db_client.post(
             "/api/projects",
-            json={"line_id": "L1", "process_id": "PROC_ALPHA", "part_id": "SRC", "name": "B"},
+            json={
+                **_CORE_PROFILE,
+                "line_id": "L1",
+                "process_id": "PROC_ALPHA",
+                "part_id": "SRC",
+                "name": "B",
+            },
         )
     ).json()
     target = await db_client.post(
         "/api/projects",
         json={
+            **_CORE_PROFILE,
             "line_id": "L1",
             "process_id": "PROC_BETA",
             "part_id": "TGT",
@@ -315,7 +355,10 @@ async def test_backbone_copy_records_event_with_counts(
 
     event = (
         await db_session.execute(
-            select(ChangeEvent).where(ChangeEvent.project_id == target_id)
+            select(ChangeEvent).where(
+                ChangeEvent.project_id == target_id,
+                ChangeEvent.event_type == ChangeEventType.BACKBONE_COPY,
+            )
         )
     ).scalar_one()
     assert event.event_type == ChangeEventType.BACKBONE_COPY
@@ -330,7 +373,13 @@ async def test_create_without_backbone_records_project_create_event(
     created = (
         await db_client.post(
             "/api/projects",
-            json={"line_id": "L1", "process_id": "PROC_ALPHA", "part_id": "P", "name": "N"},
+            json={
+                **_CORE_PROFILE,
+                "line_id": "L1",
+                "process_id": "PROC_ALPHA",
+                "part_id": "P",
+                "name": "N",
+            },
         )
     ).json()
 
@@ -347,13 +396,20 @@ async def test_invalid_manual_override_is_rejected(db_client: AsyncClient) -> No
     backbone = (
         await db_client.post(
             "/api/projects",
-            json={"line_id": "L1", "process_id": "PROC_ALPHA", "part_id": "SRC", "name": "B"},
+            json={
+                **_CORE_PROFILE,
+                "line_id": "L1",
+                "process_id": "PROC_ALPHA",
+                "part_id": "SRC",
+                "name": "B",
+            },
         )
     ).json()
 
     resp = await db_client.post(
         "/api/projects",
         json={
+            **_CORE_PROFILE,
             "line_id": "L1",
             "process_id": "PROC_BETA",
             "part_id": "TGT",
@@ -375,7 +431,13 @@ async def test_self_layer_replace_is_rejected(db_client: AsyncClient) -> None:
     project = (
         await db_client.post(
             "/api/projects",
-            json={"line_id": "L1", "process_id": "PROC_ALPHA", "part_id": "P", "name": "N"},
+            json={
+                **_CORE_PROFILE,
+                "line_id": "L1",
+                "process_id": "PROC_ALPHA",
+                "part_id": "P",
+                "name": "N",
+            },
         )
     ).json()
     layer_key = project["layers"][0]["layer_key"]
@@ -392,7 +454,13 @@ async def test_self_layer_replace_is_rejected(db_client: AsyncClient) -> None:
 
 
 async def test_duplicate_conflict_carries_existing_project(db_client: AsyncClient) -> None:
-    payload = {"line_id": "L1", "process_id": "PROC_ALPHA", "part_id": "P", "name": "N"}
+    payload = {
+        **_CORE_PROFILE,
+        "line_id": "L1",
+        "process_id": "PROC_ALPHA",
+        "part_id": "P",
+        "name": "N",
+    }
     first = (await db_client.post("/api/projects", json=payload)).json()
 
     dup = await db_client.post("/api/projects", json=payload)

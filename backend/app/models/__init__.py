@@ -13,6 +13,7 @@ from app.models.project import (
     EditLock,
     LayerCondition,
     Project,
+    ProjectProfile,
     SheetLayer,
 )
 
@@ -23,6 +24,7 @@ __all__ = [
     "Parameter",
     "ParameterCategory",
     "Project",
+    "ProjectProfile",
     "SheetLayer",
     "LayerCondition",
     "CellValue",
