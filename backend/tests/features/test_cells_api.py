@@ -491,10 +491,10 @@ async def test_patch_cells_rejects_non_numeric_for_number_param(
     assert await _cell_events(db_session, project_id) == []
 
 
-async def test_patch_cells_rejects_comma_formatted_number(
+async def test_patch_cells_rejects_comma_formatted_decimal(
     db_client: AsyncClient, db_session: AsyncSession
 ) -> None:
-    """콤마 포함 서식("1,234")은 엄격 파싱(float)에서 실패해 거부된다."""
+    """콤마 포함 서식("1,234")은 canonical decimal 문법 밖이라 거부된다."""
     project_id, cond1, _ = await _seed_project(db_session)
     await _seed_parameters(db_session)
     token = await _acquire(db_client, project_id)
