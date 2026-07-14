@@ -7,6 +7,7 @@ import type { ProjectOut, ProjectProfilePatchIn } from '@/api/types'
 
 import type { ProfileFormState } from './profileForm'
 import {
+  createProjectProfileUnloadEventHandlers,
   createProjectProfileLockController,
   createUnloadReleaseOnce,
   type ProjectProfileLockController,
@@ -76,8 +77,9 @@ export function useProjectProfileLock(projectId: number): ProjectProfileLockSess
       if (active) setState(controller.getState())
     })
     const releaseForUnload = (): void => controller.releaseOnUnload()
-    window.addEventListener('pagehide', releaseForUnload)
-    window.addEventListener('beforeunload', releaseForUnload)
+    const unloadHandlers = createProjectProfileUnloadEventHandlers(releaseForUnload)
+    window.addEventListener('pagehide', unloadHandlers.pagehide)
+    window.addEventListener('beforeunload', unloadHandlers.beforeunload)
 
     // StrictMode mounts effects twice in development. Deferring the first acquire lets its cleanup
     // cancel the discarded effect before any lock request is sent.
@@ -87,8 +89,8 @@ export function useProjectProfileLock(projectId: number): ProjectProfileLockSess
 
     return () => {
       active = false
-      window.removeEventListener('pagehide', releaseForUnload)
-      window.removeEventListener('beforeunload', releaseForUnload)
+      window.removeEventListener('pagehide', unloadHandlers.pagehide)
+      window.removeEventListener('beforeunload', unloadHandlers.beforeunload)
       unsubscribe()
       if (controllerRef.current === controller) controllerRef.current = null
       controller.dispose()

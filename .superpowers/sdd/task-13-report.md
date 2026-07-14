@@ -67,3 +67,36 @@ The post-verdict code-review correction changed only lock-controller continuatio
 - At exactly 1024px the compact 40% Drawer keeps two columns, so long choice trigger text can truncate; the complete raw/resolved code diagnostic remains visible below the trigger and the visual reviewer classified this as non-blocking.
 - Save success is visible through the updated detail and closed Drawer but has no separate transient `role="status"` message; this was a non-blocking visual suggestion, not a task requirement.
 - The production build retains the repository's pre-existing Glide Data Grid PURE-annotation and bundle-size warnings; Task 13 adds no dependency or build error.
+
+## Follow-up independent review — 2026-07-15
+
+### Result
+
+Closed three additional concurrency/unload findings with strict behavioral RED/GREEN regressions and no UI or dependency change:
+
+- Pending PATCH ownership is now scoped by `{generation, token, promise}` rather than one controller-global promise. A lost-session PATCH may remain pending while the reacquired token performs its own PATCH; disposal releases the current token promptly when only an old-session write remains, and a late old settlement cannot clear, mutate, invalidate, close, or release the new session.
+- Reacquire ownership is now generation-scoped. If a reacquired token is itself lost while its Profile GET hangs, the new loss generation can immediately release that token and acquire a third session; the old operation cannot suppress or clear the current reacquire.
+- `beforeunload` beacon release now waits until event propagation completes and checks `defaultPrevented`. A dirty navigation that the user cancels keeps the live token and editable state, while confirmed `pagehide` or uncancelled `beforeunload` still beacon-releases the held session exactly once.
+
+### Changed files and simplifications
+
+- `frontend/src/features/projects/profileLockState.ts` — reused the existing generation/token ownership vocabulary for pending writes and reacquires, plus one small injectable unload-event coordinator.
+- `frontend/src/features/projects/profileLockState.test.ts` — added deferred old/new PATCH, prompt dispose, repeated lock-loss/reacquire, cancelled-beforeunload, pagehide, and uncancelled-beforeunload regressions.
+- `frontend/src/features/projects/useProjectProfileLock.ts` — wires the shared deferred unload handlers without changing Drawer presentation or controller public behavior.
+
+The fix deliberately avoids cancellation abstractions or a second operation registry: one scoped record per operation class is sufficient, and object/generation identity prevents old finalizers from clearing newer work.
+
+### Evidence
+
+- Pending-write RED/GREEN: `.superpowers/sdd/task-13-followup-session-write-{red,green}.log` (new Save expected PATCH 2 / received 1; prompt dispose expected release 2 / received 1 before the fix).
+- Reacquire RED/GREEN: `.superpowers/sdd/task-13-followup-reacquire-{red,green}.log` (third acquire expected 3 / received 2 before the fix).
+- Dirty unload RED/GREEN: `.superpowers/sdd/task-13-followup-unload-dirty-{red,green}.log` (cancelled dirty event incorrectly beacon-released once before the fix).
+- Focused final: 8 files / 70 tests passed (`task-13-followup-final-focused.log`).
+- Full frontend: 62 files / 605 tests passed (`task-13-followup-final-full-frontend.log`).
+- Typecheck, lint, and production build passed (`task-13-followup-final-typecheck.log`, `task-13-followup-final-lint.log`, `task-13-followup-final-build.log`).
+- Static contract checks and all 24 screenshot hashes passed. The follow-up changes operation authority and unload timing only; markup, styling, captured state, and the tracked **94 / pass** visual verdict remain byte-identical and representative.
+- Independent read-only re-review found all three fixes sound with no further issue in the modified scope before the committed-tree verification gate.
+
+### Remaining risk
+
+- Native browser prompt display remains browser-owned and cannot be automated directly in the node suite. The injectable seam proves after-propagation cancellation and exact one-shot decisions, while the existing browser run covers the unchanged dirty Drawer interaction and page lifecycle presentation.

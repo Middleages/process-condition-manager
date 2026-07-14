@@ -8,6 +8,7 @@ import type {
 import { hydrateProfileForm } from './profileForm'
 import {
   createProjectProfileLockController,
+  createProjectProfileUnloadEventHandlers,
   createUnloadReleaseOnce,
   type ProjectProfileLockDependencies,
 } from './profileLockState'
@@ -421,6 +422,162 @@ describe('project Profile lock controller lifecycle', () => {
     expect(deps.invalidate).not.toHaveBeenCalled()
     expect(deps.release).toHaveBeenCalledTimes(1)
   })
+
+  it('starts a new reacquire after the reacquired token is lost during a slow GET', async () => {
+    const staleGet = deferred<ProjectProfileOut>()
+    const fresh = serverProfile({ process_name: 'Third session', comment: 'authoritative' })
+    const acquire = vi.fn()
+      .mockResolvedValueOnce(lock('token-1'))
+      .mockResolvedValueOnce(lock('token-2'))
+      .mockResolvedValueOnce(lock('token-3'))
+    const deps = dependencies({
+      acquire,
+      getProfile: vi.fn()
+        .mockResolvedValueOnce(profile)
+        .mockImplementationOnce(() => staleGet.promise)
+        .mockResolvedValueOnce(fresh),
+      heartbeat: vi.fn()
+        .mockRejectedValueOnce(lockConflict('owner-2'))
+        .mockRejectedValueOnce(lockConflict('owner-3'))
+        .mockResolvedValue(lock('token-3')),
+    })
+    const controller = createProjectProfileLockController(42, deps)
+    await controller.open()
+
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(controller.getState()).toMatchObject({ phase: 'lock-lost', token: 'token-1' })
+
+    const staleReacquire = controller.reacquire()
+    await flushPromises()
+    expect(controller.getState()).toMatchObject({
+      phase: 'loading-profile',
+      token: 'token-2',
+    })
+
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(controller.getState()).toMatchObject({ phase: 'lock-lost', token: 'token-2' })
+
+    const currentReacquire = controller.reacquire()
+    await flushPromises()
+    expect(acquire).toHaveBeenCalledTimes(3)
+    await currentReacquire
+    expect(controller.getState()).toMatchObject({
+      phase: 'editable',
+      token: 'token-3',
+      draft: hydrateProfileForm(fresh),
+    })
+    expect(deps.release).toHaveBeenCalledTimes(2)
+    expect(deps.release).toHaveBeenNthCalledWith(1, 42, 'token-1')
+    expect(deps.release).toHaveBeenNthCalledWith(2, 42, 'token-2')
+
+    staleGet.resolve(serverProfile({ process_name: 'Late second session' }))
+    await staleReacquire
+    expect(controller.getState()).toMatchObject({
+      phase: 'editable',
+      token: 'token-3',
+      draft: hydrateProfileForm(fresh),
+    })
+    expect(deps.release).toHaveBeenCalledTimes(2)
+  })
+
+  it('allows the reacquired token to save while the lost session PATCH is still pending', async () => {
+    const oldPatch = deferred<ProjectProfileOut>()
+    const newPatch = deferred<ProjectProfileOut>()
+    const fresh = serverProfile({ process_name: 'Fresh server', comment: 'fresh baseline' })
+    const saved = serverProfile({ process_name: 'Fresh server', comment: 'new session save' })
+    const deps = dependencies({
+      acquire: vi.fn()
+        .mockResolvedValueOnce(lock('old-token'))
+        .mockResolvedValueOnce(lock('new-token')),
+      getProfile: vi.fn()
+        .mockResolvedValueOnce(profile)
+        .mockResolvedValueOnce(fresh),
+      heartbeat: vi.fn()
+        .mockRejectedValueOnce(lockConflict())
+        .mockResolvedValue(lock('new-token')),
+      patchProfile: vi.fn()
+        .mockImplementationOnce(() => oldPatch.promise)
+        .mockImplementationOnce(() => newPatch.promise),
+    })
+    const controller = createProjectProfileLockController(42, deps)
+    await controller.open()
+    controller.updateDraft({ ...hydrateProfileForm(profile), comment: 'lost edit' })
+    const staleSave = controller.save({ comment: 'lost edit' })
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(controller.getState().phase).toBe('lock-lost')
+
+    await controller.reacquire()
+    expect(controller.getState()).toMatchObject({
+      phase: 'editable',
+      token: 'new-token',
+      draft: hydrateProfileForm(fresh),
+    })
+    controller.updateDraft({ ...hydrateProfileForm(fresh), comment: 'new session save' })
+
+    const currentSave = controller.save({ comment: 'new session save' })
+    expect(deps.patchProfile).toHaveBeenCalledTimes(2)
+    expect(deps.patchProfile).toHaveBeenLastCalledWith(
+      42,
+      { comment: 'new session save' },
+      'new-token',
+    )
+    expect(controller.getState().phase).toBe('saving')
+
+    oldPatch.resolve(serverProfile({ comment: 'late old success' }))
+    await staleSave
+    expect(controller.getState()).toMatchObject({ phase: 'saving', token: 'new-token' })
+    expect(deps.invalidate).not.toHaveBeenCalled()
+    expect(deps.release).toHaveBeenCalledTimes(1)
+
+    newPatch.resolve(saved)
+    await currentSave
+    expect(controller.getState()).toMatchObject({
+      phase: 'closed',
+      token: null,
+      profile: saved,
+      draft: hydrateProfileForm(saved),
+    })
+    expect(deps.invalidate).toHaveBeenCalledTimes(1)
+    expect(deps.invalidate).toHaveBeenCalledWith(42, saved)
+    expect(deps.release).toHaveBeenCalledTimes(2)
+    expect(deps.release).toHaveBeenLastCalledWith(42, 'new-token')
+  })
+
+  it('disposes a reacquired token promptly without waiting for the old PATCH', async () => {
+    const oldPatch = deferred<ProjectProfileOut>()
+    const fresh = serverProfile({ process_name: 'Fresh server' })
+    const deps = dependencies({
+      acquire: vi.fn()
+        .mockResolvedValueOnce(lock('old-token'))
+        .mockResolvedValueOnce(lock('new-token')),
+      getProfile: vi.fn()
+        .mockResolvedValueOnce(profile)
+        .mockResolvedValueOnce(fresh),
+      heartbeat: vi.fn()
+        .mockRejectedValueOnce(lockConflict())
+        .mockResolvedValue(lock('new-token')),
+      patchProfile: vi.fn(() => oldPatch.promise),
+    })
+    const controller = createProjectProfileLockController(42, deps)
+    await controller.open()
+    controller.updateDraft({ ...hydrateProfileForm(profile), comment: 'lost edit' })
+    const staleSave = controller.save({ comment: 'lost edit' })
+    await vi.advanceTimersByTimeAsync(1_000)
+    await controller.reacquire()
+    expect(deps.release).toHaveBeenCalledTimes(1)
+    expect(deps.release).toHaveBeenCalledWith(42, 'old-token')
+
+    controller.dispose()
+    await flushPromises()
+    expect(deps.release).toHaveBeenCalledTimes(2)
+    expect(deps.release).toHaveBeenLastCalledWith(42, 'new-token')
+
+    oldPatch.resolve(serverProfile({ comment: 'late old success' }))
+    await staleSave
+    await flushPromises()
+    expect(deps.release).toHaveBeenCalledTimes(2)
+    expect(controller.getState()).toMatchObject({ phase: 'closed', token: null })
+  })
 })
 
 describe('unload release fence', () => {
@@ -436,5 +593,63 @@ describe('unload release fence', () => {
     releaseOnce(8, 'token-b')
     expect(release).toHaveBeenCalledTimes(2)
     expect(release).toHaveBeenLastCalledWith('token-b')
+  })
+
+  it('keeps the editable session when a later dirty handler cancels beforeunload', async () => {
+    const beacon = vi.fn()
+    const releaseOnce = createUnloadReleaseOnce(beacon)
+    const controller = createProjectProfileLockController(
+      42,
+      dependencies(),
+      releaseOnce,
+    )
+    await controller.open()
+    const queued: Array<() => void> = []
+    const handlers = createProjectProfileUnloadEventHandlers(
+      () => controller.releaseOnUnload(),
+      (callback) => queued.push(callback),
+    )
+    const event = { defaultPrevented: false }
+
+    handlers.beforeunload(event)
+    event.defaultPrevented = true
+    queued.shift()?.()
+
+    expect(beacon).not.toHaveBeenCalled()
+    expect(controller.getState()).toMatchObject({
+      phase: 'editable',
+      token: 'token-1',
+    })
+
+    handlers.pagehide()
+    handlers.pagehide()
+    expect(beacon).toHaveBeenCalledTimes(1)
+    expect(beacon).toHaveBeenCalledWith('token-1')
+    controller.dispose()
+  })
+
+  it('releases an uncancelled beforeunload exactly once when pagehide follows', async () => {
+    const beacon = vi.fn()
+    const releaseOnce = createUnloadReleaseOnce(beacon)
+    const controller = createProjectProfileLockController(
+      42,
+      dependencies(),
+      releaseOnce,
+    )
+    await controller.open()
+    const queued: Array<() => void> = []
+    const handlers = createProjectProfileUnloadEventHandlers(
+      () => controller.releaseOnUnload(),
+      (callback) => queued.push(callback),
+    )
+    const event = { defaultPrevented: false }
+
+    handlers.beforeunload(event)
+    queued.shift()?.()
+    handlers.pagehide()
+
+    expect(beacon).toHaveBeenCalledTimes(1)
+    expect(beacon).toHaveBeenCalledWith('token-1')
+    controller.dispose()
   })
 })

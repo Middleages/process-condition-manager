@@ -66,6 +66,7 @@ const DEFAULT_HEARTBEAT_MS = 45_000
 
 type OpenOperation = { generation: number; promise: Promise<void> }
 type TokenSession = { generation: number; token: string }
+type PendingPatch = TokenSession & { promise: Promise<void> }
 
 export function createProjectProfileLockController(
   projectId: number,
@@ -87,8 +88,8 @@ export function createProjectProfileLockController(
   let tokenSession: TokenSession | null = null
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null
   let openOperation: OpenOperation | null = null
-  let reacquireOperation: Promise<void> | null = null
-  let pendingPatch: Promise<void> | null = null
+  let reacquireOperation: OpenOperation | null = null
+  let pendingPatch: PendingPatch | null = null
   let disposed = false
   const listeners = new Set<() => void>()
   const releasedSessions = new Set<string>()
@@ -338,21 +339,27 @@ export function createProjectProfileLockController(
   }
 
   const save = (payload: ProjectProfilePatchIn): Promise<void> => {
+    const write = pendingPatch
     if (
       state.phase !== 'editable' ||
       state.token === null ||
       state.draft === null ||
-      pendingPatch !== null
+      (write !== null &&
+        write.generation === state.generation &&
+        write.token === state.token)
     ) {
       return Promise.resolve()
     }
     const generation = state.generation
     const token = state.token
     update({ phase: 'saving', error: null })
-    const operation = runSave(generation, token, payload).finally(() => {
-      if (pendingPatch === operation) pendingPatch = null
+    const baseOperation = runSave(generation, token, payload)
+    const sessionWrite: PendingPatch = { generation, token, promise: baseOperation }
+    const operation = baseOperation.finally(() => {
+      if (pendingPatch === sessionWrite) pendingPatch = null
     })
-    pendingPatch = operation
+    sessionWrite.promise = operation
+    pendingPatch = sessionWrite
     return operation
   }
 
@@ -410,7 +417,12 @@ export function createProjectProfileLockController(
   }
 
   const reacquire = (): Promise<void> => {
-    if (reacquireOperation !== null) return reacquireOperation
+    if (
+      reacquireOperation !== null &&
+      reacquireOperation.generation === state.generation
+    ) {
+      return reacquireOperation.promise
+    }
     if (state.phase !== 'lock-lost' && state.phase !== 'conflict') return Promise.resolve()
 
     const recoveryDraft = state.recoveryDraft ?? state.draft
@@ -438,9 +450,9 @@ export function createProjectProfileLockController(
       if (!isGenerationCurrent(generation) || state.phase !== 'acquiring') return
       await acquireAndLoad(generation, recoveryDraft)
     })().finally(() => {
-      if (reacquireOperation === operation) reacquireOperation = null
+      if (reacquireOperation?.generation === generation) reacquireOperation = null
     })
-    reacquireOperation = operation
+    reacquireOperation = { generation, promise: operation }
     return operation
   }
 
@@ -469,10 +481,14 @@ export function createProjectProfileLockController(
     listeners.clear()
     if (session === null) return
     const write = pendingPatch
-    if (write === null) {
+    if (
+      write === null ||
+      write.generation !== session.generation ||
+      write.token !== session.token
+    ) {
       void releaseTokenOnce(session.generation, session.token)
     } else {
-      void write.finally(() => releaseTokenOnce(session.generation, session.token))
+      void write.promise.finally(() => releaseTokenOnce(session.generation, session.token))
     }
   }
 
@@ -502,6 +518,25 @@ export function createUnloadReleaseOnce(
     if (releasedGeneration === generation) return
     releasedGeneration = generation
     release(token)
+  }
+}
+
+export function createProjectProfileUnloadEventHandlers(
+  release: () => void,
+  defer: (callback: () => void) => void = queueMicrotask,
+): {
+  pagehide: () => void
+  beforeunload: (event: Pick<Event, 'defaultPrevented'>) => void
+} {
+  return {
+    pagehide: release,
+    beforeunload: (event) => {
+      defer(() => {
+        // Other beforeunload listeners (notably the dirty guard) run after this hook's listener.
+        // Wait until propagation finishes so a cancelled navigation keeps its live lock.
+        if (!event.defaultPrevented) release()
+      })
+    },
   }
 }
 
