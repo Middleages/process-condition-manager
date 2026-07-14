@@ -6,6 +6,7 @@ import {
   Drawer,
   resolveModalTabTarget,
   restoreModalFocus,
+  shouldRequestModalClose,
 } from './ModalSurface'
 
 describe('ModalSurface', () => {
@@ -63,6 +64,20 @@ describe('ModalSurface', () => {
     expect(html).toContain('교체할 소스를 선택한다.')
     expect(html).toContain('교체 적용')
     expect(html).toContain('aria-label="닫기"')
+  })
+
+  it('disables every surface close path while a write or release is pending', () => {
+    const html = renderToStaticMarkup(
+      <Drawer open closeDisabled title="저장 중" onRequestClose={vi.fn()}>
+        <p>저장이 끝날 때까지 기다려 주세요.</p>
+      </Drawer>,
+    )
+
+    expect(html).toMatch(/<button[^>]*aria-label="닫기"[^>]*disabled=""/)
+    expect(shouldRequestModalClose('button', true)).toBe(false)
+    expect(shouldRequestModalClose('escape', true)).toBe(false)
+    expect(shouldRequestModalClose('backdrop', true)).toBe(false)
+    expect(shouldRequestModalClose('escape', false)).toBe(true)
   })
 
   it('restores focus only once after a completed open cycle', async () => {

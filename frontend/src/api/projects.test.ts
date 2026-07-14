@@ -5,12 +5,25 @@ vi.mock('./client', () => ({
   apiClient: {
     get: vi.fn(),
     post: vi.fn(),
+    patch: vi.fn(),
   },
 }))
 
 import { apiClient } from './client'
-import { createProject, getProject, listProjects } from './projects'
-import type { ProjectCreate, ProjectListOut, ProjectOut, ProjectProfileOut } from './types'
+import {
+  createProject,
+  getProject,
+  getProjectProfile,
+  listProjects,
+  patchProjectProfile,
+} from './projects'
+import {
+  PROJECT_PROFILE_PATCH_FIELDS,
+  type ProjectCreate,
+  type ProjectListOut,
+  type ProjectOut,
+  type ProjectProfileOut,
+} from './types'
 
 function response<T>(data: T): AxiosResponse<T> {
   return { data } as AxiosResponse<T>
@@ -68,6 +81,7 @@ const projects: ProjectListOut = {
 
 const get = vi.mocked(apiClient.get)
 const post = vi.mocked(apiClient.post)
+const patch = vi.mocked(apiClient.patch)
 
 describe('projects api client', () => {
   beforeEach(() => {
@@ -152,5 +166,73 @@ describe('projects api client', () => {
 
     expect(get).toHaveBeenCalledWith('/projects/42')
     expect(result).toEqual(project)
+  })
+
+  it('fetches the authoritative project Profile by id', async () => {
+    get.mockResolvedValue(response(profile))
+
+    const result = await getProjectProfile(42)
+
+    expect(get).toHaveBeenCalledWith('/projects/42/profile')
+    expect(result).toEqual(profile)
+  })
+
+  it('patches only explicit Profile changes under the exact lock header', async () => {
+    patch.mockResolvedValue(response(profile))
+
+    const result = await patchProjectProfile(
+      42,
+      { comment: null, pitch_x: '1.5' },
+      'lock-abc',
+    )
+
+    expect(patch).toHaveBeenCalledWith(
+      '/projects/42/profile',
+      { comment: null, pitch_x: '1.5' },
+      { headers: { 'X-Lock-Token': 'lock-abc' } },
+    )
+    expect(result).toEqual(profile)
+  })
+
+  it('freezes the Profile patch boundary to the approved 28 snake-case keys', () => {
+    expect(PROJECT_PROFILE_PATCH_FIELDS).toEqual([
+      'process_name',
+      'device_type_code',
+      'project_category_code',
+      'comment',
+      'active_direction_code',
+      'gate_direction_code',
+      'gross_die',
+      'pitch_x',
+      'pitch_y',
+      'shot_x',
+      'shot_y',
+      'slit_occupancy',
+      'lens_occupancy',
+      'map_offset_x',
+      'map_offset_y',
+      'scribe_lane_x',
+      'scribe_lane_y',
+      'shot_count',
+      'full_shot',
+      'layer_total',
+      'euv',
+      'imm',
+      'arf',
+      'krf',
+      'iline',
+      'soh',
+      'pspi',
+      'metal_layer_count',
+    ])
+    expect(PROJECT_PROFILE_PATCH_FIELDS).not.toContain('project_id')
+    expect(PROJECT_PROFILE_PATCH_FIELDS).not.toContain('line_id')
+    expect(PROJECT_PROFILE_PATCH_FIELDS).not.toContain('process_id')
+    expect(PROJECT_PROFILE_PATCH_FIELDS).not.toContain('part_id')
+    expect(PROJECT_PROFILE_PATCH_FIELDS).not.toContain('device_ref')
+    expect(PROJECT_PROFILE_PATCH_FIELDS).not.toContain('device_type')
+    expect(PROJECT_PROFILE_PATCH_FIELDS).not.toContain('project_category')
+    expect(PROJECT_PROFILE_PATCH_FIELDS).not.toContain('created_at')
+    expect(PROJECT_PROFILE_PATCH_FIELDS).not.toContain('updated_at')
   })
 })

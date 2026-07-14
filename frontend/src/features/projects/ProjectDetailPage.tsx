@@ -1,11 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft, ExternalLink } from 'lucide-react'
-import { useState } from 'react'
+import { ArrowLeft, ExternalLink, Pencil } from 'lucide-react'
+import { useRef, useState, type ReactNode } from 'react'
 import { Link, useLocation, useParams } from 'react-router-dom'
 
 import { getApiErrorMessage } from '@/api/client'
 import { getProject } from '@/api/projects'
-import type { ProjectLayerOut, ProjectOut } from '@/api/types'
+import type { ChoiceValueOut, ProjectLayerOut, ProjectOut } from '@/api/types'
 import { Badge } from '@/shared/components/Badge'
 import { Button } from '@/shared/components/Button'
 import { InlineAlert } from '@/shared/components/InlineAlert'
@@ -13,6 +13,7 @@ import { PageHeader } from '@/shared/components/PageHeader'
 import { parsePositiveInt } from '@/shared/navigation/routeState'
 
 import { LayerReplaceModal } from './LayerReplaceModal'
+import { ProjectProfileDrawer } from './ProjectProfileDrawer'
 
 export function ProjectDetailPage() {
   const { projectId: rawProjectId } = useParams()
@@ -91,6 +92,8 @@ export function ProjectDetailPage() {
 
 function ProjectDetail({ project }: { project: ProjectOut }) {
   const [replaceTarget, setReplaceTarget] = useState<ProjectLayerOut | null>(null)
+  const [profileEditorOpen, setProfileEditorOpen] = useState(false)
+  const profileEditTriggerRef = useRef<HTMLButtonElement>(null)
   const summary = {
     layerCount: project.layers.length,
     conditionCount: project.layers.reduce((sum, layer) => sum + layer.condition_count, 0),
@@ -104,6 +107,80 @@ function ProjectDetail({ project }: { project: ProjectOut }) {
         <SummaryItem label="조건 행" value={summary.conditionCount} />
         <SummaryItem label="Cell" value={summary.cellCount} />
       </dl>
+
+      <section aria-labelledby="project-profile-title" className="space-y-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 id="project-profile-title" className="text-lg font-bold text-ink-950">
+              프로젝트 기본정보
+            </h2>
+            <p className="mt-0.5 text-sm text-muted">
+              고정 Profile과 분류 값을 확인합니다. Identity는 편집할 수 없습니다.
+            </p>
+          </div>
+          <button
+            ref={profileEditTriggerRef}
+            type="button"
+            aria-haspopup="dialog"
+            className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border-control bg-surface px-3 text-sm font-semibold text-ink-950 transition-colors hover:bg-canvas"
+            onClick={() => setProfileEditorOpen(true)}
+          >
+            <Pencil aria-hidden="true" size={16} strokeWidth={2} />
+            기본정보 편집
+          </button>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <ProfileGroup group="identity" title="Identity">
+            <DefinitionItem label="LINE" value={project.line_id} mono />
+            <DefinitionItem label="Process ID" value={project.process_id} mono />
+            <DefinitionItem label="PARTID" value={project.part_id} mono />
+          </ProfileGroup>
+
+          <ProfileGroup group="product" title="Product">
+            <DefinitionItem label="Process Name" value={project.profile.process_name} />
+            <ChoiceDefinitionItem label="Device Type" choice={project.profile.device_type} />
+            <ChoiceDefinitionItem label="Category" choice={project.profile.project_category} />
+            <DefinitionItem label="Comment" value={project.profile.comment} />
+          </ProfileGroup>
+
+          <ProfileGroup group="direction" title="Direction">
+            <ChoiceDefinitionItem label="Active Direction" choice={project.profile.active_direction} />
+            <ChoiceDefinitionItem label="Gate Direction" choice={project.profile.gate_direction} />
+          </ProfileGroup>
+
+          <ProfileGroup group="die-shot" title="Die/Shot" className="md:col-span-2 xl:col-span-2">
+            <DefinitionItem label="Gross Die" value={project.profile.gross_die} />
+            <DefinitionItem label="Pitch X" value={project.profile.pitch_x} mono />
+            <DefinitionItem label="Pitch Y" value={project.profile.pitch_y} mono />
+            <DefinitionItem label="Shot X" value={project.profile.shot_x} mono />
+            <DefinitionItem label="Shot Y" value={project.profile.shot_y} mono />
+            <DefinitionItem label="Slit Occupancy" value={project.profile.slit_occupancy} mono />
+            <DefinitionItem label="Lens Occupancy" value={project.profile.lens_occupancy} mono />
+            <DefinitionItem label="Shot Count" value={project.profile.shot_count} />
+            <DefinitionItem label="Full Shot" value={project.profile.full_shot} />
+          </ProfileGroup>
+
+          <ProfileGroup group="wafer-position" title="Wafer Position">
+            <DefinitionItem label="Map Offset X" value={project.profile.map_offset_x} mono />
+            <DefinitionItem label="Map Offset Y" value={project.profile.map_offset_y} mono />
+            <DefinitionItem label="Scribe Lane X" value={project.profile.scribe_lane_x} mono />
+            <DefinitionItem label="Scribe Lane Y" value={project.profile.scribe_lane_y} mono />
+          </ProfileGroup>
+
+          <ProfileGroup group="layer-summary" title="Layer Summary" className="md:col-span-2 xl:col-span-3">
+            <DefinitionItem label="Layer Total" value={project.profile.layer_total} />
+            <DefinitionItem label="EUV" value={project.profile.euv} />
+            <DefinitionItem label="IMM" value={project.profile.imm} />
+            <DefinitionItem label="ARF" value={project.profile.arf} />
+            <DefinitionItem label="KRF" value={project.profile.krf} />
+            <DefinitionItem label="I-line" value={project.profile.iline} />
+            <DefinitionItem label="SOH" value={project.profile.soh} />
+            <DefinitionItem label="PSPI" value={project.profile.pspi} />
+            <DefinitionItem label="Metal Layer Count" value={project.profile.metal_layer_count} />
+          </ProfileGroup>
+        </div>
+      </section>
 
       <section aria-labelledby="project-layers-title" className="space-y-3">
         <div>
@@ -212,6 +289,83 @@ function ProjectDetail({ project }: { project: ProjectOut }) {
           onClose={() => setReplaceTarget(null)}
         />
       ) : null}
+
+      {profileEditorOpen ? (
+        <ProjectProfileDrawer
+          projectId={project.id}
+          fallbackFocusRef={profileEditTriggerRef}
+          onClose={() => setProfileEditorOpen(false)}
+        />
+      ) : null}
+    </div>
+  )
+}
+
+function ProfileGroup({
+  group,
+  title,
+  className,
+  children,
+}: {
+  group: string
+  title: string
+  className?: string
+  children: ReactNode
+}) {
+  return (
+    <section
+      data-profile-group={group}
+      className={`rounded-xl border border-border-subtle bg-surface p-4 ${className ?? ''}`}
+    >
+      <h3 className="text-sm font-bold text-ink-950">{title}</h3>
+      <dl className="mt-3 grid gap-x-4 gap-y-3 sm:grid-cols-2">{children}</dl>
+    </section>
+  )
+}
+
+function DefinitionItem({
+  label,
+  value,
+  mono = false,
+}: {
+  label: string
+  value: string | null
+  mono?: boolean
+}) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-xs font-semibold text-muted">{label}</dt>
+      <dd
+        className={`mt-1 min-h-5 break-words text-sm text-ink-950 ${mono ? 'font-mono text-xs' : ''}`}
+      >
+        {value ?? '—'}
+      </dd>
+    </div>
+  )
+}
+
+function ChoiceDefinitionItem({
+  label,
+  choice,
+}: {
+  label: string
+  choice: ChoiceValueOut | null
+}) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-xs font-semibold text-muted">{label}</dt>
+      <dd className="mt-1 flex min-h-5 min-w-0 flex-wrap items-center gap-2 text-sm text-ink-950">
+        {choice ? (
+          <>
+            <span className="min-w-0 break-words font-mono text-xs">
+              {choice.code} · {choice.label}
+            </span>
+            {!choice.is_active ? <Badge tone="warning">사용 중지됨</Badge> : null}
+          </>
+        ) : (
+          '—'
+        )}
+      </dd>
     </div>
   )
 }

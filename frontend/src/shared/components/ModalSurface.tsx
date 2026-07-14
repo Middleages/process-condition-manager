@@ -14,6 +14,7 @@ export interface ModalSurfaceProps {
   initialFocusRef?: RefObject<HTMLElement>
   fallbackFocusRef?: RefObject<HTMLElement>
   returnFocusRef?: RefObject<HTMLElement>
+  closeDisabled?: boolean
   children: ReactNode
   footer?: ReactNode
 }
@@ -28,6 +29,7 @@ export function ModalSurface({
   initialFocusRef,
   fallbackFocusRef,
   returnFocusRef,
+  closeDisabled = false,
   children,
   footer,
 }: ModalSurfaceProps) {
@@ -81,7 +83,9 @@ export function ModalSurface({
       )}
       onCancel={(event) => {
         event.preventDefault()
-        onRequestClose('escape')
+        if (shouldRequestModalClose('escape', closeDisabled)) {
+          onRequestClose('escape')
+        }
       }}
       onKeyDown={(event) => {
         if (event.key !== 'Tab') return
@@ -102,7 +106,12 @@ export function ModalSurface({
         focusable[targetIndex]?.focus()
       }}
       onPointerDown={(event) => {
-        if (event.target === event.currentTarget) onRequestClose('backdrop')
+        if (
+          event.target === event.currentTarget &&
+          shouldRequestModalClose('backdrop', closeDisabled)
+        ) {
+          onRequestClose('backdrop')
+        }
       }}
     >
       <div
@@ -125,7 +134,12 @@ export function ModalSurface({
             className="inline-flex size-9 shrink-0 items-center justify-center rounded-md text-muted transition-colors duration-150 hover:bg-canvas hover:text-ink-950"
             title="닫기"
             type="button"
-            onClick={() => onRequestClose('button')}
+            disabled={closeDisabled}
+            onClick={() => {
+              if (shouldRequestModalClose('button', closeDisabled)) {
+                onRequestClose('button')
+              }
+            }}
           >
             <X aria-hidden="true" size={18} strokeWidth={2} />
           </button>
@@ -181,4 +195,11 @@ export function resolveModalTabTarget(
   if (backwards && activeIndex === 0) return focusableCount - 1
   if (!backwards && activeIndex === focusableCount - 1) return 0
   return null
+}
+
+export function shouldRequestModalClose(
+  _reason: ModalCloseReason,
+  closeDisabled: boolean,
+): boolean {
+  return !closeDisabled
 }

@@ -117,4 +117,72 @@ describe('ProjectDetailPage', () => {
     expect(html).toContain('min-w-0 overflow-hidden')
     expect(html).toContain('truncate whitespace-nowrap')
   })
+
+  it('renders all fixed Profile values in six explicit groups before the Layer table', () => {
+    const html = renderDetail()
+    const profileIndex = html.indexOf('id="project-profile-title"')
+    const layersIndex = html.indexOf('id="project-layers-title"')
+
+    expect(profileIndex).toBeGreaterThan(-1)
+    expect(layersIndex).toBeGreaterThan(profileIndex)
+    expect(html).toContain('data-profile-group="identity"')
+    expect(html).toContain('data-profile-group="product"')
+    expect(html).toContain('data-profile-group="direction"')
+    expect(html).toContain('data-profile-group="die-shot"')
+    expect(html).toContain('data-profile-group="wafer-position"')
+    expect(html).toContain('data-profile-group="layer-summary"')
+
+    for (const label of [
+      'LINE',
+      'Process ID',
+      'PARTID',
+      'Process Name',
+      'Device Type',
+      'Category',
+      'Comment',
+      'Active Direction',
+      'Gate Direction',
+      'Gross Die',
+      'Pitch X',
+      'Pitch Y',
+      'Shot X',
+      'Shot Y',
+      'Slit Occupancy',
+      'Lens Occupancy',
+      'Shot Count',
+      'Full Shot',
+      'Map Offset X',
+      'Map Offset Y',
+      'Scribe Lane X',
+      'Scribe Lane Y',
+      'Layer Total',
+      'EUV',
+      'IMM',
+      'ARF',
+      'KRF',
+      'I-line',
+      'SOH',
+      'PSPI',
+      'Metal Layer Count',
+    ]) {
+      expect(html, label).toContain(`>${label}<`)
+    }
+  })
+
+  it('keeps identity read-only and exposes the fenced Profile edit trigger', () => {
+    const html = renderDetail()
+    const identity = html.match(
+      /<section[^>]*data-profile-group="identity"[\s\S]*?<\/section>/,
+    )?.[0]
+
+    expect(identity).toBeDefined()
+    expect(identity).toContain('>L1<')
+    expect(identity).toContain('>coat<')
+    expect(identity).toContain('>P-42<')
+    expect(identity).not.toContain('<input')
+    expect(identity).not.toContain('<textarea')
+    expect(html).toContain('기본정보 편집')
+    expect(html).toContain('FOUNDRY · Foundry')
+    expect(html).not.toContain('Device Ref')
+  })
 })

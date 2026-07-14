@@ -188,6 +188,76 @@ export interface ProjectProfileOut {
   updated_at: string
 }
 
+/**
+ * Atomic mutable boundary for the fixed Project Profile.
+ *
+ * Every property is optional because omission means "leave unchanged". Only the three required
+ * stored strings reject an explicitly supplied null; all other values may be cleared with null.
+ * Identity, resolved choice objects, provenance, and timestamps intentionally do not exist here.
+ */
+export interface ProjectProfilePatchIn {
+  process_name?: string
+  device_type_code?: string
+  project_category_code?: string
+  comment?: string | null
+  active_direction_code?: string | null
+  gate_direction_code?: string | null
+  gross_die?: string | null
+  pitch_x?: string | null
+  pitch_y?: string | null
+  shot_x?: string | null
+  shot_y?: string | null
+  slit_occupancy?: string | null
+  lens_occupancy?: string | null
+  map_offset_x?: string | null
+  map_offset_y?: string | null
+  scribe_lane_x?: string | null
+  scribe_lane_y?: string | null
+  shot_count?: string | null
+  full_shot?: string | null
+  layer_total?: string | null
+  euv?: string | null
+  imm?: string | null
+  arf?: string | null
+  krf?: string | null
+  iline?: string | null
+  soh?: string | null
+  pspi?: string | null
+  metal_layer_count?: string | null
+}
+
+/** Explicit runtime allow-list used by form diffing and contract tests. */
+export const PROJECT_PROFILE_PATCH_FIELDS = [
+  'process_name',
+  'device_type_code',
+  'project_category_code',
+  'comment',
+  'active_direction_code',
+  'gate_direction_code',
+  'gross_die',
+  'pitch_x',
+  'pitch_y',
+  'shot_x',
+  'shot_y',
+  'slit_occupancy',
+  'lens_occupancy',
+  'map_offset_x',
+  'map_offset_y',
+  'scribe_lane_x',
+  'scribe_lane_y',
+  'shot_count',
+  'full_shot',
+  'layer_total',
+  'euv',
+  'imm',
+  'arf',
+  'krf',
+  'iline',
+  'soh',
+  'pspi',
+  'metal_layer_count',
+] as const satisfies readonly (keyof ProjectProfilePatchIn)[]
+
 export interface ProjectCreate {
   line_id: string
   process_id: string

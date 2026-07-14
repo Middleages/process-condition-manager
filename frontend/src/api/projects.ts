@@ -7,6 +7,8 @@ import type {
   ProjectCreate,
   ProjectListOut,
   ProjectOut,
+  ProjectProfileOut,
+  ProjectProfilePatchIn,
 } from './types'
 
 export interface ListProjectsParams {
@@ -37,6 +39,24 @@ export async function listProjects(params: ListProjectsParams = {}): Promise<Pro
 
 export async function getProject(projectId: number): Promise<ProjectOut> {
   const response = await apiClient.get<ProjectOut>(`/projects/${projectId}`)
+  return response.data
+}
+
+export async function getProjectProfile(projectId: number): Promise<ProjectProfileOut> {
+  const response = await apiClient.get<ProjectProfileOut>(`/projects/${projectId}/profile`)
+  return response.data
+}
+
+export async function patchProjectProfile(
+  projectId: number,
+  payload: ProjectProfilePatchIn,
+  lockToken: string,
+): Promise<ProjectProfileOut> {
+  const response = await apiClient.patch<ProjectProfileOut>(
+    `/projects/${projectId}/profile`,
+    payload,
+    { headers: { 'X-Lock-Token': lockToken } },
+  )
   return response.data
 }
 
