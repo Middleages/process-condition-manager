@@ -1,4 +1,6 @@
-import type { CategoryOut, ImportResultOut, OptionIn, ParameterOut } from '@/api/types'
+import type { QueryClient } from '@tanstack/react-query'
+
+import type { CategoryOut, ImportResultOut, ParameterOut } from '@/api/types'
 
 import {
   initialParameterFormState,
@@ -37,17 +39,11 @@ export function deriveParameterRegistryRoute(
   }
 }
 
-export interface ParameterOptionsRetryState {
-  draft: OptionIn[]
-  error: unknown
-}
-
 export interface ParameterEditorSession {
   target: EditTarget
   original: ParameterOut | null
   form: ParameterFormState
   hydrated: boolean
-  optionsRetry: ParameterOptionsRetryState | null
 }
 
 export interface ParameterDetailHydrationSnapshot {
@@ -68,13 +64,6 @@ export type ParameterEditorSessionAction =
       field: keyof ParameterFormState
       value: ParameterFormState[keyof ParameterFormState]
     }
-  | {
-      type: 'options-partial-failure'
-      baseParameter: ParameterOut
-      optionsDraft: OptionIn[]
-      error: unknown
-    }
-  | { type: 'options-retry-failed'; error: unknown }
 
 export function startParameterEditorSession(target: EditTarget): ParameterEditorSession {
   return {
@@ -82,7 +71,6 @@ export function startParameterEditorSession(target: EditTarget): ParameterEditor
     original: null,
     form: initialParameterFormState,
     hydrated: target.kind !== 'existing',
-    optionsRetry: null,
   }
 }
 
@@ -133,22 +121,15 @@ export function parameterEditorSessionReducer(
     }
   }
 
-  if (action.type === 'options-partial-failure') {
-    return {
-      ...state,
-      original: action.baseParameter,
-      optionsRetry: {
-        draft: action.optionsDraft.map((option) => ({ ...option })),
-        error: action.error,
-      },
-    }
-  }
+  return state
+}
 
-  if (state.optionsRetry === null) return state
-  return {
-    ...state,
-    optionsRetry: { ...state.optionsRetry, error: action.error },
-  }
+export async function invalidateParameterAdminQueries(queryClient: QueryClient): Promise<void> {
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: ['parameters'] }),
+    queryClient.invalidateQueries({ queryKey: ['parameter-categories'] }),
+    queryClient.invalidateQueries({ queryKey: ['choice-sets'] }),
+  ])
 }
 
 export interface CsvImportState {

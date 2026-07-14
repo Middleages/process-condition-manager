@@ -33,6 +33,7 @@ export interface SearchableChoiceProps {
   options: readonly SearchableChoiceItem[]
   loading?: boolean
   error?: string | null
+  validationError?: string | null
   disabled?: boolean
   sourceActive?: boolean
   sourceInactive?: boolean
@@ -93,6 +94,7 @@ export function SearchableChoice({
   options,
   loading = false,
   error = null,
+  validationError = null,
   disabled = false,
   sourceActive = true,
   sourceInactive = false,
@@ -172,7 +174,10 @@ export function SearchableChoice({
   const listboxId = `${id}-listbox`
   const selectedStatusId = `${id}-selected-status`
   const errorId = effectiveError === null ? undefined : `${id}-error`
-  const describedBy = [selectedStatusId, errorId].filter(Boolean).join(' ')
+  const validationErrorId = validationError === null ? undefined : `${id}-validation-error`
+  const describedBy = [selectedStatusId, errorId, validationErrorId]
+    .filter(Boolean)
+    .join(' ')
 
   useIsomorphicLayoutEffect(() => {
     stateRef.current = state
@@ -346,7 +351,7 @@ export function SearchableChoice({
           aria-controls={listboxId}
           aria-activedescendant={activeOptionId}
           aria-describedby={describedBy}
-          aria-invalid={effectiveError === null ? undefined : true}
+          aria-invalid={effectiveError !== null || validationError !== null ? true : undefined}
           aria-required={required || undefined}
           autoComplete="off"
           autoFocus={autoFocus}
@@ -416,6 +421,12 @@ export function SearchableChoice({
             다시 시도
           </button>
         </div>
+      ) : null}
+
+      {validationError !== null ? (
+        <p id={validationErrorId} className="text-sm font-medium text-error" role="alert">
+          {validationError}
+        </p>
       ) : null}
 
       {state.open ? (

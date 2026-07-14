@@ -1,18 +1,4 @@
-export type ValueType = 'text' | 'number' | 'choice' | 'date' | 'boolean'
-
-export interface OptionIn {
-  value: string
-  display_name: string
-  sort_order?: number
-}
-
-export interface OptionOut {
-  id: number
-  value: string
-  display_name: string
-  sort_order: number
-  is_active: boolean
-}
+export type ValueType = 'text' | 'number' | 'choice'
 
 export interface CategoryCreate {
   code: string
@@ -42,24 +28,24 @@ export interface ParameterOut {
   value_type: ValueType
   category_id: number | null
   unit: string | null
-  min_value: number | null
-  max_value: number | null
+  min_value: string | null
+  max_value: string | null
+  choice_set: ChoiceSetSummaryOut | null
   sort_order: number
   is_active: boolean
-  options: OptionOut[]
 }
 
 export interface ParameterCreate {
   code: string
   display_name: string
   value_type: ValueType
+  choice_set_code: string | null
   description?: string | null
   category_id?: number | null
   unit?: string | null
-  min_value?: number | null
-  max_value?: number | null
+  min_value?: string | null
+  max_value?: string | null
   sort_order?: number
-  options?: OptionIn[]
 }
 
 export interface ParameterUpdate {
@@ -67,8 +53,8 @@ export interface ParameterUpdate {
   description?: string | null
   category_id?: number | null
   unit?: string | null
-  min_value?: number | null
-  max_value?: number | null
+  min_value?: string | null
+  max_value?: string | null
   sort_order?: number | null
   is_active?: boolean | null
 }

@@ -99,6 +99,20 @@ describe('SearchableChoice SSR contract', () => {
     expect(html).not.toContain('사용 중지됨')
   })
 
+  it('renders validation separately from resource failure without a retry affordance', () => {
+    const html = renderChoice({
+      validationError: '활성 선택지 집합을 다시 선택해 주세요.',
+    })
+
+    expect(html).toContain('aria-invalid="true"')
+    expect(html).toContain(
+      'aria-describedby="equipment-mode-selected-status equipment-mode-validation-error"',
+    )
+    expect(html).toContain('id="equipment-mode-validation-error"')
+    expect(html).toContain('활성 선택지 집합을 다시 선택해 주세요.')
+    expect(html).not.toContain('다시 시도')
+  })
+
   it('renders a labelled disabled empty state', () => {
     const html = renderChoice({ value: null, options: [], disabled: true, openOnMount: true })
 

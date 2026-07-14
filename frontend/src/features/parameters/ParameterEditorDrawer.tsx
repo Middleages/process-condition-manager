@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   type FormEvent,
   type RefObject,
@@ -7,24 +7,32 @@ import {
   useReducer,
   useState,
 } from 'react'
+import { Link } from 'react-router-dom'
 
+import { listChoiceSets } from '@/api/choiceSets'
 import { getApiErrorMessage, getApiErrorStatus } from '@/api/client'
 import {
   createParameter,
   deactivateParameter,
   getParameter,
-  replaceParameterOptions,
   updateParameter,
 } from '@/api/parameters'
-import type { CategoryOut, ParameterOut, ValueType } from '@/api/types'
+import type {
+  CategoryOut,
+  ChoiceSetSummaryOut,
+  ParameterOut,
+  ValueType,
+} from '@/api/types'
 import { Badge } from '@/shared/components/Badge'
 import { Button } from '@/shared/components/Button'
 import { Field } from '@/shared/components/Field'
 import { InlineAlert } from '@/shared/components/InlineAlert'
 import { Dialog, Drawer } from '@/shared/components/ModalSurface'
+import { SearchableChoice } from '@/shared/components/SearchableChoice'
 import { cn } from '@/shared/lib/cn'
 import { useUnsavedChanges } from '@/shared/navigation/useUnsavedChanges'
 
+import { choiceSetKeys } from '../choiceSets/choiceQueries'
 import {
   buildParameterCreatePlan,
   buildParameterUpdatePlan,
@@ -33,34 +41,41 @@ import {
 } from './form'
 import {
   getExistingParameterDetailPresentation,
+  invalidateParameterAdminQueries,
   parameterEditorSessionReducer,
   selectFreshParameterForHydration,
   startParameterEditorSession,
 } from './parameterAdminState'
+import { persistParameter, type PersistParameterInput } from './parameterPersistence'
 import {
-  persistParameter,
-  retryParameterOptions,
-  type PersistParameterInput,
-  type PersistResult,
-} from './parameterPersistence'
-import type { EditTarget } from './registryState'
+  authorizeParameterChoiceSet,
+  deriveParameterChoiceSetPickerState,
+  reconcileParameterChoiceSetAuthorization,
+  type EditTarget,
+} from './registryState'
 
-const VALUE_TYPES: ValueType[] = ['text', 'number', 'choice', 'date', 'boolean']
+const VALUE_TYPES: ValueType[] = ['text', 'number', 'choice']
 const FIELD_ORDER: Array<keyof ParameterFormState> = [
   'code',
   'displayName',
   'valueType',
   'categoryId',
+  'choiceSetCode',
   'unit',
   'minValue',
   'maxValue',
   'description',
-  'optionsText',
 ]
 const UNSUPPORTED_CLEAR_MESSAGE =
   '현재 API에서는 설명·단위·카테고리·최소/최대값을 비울 수 없습니다. 기존 값을 복원하거나 해당 변경을 취소한 뒤 저장해 주세요.'
 
 type OpenEditTarget = Exclude<EditTarget, { kind: 'closed' }>
+type ActiveChoiceSetLoader = (
+  includeInactive?: boolean,
+) => Promise<ChoiceSetSummaryOut[]>
+type ActiveChoiceSetRefetch = (options: {
+  throwOnError: true
+}) => Promise<{ data?: ChoiceSetSummaryOut[]; error?: unknown }>
 
 export interface ParameterEditorDrawerProps {
   target: OpenEditTarget
@@ -88,6 +103,56 @@ export function parameterDetailQueryOptions(
   }
 }
 
+export function activeParameterChoiceSetsQueryOptions(
+  loadChoiceSets: ActiveChoiceSetLoader = listChoiceSets,
+) {
+  return queryOptions({
+    queryKey: choiceSetKeys.list(false),
+    queryFn: () => loadChoiceSets(false),
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: 'always',
+    retry: false,
+  })
+}
+
+export async function prepareParameterChoiceSetPicker(
+  refetch: ActiveChoiceSetRefetch,
+): Promise<ChoiceSetSummaryOut[]> {
+  const result = await refetch({ throwOnError: true })
+  if (result.data === undefined) {
+    throw result.error ?? new Error('활성 선택지 집합 목록을 확인할 수 없습니다.')
+  }
+  return result.data
+}
+
+export function shouldBlockParameterChoiceSetResource({
+  isFetching,
+  isPaused,
+}: {
+  isFetching: boolean
+  isPaused: boolean
+}): boolean {
+  return isFetching || isPaused
+}
+
+export function shouldBlockParameterChoiceSetCreateResource({
+  isCreate,
+  valueType,
+  resourceReady,
+}: {
+  isCreate: boolean
+  valueType: ValueType
+  resourceReady: boolean
+}): boolean {
+  return isCreate && valueType === 'choice' && !resourceReady
+}
+
+export function firstInvalidParameterField(
+  errors: ParameterFieldErrors,
+): keyof ParameterFormState | undefined {
+  return FIELD_ORDER.find((field) => errors[field] !== undefined)
+}
+
 export function ParameterEditorDrawer({
   target,
   categories,
@@ -97,6 +162,10 @@ export function ParameterEditorDrawer({
   const queryClient = useQueryClient()
   const parameterId = target.kind === 'existing' ? target.id : null
   const detailQuery = useQuery(parameterDetailQueryOptions(parameterId))
+  const choiceSetsQuery = useQuery({
+    ...activeParameterChoiceSetsQueryOptions(),
+    enabled: target.kind === 'new',
+  })
   const [session, dispatch] = useReducer(
     parameterEditorSessionReducer,
     target,
@@ -106,6 +175,7 @@ export function ParameterEditorDrawer({
   const [touched, setTouched] = useState<Set<keyof ParameterFormState>>(() => new Set())
   const [deactivateOpen, setDeactivateOpen] = useState(false)
   const [completionReady, setCompletionReady] = useState(false)
+  const [authorizedChoiceSetCode, setAuthorizedChoiceSetCode] = useState<string | null>(null)
 
   const freshParameter = selectFreshParameterForHydration(target, detailQuery)
 
@@ -113,9 +183,51 @@ export function ParameterEditorDrawer({
     if (freshParameter) dispatch({ type: 'hydrate', parameter: freshParameter })
   }, [freshParameter])
 
+  const choiceListStatus = choiceSetsQuery.isPending
+    ? 'loading'
+    : choiceSetsQuery.isError
+      ? 'error'
+      : 'success'
+  const choiceSetResourceBlocked = shouldBlockParameterChoiceSetResource(choiceSetsQuery)
+  const choiceSetPicker = deriveParameterChoiceSetPickerState({
+    rawCode: session.form.choiceSetCode,
+    authorizedCode: authorizedChoiceSetCode,
+    sets: choiceSetsQuery.data ?? [],
+    status: choiceListStatus,
+    refreshing: choiceSetResourceBlocked,
+  })
+
+  useEffect(() => {
+    if (target.kind !== 'new' || !choiceSetsQuery.isSuccess || choiceSetResourceBlocked) return
+    setAuthorizedChoiceSetCode((current) =>
+      reconcileParameterChoiceSetAuthorization(
+        current,
+        session.form.choiceSetCode,
+        choiceSetsQuery.data,
+      ),
+    )
+  }, [
+    choiceSetsQuery.data,
+    choiceSetsQuery.isSuccess,
+    choiceSetResourceBlocked,
+    session.form.choiceSetCode,
+    target.kind,
+  ])
+
   const createPlan = useMemo(
-    () => (target.kind === 'new' ? buildParameterCreatePlan(session.form) : null),
-    [session.form, target.kind],
+    () =>
+      target.kind === 'new'
+        ? buildParameterCreatePlan(session.form, {
+            activeChoiceSetCodes: choiceSetPicker.activeCodes,
+            authorizedChoiceSetCode,
+          })
+        : null,
+    [
+      authorizedChoiceSetCode,
+      choiceSetPicker.activeCodes,
+      session.form,
+      target.kind,
+    ],
   )
   const updatePlan = useMemo(
     () =>
@@ -128,53 +240,21 @@ export function ParameterEditorDrawer({
   const fieldErrors = currentPlan?.fieldErrors ?? {}
   const unsupportedClears = updatePlan?.unsupportedClears ?? []
   const dirty = currentPlan?.dirty ?? false
+  const createChoiceSetResourceBlocked = shouldBlockParameterChoiceSetCreateResource({
+    isCreate: target.kind === 'new',
+    valueType: session.form.valueType,
+    resourceReady: choiceSetPicker.resourceReady,
+  })
 
-  const saveMutation = useMutation<PersistResult, unknown, PersistParameterInput>({
+  const saveMutation = useMutation<ParameterOut, unknown, PersistParameterInput>({
     mutationFn: (input) =>
       persistParameter(input, {
         create: createParameter,
         update: updateParameter,
-        replaceOptions: replaceParameterOptions,
       }),
-    onSuccess: async (result) => {
-      if (result.kind === 'options-partial-failure') {
-        dispatch({
-          type: 'options-partial-failure',
-          baseParameter: result.baseParameter,
-          optionsDraft: result.optionsDraft,
-          error: result.error,
-        })
-        queryClient.setQueryData(
-          ['parameters', 'detail', result.baseParameter.id],
-          result.baseParameter,
-        )
-        await queryClient.invalidateQueries({ queryKey: ['parameters'] })
-        return
-      }
-
-      queryClient.setQueryData(
-        ['parameters', 'detail', result.parameter.id],
-        result.parameter,
-      )
-      await queryClient.invalidateQueries({ queryKey: ['parameters'] })
-      setCompletionReady(true)
-    },
-  })
-
-  const retryMutation = useMutation({
-    mutationFn: () =>
-      retryParameterOptions(
-        (session.original as ParameterOut).id,
-        session.optionsRetry?.draft ?? [],
-        {
-          create: createParameter,
-          update: updateParameter,
-          replaceOptions: replaceParameterOptions,
-        },
-      ),
     onSuccess: async (parameter) => {
       queryClient.setQueryData(['parameters', 'detail', parameter.id], parameter)
-      await queryClient.invalidateQueries({ queryKey: ['parameters'] })
+      await invalidateParameterAdminQueries(queryClient)
       setCompletionReady(true)
     },
   })
@@ -183,14 +263,13 @@ export function ParameterEditorDrawer({
     mutationFn: () => deactivateParameter((session.original as ParameterOut).id),
     onSuccess: async (parameter) => {
       queryClient.setQueryData(['parameters', 'detail', parameter.id], parameter)
-      await queryClient.invalidateQueries({ queryKey: ['parameters'] })
+      await invalidateParameterAdminQueries(queryClient)
       setDeactivateOpen(false)
       setCompletionReady(true)
     },
   })
 
-  const pending =
-    saveMutation.isPending || retryMutation.isPending || deactivateMutation.isPending
+  const pending = saveMutation.isPending || deactivateMutation.isPending
 
   useUnsavedChanges({
     when: dirty && !completionReady,
@@ -218,11 +297,22 @@ export function ParameterEditorDrawer({
     })
   }
 
+  function selectChoiceSet(code: string | null) {
+    const normalized = authorizeParameterChoiceSet(code ?? '')
+    updateField('choiceSetCode', normalized ?? '')
+    setAuthorizedChoiceSetCode(normalized)
+    markTouched('choiceSetCode')
+  }
+
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (pending || session.optionsRetry || currentPlan === null || !currentPlan.dirty) return
+    if (pending || currentPlan === null || !currentPlan.dirty) return
 
-    if (Object.keys(fieldErrors).length > 0 || unsupportedClears.length > 0) {
+    if (
+      Object.keys(fieldErrors).length > 0 ||
+      unsupportedClears.length > 0 ||
+      createChoiceSetResourceBlocked
+    ) {
       setShowValidation(true)
       focusFirstInvalidField(fieldErrors)
       return
@@ -234,7 +324,6 @@ export function ParameterEditorDrawer({
       saveMutation.mutate({
         mode: 'edit',
         parameterId: session.original.id,
-        valueType: session.original.value_type,
         plan: updatePlan,
       })
     }
@@ -250,6 +339,9 @@ export function ParameterEditorDrawer({
       : target.kind === 'existing'
         ? '파라미터 수정'
         : '파라미터를 열 수 없습니다'
+  const invalidPlan =
+    currentPlan !== null &&
+    (Object.keys(fieldErrors).length > 0 || unsupportedClears.length > 0)
 
   return (
     <>
@@ -261,57 +353,38 @@ export function ParameterEditorDrawer({
         onRequestClose={requestClose}
         footer={
           session.hydrated && (target.kind === 'new' || session.original) ? (
-            session.optionsRetry ? (
-              <>
-                <Button type="button" variant="ghost" disabled={pending} onClick={requestClose}>
-                  닫기
-                </Button>
+            <>
+              {session.original?.is_active ? (
                 <Button
+                  className="mr-auto"
                   type="button"
-                  loading={retryMutation.isPending}
-                  disabled={saveMutation.isPending || deactivateMutation.isPending}
-                  onClick={() => retryMutation.mutate()}
+                  variant="danger"
+                  disabled={pending}
+                  onClick={() => setDeactivateOpen(true)}
                 >
-                  선택지만 다시 저장
+                  비활성화
                 </Button>
-              </>
-            ) : (
-              <>
-                {session.original?.is_active ? (
-                  <Button
-                    className="mr-auto"
-                    type="button"
-                    variant="danger"
-                    disabled={pending}
-                    onClick={() => setDeactivateOpen(true)}
-                  >
-                    비활성화
-                  </Button>
-                ) : null}
-                <Button type="button" variant="ghost" disabled={pending} onClick={requestClose}>
-                  취소
-                </Button>
-                <Button
-                  form="parameter-editor-form"
-                  type="submit"
-                  aria-disabled={
-                    currentPlan &&
-                    (Object.keys(fieldErrors).length > 0 || unsupportedClears.length > 0)
-                      ? true
-                      : undefined
-                  }
-                  className={cn(
-                    currentPlan &&
-                      (Object.keys(fieldErrors).length > 0 || unsupportedClears.length > 0) &&
-                      'aria-disabled:cursor-not-allowed aria-disabled:opacity-60',
-                  )}
-                  loading={saveMutation.isPending}
-                  disabled={!dirty || retryMutation.isPending || deactivateMutation.isPending}
-                >
-                  저장
-                </Button>
-              </>
-            )
+              ) : null}
+              <Button type="button" variant="ghost" disabled={pending} onClick={requestClose}>
+                취소
+              </Button>
+              <Button
+                form="parameter-editor-form"
+                type="submit"
+                aria-disabled={invalidPlan ? true : undefined}
+                className={cn(
+                  invalidPlan && 'aria-disabled:cursor-not-allowed aria-disabled:opacity-60',
+                )}
+                loading={saveMutation.isPending}
+                disabled={
+                  !dirty ||
+                  deactivateMutation.isPending ||
+                  createChoiceSetResourceBlocked
+                }
+              >
+                저장
+              </Button>
+            </>
           ) : undefined
         }
       >
@@ -323,15 +396,26 @@ export function ParameterEditorDrawer({
           fieldErrors={fieldErrors}
           showValidation={showValidation}
           touched={touched}
-          partialError={session.optionsRetry?.error ?? null}
           saveError={saveMutation.error}
-          retryError={retryMutation.error}
-          fieldsLocked={session.optionsRetry !== null || pending}
+          fieldsLocked={pending}
           unsupportedClears={unsupportedClears.length > 0}
+          choiceSets={choiceSetsQuery.data ?? []}
+          choiceSetsLoading={choiceSetsQuery.isPending || choiceSetResourceBlocked}
+          choiceSetsError={
+            choiceSetsQuery.isError ? getApiErrorMessage(choiceSetsQuery.error) : null
+          }
+          choiceSetResourceReady={choiceSetPicker.resourceReady}
+          selectedChoiceSetActive={choiceSetPicker.selectedActive}
+          onPrepareChoiceSet={async () => {
+            await prepareParameterChoiceSetPicker((options) =>
+              choiceSetsQuery.refetch(options),
+            )
+          }}
           onRetryDetail={() => detailQuery.refetch()}
           onSubmit={submit}
           onFieldChange={updateField}
           onFieldBlur={markTouched}
+          onChoiceSetChange={selectChoiceSet}
         />
       </Drawer>
 
@@ -386,11 +470,15 @@ interface EditorBodyProps {
   fieldErrors: ParameterFieldErrors
   showValidation: boolean
   touched: ReadonlySet<keyof ParameterFormState>
-  partialError: unknown
   saveError: unknown
-  retryError: unknown
   fieldsLocked: boolean
   unsupportedClears: boolean
+  choiceSets: readonly ChoiceSetSummaryOut[]
+  choiceSetsLoading: boolean
+  choiceSetsError: string | null
+  choiceSetResourceReady: boolean
+  selectedChoiceSetActive: boolean
+  onPrepareChoiceSet: () => Promise<void>
   onRetryDetail: () => void
   onSubmit: (event: FormEvent<HTMLFormElement>) => void
   onFieldChange: <K extends keyof ParameterFormState>(
@@ -398,6 +486,7 @@ interface EditorBodyProps {
     value: ParameterFormState[K],
   ) => void
   onFieldBlur: (field: keyof ParameterFormState) => void
+  onChoiceSetChange: (code: string | null) => void
 }
 
 function EditorBody({
@@ -408,15 +497,20 @@ function EditorBody({
   fieldErrors,
   showValidation,
   touched,
-  partialError,
   saveError,
-  retryError,
   fieldsLocked,
   unsupportedClears,
+  choiceSets,
+  choiceSetsLoading,
+  choiceSetsError,
+  choiceSetResourceReady,
+  selectedChoiceSetActive,
+  onPrepareChoiceSet,
   onRetryDetail,
   onSubmit,
   onFieldChange,
   onFieldBlur,
+  onChoiceSetChange,
 }: EditorBodyProps) {
   if (target.kind === 'invalid') {
     return (
@@ -465,19 +559,7 @@ function EditorBody({
       {detailPresentation?.kind === 'editor' && detailPresentation.refetchError ? (
         <ParameterDetailRefetchError error={detailQuery.error} onRetry={onRetryDetail} />
       ) : null}
-      {session.optionsRetry ? (
-        <InlineAlert tone="warning">
-          <p>기본 정보는 저장됐지만 선택지는 저장되지 않았습니다.</p>
-          <p className="mt-1 font-normal">
-            선택지 초안을 유지했습니다. 선택지만 다시 저장할 수 있습니다.
-          </p>
-          {partialError ? (
-            <p className="mt-2 text-xs font-normal">{getApiErrorMessage(partialError)}</p>
-          ) : null}
-        </InlineAlert>
-      ) : null}
       {saveError ? <InlineAlert tone="error">{getApiErrorMessage(saveError)}</InlineAlert> : null}
-      {retryError ? <InlineAlert tone="error">{getApiErrorMessage(retryError)}</InlineAlert> : null}
 
       <fieldset className="grid gap-4" disabled={fieldsLocked}>
         <legend className="mb-3 text-sm font-bold text-ink-950">기본 정보</legend>
@@ -543,6 +625,27 @@ function EditorBody({
         </Field>
       </fieldset>
 
+      {form.valueType === 'choice' ? (
+        <section className="grid gap-3 border-t border-border-subtle pt-5" aria-label="선택지 집합 연결">
+          {target.kind === 'new' ? (
+            <ParameterChoiceSetPicker
+              rawCode={form.choiceSetCode}
+              sets={choiceSets}
+              loading={choiceSetsLoading}
+              error={choiceSetsError}
+              validationError={errorFor('choiceSetCode') ?? null}
+              resourceReady={choiceSetResourceReady}
+              sourceActive={selectedChoiceSetActive}
+              disabled={fieldsLocked}
+              onOpen={onPrepareChoiceSet}
+              onChange={onChoiceSetChange}
+            />
+          ) : (
+            <ExistingParameterChoiceSetBinding choiceSet={session.original?.choice_set ?? null} />
+          )}
+        </section>
+      ) : null}
+
       <fieldset className="grid gap-4 border-t border-border-subtle pt-5" disabled={fieldsLocked}>
         <legend className="mb-3 text-sm font-bold text-ink-950">범위와 설명</legend>
         <Field inputId="parameter-unit" label="단위" error={errorFor('unit')}>
@@ -586,27 +689,144 @@ function EditorBody({
           />
         </Field>
       </fieldset>
-
-      {form.valueType === 'choice' ? (
-        <fieldset className="grid gap-4 border-t border-border-subtle pt-5" disabled={fieldsLocked}>
-          <legend className="mb-3 text-sm font-bold text-ink-950">선택지</legend>
-          <Field
-            inputId="parameter-options"
-            label="선택지 (쉼표로 구분)"
-            help="표시 순서대로 입력하세요. 기존 선택지의 표시명은 가능한 경우 그대로 유지됩니다."
-            error={errorFor('optionsText')}
-          >
-            <textarea
-              className="input h-24 resize-y py-2 font-mono"
-              data-parameter-field="optionsText"
-              value={form.optionsText}
-              onBlur={() => onFieldBlur('optionsText')}
-              onChange={(event) => onFieldChange('optionsText', event.target.value)}
-            />
-          </Field>
-        </fieldset>
-      ) : null}
     </form>
+  )
+}
+
+export interface ParameterChoiceSetPickerProps {
+  rawCode: string
+  sets: readonly ChoiceSetSummaryOut[]
+  loading: boolean
+  error: string | null
+  validationError?: string | null
+  resourceReady: boolean
+  sourceActive: boolean
+  disabled: boolean
+  onOpen: () => Promise<void>
+  onChange: (code: string | null) => void
+}
+
+export function deriveParameterChoiceSetComboboxAvailability({
+  rawCode,
+  selectedActive,
+  resourceReady,
+}: {
+  rawCode: string
+  selectedActive: boolean
+  resourceReady: boolean
+}) {
+  return {
+    // The active-only registry is the source. A stale selected value must not disable every
+    // alternative row; its inactivity is represented only by sourceInactive below.
+    sourceActive: true as const,
+    sourceInactive: rawCode.trim() !== '' && !selectedActive,
+    selectionReady: resourceReady,
+  }
+}
+
+export function ParameterChoiceSetPicker({
+  rawCode,
+  sets,
+  loading,
+  error,
+  validationError = null,
+  resourceReady,
+  sourceActive,
+  disabled,
+  onOpen,
+  onChange,
+}: ParameterChoiceSetPickerProps) {
+  const activeSets = sets.filter((set) => set.is_active)
+  const options = activeSets.map((set) => ({
+    code: set.code,
+    label: set.display_name,
+    is_active: set.is_active,
+  }))
+  const hasRawDraft = rawCode.trim() !== ''
+  const availability = deriveParameterChoiceSetComboboxAvailability({
+    rawCode,
+    selectedActive: sourceActive,
+    resourceReady,
+  })
+
+  return (
+    <div className="grid gap-3" data-parameter-field-container="choiceSetCode">
+      <SearchableChoice
+        id="parameter-choice-set"
+        label="선택지 집합"
+        value={hasRawDraft ? rawCode : null}
+        options={options}
+        loading={loading}
+        error={error}
+        validationError={validationError}
+        disabled={disabled}
+        sourceActive={availability.sourceActive}
+        sourceInactive={availability.sourceInactive}
+        selectionReady={availability.selectionReady}
+        required
+        allowClear
+        onOpen={onOpen}
+        onChange={onChange}
+      />
+      {!loading && error === null && activeSets.length === 0 ? (
+        <InlineAlert tone="info">
+          <p>활성 선택지 집합이 없습니다.</p>
+          <Link
+            className="mt-2 inline-flex font-semibold text-brand-700 underline underline-offset-2"
+            to="/parameters/choice-sets"
+          >
+            선택지 집합 관리로 이동
+          </Link>
+        </InlineAlert>
+      ) : null}
+      {hasRawDraft && !sourceActive && error === null ? (
+        <InlineAlert tone="warning">
+          선택했던 집합이 최신 활성 목록에 없습니다. 초안 code는 보존되었지만
+          생성하려면 활성 집합을 다시 선택해 주세요.
+        </InlineAlert>
+      ) : null}
+    </div>
+  )
+}
+
+export function ExistingParameterChoiceSetBinding({
+  choiceSet,
+}: {
+  choiceSet: ChoiceSetSummaryOut | null
+}) {
+  if (choiceSet === null) {
+    return (
+      <InlineAlert tone="error">
+        Choice 파라미터에 연결된 선택지 집합 정보가 없습니다.
+      </InlineAlert>
+    )
+  }
+
+  return (
+    <div className="grid gap-2">
+      <label className="text-sm font-semibold text-ink-950" htmlFor="parameter-choice-set-readonly">
+        선택지 집합
+      </label>
+      <input
+        id="parameter-choice-set-readonly"
+        className="input font-mono"
+        readOnly
+        value={`${choiceSet.code} · ${choiceSet.display_name}`}
+      />
+      <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
+        {!choiceSet.is_active ? <Badge tone="warning">사용 중지됨</Badge> : null}
+        <Link
+          className="font-semibold text-brand-700 underline underline-offset-2"
+          to={`/parameters/choice-sets/${encodeURIComponent(choiceSet.code)}`}
+        >
+          선택지 집합 관리에서 열기
+        </Link>
+      </div>
+      <p className="text-xs text-muted">
+        이 연결은 Phase 2.6에서 생성 후 변경할 수 없습니다. 표시명과 선택지는 집합 관리에서
+        유지하세요.
+      </p>
+    </div>
   )
 }
 
@@ -657,10 +877,14 @@ export function ParameterDetailRefetchError({
 }
 
 function focusFirstInvalidField(errors: ParameterFieldErrors) {
-  const first = FIELD_ORDER.find((field) => errors[field] !== undefined)
+  const first = firstInvalidParameterField(errors)
   if (!first) return
 
   window.requestAnimationFrame(() => {
+    if (first === 'choiceSetCode') {
+      document.getElementById('parameter-choice-set')?.focus()
+      return
+    }
     document.querySelector<HTMLElement>(`[data-parameter-field="${first}"]`)?.focus()
   })
 }

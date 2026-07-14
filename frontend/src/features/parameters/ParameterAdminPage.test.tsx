@@ -19,11 +19,11 @@ const activeParameter: ParameterOut = {
   value_type: 'number',
   category_id: 1,
   unit: 'ms',
-  min_value: 0,
-  max_value: 100,
+  min_value: '0',
+  max_value: '100',
+  choice_set: null,
   sort_order: 0,
   is_active: true,
-  options: [],
 }
 
 const inactiveParameter: ParameterOut = {
@@ -34,7 +34,10 @@ const inactiveParameter: ParameterOut = {
   is_active: false,
 }
 
-function renderPage(location = '/parameters'): string {
+function renderPage(
+  location = '/parameters',
+  parameters: readonly ParameterOut[] = [activeParameter, inactiveParameter],
+): string {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false, staleTime: Number.POSITIVE_INFINITY },
@@ -42,8 +45,8 @@ function renderPage(location = '/parameters'): string {
     },
   })
   queryClient.setQueryData(['parameter-categories', true], categories)
-  queryClient.setQueryData(['parameters', false], [activeParameter, inactiveParameter])
-  queryClient.setQueryData(['parameters', true], [activeParameter, inactiveParameter])
+  queryClient.setQueryData(['parameters', false], parameters)
+  queryClient.setQueryData(['parameters', true], parameters)
 
   const router = createMemoryRouter(
     [{ path: '/parameters', element: <ParameterAdminPage /> }],
@@ -67,6 +70,8 @@ describe('ParameterAdminPage', () => {
     const html = renderPage()
 
     expect(html).toContain('data-page-title="true"')
+    expect(html).toContain('aria-label="파라미터 관리 섹션"')
+    expect(html).toContain('href="/parameters/choice-sets"')
     expect(html).toContain('CSV 가져오기')
     expect(html).toContain('카테고리 추가')
     expect(html).toContain('새 파라미터')
@@ -82,6 +87,11 @@ describe('ParameterAdminPage', () => {
     expect(html).toMatch(/data-parameter-edit-trigger="1"[^>]*class="[^"]*h-9[^"]*"/)
     expect(html).toContain('data-parameter-edit-trigger="1"')
     expect(html).toContain('data-parameter-list-heading="true"')
+    expect(html).toContain('<option value="text">text</option>')
+    expect(html).toContain('<option value="number">number</option>')
+    expect(html).toContain('<option value="choice">choice</option>')
+    expect(html).not.toContain('<option value="date">')
+    expect(html).not.toContain('<option value="boolean">')
   })
 
   it('restores inactive-only filtering without changing server order', () => {
@@ -100,5 +110,55 @@ describe('ParameterAdminPage', () => {
     expect(html).toContain('value="photo" selected=""')
     expect(html).toContain('파라미터를 열 수 없습니다')
     expect(html).toContain('잘못된 편집 주소입니다.')
+  })
+
+  it('shows the managed ChoiceSet identity instead of an embedded option count', () => {
+    const managedChoice: ParameterOut = {
+      ...activeParameter,
+      id: 3,
+      code: 'mode',
+      display_name: 'Mode',
+      value_type: 'choice',
+      unit: null,
+      min_value: null,
+      max_value: null,
+      choice_set: {
+        code: 'equipment_mode',
+        display_name: 'Equipment mode',
+        description: null,
+        is_active: true,
+        version: 2,
+        option_count: 20,
+        active_option_count: 18,
+        parameter_usage_count: 4,
+        profile_usage_fields: [],
+        created_at: '2026-07-14T00:00:00Z',
+        updated_at: '2026-07-14T00:00:00Z',
+      },
+    }
+    const html = renderPage('/parameters', [managedChoice])
+
+    expect(html).toContain('equipment_mode')
+    expect(html).toContain('Equipment mode')
+    expect(html).not.toContain('18개 선택지')
+  })
+
+  it('shows no legacy range or unit constraint for text parameters', () => {
+    const textParameter: ParameterOut = {
+      ...activeParameter,
+      id: 4,
+      code: 'operator_note',
+      display_name: 'Operator note',
+      value_type: 'text',
+      unit: 'legacy-unit',
+      min_value: '1',
+      max_value: '2',
+    }
+    const html = renderPage('/parameters', [textParameter])
+
+    expect(html).toContain('operator_note')
+    expect(html).toContain('>—</span>')
+    expect(html).not.toContain('legacy-unit')
+    expect(html).not.toContain('1–2')
   })
 })

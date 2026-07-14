@@ -1,4 +1,10 @@
-import type { CategoryOut, ParameterOut, ValueType } from '@/api/types'
+import type {
+  CategoryOut,
+  ChoiceSetSummaryOut,
+  ParameterOut,
+  ValueType,
+} from '@/api/types'
+import type { SearchableChoiceItem } from '@/shared/components/SearchableChoice'
 
 export type ActiveFilter = 'active' | 'all' | 'inactive'
 
@@ -16,13 +22,7 @@ export interface ParameterRegistryState {
   edit: EditTarget
 }
 
-const valueTypes: ReadonlySet<string> = new Set([
-  'text',
-  'number',
-  'choice',
-  'date',
-  'boolean',
-])
+const valueTypes: ReadonlySet<string> = new Set(['text', 'number', 'choice'])
 
 export function parseParameterRegistrySearch(
   params: URLSearchParams,
@@ -95,8 +95,83 @@ export function filterParameterRegistry(
       category?.display_name,
       parameter.unit,
       parameter.description,
+      parameter.choice_set?.code,
+      parameter.choice_set?.display_name,
     ].some((value) => value?.toLowerCase().includes(query) === true)
   })
+}
+
+export type ParameterChoiceSetListStatus = 'loading' | 'error' | 'success'
+
+export interface ParameterChoiceSetPickerInput {
+  rawCode: string
+  authorizedCode: string | null
+  sets: readonly ChoiceSetSummaryOut[]
+  status: ParameterChoiceSetListStatus
+  refreshing: boolean
+}
+
+export interface ParameterChoiceSetPickerState {
+  rawCode: string
+  options: SearchableChoiceItem[]
+  activeCodes: ReadonlySet<string>
+  selectedActive: boolean
+  resourceReady: boolean
+  selectionReady: boolean
+  empty: boolean
+}
+
+export function deriveParameterChoiceSetPickerState({
+  rawCode,
+  authorizedCode,
+  sets,
+  status,
+  refreshing,
+}: ParameterChoiceSetPickerInput): ParameterChoiceSetPickerState {
+  const activeSets = sets.filter((set) => set.is_active)
+  const activeCodes = new Set(activeSets.map((set) => set.code))
+  const normalizedRawCode = rawCode.trim()
+  const selectedActive = normalizedRawCode !== '' && activeCodes.has(normalizedRawCode)
+  const resourceReady = status === 'success' && !refreshing
+
+  return {
+    rawCode,
+    options: activeSets.map((set) => ({
+      code: set.code,
+      label: set.display_name,
+      is_active: set.is_active,
+    })),
+    activeCodes,
+    selectedActive,
+    resourceReady,
+    selectionReady:
+      resourceReady &&
+      selectedActive &&
+      authorizedCode === normalizedRawCode,
+    empty: status === 'success' && !refreshing && activeSets.length === 0,
+  }
+}
+
+export function authorizeParameterChoiceSet(code: string): string | null {
+  const normalized = code.trim()
+  return normalized === '' ? null : normalized
+}
+
+/**
+ * A successful fresh list can revoke a prior selection, but can never re-authorize it. That
+ * directionality keeps a deactivated draft visible while requiring a deliberate new selection
+ * if the set later becomes active again.
+ */
+export function reconcileParameterChoiceSetAuthorization(
+  authorizedCode: string | null,
+  rawCode: string,
+  freshSets: readonly ChoiceSetSummaryOut[],
+): string | null {
+  const normalizedRawCode = rawCode.trim()
+  if (authorizedCode === null || authorizedCode !== normalizedRawCode) return null
+  return freshSets.some((set) => set.is_active && set.code === authorizedCode)
+    ? authorizedCode
+    : null
 }
 
 function parseValueType(raw: string | null): ValueType | null {

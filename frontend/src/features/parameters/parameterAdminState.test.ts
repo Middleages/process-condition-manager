@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import { QueryClient } from '@tanstack/react-query'
 
-import type { CategoryOut, OptionIn, ParameterOut } from '@/api/types'
+import type { CategoryOut, ParameterOut } from '@/api/types'
 
 import {
   canApplyCsvImport,
@@ -8,6 +9,7 @@ import {
   deriveParameterRegistryRoute,
   getExistingParameterDetailPresentation,
   initialCsvImportState,
+  invalidateParameterAdminQueries,
   parameterEditorSessionReducer,
   selectFreshParameterForHydration,
   startParameterEditorSession,
@@ -33,17 +35,21 @@ const choiceParameter: ParameterOut = {
   unit: null,
   min_value: null,
   max_value: null,
+  choice_set: {
+    code: 'equipment_mode',
+    display_name: 'Equipment mode',
+    description: null,
+    is_active: true,
+    version: 1,
+    option_count: 1,
+    active_option_count: 1,
+    parameter_usage_count: 1,
+    profile_usage_fields: [],
+    created_at: '2026-07-14T00:00:00Z',
+    updated_at: '2026-07-14T00:00:00Z',
+  },
   sort_order: 0,
   is_active: true,
-  options: [
-    {
-      id: 1,
-      value: 'warm',
-      display_name: 'Warm',
-      sort_order: 0,
-      is_active: true,
-    },
-  ],
 }
 
 describe('deriveParameterRegistryRoute', () => {
@@ -123,42 +129,26 @@ describe('parameter editor session', () => {
     })
     const changed = parameterEditorSessionReducer(hydrated, {
       type: 'change-field',
-      field: 'optionsText',
-      value: 'warm, cool',
+      field: 'displayName',
+      value: 'Draft name',
     })
     const refetched = parameterEditorSessionReducer(changed, {
       type: 'hydrate',
       parameter: { ...choiceParameter, display_name: 'Refetched' },
     })
 
-    expect(refetched.form.optionsText).toBe('warm, cool')
+    expect(refetched.form.displayName).toBe('Draft name')
     expect(refetched.original?.display_name).toBe('Tone')
   })
 
-  it('keeps the option draft while adopting the PATCH result after partial failure', () => {
-    const optionsDraft: OptionIn[] = [
-      { value: 'warm', display_name: 'Warm', sort_order: 0 },
-      { value: 'cool', display_name: 'cool', sort_order: 1 },
-    ]
+  it('has no partial option retry branch and keeps hydrated error presentation simple', () => {
     const initial = parameterEditorSessionReducer(
-      parameterEditorSessionReducer(
-        startParameterEditorSession({ kind: 'existing', id: 42 }),
-        { type: 'hydrate', parameter: choiceParameter },
-      ),
-      { type: 'change-field', field: 'optionsText', value: 'warm, cool' },
+      startParameterEditorSession({ kind: 'existing', id: 42 }),
+      { type: 'hydrate', parameter: choiceParameter },
     )
 
-    const partial = parameterEditorSessionReducer(initial, {
-      type: 'options-partial-failure',
-      baseParameter: { ...choiceParameter, description: 'saved base' },
-      optionsDraft,
-      error: new Error('PUT failed'),
-    })
-
-    expect(partial.form.optionsText).toBe('warm, cool')
-    expect(partial.original?.description).toBe('saved base')
-    expect(partial.optionsRetry?.draft).toEqual(optionsDraft)
-    expect(getExistingParameterDetailPresentation(partial, true)).toEqual({
+    expect(initial).not.toHaveProperty('optionsRetry')
+    expect(getExistingParameterDetailPresentation(initial, true)).toEqual({
       kind: 'editor',
       refetchError: true,
     })
@@ -237,5 +227,26 @@ describe('CSV import state machine', () => {
         result: dryRun,
       }),
     ).toEqual(edited)
+  })
+})
+
+describe('parameter mutation cache invalidation', () => {
+  it('invalidates parameter, category, ChoiceSet list, and ChoiceSet summary data', async () => {
+    const client = new QueryClient()
+    client.setQueryData(['parameters', false], [choiceParameter])
+    client.setQueryData(['parameter-categories', true], categories)
+    client.setQueryData(['choice-sets', 'list', false], [choiceParameter.choice_set])
+    client.setQueryData(['choice-sets', 'summary', 'equipment_mode'], choiceParameter.choice_set)
+
+    await invalidateParameterAdminQueries(client)
+
+    for (const key of [
+      ['parameters', false],
+      ['parameter-categories', true],
+      ['choice-sets', 'list', false],
+      ['choice-sets', 'summary', 'equipment_mode'],
+    ] as const) {
+      expect(client.getQueryState(key)?.isInvalidated, key.join('/')).toBe(true)
+    }
   })
 })

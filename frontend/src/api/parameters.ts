@@ -1,7 +1,6 @@
 import { apiClient } from './client'
 import type {
   ImportResultOut,
-  OptionIn,
   ParameterCreate,
   ParameterOut,
   ParameterUpdate,
@@ -54,13 +53,5 @@ export async function updateParameter(
 
 export async function deactivateParameter(parameterId: number): Promise<ParameterOut> {
   const response = await apiClient.post<ParameterOut>(`/parameters/${parameterId}/deactivate`)
-  return response.data
-}
-
-export async function replaceParameterOptions(
-  parameterId: number,
-  options: OptionIn[],
-): Promise<ParameterOut> {
-  const response = await apiClient.put<ParameterOut>(`/parameters/${parameterId}/options`, options)
   return response.data
 }
