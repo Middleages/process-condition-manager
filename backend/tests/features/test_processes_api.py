@@ -2,6 +2,25 @@
 
 from httpx import AsyncClient
 
+from app.ingest.fixture_reader import FixtureIngestReader, get_ingest_reader
+from app.ingest.reader import ProcessInfo
+from app.main import app
+
+
+class _CatalogDisplayReader(FixtureIngestReader):
+    async def get_process(self, line_id: str, process_id: str) -> ProcessInfo:
+        assert (line_id, process_id) == ("L1", "PROC_ALPHA")
+        return ProcessInfo(
+            key="L1::PROC_ALPHA",
+            line_id=line_id,
+            process_id=process_id,
+            display_name="Catalog-owned display snapshot",
+        )
+
+
+def _get_catalog_display_reader() -> FixtureIngestReader:
+    return _CatalogDisplayReader()
+
 
 async def test_list_processes(db_client: AsyncClient) -> None:
     resp = await db_client.get("/api/processes")
@@ -37,10 +56,15 @@ async def test_list_processes_search_and_without_project_filter(
 async def test_process_detail_reports_structure_and_condition_table(
     db_client: AsyncClient,
 ) -> None:
-    detail = await db_client.get("/api/processes/L1::PROC_ALPHA")
+    app.dependency_overrides[get_ingest_reader] = _get_catalog_display_reader
+    try:
+        detail = await db_client.get("/api/processes/L1::PROC_ALPHA")
+    finally:
+        app.dependency_overrides.pop(get_ingest_reader, None)
 
     assert detail.status_code == 200
     body = detail.json()
+    assert body["display_name"] == "Catalog-owned display snapshot"
     assert body["step_count"] == 3
     assert body["area_names"] == ["CLEAN", "ETCH", "PHOTO"]
     assert body["has_project"] is False

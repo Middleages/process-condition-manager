@@ -84,6 +84,20 @@ async def test_list_processes_distinct_and_sorted(ingest_session: AsyncSession) 
     assert processes[0].display_name == "L1 / PROC_ALPHA"
 
 
+async def test_get_process_returns_catalog_display_snapshot(
+    ingest_session: AsyncSession,
+) -> None:
+    process = await _reader(ingest_session).get_process("L1", "PROC_ALPHA")
+
+    assert process.key == "L1::PROC_ALPHA"
+    assert process.display_name == "L1 / PROC_ALPHA"
+
+
+async def test_get_process_missing_raises(ingest_session: AsyncSession) -> None:
+    with pytest.raises(NotFoundError):
+        await _reader(ingest_session).get_process("L9", "MISSING")
+
+
 async def test_get_layers_sorted_with_stable_keys(ingest_session: AsyncSession) -> None:
     layers = await _reader(ingest_session).get_layers("L1", "PROC_ALPHA")
 

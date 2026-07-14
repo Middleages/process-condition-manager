@@ -16,6 +16,22 @@ async def test_list_processes_returns_fixture_processes() -> None:
     assert processes[0].process_id == "PROC_ALPHA"
 
 
+async def test_get_process_returns_catalog_display_snapshot() -> None:
+    reader = FixtureIngestReader()
+
+    process = await reader.get_process("L1", "PROC_ALPHA")
+
+    assert process.key == "L1::PROC_ALPHA"
+    assert process.display_name == "L1 / PROC_ALPHA"
+
+
+async def test_get_process_missing_raises() -> None:
+    reader = FixtureIngestReader()
+
+    with pytest.raises(NotFoundError):
+        await reader.get_process("L9", "MISSING")
+
+
 async def test_get_layers_returns_different_dynamic_shapes() -> None:
     reader = FixtureIngestReader()
 
