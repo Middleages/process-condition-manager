@@ -1,6 +1,51 @@
 import { describe, expect, it } from 'vitest'
 
-import { getApiErrorStatus, getExistingProjectId, getLockConflictHolder } from './client'
+import {
+  getApiErrorStatus,
+  getChoiceSetChangedDetails,
+  getExistingProjectId,
+  getLockConflictHolder,
+  isChoiceSetChanged,
+  isLockConflict,
+} from './client'
+
+function makeAxiosError(status: number, data: unknown) {
+  return { isAxiosError: true, response: { status, data } }
+}
+
+describe('409 error classification', () => {
+  it('does not classify every 409 as a lock conflict', () => {
+    const changed = makeAxiosError(409, { code: 'choice_set_changed', message: 'changed' })
+    const locked = makeAxiosError(409, { code: 'lock_conflict', message: 'locked' })
+
+    expect(isLockConflict(changed)).toBe(false)
+    expect(isChoiceSetChanged(changed)).toBe(true)
+    expect(isLockConflict(locked)).toBe(true)
+  })
+
+  it('returns only object details for a choice set change', () => {
+    const details = { current_choice_set_id: 42 }
+
+    expect(
+      getChoiceSetChangedDetails(
+        makeAxiosError(409, {
+          code: 'choice_set_changed',
+          message: 'changed',
+          details,
+        }),
+      ),
+    ).toBe(details)
+    expect(
+      getChoiceSetChangedDetails(
+        makeAxiosError(409, {
+          code: 'choice_set_changed',
+          message: 'changed',
+          details: 'not-an-object',
+        }),
+      ),
+    ).toBeNull()
+  })
+})
 
 describe('getLockConflictHolder', () => {
   it('reads the current editor from a lock conflict response', () => {

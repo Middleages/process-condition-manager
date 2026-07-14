@@ -28,14 +28,29 @@ function isApiError(error: unknown): error is AxiosError<ApiErrorBody> {
   return axios.isAxiosError<ApiErrorBody>(error)
 }
 
-/**
- * 잠금 충돌(409) 여부. 잠금 획득 실패(다른 사용자 편집 중), 하트비트/셀 저장 시
- * 토큰 무효(잠금 상실)가 모두 409 + `code: "lock_conflict"`로 온다. 상태 코드만으로도
- * 충분하지만, 코드가 실려 있으면 함께 확인한다.
- */
+/** 잠금 획득 실패나 잠금 상실의 409 `lock_conflict` 여부. */
 export function isLockConflict(error: unknown): boolean {
-  if (!isApiError(error)) return false
-  return error.response?.status === 409 || error.response?.data?.code === 'lock_conflict'
+  return (
+    isApiError(error) &&
+    error.response?.status === 409 &&
+    error.response.data?.code === 'lock_conflict'
+  )
+}
+
+export function isChoiceSetChanged(error: unknown): boolean {
+  return (
+    isApiError(error) &&
+    error.response?.status === 409 &&
+    error.response.data?.code === 'choice_set_changed'
+  )
+}
+
+export function getChoiceSetChangedDetails(error: unknown): Record<string, unknown> | null {
+  if (!isChoiceSetChanged(error) || !isApiError(error)) return null
+  const details: unknown = error.response?.data?.details
+  return details !== null && typeof details === 'object' && !Array.isArray(details)
+    ? (details as Record<string, unknown>)
+    : null
 }
 
 /** 잠금 충돌 응답에 보유자 정보가 있으면 읽기 전용 배너에 표시한다. */
