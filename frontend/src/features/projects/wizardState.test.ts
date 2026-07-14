@@ -4,15 +4,19 @@ import {
   getProjectCreateRouteReconciliation,
   getCreateDisabledReason,
   getManualOverrideDefaultLabel,
+  deriveRequiredChoiceState,
   invalidateProjectCreationQueries,
+  isProjectCreateDraftDirty,
   isWizardInteractionLocked,
   previewFingerprint,
   selectBackbone,
   selectProcess,
   shouldApplyRouteReconciliation,
   toManualOverrides,
+  toProjectCreatePayload,
   updateManualOverride,
   type CreateGuardState,
+  type ProjectCreateDraft,
 } from './wizardState'
 
 describe('wizard dependent state', () => {
@@ -115,6 +119,20 @@ describe('project create guard', () => {
     previewFingerprint: previewFingerprint('A::P', null, {}),
     currentFingerprint: previewFingerprint('A::P', null, {}),
     requiredFieldsComplete: true,
+    deviceTypeCode: 'FOUNDRY',
+    deviceTypesLoading: false,
+    deviceTypesError: false,
+    deviceTypeSetIsActive: true,
+    deviceTypesReady: true,
+    deviceTypeHasActiveOptions: true,
+    deviceTypeSelectionIsActive: true,
+    categoryCode: 'LOGIC',
+    categoriesLoading: false,
+    categoriesError: false,
+    categorySetIsActive: true,
+    categoriesReady: true,
+    categoryHasActiveOptions: true,
+    categorySelectionIsActive: true,
     isSubmitting: false,
   }
 
@@ -134,6 +152,62 @@ describe('project create guard', () => {
       'preview-stale',
     ],
     ['blank required fields', { requiredFieldsComplete: false }, 'required-fields'],
+    ['loading Device Types', { deviceTypesLoading: true }, 'device-types-loading'],
+    [
+      'failed Device Types during a refresh',
+      { deviceTypesLoading: true, deviceTypesError: true },
+      'device-types-error',
+    ],
+    [
+      'Device Types still authorizing a refreshed version',
+      { deviceTypesReady: false },
+      'device-types-loading',
+    ],
+    ['failed Device Types', { deviceTypesError: true }, 'device-types-error'],
+    [
+      'an inactive Device Type set',
+      { deviceTypeSetIsActive: false },
+      'device-types-inactive',
+    ],
+    [
+      'a Device Type set without active options',
+      { deviceTypeHasActiveOptions: false },
+      'device-types-empty',
+    ],
+    [
+      'a selected Device Type that became inactive',
+      { deviceTypeSelectionIsActive: false },
+      'device-types-inactive',
+    ],
+    ['loading categories', { categoriesLoading: true }, 'categories-loading'],
+    [
+      'failed categories during a refresh',
+      { categoriesLoading: true, categoriesError: true },
+      'categories-error',
+    ],
+    [
+      'categories still authorizing a refreshed version',
+      { categoriesReady: false },
+      'categories-loading',
+    ],
+    ['failed categories', { categoriesError: true }, 'categories-error'],
+    [
+      'an inactive category set',
+      { categorySetIsActive: false },
+      'categories-inactive',
+    ],
+    [
+      'a category set without active options',
+      { categoryHasActiveOptions: false },
+      'categories-empty',
+    ],
+    [
+      'a selected category that became inactive',
+      { categorySelectionIsActive: false },
+      'categories-inactive',
+    ],
+    ['a missing Device Type', { deviceTypeCode: '' }, 'profile-required-fields'],
+    ['a missing category', { categoryCode: '' }, 'profile-required-fields'],
     ['a pending mutation', { isSubmitting: true }, 'submitting'],
   ] as const)('blocks creation for %s', (_label, patch, reason) => {
     expect(getCreateDisabledReason({ ...ready, ...patch })).toBe(reason)
@@ -141,6 +215,160 @@ describe('project create guard', () => {
 
   it('allows an empty candidate path with a null backbone', () => {
     expect(getCreateDisabledReason(ready)).toBeNull()
+  })
+})
+
+describe('required Profile choice state', () => {
+  const activeOptions = [
+    { code: 'FOUNDRY', label: 'Foundry', is_active: true },
+    { code: 'MEMORY', label: 'Memory', is_active: true },
+  ]
+
+  it('keeps the active source selectable when the current raw code becomes stale', () => {
+    expect(
+      deriveRequiredChoiceState(
+        {
+          loading: false,
+          refreshing: false,
+          error: null,
+          setIsActive: true,
+          selectionReady: true,
+          displayOptions: activeOptions,
+          selectableOptions: activeOptions,
+        },
+        'STALE_CODE',
+      ),
+    ).toMatchObject({
+      sourceActive: true,
+      sourceInactive: true,
+      selectionIsActive: false,
+      hasActiveOptions: true,
+    })
+  })
+
+  it('treats refresh authorization as loading without falsely marking the raw code inactive', () => {
+    expect(
+      deriveRequiredChoiceState(
+        {
+          loading: false,
+          refreshing: true,
+          error: null,
+          setIsActive: true,
+          selectionReady: false,
+          displayOptions: activeOptions,
+          selectableOptions: [],
+        },
+        'FOUNDRY',
+      ),
+    ).toMatchObject({
+      loading: true,
+      ready: false,
+      sourceActive: true,
+      sourceInactive: false,
+    })
+  })
+
+  it('keeps an unknown set state distinct from a positively inactive set', () => {
+    expect(
+      deriveRequiredChoiceState(
+        {
+          loading: false,
+          refreshing: false,
+          error: null,
+          setIsActive: null,
+          selectionReady: false,
+          displayOptions: [],
+          selectableOptions: [],
+        },
+        '',
+      ),
+    ).toMatchObject({ setIsActive: null, sourceActive: false, sourceInactive: false })
+  })
+})
+
+describe('project create payload', () => {
+  function baseDraft(patch: Partial<ProjectCreateDraft> = {}): ProjectCreateDraft {
+    return {
+      lineId: ' L1 ',
+      processId: ' coat ',
+      partId: ' P-42 ',
+      name: ' Coat baseline ',
+      deviceTypeCode: ' FOUNDRY ',
+      projectCategoryCode: ' LOGIC ',
+      comment: '',
+      commentTouched: false,
+      backboneId: 7,
+      overrides: { 'TARGET::2': 'SOURCE::2', 'TARGET::1': 'SOURCE::1' },
+      ...patch,
+    }
+  }
+
+  it('omits an untouched Comment while preserving backbone and sorted overrides', () => {
+    const payload = toProjectCreatePayload(baseDraft())
+
+    expect(payload).toEqual({
+      line_id: 'L1',
+      process_id: 'coat',
+      part_id: 'P-42',
+      name: 'Coat baseline',
+      device_type_code: 'FOUNDRY',
+      project_category_code: 'LOGIC',
+      backbone_project_id: 7,
+      manual_overrides: [
+        { target_layer_key: 'TARGET::1', source_layer_key: 'SOURCE::1' },
+        { target_layer_key: 'TARGET::2', source_layer_key: 'SOURCE::2' },
+      ],
+    })
+    expect(payload).not.toHaveProperty('comment')
+    expect(payload).not.toHaveProperty('description')
+    expect(payload).not.toHaveProperty('process_name')
+  })
+
+  it('sends touched blank Comment as explicit null', () => {
+    expect(toProjectCreatePayload(baseDraft({ comment: '', commentTouched: true }))).toMatchObject({
+      comment: null,
+    })
+  })
+
+  it('trims a touched Comment before sending it', () => {
+    expect(
+      toProjectCreatePayload(baseDraft({ comment: '  note  ', commentTouched: true })),
+    ).toMatchObject({ comment: 'note' })
+  })
+
+  it.each([
+    ['Device Type', { deviceTypeCode: 'FOUNDRY' }],
+    ['category', { projectCategoryCode: 'LOGIC' }],
+    ['touched blank Comment', { comment: '', commentTouched: true }],
+  ] as const)('treats a local %s draft as dirty', (_label, patch) => {
+    const empty = baseDraft({
+      partId: '',
+      name: '',
+      deviceTypeCode: '',
+      projectCategoryCode: '',
+      comment: '',
+      commentTouched: false,
+      overrides: {},
+      ...patch,
+    })
+
+    expect(isProjectCreateDraftDirty(empty)).toBe(true)
+  })
+
+  it('keeps a pristine local information draft clean', () => {
+    expect(
+      isProjectCreateDraftDirty(
+        baseDraft({
+          partId: '',
+          name: '',
+          deviceTypeCode: '',
+          projectCategoryCode: '',
+          comment: '',
+          commentTouched: false,
+          overrides: {},
+        }),
+      ),
+    ).toBe(false)
   })
 })
 

@@ -31,10 +31,15 @@ import type {
   ProcessDetailOut,
   ProcessOut,
 } from '@/api/types'
+import {
+  useChoiceSetOptions,
+  type ChoiceSetOptionsResource,
+} from '@/features/choiceSets/useChoiceSetOptions'
 import { Badge } from '@/shared/components/Badge'
 import { Button } from '@/shared/components/Button'
 import { Field } from '@/shared/components/Field'
 import { InlineAlert } from '@/shared/components/InlineAlert'
+import { SearchableChoice } from '@/shared/components/SearchableChoice'
 import { cn } from '@/shared/lib/cn'
 import { useUnsavedChanges } from '@/shared/navigation/useUnsavedChanges'
 
@@ -48,13 +53,16 @@ import {
   getProjectCreateRouteReconciliation,
   getCreateDisabledReason,
   getManualOverrideDefaultLabel,
+  deriveRequiredChoiceState,
   invalidateProjectCreationQueries,
+  isProjectCreateDraftDirty,
   isWizardInteractionLocked,
   previewFingerprint,
   selectBackbone,
   selectProcess,
   shouldApplyRouteReconciliation,
   toManualOverrides,
+  toProjectCreatePayload,
   updateManualOverride,
   type CreateDisabledReason,
 } from './wizardState'
@@ -75,6 +83,15 @@ const CREATE_DISABLED_MESSAGE: Record<CreateDisabledReason, string> = {
   'preview-loading': '현재 선택으로 매칭 결과를 계산하는 중입니다.',
   'preview-error': '매칭 결과를 확인하지 못했습니다. 다시 시도해 주세요.',
   'preview-stale': '현재 선택과 일치하는 매칭 결과를 기다리는 중입니다.',
+  'device-types-loading': 'Device Type 선택지를 최신 상태로 확인하는 중입니다.',
+  'device-types-error': 'Device Type 선택지를 확인한 뒤 다시 시도해 주세요.',
+  'device-types-empty': '활성 Device Type 선택지가 필요합니다.',
+  'device-types-inactive': '사용 가능한 Device Type을 다시 선택해 주세요.',
+  'categories-loading': 'Project Category 선택지를 최신 상태로 확인하는 중입니다.',
+  'categories-error': 'Project Category 선택지를 확인한 뒤 다시 시도해 주세요.',
+  'categories-empty': '활성 Project Category 선택지가 필요합니다.',
+  'categories-inactive': '사용 가능한 Project Category를 다시 선택해 주세요.',
+  'profile-required-fields': 'Device Type과 Project Category를 모두 선택해 주세요.',
   'required-fields': 'Part ID와 프로젝트명을 모두 입력해 주세요.',
   submitting: '프로젝트를 생성하는 중입니다.',
 }
@@ -97,7 +114,10 @@ export function ProjectCreateWizard({ onCreated }: { onCreated: (projectId: numb
   const [overrides, setOverrides] = useState<Record<string, string>>({})
   const [partId, setPartId] = useState('')
   const [name, setName] = useState('')
-  const [isDirty, setIsDirty] = useState(false)
+  const [deviceTypeCode, setDeviceTypeCode] = useState('')
+  const [projectCategoryCode, setProjectCategoryCode] = useState('')
+  const [comment, setComment] = useState('')
+  const [commentTouched, setCommentTouched] = useState(false)
   const [submitLocked, setSubmitLocked] = useState(false)
   const [createdProjectId, setCreatedProjectId] = useState<number | null>(null)
   const [staleBackboneCleared, setStaleBackboneCleared] = useState(false)
@@ -110,6 +130,28 @@ export function ProjectCreateWizard({ onCreated }: { onCreated: (projectId: numb
     processKey: routeState.processKey,
     backboneId: routeState.backboneId,
   })
+
+  const deviceTypes = useChoiceSetOptions('device_type', {
+    includeInactive: false,
+    sheetFocused: false,
+  })
+  const projectCategories = useChoiceSetOptions('project_category', {
+    includeInactive: false,
+    sheetFocused: false,
+  })
+  const deviceTypeState = deriveRequiredChoiceState(deviceTypes, deviceTypeCode)
+  const categoryState = deriveRequiredChoiceState(projectCategories, projectCategoryCode)
+  const isDirty =
+    createdProjectId === null &&
+    isProjectCreateDraftDirty({
+      partId,
+      name,
+      deviceTypeCode,
+      projectCategoryCode,
+      comment,
+      commentTouched,
+      overrides,
+    })
 
   useUnsavedChanges({
     when: isDirty,
@@ -183,7 +225,6 @@ export function ProjectCreateWizard({ onCreated }: { onCreated: (projectId: numb
     mutationFn: (submission: ProjectCreateSubmission) => createProject(submission.payload),
     onSuccess: (project, submission) => {
       void invalidateProjectCreationQueries(queryClient, submission.process)
-      setIsDirty(false)
       setCreatedProjectId(project.id)
     },
     onSettled: () => {
@@ -319,6 +360,20 @@ export function ProjectCreateWizard({ onCreated }: { onCreated: (projectId: numb
     previewFingerprint: previewQuery.data?.fingerprint ?? null,
     currentFingerprint,
     requiredFieldsComplete: partId.trim() !== '' && name.trim() !== '',
+    deviceTypeCode,
+    deviceTypesLoading: deviceTypeState.loading,
+    deviceTypesError: deviceTypeState.error,
+    deviceTypeSetIsActive: deviceTypeState.setIsActive,
+    deviceTypesReady: deviceTypeState.ready,
+    deviceTypeHasActiveOptions: deviceTypeState.hasActiveOptions,
+    deviceTypeSelectionIsActive: deviceTypeState.selectionIsActive,
+    categoryCode: projectCategoryCode,
+    categoriesLoading: categoryState.loading,
+    categoriesError: categoryState.error,
+    categorySetIsActive: categoryState.setIsActive,
+    categoriesReady: categoryState.ready,
+    categoryHasActiveOptions: categoryState.hasActiveOptions,
+    categorySelectionIsActive: categoryState.selectionIsActive,
     isSubmitting: interactionLocked,
   })
 
@@ -393,7 +448,6 @@ export function ProjectCreateWizard({ onCreated }: { onCreated: (projectId: numb
       )
     }
 
-    setIsDirty(true)
     createMutation.reset()
     setOverrides((current) =>
       updateManualOverride(current, targetLayerKey, sourceLayerKey),
@@ -403,14 +457,31 @@ export function ProjectCreateWizard({ onCreated }: { onCreated: (projectId: numb
   function updatePartId(value: string) {
     if (submitLockRef.current || interactionLocked) return
     setPartId(value)
-    setIsDirty(true)
     createMutation.reset()
   }
 
   function updateName(value: string) {
     if (submitLockRef.current || interactionLocked) return
     setName(value)
-    setIsDirty(true)
+    createMutation.reset()
+  }
+
+  function updateDeviceType(code: string | null) {
+    if (submitLockRef.current || interactionLocked) return
+    setDeviceTypeCode(code ?? '')
+    createMutation.reset()
+  }
+
+  function updateProjectCategory(code: string | null) {
+    if (submitLockRef.current || interactionLocked) return
+    setProjectCategoryCode(code ?? '')
+    createMutation.reset()
+  }
+
+  function updateComment(value: string) {
+    if (submitLockRef.current || interactionLocked) return
+    setComment(value)
+    setCommentTouched(true)
     createMutation.reset()
   }
 
@@ -425,14 +496,18 @@ export function ProjectCreateWizard({ onCreated }: { onCreated: (projectId: numb
     }
 
     const submission: ProjectCreateSubmission = {
-      payload: {
-        line_id: selectedProcess.line_id,
-        process_id: selectedProcess.process_id,
-        part_id: partId.trim(),
-        name: name.trim(),
-        backbone_project_id: routeState.backboneId,
-        manual_overrides: toManualOverrides(overrides),
-      },
+      payload: toProjectCreatePayload({
+        lineId: selectedProcess.line_id,
+        processId: selectedProcess.process_id,
+        partId,
+        name,
+        deviceTypeCode,
+        projectCategoryCode,
+        comment,
+        commentTouched,
+        backboneId: routeState.backboneId,
+        overrides,
+      }),
       process: {
         key: selectedProcess.key,
         line_id: selectedProcess.line_id,
@@ -529,12 +604,20 @@ export function ProjectCreateWizard({ onCreated }: { onCreated: (projectId: numb
             baselineAutomaticSources={baselineAutomaticSourcesRef.current}
             partId={partId}
             name={name}
+            deviceTypeCode={deviceTypeCode}
+            projectCategoryCode={projectCategoryCode}
+            comment={comment}
+            deviceTypes={deviceTypes}
+            projectCategories={projectCategories}
             createDisabledReason={createDisabledReason}
             createError={createMutation.isError ? createMutation.error : null}
             selectedProcessId={selectedProcess?.process_id ?? null}
             onOverrideChange={updateOverride}
             onPartIdChange={updatePartId}
             onNameChange={updateName}
+            onDeviceTypeChange={updateDeviceType}
+            onProjectCategoryChange={updateProjectCategory}
+            onCommentChange={updateComment}
             onRetryProcess={() => selectedProcessQuery.refetch()}
             onRetryBackbone={() => backboneDetailQuery.refetch()}
             onRetryPreview={() => previewQuery.refetch()}
@@ -545,8 +628,8 @@ export function ProjectCreateWizard({ onCreated }: { onCreated: (projectId: numb
       </section>
 
       <p className="text-xs text-muted">
-        URL에는 현재 단계와 Process, 백본 선택만 저장됩니다. 새로고침하면 프로젝트 정보와 수동
-        매칭 입력은 초기화됩니다.
+        URL에는 현재 단계와 Process, 백본 선택만 저장됩니다. 새로고침하면 프로젝트 정보,
+        Profile 입력과 수동 매칭 입력은 초기화됩니다.
       </p>
     </div>
   )
@@ -646,7 +729,12 @@ function ProcessStep({
   onContinue: () => void
 }) {
   const duplicateHref = selectedProcess?.has_project
-    ? toProjectListHref({ query: selectedProcess.process_id, status: 'all' })
+    ? toProjectListHref({
+        query: selectedProcess.process_id,
+        status: 'all',
+        deviceTypeCode: null,
+        projectCategoryCode: null,
+      })
     : null
 
   return (
@@ -927,12 +1015,20 @@ function PreviewStep({
   baselineAutomaticSources,
   partId,
   name,
+  deviceTypeCode,
+  projectCategoryCode,
+  comment,
+  deviceTypes,
+  projectCategories,
   createDisabledReason,
   createError,
   selectedProcessId,
   onOverrideChange,
   onPartIdChange,
   onNameChange,
+  onDeviceTypeChange,
+  onProjectCategoryChange,
+  onCommentChange,
   onRetryProcess,
   onRetryBackbone,
   onRetryPreview,
@@ -957,12 +1053,20 @@ function PreviewStep({
   baselineAutomaticSources: Record<string, string>
   partId: string
   name: string
+  deviceTypeCode: string
+  projectCategoryCode: string
+  comment: string
+  deviceTypes: ChoiceSetOptionsResource
+  projectCategories: ChoiceSetOptionsResource
   createDisabledReason: CreateDisabledReason | null
   createError: unknown
   selectedProcessId: string | null
   onOverrideChange: (targetLayerKey: string, sourceLayerKey: string) => void
   onPartIdChange: (value: string) => void
   onNameChange: (value: string) => void
+  onDeviceTypeChange: (code: string | null) => void
+  onProjectCategoryChange: (code: string | null) => void
+  onCommentChange: (value: string) => void
   onRetryProcess: () => void
   onRetryBackbone: () => void
   onRetryPreview: () => void
@@ -976,7 +1080,12 @@ function PreviewStep({
     createError && getApiErrorStatus(createError) === 409 && selectedProcessId
       ? existingProjectId !== null
         ? `/projects/${existingProjectId}`
-        : toProjectListHref({ query: selectedProcessId, status: 'all' })
+        : toProjectListHref({
+            query: selectedProcessId,
+            status: 'all',
+            deviceTypeCode: null,
+            projectCategoryCode: null,
+          })
       : null
 
   return (
@@ -989,12 +1098,14 @@ function PreviewStep({
       />
 
       {selectedProcess ? (
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-border-subtle bg-canvas px-3 py-2 text-sm">
-          <span className="font-semibold text-ink-950">Process {selectedProcess.display_name}</span>
-          <span className="text-muted">
-            {backboneId === null ? '백본 없이 시작' : `백본 프로젝트 #${backboneId}`}
-          </span>
-        </div>
+        <dl className="grid gap-2 rounded-lg border border-border-subtle bg-canvas p-3 sm:grid-cols-3">
+          <DetailStat label="LINE" value={selectedProcess.line_id} />
+          <DetailStat label="Process" value={selectedProcess.display_name} />
+          <DetailStat
+            label="백본"
+            value={backboneId === null ? '없이 시작' : `프로젝트 #${backboneId}`}
+          />
+        </dl>
       ) : null}
 
       {selectedProcessIsPending ? (
@@ -1070,6 +1181,37 @@ function PreviewStep({
             onChange={(event) => onNameChange(event.target.value)}
           />
         </Field>
+        <RequiredProfileChoiceField
+          id="project-device-type"
+          label="Device Type"
+          value={deviceTypeCode}
+          resource={deviceTypes}
+          adminHref="/parameters/choice-sets/device_type"
+          disabled={controlsDisabled}
+          onChange={onDeviceTypeChange}
+        />
+        <RequiredProfileChoiceField
+          id="project-category"
+          label="Project Category"
+          value={projectCategoryCode}
+          resource={projectCategories}
+          adminHref="/parameters/choice-sets/project_category"
+          disabled={controlsDisabled}
+          onChange={onProjectCategoryChange}
+        />
+        <Field
+          className="md:col-span-2"
+          inputId="project-comment"
+          label="Comment"
+          help="선택 사항입니다. 입력하지 않으면 생성 provider의 기본값을 유지합니다."
+        >
+          <textarea
+            className="input min-h-24 resize-y py-2"
+            disabled={controlsDisabled}
+            value={comment}
+            onChange={(event) => onCommentChange(event.target.value)}
+          />
+        </Field>
       </div>
 
       {createError ? (
@@ -1108,6 +1250,95 @@ function PreviewStep({
         </Button>
       </div>
     </form>
+  )
+}
+
+export function RequiredProfileChoiceField({
+  id,
+  label,
+  value,
+  resource,
+  adminHref,
+  disabled,
+  onChange,
+}: {
+  id: string
+  label: string
+  value: string
+  resource: ChoiceSetOptionsResource
+  adminHref: string
+  disabled: boolean
+  onChange: (code: string | null) => void
+}) {
+  const state = deriveRequiredChoiceState(resource, value)
+  const authorizationPending =
+    !state.ready && !state.error && state.setIsActive !== false
+  const loading = !state.error && (state.loading || authorizationPending)
+
+  return (
+    <div className="grid content-start gap-2">
+      <SearchableChoice
+        id={id}
+        label={label}
+        value={value.trim() === '' ? null : value}
+        options={resource.displayOptions}
+        loading={loading}
+        error={resource.error}
+        disabled={disabled}
+        sourceActive={state.sourceActive}
+        sourceInactive={state.sourceInactive}
+        selectionReady={state.ready}
+        required
+        onOpen={resource.prepareToOpen}
+        onRetry={resource.retryOptions}
+        onChange={onChange}
+      />
+
+      {loading ? (
+        <InlineAlert tone="info">{label} 선택지를 불러오는 중입니다.</InlineAlert>
+      ) : null}
+
+      {!state.error && !loading && state.setIsActive === false ? (
+        <InlineAlert tone="warning">
+          <p>
+            {label} 선택지 집합이 사용 중지되었습니다. 관리자가 집합을 다시 활성화해야
+            프로젝트를 만들 수 있습니다.
+          </p>
+          <ChoiceAdminLink href={adminHref} />
+        </InlineAlert>
+      ) : null}
+
+      {!state.error && !loading && state.ready && !state.hasActiveOptions ? (
+        <InlineAlert tone="warning">
+          <p>
+            활성 {label} 선택지가 없습니다. 관리자가 활성 선택지를 추가하거나 다시
+            활성화해야 프로젝트를 만들 수 있습니다.
+          </p>
+          <ChoiceAdminLink href={adminHref} />
+        </InlineAlert>
+      ) : null}
+
+      {!state.error && !loading && state.hasActiveOptions && state.sourceInactive ? (
+        <InlineAlert tone="warning">
+          <p>
+            선택한 {label} code가 최신 활성 선택지에 없습니다. 초안 code는 보존되지만 다른
+            활성 값을 선택해야 프로젝트를 만들 수 있습니다.
+          </p>
+          <ChoiceAdminLink href={adminHref} />
+        </InlineAlert>
+      ) : null}
+    </div>
+  )
+}
+
+function ChoiceAdminLink({ href }: { href: string }) {
+  return (
+    <Link
+      className="mt-2 inline-flex font-semibold text-brand-700 underline underline-offset-2"
+      to={href}
+    >
+      선택지 관리로 이동
+    </Link>
   )
 }
 

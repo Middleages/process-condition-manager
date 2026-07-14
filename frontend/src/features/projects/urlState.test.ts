@@ -10,16 +10,29 @@ import {
 
 describe('project list URL state', () => {
   it('omits defaults and never serializes a cursor', () => {
-    const params = serializeProjectListSearch({ query: '', status: 'all' })
+    const params = serializeProjectListSearch({
+      query: '',
+      status: 'all',
+      deviceTypeCode: null,
+      projectCategoryCode: null,
+    })
 
     expect(params.toString()).toBe('')
     expect(params.has('cursor')).toBe(false)
   })
 
-  it('round-trips query and draft status', () => {
-    const state = { query: 'L1 & coat', status: 'draft' } as const
+  it('round-trips query, draft status, and exact managed-choice codes', () => {
+    const state = {
+      query: 'L1 & coat',
+      status: 'draft',
+      deviceTypeCode: 'FOUNDRY',
+      projectCategoryCode: 'LOGIC',
+    } as const
 
     expect(parseProjectListSearch(serializeProjectListSearch(state))).toEqual(state)
+    expect(serializeProjectListSearch(state).toString()).toBe(
+      'query=L1+%26+coat&status=draft&device_type=FOUNDRY&project_category=LOGIC',
+    )
   })
 
   it('canonicalizes unknown status to all', () => {
@@ -27,9 +40,42 @@ describe('project list URL state', () => {
   })
 
   it('builds a project-list href with encoded special characters', () => {
-    expect(toProjectListHref({ query: 'L1 & coat', status: 'draft' })).toBe(
+    expect(
+      toProjectListHref({
+        query: 'L1 & coat',
+        status: 'draft',
+        deviceTypeCode: null,
+        projectCategoryCode: null,
+      }),
+    ).toBe(
       '/projects?query=L1+%26+coat&status=draft',
     )
+  })
+
+  it('uses the first duplicate filter value and normalizes duplicates on write', () => {
+    const parsed = parseProjectListSearch(
+      new URLSearchParams(
+        'device_type=FIRST&device_type=SECOND&project_category=LOGIC&project_category=MEMORY',
+      ),
+    )
+
+    expect(parsed).toMatchObject({
+      deviceTypeCode: 'FIRST',
+      projectCategoryCode: 'LOGIC',
+    })
+    expect(serializeProjectListSearch(parsed).toString()).toBe(
+      'device_type=FIRST&project_category=LOGIC',
+    )
+  })
+
+  it('normalizes blank fixed-set filters to omitted defaults', () => {
+    const parsed = parseProjectListSearch(
+      new URLSearchParams('device_type=&project_category=%20%20'),
+    )
+
+    expect(parsed.deviceTypeCode).toBeNull()
+    expect(parsed.projectCategoryCode).toBeNull()
+    expect(serializeProjectListSearch(parsed).toString()).toBe('')
   })
 })
 
@@ -56,5 +102,20 @@ describe('project create URL state', () => {
         backboneId: null,
       }).toString(),
     ).toBe('step=1&process=L1%3A%3APROC_ALPHA')
+  })
+
+  it('never serializes wizard-local Profile draft values', () => {
+    const params = serializeProjectCreateSearch({
+      step: 3,
+      processKey: 'L1::PROC_ALPHA',
+      backboneId: 7,
+      deviceTypeCode: 'FOUNDRY',
+      projectCategoryCode: 'LOGIC',
+      comment: 'local only',
+      commentTouched: true,
+    } as Parameters<typeof serializeProjectCreateSearch>[0] & Record<string, unknown>)
+
+    expect(params.toString()).toBe('step=3&process=L1%3A%3APROC_ALPHA&backbone=7')
+    expect([...params.keys()]).toEqual(['step', 'process', 'backbone'])
   })
 })

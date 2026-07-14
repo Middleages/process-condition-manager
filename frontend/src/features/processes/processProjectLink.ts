@@ -6,7 +6,12 @@ import {
 
 export function getProcessProjectHref(process: ProcessDetailOut): string {
   if (process.has_project) {
-    return toProjectListHref({ query: process.process_id, status: 'all' })
+    return toProjectListHref({
+      query: process.process_id,
+      status: 'all',
+      deviceTypeCode: null,
+      projectCategoryCode: null,
+    })
   }
 
   const search = serializeProjectCreateSearch({

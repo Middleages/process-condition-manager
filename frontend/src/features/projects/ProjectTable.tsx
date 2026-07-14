@@ -1,7 +1,6 @@
-import { ChevronRight } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
-import type { ProjectSummaryOut } from '@/api/types'
+import type { ChoiceValueOut, ProjectSummaryOut } from '@/api/types'
 import { Badge } from '@/shared/components/Badge'
 
 export interface ProjectTableProps {
@@ -13,26 +12,38 @@ export interface ProjectTableProps {
 export function ProjectTable({ projects, from, onProjectOpen }: ProjectTableProps) {
   return (
     <div className="max-w-full overflow-x-auto rounded-xl border border-border-subtle bg-surface">
-      <table className="w-full min-w-[760px] table-fixed text-left text-sm">
+      <table className="w-full min-w-[1040px] table-fixed text-left text-sm">
         <thead className="bg-canvas text-xs font-semibold uppercase tracking-wide text-muted">
           <tr className="h-9">
-            <th className="w-[34%] whitespace-nowrap px-4 py-0" scope="col">
+            <th className="w-[20%] whitespace-nowrap px-4 py-0" scope="col">
               프로젝트명
             </th>
-            <th className="w-[26%] whitespace-nowrap px-4 py-0" scope="col">
-              Line / Process
+            <th className="w-[16%] whitespace-nowrap px-4 py-0" scope="col">
+              LINE / Process
             </th>
             <th className="w-[12%] whitespace-nowrap px-4 py-0" scope="col">
+              PARTID
+            </th>
+            <th className="w-[14%] whitespace-nowrap px-4 py-0" scope="col">
+              Device Type
+            </th>
+            <th className="w-[14%] whitespace-nowrap px-4 py-0" scope="col">
+              Category
+            </th>
+            <th
+              className="hidden 2xl:table-cell w-[8%] whitespace-nowrap px-4 py-0 text-right"
+              scope="col"
+            >
+              Layer Total
+            </th>
+            <th className="w-[8%] whitespace-nowrap px-4 py-0" scope="col">
               상태
             </th>
-            <th className="w-[10%] whitespace-nowrap px-4 py-0 text-right" scope="col">
-              Layer
-            </th>
-            <th className="w-[12%] whitespace-nowrap px-4 py-0 text-right" scope="col">
-              Cell
-            </th>
-            <th className="w-[6%] px-3 py-0" scope="col">
-              <span className="sr-only">상세</span>
+            <th
+              className="hidden xl:table-cell w-[12%] whitespace-nowrap px-4 py-0"
+              scope="col"
+            >
+              Updated
             </th>
           </tr>
         </thead>
@@ -50,14 +61,6 @@ export function ProjectTable({ projects, from, onProjectOpen }: ProjectTableProp
                 >
                   {project.name}
                 </Link>
-                {project.description ? (
-                  <p
-                    className="min-w-0 truncate whitespace-nowrap text-xs leading-3 text-muted"
-                    title={project.description}
-                  >
-                    {project.description}
-                  </p>
-                ) : null}
               </td>
               <td className="min-w-0 overflow-hidden px-4 py-0.5 align-middle">
                 <span
@@ -66,24 +69,25 @@ export function ProjectTable({ projects, from, onProjectOpen }: ProjectTableProp
                 >
                   {project.line_id} / {project.process_id}
                 </span>
+              </td>
+              <td className="min-w-0 overflow-hidden px-4 py-0.5 align-middle">
                 <span
-                  className="block min-w-0 truncate whitespace-nowrap font-mono text-xs leading-3 text-muted"
+                  className="block min-w-0 truncate whitespace-nowrap font-mono text-xs text-ink-950"
                   title={project.part_id}
                 >
                   {project.part_id}
                 </span>
               </td>
+              <ChoiceCell choice={project.device_type} />
+              <ChoiceCell choice={project.project_category} />
+              <td className="hidden 2xl:table-cell min-w-0 overflow-hidden whitespace-nowrap px-4 py-0 text-right font-mono text-xs tabular-nums text-ink-950">
+                {project.layer_total ?? '-'}
+              </td>
               <td className="min-w-0 overflow-hidden whitespace-nowrap px-4 py-0 align-middle">
                 <Badge tone="draft">초안</Badge>
               </td>
-              <td className="min-w-0 overflow-hidden whitespace-nowrap px-4 py-0 text-right font-mono text-xs tabular-nums text-ink-950">
-                {project.layer_count}
-              </td>
-              <td className="min-w-0 overflow-hidden whitespace-nowrap px-4 py-0 text-right font-mono text-xs tabular-nums text-ink-950">
-                {project.cell_count}
-              </td>
-              <td className="min-w-0 overflow-hidden whitespace-nowrap px-3 py-0 text-right text-muted">
-                <ChevronRight aria-hidden="true" className="ml-auto" size={18} strokeWidth={2} />
+              <td className="hidden xl:table-cell min-w-0 overflow-hidden whitespace-nowrap px-4 py-0 text-xs tabular-nums text-muted">
+                <time dateTime={project.updated_at}>{formatUpdatedAt(project.updated_at)}</time>
               </td>
             </tr>
           ))}
@@ -91,4 +95,34 @@ export function ProjectTable({ projects, from, onProjectOpen }: ProjectTableProp
       </table>
     </div>
   )
+}
+
+function ChoiceCell({ choice }: { choice: ChoiceValueOut }) {
+  const label = choice.label.trim() || choice.code
+  const title = choice.label.trim() === '' ? choice.code : `${choice.code} · ${choice.label}`
+
+  return (
+    <td className="min-w-0 overflow-hidden px-4 py-0.5 align-middle" title={title}>
+      <span className="flex min-w-0 items-center gap-1.5">
+        <span className="min-w-0 truncate whitespace-nowrap text-xs font-medium text-ink-950">
+          {label}
+        </span>
+        {!choice.is_active ? (
+          <Badge className="shrink-0" tone="warning">
+            사용 중지됨
+          </Badge>
+        ) : null}
+      </span>
+    </td>
+  )
+}
+
+function formatUpdatedAt(value: string): string {
+  const instant = new Date(value)
+  if (Number.isNaN(instant.getTime())) return value
+
+  return new Intl.DateTimeFormat('ko-KR', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(instant)
 }

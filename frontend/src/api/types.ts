@@ -148,12 +148,54 @@ export interface BackboneReplaceIn {
   source_layer_key: string
 }
 
+export interface ChoiceValueOut {
+  code: string
+  label: string
+  is_active: boolean
+}
+
+export interface ProjectProfileOut {
+  project_id: number
+  process_name: string
+  device_type: ChoiceValueOut
+  project_category: ChoiceValueOut
+  comment: string | null
+  active_direction: ChoiceValueOut | null
+  gate_direction: ChoiceValueOut | null
+  gross_die: string | null
+  pitch_x: string | null
+  pitch_y: string | null
+  shot_x: string | null
+  shot_y: string | null
+  slit_occupancy: string | null
+  lens_occupancy: string | null
+  map_offset_x: string | null
+  map_offset_y: string | null
+  scribe_lane_x: string | null
+  scribe_lane_y: string | null
+  shot_count: string | null
+  full_shot: string | null
+  layer_total: string | null
+  euv: string | null
+  imm: string | null
+  arf: string | null
+  krf: string | null
+  iline: string | null
+  soh: string | null
+  pspi: string | null
+  metal_layer_count: string | null
+  created_at: string
+  updated_at: string
+}
+
 export interface ProjectCreate {
   line_id: string
   process_id: string
   part_id: string
   name: string
-  description?: string | null
+  device_type_code: string
+  project_category_code: string
+  comment?: string | null
   backbone_project_id?: number | null
   manual_overrides?: ManualOverrideIn[]
 }
@@ -179,8 +221,8 @@ export interface ProjectOut {
   process_id: string
   part_id: string
   name: string
-  description: string | null
   status: 'draft'
+  profile: ProjectProfileOut
   layers: ProjectLayerOut[]
 }
 
@@ -190,8 +232,11 @@ export interface ProjectSummaryOut {
   process_id: string
   part_id: string
   name: string
-  description: string | null
   status: 'draft'
+  device_type: ChoiceValueOut
+  project_category: ChoiceValueOut
+  layer_total: string | null
+  updated_at: string
   layer_count: number
   cell_count: number
 }

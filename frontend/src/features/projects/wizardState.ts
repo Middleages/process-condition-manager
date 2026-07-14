@@ -1,4 +1,4 @@
-import type { ManualOverrideIn, MatchType } from '@/api/types'
+import type { ManualOverrideIn, MatchType, ProjectCreate } from '@/api/types'
 
 import type { ProjectCreateRouteState } from './urlState'
 
@@ -93,6 +93,15 @@ export type CreateDisabledReason =
   | 'preview-loading'
   | 'preview-error'
   | 'preview-stale'
+  | 'device-types-loading'
+  | 'device-types-error'
+  | 'device-types-empty'
+  | 'device-types-inactive'
+  | 'categories-loading'
+  | 'categories-error'
+  | 'categories-empty'
+  | 'categories-inactive'
+  | 'profile-required-fields'
   | 'required-fields'
   | 'submitting'
 
@@ -110,7 +119,67 @@ export interface CreateGuardState {
   previewFingerprint: string | null
   currentFingerprint: string
   requiredFieldsComplete: boolean
+  deviceTypeCode: string
+  deviceTypesLoading: boolean
+  deviceTypesError: boolean
+  deviceTypeSetIsActive: boolean | null
+  deviceTypesReady: boolean
+  deviceTypeHasActiveOptions: boolean
+  deviceTypeSelectionIsActive: boolean
+  categoryCode: string
+  categoriesLoading: boolean
+  categoriesError: boolean
+  categorySetIsActive: boolean | null
+  categoriesReady: boolean
+  categoryHasActiveOptions: boolean
+  categorySelectionIsActive: boolean
   isSubmitting: boolean
+}
+
+export interface RequiredChoiceResourceState {
+  loading: boolean
+  refreshing: boolean
+  error: string | null
+  setIsActive: boolean | null
+  selectionReady: boolean
+  displayOptions: readonly { code: string; is_active: boolean }[]
+  selectableOptions: readonly { code: string; is_active: boolean }[]
+}
+
+export interface RequiredChoiceState {
+  loading: boolean
+  error: boolean
+  setIsActive: boolean | null
+  ready: boolean
+  hasActiveOptions: boolean
+  selectionIsActive: boolean
+  sourceActive: boolean
+  sourceInactive: boolean
+}
+
+export function deriveRequiredChoiceState(
+  resource: RequiredChoiceResourceState,
+  rawCode: string,
+): RequiredChoiceState {
+  const normalizedCode = rawCode.trim()
+  const selectedActive =
+    resource.selectionReady &&
+    normalizedCode !== '' &&
+    resource.selectableOptions.some(
+      (option) => option.is_active && option.code === normalizedCode,
+    )
+
+  return {
+    loading: resource.loading || resource.refreshing,
+    error: resource.error !== null,
+    setIsActive: resource.setIsActive,
+    ready: resource.selectionReady,
+    hasActiveOptions: resource.selectableOptions.some((option) => option.is_active),
+    selectionIsActive: selectedActive,
+    sourceActive: resource.setIsActive === true,
+    sourceInactive:
+      resource.selectionReady && normalizedCode !== '' && !selectedActive,
+  }
 }
 
 export function getCreateDisabledReason(state: CreateGuardState): CreateDisabledReason | null {
@@ -127,9 +196,88 @@ export function getCreateDisabledReason(state: CreateGuardState): CreateDisabled
   if (state.previewIsError) return 'preview-error'
   if (state.previewFingerprint === null) return 'preview-loading'
   if (state.previewFingerprint !== state.currentFingerprint) return 'preview-stale'
+  if (state.deviceTypesError) return 'device-types-error'
+  if (state.deviceTypeSetIsActive === false) return 'device-types-inactive'
+  if (state.deviceTypesLoading) return 'device-types-loading'
+  if (state.deviceTypeSetIsActive === null || !state.deviceTypesReady) {
+    return 'device-types-loading'
+  }
+  if (!state.deviceTypeHasActiveOptions) return 'device-types-empty'
+  if (state.deviceTypeCode.trim() !== '' && !state.deviceTypeSelectionIsActive) {
+    return 'device-types-inactive'
+  }
+  if (state.categoriesError) return 'categories-error'
+  if (state.categorySetIsActive === false) return 'categories-inactive'
+  if (state.categoriesLoading) return 'categories-loading'
+  if (state.categorySetIsActive === null || !state.categoriesReady) {
+    return 'categories-loading'
+  }
+  if (!state.categoryHasActiveOptions) return 'categories-empty'
+  if (state.categoryCode.trim() !== '' && !state.categorySelectionIsActive) {
+    return 'categories-inactive'
+  }
+  if (state.deviceTypeCode.trim() === '' || state.categoryCode.trim() === '') {
+    return 'profile-required-fields'
+  }
   if (!state.requiredFieldsComplete) return 'required-fields'
 
   return null
+}
+
+export interface ProjectCreateDraft {
+  lineId: string
+  processId: string
+  partId: string
+  name: string
+  deviceTypeCode: string
+  projectCategoryCode: string
+  comment: string
+  commentTouched: boolean
+  backboneId: number | null
+  overrides: Record<string, string>
+}
+
+export function toProjectCreatePayload(draft: ProjectCreateDraft): ProjectCreate {
+  const payload: ProjectCreate = {
+    line_id: draft.lineId.trim(),
+    process_id: draft.processId.trim(),
+    part_id: draft.partId.trim(),
+    name: draft.name.trim(),
+    device_type_code: draft.deviceTypeCode.trim(),
+    project_category_code: draft.projectCategoryCode.trim(),
+    backbone_project_id: draft.backboneId,
+    manual_overrides: toManualOverrides(draft.overrides),
+  }
+
+  if (draft.commentTouched) {
+    const comment = draft.comment.trim()
+    payload.comment = comment === '' ? null : comment
+  }
+
+  return payload
+}
+
+export function isProjectCreateDraftDirty(
+  draft: Pick<
+    ProjectCreateDraft,
+    | 'partId'
+    | 'name'
+    | 'deviceTypeCode'
+    | 'projectCategoryCode'
+    | 'comment'
+    | 'commentTouched'
+    | 'overrides'
+  >,
+): boolean {
+  return (
+    draft.partId !== '' ||
+    draft.name !== '' ||
+    draft.deviceTypeCode !== '' ||
+    draft.projectCategoryCode !== '' ||
+    draft.comment !== '' ||
+    draft.commentTouched ||
+    Object.keys(draft.overrides).length > 0
+  )
 }
 
 export interface ProjectCreateRouteReconciliation {

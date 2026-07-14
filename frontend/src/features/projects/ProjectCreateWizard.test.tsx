@@ -1,11 +1,17 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { createMemoryRouter, RouterProvider } from 'react-router-dom'
+import { createMemoryRouter, RouterProvider, StaticRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 
-import type { MatchPreviewOut, ProcessDetailOut, ProcessListOut } from '@/api/types'
+import type {
+  MatchPreviewOut,
+  ProcessDetailOut,
+  ProcessListOut,
+  ProjectProfileOut,
+} from '@/api/types'
+import type { ChoiceSetOptionsResource } from '@/features/choiceSets/useChoiceSetOptions'
 
-import { ProjectCreateWizard } from './ProjectCreateWizard'
+import { ProjectCreateWizard, RequiredProfileChoiceField } from './ProjectCreateWizard'
 import { previewFingerprint } from './wizardState'
 
 const directProcess: ProcessDetailOut = {
@@ -61,6 +67,40 @@ const automaticPreview: MatchPreviewOut = {
       match_type: 'auto',
     },
   ],
+}
+
+const projectProfile: ProjectProfileOut = {
+  project_id: 7,
+  process_name: 'Source',
+  device_type: { code: 'FOUNDRY', label: 'Foundry', is_active: true },
+  project_category: { code: 'LOGIC', label: 'Logic', is_active: true },
+  comment: null,
+  active_direction: null,
+  gate_direction: null,
+  gross_die: null,
+  pitch_x: null,
+  pitch_y: null,
+  shot_x: null,
+  shot_y: null,
+  slit_occupancy: null,
+  lens_occupancy: null,
+  map_offset_x: null,
+  map_offset_y: null,
+  scribe_lane_x: null,
+  scribe_lane_y: null,
+  shot_count: null,
+  full_shot: null,
+  layer_total: null,
+  euv: null,
+  imm: null,
+  arf: null,
+  krf: null,
+  iline: null,
+  soh: null,
+  pspi: null,
+  metal_layer_count: null,
+  created_at: '2026-07-14T00:00:00Z',
+  updated_at: '2026-07-14T00:00:00Z',
 }
 
 function renderWizard(location: string, seedSelectedProcess: boolean): string {
@@ -132,8 +172,8 @@ function renderAutomaticBackbonePreview(): string {
     process_id: 'BASE',
     part_id: 'BASE-1',
     name: 'Source backbone',
-    description: null,
     status: 'draft',
+    profile: projectProfile,
     layers: [
       {
         id: 70,
@@ -243,5 +283,124 @@ describe('ProjectCreateWizard route restoration', () => {
     expect(html).toContain('aria-label="4::ETCH 수동 매칭"')
     expect(html).toContain('<option value="" selected="">자동 매칭 유지 · SOURCE::AUTO</option>')
     expect(html).toContain('value="SOURCE::MANUAL"')
+  })
+
+  it('keeps the W1 third step and adds only the core Profile inputs', () => {
+    const params = new URLSearchParams({ step: '3', process: directProcess.key })
+    const html = renderWizard(`/projects/new?${params}`, true)
+
+    expect(html).toContain('매칭 확인 · 프로젝트 정보</h2>')
+    expect(html).toContain('LINE')
+    expect(html).toContain('LINE Z')
+    expect(html).toContain('Device Type')
+    expect(html).toContain('Project Category')
+    expect(html).toContain('Comment')
+    expect(html).not.toContain('Gross Die')
+    expect(html).not.toContain('Pitch X')
+  })
+})
+
+function choiceResource(
+  patch: Partial<ChoiceSetOptionsResource> = {},
+): ChoiceSetOptionsResource {
+  return {
+    setCode: 'device_type',
+    version: 1,
+    setIsActive: true,
+    displayOptions: [{ code: 'FOUNDRY', label: 'Foundry', sort_order: 0, is_active: true }],
+    selectableOptions: [
+      { code: 'FOUNDRY', label: 'Foundry', sort_order: 0, is_active: true },
+    ],
+    selectionReady: true,
+    loading: false,
+    refreshing: false,
+    error: null,
+    prepareToOpen: vi.fn().mockResolvedValue(undefined),
+    refetchSummary: vi.fn().mockResolvedValue(undefined),
+    retryOptions: vi.fn().mockResolvedValue(undefined),
+    ...patch,
+  }
+}
+
+function renderRequiredChoice(
+  resource: ChoiceSetOptionsResource,
+  value = '',
+): string {
+  return renderToStaticMarkup(
+    <StaticRouter location="/projects/new">
+      <RequiredProfileChoiceField
+        id="project-device-type"
+        label="Device Type"
+        value={value}
+        resource={resource}
+        adminHref="/parameters/choice-sets/device_type"
+        disabled={false}
+        onChange={vi.fn()}
+      />
+    </StaticRouter>,
+  )
+}
+
+describe('RequiredProfileChoiceField', () => {
+  it('renders an active managed option without a free-text fallback', () => {
+    const html = renderRequiredChoice(choiceResource(), 'FOUNDRY')
+
+    expect(html).toContain('FOUNDRY · Foundry')
+    expect(html).toContain('role="combobox"')
+    expect(html).not.toContain('관리 화면에서 활성화')
+  })
+
+  it('owns loading and retryable error states while retaining the raw draft', () => {
+    const loading = renderRequiredChoice(
+      choiceResource({ loading: true, selectionReady: false }),
+      'RAW-DRAFT',
+    )
+    const error = renderRequiredChoice(
+      choiceResource({
+        error: '선택지를 불러오지 못했습니다.',
+        selectionReady: false,
+        displayOptions: [],
+        selectableOptions: [],
+      }),
+      'RAW-DRAFT',
+    )
+
+    expect(loading).toContain('선택지를 불러오는 중입니다.')
+    expect(loading).toContain('RAW-DRAFT')
+    expect(error).toContain('선택지를 불러오지 못했습니다.')
+    expect(error).toContain('다시 시도')
+    expect(error).toContain('RAW-DRAFT')
+  })
+
+  it.each([
+    ['inactive', { setIsActive: false, selectionReady: false }, '다시 활성화'],
+    [
+      'empty',
+      { displayOptions: [], selectableOptions: [], selectionReady: true },
+      '활성 선택지를 추가',
+    ],
+  ] as const)('links an %s set state to its admin page', (_label, patch, copy) => {
+    const html = renderRequiredChoice(choiceResource(patch))
+
+    expect(html).toContain(copy)
+    expect(html).toContain('href="/parameters/choice-sets/device_type"')
+  })
+
+  it('preserves a selection that disappeared from the active options and blocks it visibly', () => {
+    const html = renderRequiredChoice(
+      choiceResource({
+        displayOptions: [
+          { code: 'MEMORY', label: 'Memory', sort_order: 1, is_active: true },
+        ],
+        selectableOptions: [
+          { code: 'MEMORY', label: 'Memory', sort_order: 1, is_active: true },
+        ],
+      }),
+      'STALE_RAW_CODE',
+    )
+
+    expect(html).toContain('STALE_RAW_CODE')
+    expect(html).toContain('최신 활성 선택지에 없습니다')
+    expect(html).toContain('href="/parameters/choice-sets/device_type"')
   })
 })
