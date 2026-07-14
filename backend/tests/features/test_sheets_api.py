@@ -1,7 +1,7 @@
 """시트 조회 API 테스트.
 
 최소 커버리지:
-- 컬럼 정의는 live 파라미터만 (비활성 제외), category_code/choice_options 매핑
+- 컬럼 정의는 live 파라미터만 (비활성 제외), category/ChoiceSet 참조 매핑
 - 행이 layer(sort_order)/condition(condition_index) 순으로 정렬
 - 셀 희소 표현 (빈 값 생략)
 - 존재하지 않는 project_id → 404
@@ -10,11 +10,14 @@
 
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.errors import DomainValidationError
 from app.domain.parameters.types import ValueType
-from app.models.parameter import Parameter, ParameterCategory, ParameterOption
+from app.features.sheets.service import _build_live_columns
+from app.models.parameter import Parameter, ParameterCategory
 from app.models.project import (
     CellValue,
     EditLock,
@@ -23,6 +26,7 @@ from app.models.project import (
     ProjectStatus,
     SheetLayer,
 )
+from tests.factories import seed_choice_set, seed_parameter
 
 
 async def _seed_lock(
@@ -57,24 +61,24 @@ async def _seed_parameters(session: AsyncSession) -> None:
         unit="rpm",
         sort_order=1,
     )
-    choice_param = Parameter(
+    equipment_mode = await seed_choice_set(
+        session,
+        code="equipment_mode",
+        options=(
+            ("A", "A", True),
+            ("B", "B", True),
+            ("LEGACY", "Legacy", False),
+        ),
+    )
+    choice_param = await seed_parameter(
+        session,
         code="pr_type",
-        display_name="PR Type",
         value_type=ValueType.CHOICE,
-        sort_order=2,
+        choice_set=equipment_mode,
     )
-    choice_param.options.extend(
-        [
-            ParameterOption(value="A", display_name="A", sort_order=0),
-            ParameterOption(value="B", display_name="B", sort_order=1),
-            ParameterOption(
-                value="LEGACY",
-                display_name="Legacy",
-                sort_order=2,
-                is_active=False,
-            ),
-        ]
-    )
+    choice_param.display_name = "PR Type"
+    choice_param.sort_order = 2
+    choice_param.category = None
     inactive_param = Parameter(
         code="legacy_flag",
         display_name="Legacy",
@@ -168,12 +172,27 @@ async def test_sheet_column_metadata_maps_category_and_choices(
     assert spin["value_type"] == "number"
     assert spin["category_code"] == "photo"
     assert spin["unit"] == "rpm"
-    assert spin["choice_options"] == []  # number 타입은 옵션 없음
+    assert spin["choice_set_code"] is None
+    assert spin["choice_set_version"] is None
+    assert "choice_options" not in spin
 
     pr = columns["pr_type"]
     assert pr["value_type"] == "choice"
     assert pr["category_code"] is None
-    assert pr["choice_options"] == ["A", "B"]
+    assert pr["choice_set_code"] == "equipment_mode"
+    assert pr["choice_set_version"] == 1
+    assert "choice_options" not in pr
+
+
+def test_broken_choice_parameter_is_not_projected() -> None:
+    parameter = Parameter(
+        code="broken_choice",
+        display_name="Broken",
+        value_type=ValueType.CHOICE,
+        choice_set=None,
+    )
+    with pytest.raises(DomainValidationError):
+        _build_live_columns([parameter], {})
 
 
 async def test_sheet_rows_sorted_by_layer_and_condition_index(

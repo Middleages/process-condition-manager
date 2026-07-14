@@ -74,7 +74,7 @@ async def patch_choice_set(
 
 
 @router.get("/{set_code}/options", response_model=ChoiceOptionPageOut)
-async def list_choice_options(
+async def list_options(
     set_code: str,
     service: ServiceDep,
     q: Annotated[str | None, Query(max_length=128)] = None,
@@ -117,7 +117,7 @@ async def patch_choice_option(
 
 
 @router.put("/{set_code}/option-order", response_model=ChoiceSetSummaryOut)
-async def reorder_choice_options(
+async def reorder_options(
     set_code: str, data: ChoiceOptionOrderIn, service: ServiceDep
 ) -> ChoiceSetSummaryOut:
     return await service.reorder_options(set_code, data)

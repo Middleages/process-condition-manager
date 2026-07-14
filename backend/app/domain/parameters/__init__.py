@@ -13,8 +13,9 @@ from app.domain.parameters.csv_import import (
 )
 from app.domain.parameters.rules import (
     ensure_code_immutable,
+    normalize_number_bounds,
     snapshot,
-    validate_choice_options,
+    validate_choice_set_binding,
     validate_code,
     validate_new_parameter,
     validate_number_bounds,
@@ -28,9 +29,10 @@ __all__ = [
     "ValueType",
     "build_import_plan",
     "ensure_code_immutable",
+    "normalize_number_bounds",
     "parse_rows",
     "snapshot",
-    "validate_choice_options",
+    "validate_choice_set_binding",
     "validate_code",
     "validate_new_parameter",
     "validate_number_bounds",

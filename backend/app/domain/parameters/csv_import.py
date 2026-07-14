@@ -1,26 +1,20 @@
-"""CSV 붙여넣기 임포트 순수 로직 (프레임워크·DB 무의존).
-
-붙여넣은 CSV 텍스트를 파싱하고, 레지스트리 현재 상태와 대조해 각 행을
-create/update/error로 분류한 임포트 계획(ImportPlan)을 만든다. DB 반영은
-서비스가 계획(payload)을 그대로 적용한다 — 이 모듈은 IO를 하지 않는다.
-"""
+"""Pure parameter CSV parsing and managed ChoiceSet import planning."""
 
 import csv
 import io
 import re
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass, field
 from typing import Literal
 
-from app.domain.errors import DomainError
+from app.domain.errors import DomainError, ImmutableFieldError, RuleViolationError
 from app.domain.parameters.rules import (
-    validate_choice_options,
+    normalize_number_bounds,
+    validate_choice_set_binding,
     validate_code,
-    validate_number_bounds,
 )
 from app.domain.parameters.types import ValueType
 
-# 표준 필드명 <- 헤더 별칭. 헤더는 줄바꿈 제거 + 소문자 + 공백/하이픈을 밑줄로 정규화한다.
 _ALIASES: dict[str, str] = {
     "name": "display_name",
     "display": "display_name",
@@ -33,8 +27,9 @@ _ALIASES: dict[str, str] = {
     "min": "min_value",
     "max": "max_value",
     "choices": "options",
-    "choice_options": "options",
     "option": "options",
+    "choice_set": "choice_set_code",
+    "choiceset": "choice_set_code",
     "desc": "description",
     "order": "sort_order",
     "sort": "sort_order",
@@ -48,7 +43,7 @@ _STANDARD_FIELDS = {
     "unit",
     "min_value",
     "max_value",
-    "options",
+    "choice_set_code",
     "description",
     "sort_order",
 }
@@ -56,16 +51,14 @@ _STANDARD_FIELDS = {
 
 @dataclass(frozen=True, slots=True)
 class ImportPayload:
-    """검증을 통과한 행의 정규화 결과 (서비스가 그대로 UPSERT)."""
-
     code: str
     display_name: str
     value_type: ValueType
     category: str | None
     unit: str | None
-    min_value: float | None
-    max_value: float | None
-    options: tuple[str, ...]
+    min_value: str | None
+    max_value: str | None
+    choice_set_code: str | None
     description: str | None
     sort_order: int
 
@@ -107,46 +100,52 @@ def normalize_header(raw: str) -> str:
 
 
 class CsvImportError(DomainError):
-    """CSV 구조 자체가 잘못됨 (헤더 없음 등)."""
-
     code = "csv_import"
 
 
 def parse_rows(text: str) -> list[dict[str, str]]:
-    """CSV 텍스트를 표준 필드명 dict 목록으로 파싱한다. code 컬럼은 필수다."""
     stripped = text.strip()
     if not stripped:
         raise CsvImportError("CSV 내용이 비어 있다")
     reader = csv.reader(io.StringIO(stripped))
     try:
         raw_header = next(reader)
-    except StopIteration as exc:  # pragma: no cover - 위에서 빈 값 차단
+    except StopIteration as exc:  # pragma: no cover
         raise CsvImportError("헤더 행이 없다") from exc
 
     headers = [normalize_header(cell) for cell in raw_header]
+    if "options" in headers or any(header.endswith("_options") for header in headers):
+        raise CsvImportError(
+            "options 컬럼은 더 이상 지원하지 않는다; choice_set_code를 사용하라"
+        )
     if "code" not in headers:
         raise CsvImportError("필수 컬럼 code가 없다")
 
     rows: list[dict[str, str]] = []
     for raw in reader:
         if not any(cell.strip() for cell in raw):
-            continue  # 빈 줄 무시
-        row = {
-            headers[i]: raw[i].strip()
-            for i in range(min(len(headers), len(raw)))
-            if headers[i] in _STANDARD_FIELDS
-        }
-        rows.append(row)
+            continue
+        rows.append(
+            {
+                headers[index]: raw[index].strip()
+                for index in range(min(len(headers), len(raw)))
+                if headers[index] in _STANDARD_FIELDS
+            }
+        )
     return rows
 
 
 def build_import_plan(
-    rows: list[dict[str, str]], existing_value_types: Mapping[str, str]
+    rows: list[dict[str, str]],
+    *,
+    existing_parameters: Mapping[str, Mapping[str, str | None]],
+    active_choice_set_codes: Collection[str],
 ) -> ImportPlan:
-    """행 목록을 레지스트리 현재 상태와 대조해 create/update/error로 분류한다."""
+    """Classify rows against immutable parameter and active-registry context."""
     seen: set[str] = set()
+    active_sets = set(active_choice_set_codes)
     plan_rows: list[PlanRow] = []
-    for index, row in enumerate(rows, start=2):  # 헤더가 1행
+    for index, row in enumerate(rows, start=2):
         raw_code = row.get("code", "")
         try:
             code = validate_code(raw_code)
@@ -159,54 +158,73 @@ def build_import_plan(
             continue
         seen.add(code)
 
-        existing_type = existing_value_types.get(code)
+        existing = existing_parameters.get(code)
         try:
-            payload = _to_payload(code, row, existing_type)
+            payload = _to_payload(code, row, existing, active_sets)
         except DomainError as exc:
             plan_rows.append(PlanRow(index, code, "error", exc.message))
             continue
 
-        action: Literal["create", "update"] = (
-            "update" if existing_type is not None else "create"
-        )
+        action: Literal["create", "update"] = "update" if existing is not None else "create"
         plan_rows.append(PlanRow(index, code, action, None, payload))
     return ImportPlan(tuple(plan_rows))
 
 
 def _to_payload(
-    code: str, row: dict[str, str], existing_type: str | None
+    code: str,
+    row: dict[str, str],
+    existing: Mapping[str, str | None] | None,
+    active_choice_set_codes: set[str],
 ) -> ImportPayload:
+    existing_type = None if existing is None else existing.get("value_type")
     value_type = _resolve_value_type(row.get("value_type"), existing_type)
-    # 기존 파라미터의 value_type은 불변이다.
     if existing_type is not None and value_type.value != existing_type:
-        raise _rule(f"value_type 불변: {existing_type} -> {value_type.value} 변경 불가")
+        raise ImmutableFieldError(
+            f"value_type 불변: {existing_type} -> {value_type.value} 변경 불가"
+        )
 
-    options = _split_options(row.get("options", ""))
-    validate_choice_options(value_type, options)
-    min_value = _to_float(row.get("min_value"), "min_value")
-    max_value = _to_float(row.get("max_value"), "max_value")
-    validate_number_bounds(min_value, max_value)
-    sort_order = _to_int(row.get("sort_order"), "sort_order")
+    incoming_set_code = row.get("choice_set_code", "").strip() or None
+    current_set_code = None if existing is None else existing.get("choice_set_code")
+    if existing is not None and value_type is ValueType.CHOICE:
+        if incoming_set_code is not None and incoming_set_code != current_set_code:
+            raise ImmutableFieldError(
+                f"choice_set_code 불변: {current_set_code} -> {incoming_set_code} 변경 불가"
+            )
+        choice_set_code = current_set_code
+    else:
+        choice_set_code = incoming_set_code
 
-    display_name = row.get("display_name", "").strip() or code
+    validate_choice_set_binding(value_type, choice_set_code)
+    if (
+        existing is None
+        and choice_set_code is not None
+        and choice_set_code not in active_choice_set_codes
+    ):
+        raise RuleViolationError(
+            f"활성 ChoiceSet이 아니다: {choice_set_code}",
+            code="invalid_active_choice_set",
+        )
+
+    min_value, max_value = normalize_number_bounds(
+        row.get("min_value"), row.get("max_value")
+    )
     return ImportPayload(
         code=code,
-        display_name=display_name,
+        display_name=row.get("display_name", "").strip() or code,
         value_type=value_type,
         category=_resolve_category(row.get("category")),
-        unit=(row.get("unit", "").strip() or None),
+        unit=row.get("unit", "").strip() or None,
         min_value=min_value,
         max_value=max_value,
-        options=options,
-        description=(row.get("description", "").strip() or None),
-        sort_order=sort_order,
+        choice_set_code=choice_set_code,
+        description=row.get("description", "").strip() or None,
+        sort_order=_to_int(row.get("sort_order"), "sort_order"),
     )
 
 
 def _resolve_value_type(raw: str | None, existing_type: str | None) -> ValueType:
     text = (raw or "").strip().lower()
     if not text:
-        # CSV에 없으면 기존 값을 유지하고, 신규는 text 기본.
         return ValueType(existing_type) if existing_type else ValueType.TEXT
     try:
         return ValueType(text)
@@ -215,7 +233,6 @@ def _resolve_value_type(raw: str | None, existing_type: str | None) -> ValueType
 
 
 def _resolve_category(raw: str | None) -> str | None:
-    """카테고리 코드 정규화(소문자) + 형식 검증. 없으면 None."""
     text = (raw or "").strip()
     if not text:
         return None
@@ -223,20 +240,6 @@ def _resolve_category(raw: str | None) -> str | None:
         return validate_code(text.lower())
     except DomainError as exc:
         raise _rule(f"category 코드 형식 오류: {raw}") from exc
-
-
-def _split_options(raw: str) -> tuple[str, ...]:
-    return tuple(part.strip() for part in raw.split(",") if part.strip())
-
-
-def _to_float(raw: str | None, field_name: str) -> float | None:
-    text = (raw or "").strip()
-    if not text:
-        return None
-    try:
-        return float(text)
-    except ValueError as exc:
-        raise _rule(f"{field_name}는 숫자여야 한다: {raw}") from exc
 
 
 def _to_int(raw: str | None, field_name: str) -> int:

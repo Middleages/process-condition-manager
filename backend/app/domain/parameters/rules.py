@@ -5,9 +5,10 @@
 """
 
 import re
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Mapping
 from typing import Any
 
+from app.domain.decimal_values import compare_canonical_decimals, normalize_optional_decimal
 from app.domain.errors import ImmutableFieldError, RuleViolationError
 from app.domain.parameters.types import ValueType
 
@@ -39,33 +40,41 @@ def ensure_code_immutable(current: str, incoming: str | None) -> None:
 
 
 def validate_number_bounds(
-    min_value: float | None, max_value: float | None
+    min_value: str | None, max_value: str | None
 ) -> None:
     """number 타입의 min/max 정합성을 검증한다."""
-    if min_value is not None and max_value is not None and min_value > max_value:
+    if (
+        min_value is not None
+        and max_value is not None
+        and compare_canonical_decimals(min_value, max_value) > 0
+    ):
         raise RuleViolationError(
             f"min({min_value})은 max({max_value})보다 클 수 없다",
             code="number_bounds",
         )
 
 
-def validate_choice_options(
-    value_type: ValueType, option_values: Sequence[str]
+def normalize_number_bounds(
+    min_value: str | None, max_value: str | None
+) -> tuple[str | None, str | None]:
+    """Canonicalize optional bounds and enforce their ordering."""
+    canonical_min = normalize_optional_decimal(min_value)
+    canonical_max = normalize_optional_decimal(max_value)
+    validate_number_bounds(canonical_min, canonical_max)
+    return canonical_min, canonical_max
+
+
+def validate_choice_set_binding(
+    value_type: ValueType, choice_set_code: str | None
 ) -> None:
-    """choice 타입이면 최소 1개의 선택지가 있어야 하고, 값은 유일해야 한다."""
-    if value_type is ValueType.CHOICE and len(option_values) == 0:
+    if value_type is ValueType.CHOICE and choice_set_code is None:
         raise RuleViolationError(
-            "choice 타입은 최소 1개의 선택지가 필요하다",
-            code="choice_requires_option",
+            "choice 타입은 ChoiceSet이 필요하다", code="choice_set_required"
         )
-    if value_type is not ValueType.CHOICE and option_values:
+    if value_type is not ValueType.CHOICE and choice_set_code is not None:
         raise RuleViolationError(
-            "choice가 아닌 타입은 선택지를 가질 수 없다",
-            code="options_not_allowed",
-        )
-    if len(set(option_values)) != len(option_values):
-        raise RuleViolationError(
-            "선택지 값은 유일해야 한다", code="duplicate_option"
+            "choice가 아닌 타입은 ChoiceSet을 가질 수 없다",
+            code="choice_set_not_allowed",
         )
 
 
@@ -73,14 +82,14 @@ def validate_new_parameter(
     *,
     code: str,
     value_type: ValueType,
-    min_value: float | None = None,
-    max_value: float | None = None,
-    option_values: Sequence[str] = (),
+    min_value: str | None = None,
+    max_value: str | None = None,
+    choice_set_code: str | None = None,
 ) -> str:
     """생성 시 파라미터 무결성 규칙을 일괄 검증하고 정규화된 code를 반환한다."""
     normalized = validate_code(code)
-    validate_number_bounds(min_value, max_value)
-    validate_choice_options(value_type, option_values)
+    normalize_number_bounds(min_value, max_value)
+    validate_choice_set_binding(value_type, choice_set_code)
     return normalized
 
 

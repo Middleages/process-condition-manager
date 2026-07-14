@@ -6,7 +6,7 @@
 """
 
 from app.core.config import settings
-from app.core.errors import NotFoundError
+from app.core.errors import DomainValidationError, NotFoundError
 from app.core.locks import as_utc, is_expired, utcnow
 from app.domain.parameters.types import ValueType
 from app.features.sheets.repository import SheetRepository
@@ -49,27 +49,41 @@ def _build_live_columns(
     "컬럼 정의 공급자" — Phase 5의 스냅샷 분기는 이 함수를 교체(또는 형제 함수
     추가)하는 것으로 끝나야 한다. 여기 바깥에서 파라미터 원본에 의존하지 않는다.
     """
-    return [
-        SheetColumnOut(
-            parameter_code=parameter.code,
-            display_name=parameter.display_name,
-            value_type=parameter.value_type,
-            category_code=(
-                category_code_by_id.get(parameter.category_id)
-                if parameter.category_id is not None
-                else None
-            ),
-            unit=parameter.unit,
-            description=parameter.description,
-            choice_options=(
-                [option.value for option in parameter.options if option.is_active]
-                if parameter.value_type == ValueType.CHOICE
-                else []
-            ),
-            sort_order=parameter.sort_order,
+    columns: list[SheetColumnOut] = []
+    for parameter in parameters:
+        if parameter.value_type is ValueType.CHOICE and parameter.choice_set is None:
+            raise DomainValidationError(
+                "choice 파라미터에 ChoiceSet 연결이 없다",
+                details={"parameter_code": parameter.code},
+            )
+        columns.append(
+            SheetColumnOut(
+                parameter_code=parameter.code,
+                display_name=parameter.display_name,
+                value_type=parameter.value_type,
+                category_code=(
+                    category_code_by_id.get(parameter.category_id)
+                    if parameter.category_id is not None
+                    else None
+                ),
+                unit=parameter.unit,
+                description=parameter.description,
+                choice_set_code=(
+                    parameter.choice_set.code
+                    if parameter.value_type is ValueType.CHOICE
+                    and parameter.choice_set is not None
+                    else None
+                ),
+                choice_set_version=(
+                    parameter.choice_set.version
+                    if parameter.value_type is ValueType.CHOICE
+                    and parameter.choice_set is not None
+                    else None
+                ),
+                sort_order=parameter.sort_order,
+            )
         )
-        for parameter in parameters
-    ]
+    return columns
 
 
 def _build_rows(project: Project) -> list[SheetRowOut]:

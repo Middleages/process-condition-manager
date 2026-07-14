@@ -21,7 +21,6 @@ from app.features.parameters.schema import (
     ImportIn,
     ImportResultOut,
     ImportRowOut,
-    OptionIn,
     ParameterCreate,
     ParameterOut,
     ParameterUpdate,
@@ -104,41 +103,28 @@ async def import_apply(data: ImportIn, service: ServiceDep) -> ImportResultOut:
 
 @router.post("", response_model=ParameterOut, status_code=status.HTTP_201_CREATED)
 async def create_parameter(data: ParameterCreate, service: ServiceDep) -> ParameterOut:
-    parameter = await service.create_parameter(data)
-    return ParameterOut.model_validate(parameter)
+    return await service.create_parameter(data)
 
 
 @router.get("", response_model=list[ParameterOut])
 async def list_parameters(
     service: ServiceDep, include_inactive: bool = False
 ) -> list[ParameterOut]:
-    parameters = await service.list_parameters(include_inactive=include_inactive)
-    return [ParameterOut.model_validate(p) for p in parameters]
+    return await service.list_parameters(include_inactive=include_inactive)
 
 
 @router.get("/{parameter_id}", response_model=ParameterOut)
 async def get_parameter(parameter_id: int, service: ServiceDep) -> ParameterOut:
-    parameter = await service.get_parameter(parameter_id)
-    return ParameterOut.model_validate(parameter)
+    return await service.get_parameter(parameter_id)
 
 
 @router.patch("/{parameter_id}", response_model=ParameterOut)
 async def update_parameter(
     parameter_id: int, data: ParameterUpdate, service: ServiceDep
 ) -> ParameterOut:
-    parameter = await service.update_parameter(parameter_id, data)
-    return ParameterOut.model_validate(parameter)
+    return await service.update_parameter(parameter_id, data)
 
 
 @router.post("/{parameter_id}/deactivate", response_model=ParameterOut)
 async def deactivate_parameter(parameter_id: int, service: ServiceDep) -> ParameterOut:
-    parameter = await service.deactivate_parameter(parameter_id)
-    return ParameterOut.model_validate(parameter)
-
-
-@router.put("/{parameter_id}/options", response_model=ParameterOut)
-async def replace_options(
-    parameter_id: int, options: list[OptionIn], service: ServiceDep
-) -> ParameterOut:
-    parameter = await service.replace_options(parameter_id, options)
-    return ParameterOut.model_validate(parameter)
+    return await service.deactivate_parameter(parameter_id)

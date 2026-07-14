@@ -20,8 +20,8 @@ class SheetColumnOut(BaseModel):
     category_code: str | None
     unit: str | None
     description: str | None
-    # choice 타입일 때만 값이 채워진다 (number/text는 빈 리스트).
-    choice_options: list[str] = Field(default_factory=list)
+    choice_set_code: str | None = None
+    choice_set_version: int | None = None
     sort_order: int
 
 

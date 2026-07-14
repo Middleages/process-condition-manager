@@ -6,7 +6,7 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.parameter import Parameter, ParameterCategory, ParameterOption
+from app.models.parameter import Parameter, ParameterCategory
 
 
 class ParameterRepository:
@@ -60,13 +60,3 @@ class ParameterRepository:
         if not include_inactive:
             stmt = stmt.where(Parameter.is_active.is_(True))
         return list((await self.session.execute(stmt)).scalars().all())
-
-    async def replace_options(
-        self, parameter: Parameter, options: list[ParameterOption]
-    ) -> None:
-        """파라미터의 선택지 집합을 통째로 교체한다."""
-        parameter.options.clear()
-        # 기존 행 DELETE를 먼저 반영해야 (parameter_id, value) UNIQUE 충돌을 피한다.
-        await self.session.flush()
-        parameter.options.extend(options)
-        await self.session.flush()

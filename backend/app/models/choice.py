@@ -1,11 +1,15 @@
 """Reusable managed ChoiceSet aggregate."""
 
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
+
+if TYPE_CHECKING:
+    from app.models.parameter import Parameter
 
 
 class ChoiceSet(Base):
@@ -26,6 +30,9 @@ class ChoiceSet(Base):
         cascade="all, delete-orphan",
         order_by=lambda: (ChoiceOption.sort_order, ChoiceOption.code),
     )
+    parameters: Mapped[list["Parameter"]] = relationship(back_populates="choice_set")
+
+
 class ChoiceOption(Base):
     __tablename__ = "choice_option"
     __table_args__ = (

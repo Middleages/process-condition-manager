@@ -6,7 +6,7 @@ Base.metadata에 등록한다.
 
 from app.core.db import Base
 from app.models.choice import ChoiceOption, ChoiceSet
-from app.models.parameter import Parameter, ParameterCategory, ParameterOption
+from app.models.parameter import Parameter, ParameterCategory
 from app.models.project import (
     CellValue,
     ChangeEvent,
@@ -22,7 +22,6 @@ __all__ = [
     "ChoiceOption",
     "Parameter",
     "ParameterCategory",
-    "ParameterOption",
     "Project",
     "SheetLayer",
     "LayerCondition",

@@ -15,12 +15,13 @@
 
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from httpx import AsyncClient, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.parameters.types import ValueType
-from app.models.parameter import Parameter, ParameterOption
+from app.models.choice import ChoiceSet
 from app.models.project import (
     CellValue,
     ChangeEvent,
@@ -31,6 +32,7 @@ from app.models.project import (
     ProjectStatus,
     SheetLayer,
 )
+from tests.factories import seed_choice_set, seed_parameter
 
 
 async def _seed_project(
@@ -91,36 +93,42 @@ async def _seed_lock(
 async def _seed_parameters(session: AsyncSession) -> None:
     """타입 검증 대상 파라미터를 레지스트리에 심는다.
 
-    - temp_c: number (float() 엄격 파싱 대상)
-    - pr_type: choice (활성 옵션 A/B, 비활성 옵션 LEGACY — 비활성은 선택 불가)
+    - temp_c: number (canonical decimal parsing 대상)
+    - pr_type: managed choice (활성 A/B/AUTO, 비활성 LEGACY)
     - memo: text (제약 없음 — 어떤 문자열이든 통과)
 
     셀·이벤트는 code로만 파라미터를 참조하므로(FK 아님) 여기 없는 code는 검증에서
     빠진다. db_client/db_session이 같은 엔진을 공유하니 커밋 후 API에서 읽힌다.
     """
-    number_param = Parameter(
+    number_param = await seed_parameter(
+        session,
         code="temp_c",
-        display_name="온도(C)",
         value_type=ValueType.NUMBER,
     )
-    text_param = Parameter(
+    number_param.display_name = "온도(C)"
+    text_param = await seed_parameter(
+        session,
         code="memo",
-        display_name="메모",
         value_type=ValueType.TEXT,
     )
-    choice_param = Parameter(
+    text_param.display_name = "메모"
+    choice_set = await seed_choice_set(
+        session,
+        code="equipment_mode",
+        options=(
+            ("A", "Type A", True),
+            ("B", "Type B", True),
+            ("AUTO", "Automatic", True),
+            ("LEGACY", "폐기", False),
+        ),
+    )
+    choice_param = await seed_parameter(
+        session,
         code="pr_type",
-        display_name="PR 종류",
         value_type=ValueType.CHOICE,
+        choice_set=choice_set,
     )
-    choice_param.options.extend(
-        [
-            ParameterOption(value="A", display_name="Type A", is_active=True),
-            ParameterOption(value="B", display_name="Type B", is_active=True),
-            ParameterOption(value="LEGACY", display_name="폐기", is_active=False),
-        ]
-    )
-    session.add_all([number_param, text_param, choice_param])
+    choice_param.display_name = "PR 종류"
     await session.commit()
 
 
@@ -527,6 +535,25 @@ async def test_patch_cells_accepts_valid_number(
     assert (await _cell_value(db_session, cond2, "temp_c"))[1] == "12.5"
 
 
+async def test_number_write_returns_and_stores_canonical_value(
+    db_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    project_id, cond1, _ = await _seed_project(db_session)
+    await _seed_parameters(db_session)
+    token = await _acquire(db_client, project_id)
+
+    response = await _patch(
+        db_client,
+        project_id,
+        [{"condition_id": cond1, "parameter_code": "temp_c", "value": " 001.5000 "}],
+        token=token,
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["cells"][0]["value"] == "1.5"
+    assert (await _cell_value(db_session, cond1, "temp_c"))[1] == "1.5"
+
+
 async def test_patch_cells_accepts_any_text_for_text_param(
     db_client: AsyncClient, db_session: AsyncSession
 ) -> None:
@@ -538,16 +565,18 @@ async def test_patch_cells_accepts_any_text_for_text_param(
     resp = await _patch(
         db_client,
         project_id,
-        [{"condition_id": cond1, "parameter_code": "memo", "value": "1,234 abc"}],
+        [{"condition_id": cond1, "parameter_code": "memo", "value": "  1,234 abc  "}],
         token=token,
     )
 
     assert resp.status_code == 200, resp.text
+    assert resp.json()["cells"][0]["value"] == "1,234 abc"
     assert (await _cell_value(db_session, cond1, "memo"))[1] == "1,234 abc"
 
 
-async def test_patch_cells_rejects_unknown_choice(
-    db_client: AsyncClient, db_session: AsyncSession
+@pytest.mark.parametrize("origin", ["manual", "paste"])
+async def test_patch_cells_rejects_unknown_choice_for_every_origin(
+    db_client: AsyncClient, db_session: AsyncSession, origin: str
 ) -> None:
     """옵션 목록에 없는 값은 거부된다."""
     project_id, cond1, _ = await _seed_project(db_session)
@@ -559,6 +588,7 @@ async def test_patch_cells_rejects_unknown_choice(
         project_id,
         [{"condition_id": cond1, "parameter_code": "pr_type", "value": "Z"}],
         token=token,
+        origin=origin,
     )
 
     assert resp.status_code == 422, resp.text
@@ -592,6 +622,28 @@ async def test_patch_cells_accepts_valid_choice(
     assert (await _cell_value(db_session, cond1, "pr_type"))[1] == "A"
 
 
+async def test_choice_event_snapshots_labels(
+    db_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    project_id, cond1, _ = await _seed_project(db_session)
+    await _seed_parameters(db_session)
+    token = await _acquire(db_client, project_id)
+
+    response = await _patch(
+        db_client,
+        project_id,
+        [{"condition_id": cond1, "parameter_code": "pr_type", "value": "AUTO"}],
+        token=token,
+    )
+
+    assert response.status_code == 200, response.text
+    event = (await _cell_events(db_session, project_id))[-1]
+    assert event.old_value is None
+    assert event.new_value == "AUTO"
+    assert event.payload["old_label"] is None
+    assert event.payload["new_label"] == "Automatic"
+
+
 async def test_patch_cells_rejects_inactive_choice_option(
     db_client: AsyncClient, db_session: AsyncSession
 ) -> None:
@@ -611,6 +663,83 @@ async def test_patch_cells_rejects_inactive_choice_option(
     reasons = [c["reason"] for c in resp.json()["details"]["invalid_cells"]]
     assert reasons == ["invalid_choice"]
     assert (await _cell_value(db_session, cond1, "pr_type"))[0] is False
+
+
+async def test_patch_cells_rejects_new_choice_when_set_is_inactive(
+    db_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    project_id, cond1, _ = await _seed_project(db_session)
+    await _seed_parameters(db_session)
+    choice_set = (
+        await db_session.execute(
+            select(ChoiceSet).where(ChoiceSet.code == "equipment_mode")
+        )
+    ).scalar_one()
+    choice_set.is_active = False
+    await db_session.commit()
+    token = await _acquire(db_client, project_id)
+
+    response = await _patch(
+        db_client,
+        project_id,
+        [{"condition_id": cond1, "parameter_code": "pr_type", "value": "A"}],
+        token=token,
+    )
+
+    assert response.status_code == 422, response.text
+    assert response.json()["details"]["invalid_cells"][0]["reason"] == "invalid_choice"
+    assert (await _cell_value(db_session, cond1, "pr_type"))[0] is False
+
+
+async def test_known_inactive_stored_value_may_be_resubmitted_as_noop(
+    db_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    project_id, cond1, _ = await _seed_project(db_session)
+    await _seed_parameters(db_session)
+    db_session.add(
+        CellValue(condition_id=cond1, parameter_code="pr_type", value_text="LEGACY")
+    )
+    await db_session.commit()
+    token = await _acquire(db_client, project_id)
+
+    response = await _patch(
+        db_client,
+        project_id,
+        [{"condition_id": cond1, "parameter_code": "pr_type", "value": " LEGACY "}],
+        token=token,
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["cells"][0]["value"] == "LEGACY"
+    assert (await _cell_value(db_session, cond1, "pr_type"))[1] == "LEGACY"
+    assert await _cell_events(db_session, project_id) == []
+
+
+async def test_changed_away_then_back_to_inactive_in_one_batch_is_rejected_atomically(
+    db_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    project_id, cond1, _ = await _seed_project(db_session)
+    await _seed_parameters(db_session)
+    db_session.add(
+        CellValue(condition_id=cond1, parameter_code="pr_type", value_text="LEGACY")
+    )
+    await db_session.commit()
+    token = await _acquire(db_client, project_id)
+
+    response = await _patch(
+        db_client,
+        project_id,
+        [
+            {"condition_id": cond1, "parameter_code": "pr_type", "value": "A"},
+            {"condition_id": cond1, "parameter_code": "pr_type", "value": "LEGACY"},
+        ],
+        token=token,
+    )
+
+    assert response.status_code == 422, response.text
+    assert response.json()["details"]["invalid_cells"][-1]["reason"] == "invalid_choice"
+    assert (await _cell_value(db_session, cond1, "pr_type"))[1] == "LEGACY"
+    assert await _cell_events(db_session, project_id) == []
 
 
 async def test_patch_cells_skips_validation_for_unknown_parameter_code(

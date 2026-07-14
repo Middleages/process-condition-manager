@@ -37,7 +37,7 @@ class SheetRepository:
     async def list_active_parameters(self) -> list[Parameter]:
         """활성 파라미터를 컬럼 순서(sort_order, code)로 조회한다.
 
-        choice 옵션은 Parameter.options(lazy="selectin")로 함께 로드된다.
+        choice 파라미터의 ChoiceSet은 relationship(lazy="selectin")으로 함께 로드된다.
         """
         stmt = (
             select(Parameter)
