@@ -7,7 +7,6 @@ from app.domain.errors import ImmutableFieldError, RuleViolationError
 from app.domain.parameters import (
     ValueType,
     ensure_code_immutable,
-    snapshot,
     validate_code,
     validate_new_parameter,
     validate_number_bounds,
@@ -97,38 +96,3 @@ class TestValidateNewParameter:
     def test_choice_without_set_rejected(self) -> None:
         with pytest.raises(RuleViolationError):
             validate_new_parameter(code="mask", value_type=ValueType.CHOICE)
-
-
-class TestSnapshot:
-    def test_excludes_inactive_and_orders_deterministically(self) -> None:
-        result = snapshot(
-            categories=[
-                {"code": "b", "display_name": "B", "sort_order": 2},
-                {"code": "a", "display_name": "A", "sort_order": 1},
-                {"code": "z", "display_name": "Z", "sort_order": 0, "is_active": False},
-            ],
-            parameters=[
-                {
-                    "code": "p2",
-                    "display_name": "P2",
-                    "value_type": ValueType.TEXT,
-                    "sort_order": 2,
-                },
-                {
-                    "code": "p1",
-                    "display_name": "P1",
-                    "value_type": ValueType.CHOICE,
-                    "sort_order": 1,
-                    "category_code": "a",
-                    "options": [
-                        {"value": "v2", "display_name": "V2", "sort_order": 2},
-                        {"value": "v1", "display_name": "V1", "sort_order": 1},
-                    ],
-                },
-            ],
-        )
-        assert result["version"] == 1
-        assert [c["code"] for c in result["categories"]] == ["a", "b"]
-        assert [p["code"] for p in result["parameters"]] == ["p1", "p2"]
-        assert result["parameters"][0]["value_type"] == "choice"
-        assert [o["value"] for o in result["parameters"][0]["options"]] == ["v1", "v2"]

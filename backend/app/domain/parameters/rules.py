@@ -5,8 +5,6 @@
 """
 
 import re
-from collections.abc import Iterable, Mapping
-from typing import Any
 
 from app.domain.decimal_values import compare_canonical_decimals, normalize_optional_decimal
 from app.domain.errors import ImmutableFieldError, RuleViolationError
@@ -14,9 +12,6 @@ from app.domain.parameters.types import ValueType
 
 # code: 소문자로 시작, 소문자/숫자/밑줄. 셀 값과 이벤트가 전부 이 값으로 참조한다.
 _CODE_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
-
-SNAPSHOT_VERSION = 1
-
 
 def validate_code(code: str) -> str:
     """code 형식을 검증하고 정규화(공백 제거)한다."""
@@ -91,63 +86,3 @@ def validate_new_parameter(
     normalize_number_bounds(min_value, max_value)
     validate_choice_set_binding(value_type, choice_set_code)
     return normalized
-
-
-def snapshot(
-    *,
-    categories: Iterable[Mapping[str, Any]],
-    parameters: Iterable[Mapping[str, Any]],
-) -> dict[str, Any]:
-    """레지스트리 활성 항목을 결정론적 순서로 직렬화한다 (Phase 5 동결에서 사용).
-
-    - is_active=false 항목은 제외한다.
-    - 순서는 (sort_order, code)로 결정론적이다.
-    - 버전 봉투로 감싸 이후 스키마 변화를 추적한다.
-    """
-
-    def _active(rows: Iterable[Mapping[str, Any]]) -> list[Mapping[str, Any]]:
-        return [r for r in rows if r.get("is_active", True)]
-
-    def _key(row: Mapping[str, Any]) -> tuple[int, str]:
-        return (int(row.get("sort_order", 0)), str(row.get("code", "")))
-
-    cat_rows = sorted(_active(categories), key=_key)
-    param_rows = sorted(_active(parameters), key=_key)
-
-    return {
-        "version": SNAPSHOT_VERSION,
-        "categories": [
-            {
-                "code": c["code"],
-                "display_name": c["display_name"],
-                "sort_order": int(c.get("sort_order", 0)),
-            }
-            for c in cat_rows
-        ],
-        "parameters": [
-            {
-                "code": p["code"],
-                "display_name": p["display_name"],
-                "value_type": str(p["value_type"]),
-                "category_code": p.get("category_code"),
-                "unit": p.get("unit"),
-                "min_value": p.get("min_value"),
-                "max_value": p.get("max_value"),
-                "options": [
-                    {
-                        "value": o["value"],
-                        "display_name": o["display_name"],
-                        "sort_order": int(o.get("sort_order", 0)),
-                    }
-                    for o in sorted(
-                        _active(p.get("options", [])), key=_key_option
-                    )
-                ],
-            }
-            for p in param_rows
-        ],
-    }
-
-
-def _key_option(row: Mapping[str, Any]) -> tuple[int, str]:
-    return (int(row.get("sort_order", 0)), str(row.get("value", "")))

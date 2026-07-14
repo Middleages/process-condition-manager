@@ -14,18 +14,19 @@ from app.domain.parameters.csv_import import (
 from app.domain.parameters.rules import (
     ensure_code_immutable,
     normalize_number_bounds,
-    snapshot,
     validate_choice_set_binding,
     validate_code,
     validate_new_parameter,
     validate_number_bounds,
 )
+from app.domain.parameters.snapshot import SNAPSHOT_VERSION, snapshot
 from app.domain.parameters.types import ValueType
 
 __all__ = [
     "ImportPayload",
     "ImportPlan",
     "PlanRow",
+    "SNAPSHOT_VERSION",
     "ValueType",
     "build_import_plan",
     "ensure_code_immutable",
