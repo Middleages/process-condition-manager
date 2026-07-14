@@ -1,31 +1,36 @@
-"""시트 조회 API 성능 측정 (게이트 판정용).
+"""Bounded SheetOut query/payload measurement for a 200-column, 100-layer sheet."""
 
-100 layer x 200 parameter(약 2만 셀, 조건 1행 기준) 규모의 프로젝트를 시드하고,
-SheetService.get_sheet 의 직렬화 시간과 응답(JSON) 크기를 측정해 출력한다.
-
-게이트(계획 문서): 응답 < 1초 또는 < 5MB 이면 현재 중첩 dict 포맷을 유지한다.
-임계값을 넘을 때만 행 배열 + 컬럼 인덱스 포맷으로 전환한다.
-
-측정은 외부 DB 없이 인메모리 SQLite로 수행한다 — 관심 대상은 Python 직렬화
-비용이지 DB 왕복이 아니다(단일 selectinload 트리 로드).
-
-실행: `cd backend && uv run python -m scripts.measure_sheet_perf`
-"""
+from __future__ import annotations
 
 import asyncio
 import time
+from typing import Any
 
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
-import app.models  # noqa: F401 — 모든 모델을 metadata에 등록
+import app.models  # noqa: F401 -- register every table with Base.metadata
 from app.core.db import Base
 from app.features.sheets.repository import SheetRepository
 from app.features.sheets.service import SheetService
-from scripts.seed_dev import seed_parameters, seed_project
+from scripts.seed_dev import seed_managed_choices, seed_parameters, seed_project
 
 _NUM_LAYERS = 100
 _NUM_PARAMETERS = 200
+_MAX_SHEET_QUERIES = 8
+
+
+def _option_array_count(value: Any) -> int:
+    if isinstance(value, dict):
+        return sum(
+            (len(item) if key in {"options", "choice_options"} and isinstance(item, list) else 0)
+            + _option_array_count(item)
+            for key, item in value.items()
+        )
+    if isinstance(value, list):
+        return sum(_option_array_count(item) for item in value)
+    return 0
 
 
 async def measure() -> None:
@@ -34,43 +39,69 @@ async def measure() -> None:
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    statements: list[str] = []
+
+    @event.listens_for(engine.sync_engine, "before_cursor_execute")
+    def _record_query(_connection, _cursor, statement, _parameters, _context, _many) -> None:
+        statements.append(statement)
+
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
 
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
     async with session_factory() as session:
+        await seed_managed_choices(session, create_fixed_sets=True)
         codes = await seed_parameters(session, count=_NUM_PARAMETERS, category_count=5)
         project_id = await seed_project(
             session,
             parameter_codes=codes,
             num_layers=_NUM_LAYERS,
-            multi_condition_every=10_000,  # 순수 밀도 측정: 조건 1행 기준
+            multi_condition_every=0,
             fill_ratio=1.0,
         )
         await session.commit()
 
     async with session_factory() as session:
-        service = SheetService(SheetRepository(session))
-        # 워밍업(캐시/컴파일 제외한 직렬화 순수 측정을 위해 1회 선행).
-        await service.get_sheet(project_id, user_id="perf")
+        await SheetService(SheetRepository(session)).get_sheet(project_id, user_id="perf-warmup")
 
+    statements.clear()
+    async with session_factory() as session:
         start = time.perf_counter()
-        sheet = await service.get_sheet(project_id, user_id="perf")
+        sheet = await SheetService(SheetRepository(session)).get_sheet(
+            project_id, user_id="perf"
+        )
         payload = sheet.model_dump_json()
-        elapsed = time.perf_counter() - start
+        elapsed_ms = (time.perf_counter() - start) * 1000
 
     await engine.dispose()
 
     size_bytes = len(payload.encode("utf-8"))
-    cell_total = sum(len(row.cells) for row in sheet.rows)
-    print("=== sheet API perf ===")
-    print(f"layers            : {_NUM_LAYERS}")
-    print(f"columns           : {len(sheet.columns)}")
-    print(f"rows              : {len(sheet.rows)}")
-    print(f"cells (non-empty) : {cell_total}")
-    print(f"serialize time    : {elapsed * 1000:.1f} ms")
-    print(f"response size     : {size_bytes / 1_000_000:.3f} MB")
-    print(f"gate <1s / <5MB   : {'PASS' if elapsed < 1.0 and size_bytes < 5_000_000 else 'REVIEW'}")
+    layer_count = len({row.layer_key for row in sheet.rows})
+    choice_columns = [
+        column for column in sheet.columns if column.choice_set_code is not None
+    ]
+    distinct_choice_sets = {
+        column.choice_set_code for column in choice_columns
+    }
+    option_arrays = _option_array_count(sheet.model_dump(mode="json"))
+
+    assert len(sheet.columns) == _NUM_PARAMETERS
+    assert layer_count == _NUM_LAYERS
+    assert distinct_choice_sets == {"equipment_mode"}
+    assert len(choice_columns) > 1
+    assert option_arrays == 0
+    assert len(statements) <= _MAX_SHEET_QUERIES
+    assert all("choice_option" not in statement.lower() for statement in statements)
+    assert elapsed_ms < 1000
+    assert size_bytes < 5_000_000
+
+    print("=== SheetOut managed-choice performance ===")
+    print(f"distinct choice sets: {len(distinct_choice_sets)}")
+    print(f"choice options in SheetOut payload (must be 0): {option_arrays}")
+    print(f"columns sharing the large set: {len(choice_columns)}")
+    print(f"serialized bytes: {size_bytes}")
+    print(f"elapsed milliseconds: {elapsed_ms:.1f}")
+    print(f"SQL queries (must be <= {_MAX_SHEET_QUERIES}): {len(statements)}")
 
 
 if __name__ == "__main__":

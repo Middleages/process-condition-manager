@@ -28,6 +28,8 @@ jobs:
     env:
       # 동시성 테스트가 스키마를 생성/삭제하므로 애플리케이션 DB와 분리된 전용 DB만 쓴다.
       APP_TEST_DATABASE_URL: postgresql+asyncpg://pcm_user:pcm_pass@localhost:5432/pcm_test
+      # Normal Alembic/seed subprocesses use the same isolated CI service.
+      APP_DATABASE_URL: postgresql+asyncpg://pcm_user:pcm_pass@localhost:5432/pcm_test
     defaults:
       run:
         working-directory: backend

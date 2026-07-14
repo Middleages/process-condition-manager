@@ -6,7 +6,7 @@ services:
       POSTGRES_USER: pcm_user
       POSTGRES_PASSWORD: pcm_pass
     ports:
-      - "5432:5432"
+      - "${APP_DB_PORT:-5432}:5432"
     volumes:
       - app-db-data:/var/lib/postgresql/data
     healthcheck:
@@ -22,7 +22,7 @@ services:
       POSTGRES_USER: pcm_user
       POSTGRES_PASSWORD: pcm_pass
     ports:
-      - "5433:5432"
+      - "${INGEST_DB_PORT:-5433}:5432"
     volumes:
       - ingest-db-data:/var/lib/postgresql/data
       # 최초 기동 시 public.f_stpes 시드 (INGEST_READER=pg 시험용)
@@ -45,7 +45,7 @@ services:
       AUTH_DEV_STUB: "true"
       DEBUG: "true"
     ports:
-      - "8000:8000"
+      - "${BACKEND_PORT:-8000}:8000"
     depends_on:
       app-db:
         condition: service_healthy
@@ -66,7 +66,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     ports:
-      - "5173:5173"
+      - "${FRONTEND_PORT:-5173}:5173"
     depends_on:
       backend:
         condition: service_healthy

@@ -43,6 +43,19 @@ def test_choice_models_and_parameter_relation_are_registered() -> None:
     assert "choice_set_id" in Base.metadata.tables["parameter"].c
 
 
+def test_phase_2_6_metadata_has_no_legacy_option_or_project_description() -> None:
+    """The reset-only cutover exposes only the final managed-choice model shape."""
+    from sqlalchemy import Numeric
+
+    from app.models import Base
+
+    assert "project_profile" in Base.metadata.tables
+    assert "parameter_option" not in Base.metadata.tables
+    assert "description" not in Base.metadata.tables["project"].c
+    assert isinstance(Base.metadata.tables["parameter"].c.min_value.type, Numeric)
+    assert isinstance(Base.metadata.tables["parameter"].c.max_value.type, Numeric)
+
+
 def test_fixed_profile_choice_set_mapping_is_exact() -> None:
     from app.domain.choices.constants import PROFILE_CHOICE_SET_FIELDS
 
