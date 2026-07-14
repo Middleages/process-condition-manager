@@ -4,7 +4,7 @@
 
 각 Phase는 수직 슬라이스(P3)로 완성한다 — DB부터 UI까지 관통해 **실제로 동작을 확인한 뒤** 다음 Phase로 넘어간다. 완료 기준(Exit Criteria)을 만족하지 못하면 다음 Phase를 시작하지 않는다.
 
-Phase별 세부 작업 계획(작업 분해·의존 관계·결정 항목)은 `phase-N-tasks.md`로 관리한다: [Phase 0](./phase-0-tasks.md) · [Phase 1](./phase-1-tasks.md) · [Phase 2](./phase-2-tasks.md) · [Phase 2.5 UI/UX 설계](../docs/superpowers/specs/2026-07-13-phase-2-5-ui-ux-design.md) · [Phase 3](./phase-3-tasks.md) · [Phase 4](./phase-4-tasks.md) · [Phase 5](./phase-5-tasks.md) · [Phase 6](./phase-6-tasks.md)
+Phase별 세부 작업 계획(작업 분해·의존 관계·결정 항목)은 `phase-N-tasks.md`로 관리한다: [Phase 0](./phase-0-tasks.md) · [Phase 1](./phase-1-tasks.md) · [Phase 2](./phase-2-tasks.md) · [Phase 2.5 UI/UX 설계](../docs/superpowers/specs/2026-07-13-phase-2-5-ui-ux-design.md) · [Phase 2.6 Project Profile + Managed Choice 설계](../docs/superpowers/specs/2026-07-14-phase-2-6-project-profile-managed-choice-design.md) · [Phase 3](./phase-3-tasks.md) · [Phase 4](./phase-4-tasks.md) · [Phase 5](./phase-5-tasks.md) · [Phase 6](./phase-6-tasks.md)
 
 ```mermaid
 flowchart LR
@@ -12,7 +12,8 @@ flowchart LR
     P0 -.그리드 PoC 병행.- P1
     P1 --> P2[Phase 2<br/>조건표 편집기]
     P2 --> P25[Phase 2.5<br/>UI/UX 구조개편]
-    P25 --> P3[Phase 3<br/>검증 엔진]
+    P25 --> P26[Phase 2.6<br/>Project Profile + Managed Choice]
+    P26 --> P3[Phase 3<br/>검증 엔진]
     P3 --> P4[Phase 4<br/>변경 이력]
     P4 --> P5[Phase 5<br/>승인 + Revision]
     P5 --> P6[Phase 6<br/>출력]
@@ -105,6 +106,35 @@ Phase 2.5 구현 완료: 2026-07-14. 자동화 게이트, route/history·업무 
 1024/1440/1920 반응형·키보드 QA와 최종 시각 판정은
 [브라우저 QA 근거](../docs/superpowers/evidence/2026-07-13-phase-2-5-browser-qa.md)에 기록했다.
 
+## Phase 2.6 — Project Profile + Managed Choice
+
+Phase 3의 choice 검증이 최종 레지스트리 계약 위에서 구현되도록, 프로젝트 고정 기본정보와
+재사용 선택지 모델을 먼저 완성한다. 승인된 상세 계약은
+[Phase 2.6 설계](../docs/superpowers/specs/2026-07-14-phase-2-6-project-profile-managed-choice-design.md)를 따른다.
+
+**범위:**
+- 프로젝트와 1:1인 고정 `project_profile`, 생성 핵심정보와 상세 전체 편집
+- Project Profile 편집에 기존 프로젝트 잠금·변경 이벤트 적용
+- 안정적 option code와 가변 label을 갖는 공유 ChoiceSet·ChoiceOption 관리
+- 파라미터의 ChoiceSet 참조와 code/label 검색형 조건표 editor
+- 비활성 기존값 경고·승인 허용, 신규 선택 차단, Draft live 반영, 승인 snapshot version 2 계약
+- 향후 PARTID 조회를 위한 `ProjectMetadataProvider` 경계(이번 Phase는 수동 provider)
+
+**비목표:**
+- 실제 PARTID 원천 DB 연동과 재동기화
+- 조건표 셀 자동 입력(모든 셀은 수동 입력)
+- Project Profile 동적 필드 관리
+- Layer/Shot 자동 계산과 Phase 3 검증 규칙
+- 운영 데이터 보존 migration(현재 데이터 없음, fresh-start 전환)
+
+**완료 기준:**
+- [ ] 프로젝트 생성 시 Device Type·Category·Comment를 저장하고 상세에서 전체 Profile을 편집한다
+- [ ] Profile 편집이 프로젝트 잠금·dirty 보존·field-level event 계약을 지킨다
+- [ ] ChoiceSet 관리가 파라미터의 쉼표 선택지 입력을 대체한다
+- [ ] 수백 개 option을 키보드로 code/label 검색하고 기존 비활성값을 읽을 수 있다
+- [ ] 기존 백본·잠금·자동저장·붙여넣기·조건 행 업무 회귀가 없다
+- [ ] Phase 3가 추가 option-model migration 없이 choice 검증을 구현할 수 있다
+
 ## Phase 3 — 검증 엔진
 
 **범위:**
@@ -164,4 +194,4 @@ Phase 2.5 구현 완료: 2026-07-14. 자동화 게이트, route/history·업무 
 
 - **Phase 경계에서 문서 갱신**: 완료 시 결정 로그와 해당 문서에 실제 결과(예: 확정된 그리드, 확정된 적재 스키마)를 반영한다.
 - **범위 추가 금지**: Phase 진행 중 새 요구가 나오면 로드맵에 기재하고 이후 Phase로 배정한다. "일단 다 만들고 끼워 맞추기"로 회귀하지 않는다.
-- **미확정 의존성 추적**: 인증 구조 상세(Phase 0 스텁 → Phase 5 필수), 실제 적재 스키마(Phase 0 fixture → Phase 1 필수 — `layer_id`가 기존 `layer_no` 역할로 확정됨)는 각 필수 시점 전에 계약에 반영되어야 한다. 레거시 데이터 이관(D-15 비고)은 Phase 1 중 실현 가능성 스파이크만 수행하고 이관 작업은 별도 배정한다.
+- **미확정 의존성 추적**: 인증 구조 상세(Phase 0 스텁 → Phase 5 필수), 실제 적재 스키마(Phase 0 fixture → Phase 1 필수 — `layer_id`가 기존 `layer_no` 역할로 확정됨)는 각 필수 시점 전에 계약에 반영되어야 한다. 레거시 데이터 이관(D-15 비고)은 Phase 1 중 실현 가능성 스파이크만 수행하고 이관 작업은 별도 배정한다. PARTID Project Profile 원천 테이블·키·field mapping(D-21)은 실제 provider 구현 전에 확정한다.
