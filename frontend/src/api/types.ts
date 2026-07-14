@@ -221,6 +221,112 @@ export interface ApiErrorBody {
   details?: Record<string, unknown>
 }
 
+// --- managed choice sets (/api/choice-sets) ---
+// Transport fields intentionally remain snake_case to match the backend schemas exactly.
+
+export interface ChoiceSetCreateIn {
+  code: string
+  display_name: string
+  description?: string | null
+}
+
+export interface ChoiceSetPatchIn {
+  expected_version: number
+  display_name?: string | null
+  description?: string | null
+  is_active?: boolean | null
+}
+
+export interface ChoiceOptionCreateIn {
+  expected_version: number
+  code: string
+  label: string
+  sort_order?: number
+  is_active?: boolean
+}
+
+export interface ChoiceOptionPatchIn {
+  expected_version: number
+  label?: string | null
+  sort_order?: number | null
+  is_active?: boolean | null
+}
+
+export interface ChoiceOptionOrderIn {
+  expected_version: number
+  ordered_codes: string[]
+}
+
+export interface ChoiceImportIn {
+  expected_version: number
+  csv_text: string
+}
+
+export interface ChoiceSetSummaryOut {
+  code: string
+  display_name: string
+  description: string | null
+  is_active: boolean
+  version: number
+  option_count: number
+  active_option_count: number
+  parameter_usage_count: number
+  profile_usage_fields: string[]
+  created_at: string
+  updated_at: string
+}
+
+export interface ChoiceOptionOut {
+  code: string
+  label: string
+  sort_order: number
+  is_active: boolean
+}
+
+export interface ChoiceOptionPageOut {
+  set_code: string
+  version: number
+  items: ChoiceOptionOut[]
+  next_cursor: string | null
+}
+
+export interface ChoiceOptionAggregate {
+  set_code: string
+  version: number
+  items: ChoiceOptionOut[]
+}
+
+export interface ChoiceOptionMutationOut {
+  choice_set: ChoiceSetSummaryOut
+  option: ChoiceOptionOut
+}
+
+export type ChoiceImportAction = 'create' | 'update' | 'error'
+
+export interface ChoiceImportRowOut {
+  line: number
+  code: string
+  action: ChoiceImportAction
+  message: string | null
+}
+
+export interface ChoiceImportPreviewOut {
+  set_code: string
+  base_version: number
+  created_count: number
+  updated_count: number
+  error_count: number
+  rows: ChoiceImportRowOut[]
+}
+
+export interface ChoiceImportApplyOut {
+  choice_set: ChoiceSetSummaryOut
+  created_count: number
+  updated_count: number
+  error_count: 0
+  rows: ChoiceImportRowOut[]
+}
+
 // --- 시트 조회 (GET /api/projects/{project_id}/sheet) ---
 // backend `features/sheets/schema.py`와 1:1 대응. 필드명은 snake_case 그대로 (camelCase 변환 레이어 없음).
 

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   getApiErrorStatus,
   getChoiceSetChangedDetails,
+  getChoiceSetChangedSummary,
   getExistingProjectId,
   getLockConflictHolder,
   isChoiceSetChanged,
@@ -41,6 +42,62 @@ describe('409 error classification', () => {
           code: 'choice_set_changed',
           message: 'changed',
           details: 'not-an-object',
+        }),
+      ),
+    ).toBeNull()
+  })
+
+  it('returns a structurally valid current choice-set summary', () => {
+    const choiceSet = {
+      code: 'equipment_mode',
+      display_name: 'Equipment mode',
+      description: null,
+      is_active: true,
+      version: 4,
+      option_count: 2,
+      active_option_count: 1,
+      parameter_usage_count: 3,
+      profile_usage_fields: ['foundry'],
+      created_at: '2026-07-14T00:00:00Z',
+      updated_at: '2026-07-14T00:01:00Z',
+    }
+
+    expect(
+      getChoiceSetChangedSummary(
+        makeAxiosError(409, {
+          code: 'choice_set_changed',
+          message: 'changed',
+          details: { actual_version: 4, choice_set: choiceSet },
+        }),
+      ),
+    ).toBe(choiceSet)
+  })
+
+  it.each([
+    undefined,
+    null,
+    [],
+    { code: 'equipment_mode' },
+    {
+      code: 'equipment_mode',
+      display_name: 'Equipment mode',
+      description: null,
+      is_active: true,
+      version: '4',
+      option_count: 2,
+      active_option_count: 1,
+      parameter_usage_count: 3,
+      profile_usage_fields: ['foundry'],
+      created_at: '2026-07-14T00:00:00Z',
+      updated_at: '2026-07-14T00:01:00Z',
+    },
+  ])('returns null for malformed choice-set summary %j', (choiceSet) => {
+    expect(
+      getChoiceSetChangedSummary(
+        makeAxiosError(409, {
+          code: 'choice_set_changed',
+          message: 'changed',
+          details: { actual_version: 4, choice_set: choiceSet },
         }),
       ),
     ).toBeNull()
