@@ -1,4 +1,4 @@
-import { QueryClient } from '@tanstack/react-query'
+import { CancelledError, QueryClient } from '@tanstack/react-query'
 import { describe, expect, it, vi } from 'vitest'
 
 import type {
@@ -11,6 +11,9 @@ import {
   beginChoiceSetPreparation,
   choiceSetOptionsPolicy,
   deriveChoiceSetOptionsState,
+  getPreparedChoiceSetAuthorizationEpoch,
+  isChoiceSetAuthorizationSettled,
+  loadChoiceSetOptionsForAuthorization,
   loadChoiceSetOptionsForOpen,
   removeSupersededChoiceOptionQueries,
   settleChoiceSetPreparation,
@@ -43,6 +46,16 @@ function aggregate(version: number): ChoiceOptionAggregate {
   return { set_code: 'equipment_mode', version, items: [activeOption] }
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
+}
+
 describe('choice-set option resource', () => {
   it('requires an open summary refresh and polls only focused sheet consumers', () => {
     expect(choiceSetOptionsPolicy(false)).toEqual({
@@ -63,6 +76,7 @@ describe('choice-set option resource', () => {
       displayFallback: cached.items,
       summaryFailed: false,
       optionsFailed: false,
+      authorizationSettled: false,
     })
 
     expect(state.setIsActive).toBeNull()
@@ -79,6 +93,7 @@ describe('choice-set option resource', () => {
       displayFallback: oldAggregate.items,
       summaryFailed: false,
       optionsFailed: false,
+      authorizationSettled: false,
     })
 
     expect(state.version).toBe(8)
@@ -96,6 +111,7 @@ describe('choice-set option resource', () => {
       displayFallback: [],
       summaryFailed: false,
       optionsFailed: false,
+      authorizationSettled: true,
     })
 
     expect(state.displayOptions).toBe(currentAggregate.items)
@@ -111,12 +127,135 @@ describe('choice-set option resource', () => {
       displayFallback: [],
       summaryFailed: false,
       optionsFailed: false,
+      authorizationSettled: true,
     })
 
     expect(state.setIsActive).toBe(false)
     expect(state.displayOptions).toBe(currentAggregate.items)
     expect(state.selectableOptions).toHaveLength(0)
     expect(state.selectionReady).toBe(false)
+  })
+
+  it('withholds a primed next-version aggregate until that summary epoch is settled', () => {
+    const nextSummary = summary(8)
+    const primedNextAggregate = aggregate(8)
+    const previousEpoch = {
+      setCode: 'equipment_mode',
+      version: 7,
+      includeInactive: false,
+    }
+    const nextEpoch = {
+      setCode: 'equipment_mode',
+      version: 8,
+      includeInactive: false,
+    }
+
+    expect(
+      isChoiceSetAuthorizationSettled(
+        previousEpoch,
+        'equipment_mode',
+        8,
+        false,
+      ),
+    ).toBe(false)
+    const failClosed = deriveChoiceSetOptionsState({
+      summary: nextSummary,
+      aggregate: primedNextAggregate,
+      displayFallback: [],
+      summaryFailed: false,
+      optionsFailed: false,
+      authorizationSettled: false,
+    })
+    expect(failClosed.displayOptions).toBe(primedNextAggregate.items)
+    expect(failClosed.selectableOptions).toHaveLength(0)
+    expect(failClosed.selectionReady).toBe(false)
+
+    expect(
+      isChoiceSetAuthorizationSettled(nextEpoch, 'equipment_mode', 8, false),
+    ).toBe(true)
+    const authorized = deriveChoiceSetOptionsState({
+      summary: nextSummary,
+      aggregate: primedNextAggregate,
+      displayFallback: [],
+      summaryFailed: false,
+      optionsFailed: false,
+      authorizationSettled: true,
+    })
+    expect(authorized.selectableOptions).toBe(primedNextAggregate.items)
+    expect(authorized.selectionReady).toBe(true)
+  })
+
+  it('authorizes an exact same-version open retry after the initial aggregate load failed', () => {
+    const firstAttempt = beginChoiceSetPreparation(null, 'equipment_mode')
+    const failedAttempt = settleChoiceSetPreparation(
+      firstAttempt,
+      'equipment_mode',
+      firstAttempt.generation,
+      'initial aggregate failed',
+    )
+    const retryAttempt = beginChoiceSetPreparation(failedAttempt, 'equipment_mode')
+
+    const epoch = getPreparedChoiceSetAuthorizationEpoch({
+      currentPreparation: retryAttempt,
+      currentTarget: { setCode: 'equipment_mode', includeInactive: false },
+      setCode: 'equipment_mode',
+      generation: retryAttempt.generation,
+      includeInactive: false,
+      cachedSummary: summary(7),
+      loadedSummary: summary(7),
+      aggregate: aggregate(7),
+    })
+
+    expect(epoch).toEqual({
+      setCode: 'equipment_mode',
+      version: 7,
+      includeInactive: false,
+    })
+    expect(
+      isChoiceSetAuthorizationSettled(epoch, 'equipment_mode', 7, false),
+    ).toBe(true)
+    expect(
+      getPreparedChoiceSetAuthorizationEpoch({
+        currentPreparation: retryAttempt,
+        currentTarget: { setCode: 'equipment_mode', includeInactive: false },
+        setCode: 'equipment_mode',
+        generation: firstAttempt.generation,
+        includeInactive: false,
+        cachedSummary: summary(7),
+        loadedSummary: summary(7),
+        aggregate: aggregate(7),
+      }),
+    ).toBeNull()
+  })
+
+  it('does not let a late preparation for the old set overwrite the new target epoch', () => {
+    const pendingEquipmentMode = beginChoiceSetPreparation(null, 'equipment_mode')
+    const projectCategoryEpoch = {
+      setCode: 'project_category',
+      version: 4,
+      includeInactive: false,
+    }
+
+    const lateEpoch = getPreparedChoiceSetAuthorizationEpoch({
+      currentPreparation: pendingEquipmentMode,
+      currentTarget: { setCode: 'project_category', includeInactive: false },
+      setCode: 'equipment_mode',
+      generation: pendingEquipmentMode.generation,
+      includeInactive: false,
+      cachedSummary: summary(7),
+      loadedSummary: summary(7),
+      aggregate: aggregate(7),
+    })
+
+    expect(lateEpoch).toBeNull()
+    expect(
+      isChoiceSetAuthorizationSettled(
+        projectCategoryEpoch,
+        'project_category',
+        4,
+        false,
+      ),
+    ).toBe(true)
   })
 
   it('rejects a mandatory open refresh instead of resolving from seeded cache', async () => {
@@ -170,6 +309,136 @@ describe('choice-set option resource', () => {
       loadChoiceSetOptionsForOpen({ refetchSummary, fetchAggregate }),
     ).resolves.toEqual({ summary: summary(8), aggregate: aggregate(8) })
     expect(refetchSummary).toHaveBeenCalledTimes(2)
+    expect(fetchAggregate).toHaveBeenCalledTimes(2)
+  })
+
+  it('restarts a mandatory open from a fresh summary when cleanup cancels its request', async () => {
+    const refetchSummary = vi
+      .fn<() => Promise<ChoiceSetSummaryOut>>()
+      .mockResolvedValueOnce(summary(7))
+      .mockResolvedValueOnce(summary(8))
+    const fetchAggregate = vi
+      .fn<(freshSummary: ChoiceSetSummaryOut) => Promise<ChoiceOptionAggregate>>()
+      .mockRejectedValueOnce(new CancelledError())
+      .mockResolvedValueOnce(aggregate(8))
+    const onVersionAdvanced = vi.fn()
+
+    await expect(
+      loadChoiceSetOptionsForOpen({
+        refetchSummary,
+        fetchAggregate,
+        onVersionAdvanced,
+      }),
+    ).resolves.toEqual({ summary: summary(8), aggregate: aggregate(8) })
+    expect(refetchSummary).toHaveBeenCalledTimes(2)
+    expect(fetchAggregate).toHaveBeenCalledTimes(2)
+    expect(onVersionAdvanced).not.toHaveBeenCalled()
+  })
+
+  it('bounds repeated internal cancellations and exposes only a Korean retry error', async () => {
+    const refetchSummary = vi.fn(async () => summary(7))
+    const fetchAggregate = vi.fn(async () => {
+      throw new CancelledError()
+    })
+
+    await expect(
+      loadChoiceSetOptionsForOpen({
+        refetchSummary,
+        fetchAggregate,
+        maximumVersionRestarts: 1,
+      }),
+    ).rejects.toThrow('선택지를 최신 상태로 확인하지 못했습니다. 다시 시도해 주세요.')
+    expect(refetchSummary).toHaveBeenCalledTimes(2)
+    expect(fetchAggregate).toHaveBeenCalledTimes(2)
+  })
+
+  it('replaces an exhausted typed transition with a Korean retry error', async () => {
+    const refetchSummary = vi.fn(async () => summary(7))
+    const fetchAggregate = vi.fn(async () => {
+      throw new ChoiceSetVersionAdvanced('equipment_mode', 7, 8)
+    })
+
+    const result = loadChoiceSetOptionsForOpen({
+      refetchSummary,
+      fetchAggregate,
+      maximumVersionRestarts: 1,
+    })
+    await expect(result).rejects.toThrow(
+      '선택지를 최신 상태로 확인하지 못했습니다. 다시 시도해 주세요.',
+    )
+    await expect(result).rejects.not.toThrow('Choice set equipment_mode advanced')
+    expect(refetchSummary).toHaveBeenCalledTimes(2)
+    expect(fetchAggregate).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not recreate an obsolete version after its deferred cleanup finishes', async () => {
+    const cleanup = deferred<void>()
+    const cleanupStarted = deferred<void>()
+    let current = true
+    const fetchAggregate = vi.fn(async () => aggregate(8))
+
+    const pending = loadChoiceSetOptionsForAuthorization({
+      initialSummary: summary(8),
+      refetchSummary: async () => summary(9),
+      beforeFetch: async () => {
+        cleanupStarted.resolve()
+        await cleanup.promise
+      },
+      fetchAggregate,
+      isCurrent: () => current,
+    })
+    await cleanupStarted.promise
+    current = false
+    cleanup.resolve()
+
+    await expect(pending).resolves.toBeNull()
+    expect(fetchAggregate).not.toHaveBeenCalled()
+  })
+
+  it('recovers a background typed transition through a freshly returned summary', async () => {
+    const refetchSummary = vi.fn(async () => summary(8))
+    const beforeFetch = vi.fn(async () => undefined)
+    const fetchAggregate = vi
+      .fn<(freshSummary: ChoiceSetSummaryOut) => Promise<ChoiceOptionAggregate>>()
+      .mockRejectedValueOnce(new ChoiceSetVersionAdvanced('equipment_mode', 7, 8))
+      .mockResolvedValueOnce(aggregate(8))
+
+    await expect(
+      loadChoiceSetOptionsForAuthorization({
+        initialSummary: summary(7),
+        refetchSummary,
+        beforeFetch,
+        fetchAggregate,
+        isCurrent: () => true,
+      }),
+    ).resolves.toEqual({ summary: summary(8), aggregate: aggregate(8) })
+    expect(refetchSummary).toHaveBeenCalledTimes(1)
+    expect(beforeFetch).toHaveBeenCalledTimes(2)
+    expect(fetchAggregate.mock.calls.map(([freshSummary]) => freshSummary.version)).toEqual([
+      7,
+      8,
+    ])
+  })
+
+  it('makes a stuck background transition retry-visible after its bounded budget', async () => {
+    const refetchSummary = vi.fn(async () => summary(7))
+    const beforeFetch = vi.fn(async () => undefined)
+    const fetchAggregate = vi.fn(async () => {
+      throw new ChoiceSetVersionAdvanced('equipment_mode', 7, 8)
+    })
+
+    await expect(
+      loadChoiceSetOptionsForAuthorization({
+        initialSummary: summary(7),
+        refetchSummary,
+        beforeFetch,
+        fetchAggregate,
+        isCurrent: () => true,
+        maximumVersionRestarts: 1,
+      }),
+    ).rejects.toThrow('선택지를 최신 상태로 확인하지 못했습니다. 다시 시도해 주세요.')
+    expect(refetchSummary).toHaveBeenCalledTimes(1)
+    expect(beforeFetch).toHaveBeenCalledTimes(2)
     expect(fetchAggregate).toHaveBeenCalledTimes(2)
   })
 

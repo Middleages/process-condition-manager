@@ -56,6 +56,35 @@ describe('SearchableChoice SSR contract', () => {
     expect(html).not.toContain('id="equipment-mode-option-2"')
   })
 
+  it('does not announce a cached active value as inactive while source activity is unknown', () => {
+    const html = renderChoice({
+      sourceActive: false,
+      sourceInactive: false,
+      selectionReady: false,
+    })
+
+    expect(html).toContain('FOUNDRY · Foundry')
+    expect(html).not.toContain('사용 중지됨')
+    expect(
+      canCommitChoice(options[0], {
+        sourceActive: false,
+        selectionReady: false,
+        generationReady: true,
+      }),
+    ).toBe(false)
+  })
+
+  it('announces a selected value as inactive only when source inactivity is known', () => {
+    const html = renderChoice({
+      sourceActive: false,
+      sourceInactive: true,
+      selectionReady: false,
+    })
+
+    expect(html).toContain('FOUNDRY · Foundry')
+    expect(html).toContain('사용 중지됨')
+  })
+
   it('preserves an unknown raw code and exposes error retry without blanking it', () => {
     const html = renderChoice({
       value: 'MISSING',

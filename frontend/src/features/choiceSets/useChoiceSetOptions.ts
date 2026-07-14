@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
+import {
+  isCancelledError,
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from '@tanstack/react-query'
 
 import { getApiErrorMessage } from '../../api/client'
 import type {
@@ -16,7 +21,11 @@ import {
 } from './choiceQueries'
 
 const OPEN_VERSION_RESTARTS = 2
+const CHOICE_SET_REFRESH_RETRY_ERROR =
+  '선택지를 최신 상태로 확인하지 못했습니다. 다시 시도해 주세요.'
 export const EMPTY_CHOICE_OPTIONS: readonly ChoiceOptionOut[] = Object.freeze([])
+
+class ChoiceSetAuthorizationObsolete extends Error {}
 
 export interface ChoiceSetOptionsResource {
   setCode: string
@@ -51,6 +60,68 @@ export interface ChoiceSetPreparationState {
   generation: number
   preparing: boolean
   error: string | null
+}
+
+export interface ChoiceSetAuthorizationEpoch {
+  setCode: string
+  version: number
+  includeInactive: boolean
+}
+
+interface ChoiceSetAuthorizationFailure extends ChoiceSetAuthorizationEpoch {
+  error: string
+}
+
+export function isChoiceSetAuthorizationSettled(
+  epoch: ChoiceSetAuthorizationEpoch | null,
+  setCode: string,
+  version: number,
+  includeInactive: boolean,
+): boolean {
+  return (
+    epoch !== null &&
+    epoch.setCode === setCode &&
+    epoch.version === version &&
+    epoch.includeInactive === includeInactive
+  )
+}
+
+export function getPreparedChoiceSetAuthorizationEpoch({
+  currentPreparation,
+  currentTarget,
+  setCode,
+  generation,
+  includeInactive,
+  cachedSummary,
+  loadedSummary,
+  aggregate,
+}: {
+  currentPreparation: ChoiceSetPreparationState | null
+  currentTarget: { setCode: string; includeInactive: boolean }
+  setCode: string
+  generation: number
+  includeInactive: boolean
+  cachedSummary: ChoiceSetSummaryOut | null
+  loadedSummary: ChoiceSetSummaryOut
+  aggregate: ChoiceOptionAggregate
+}): ChoiceSetAuthorizationEpoch | null {
+  if (
+    currentPreparation === null ||
+    !currentPreparation.preparing ||
+    currentPreparation.setCode !== setCode ||
+    currentPreparation.generation !== generation ||
+    currentTarget.setCode !== setCode ||
+    currentTarget.includeInactive !== includeInactive ||
+    loadedSummary.code !== setCode ||
+    cachedSummary?.code !== setCode ||
+    cachedSummary.version !== loadedSummary.version ||
+    aggregate.set_code !== setCode ||
+    aggregate.version !== loadedSummary.version
+  ) {
+    return null
+  }
+
+  return { setCode, version: loadedSummary.version, includeInactive }
 }
 
 export function beginChoiceSetPreparation(
@@ -97,12 +168,14 @@ export function deriveChoiceSetOptionsState({
   displayFallback,
   summaryFailed,
   optionsFailed,
+  authorizationSettled,
 }: {
   summary: ChoiceSetSummaryOut | null
   aggregate: ChoiceOptionAggregate | null
   displayFallback: readonly ChoiceOptionOut[]
   summaryFailed: boolean
   optionsFailed: boolean
+  authorizationSettled: boolean
 }): DerivedChoiceSetOptionsState {
   const trustedSummary = summaryFailed ? null : summary
   const matchingAggregate =
@@ -111,7 +184,10 @@ export function deriveChoiceSetOptionsState({
     aggregate.set_code === trustedSummary.code &&
     aggregate.version === trustedSummary.version
   const selectionReady =
-    matchingAggregate && !optionsFailed && trustedSummary.is_active
+    matchingAggregate &&
+    authorizationSettled &&
+    !optionsFailed &&
+    trustedSummary.is_active
   const displayOptions = aggregate?.items ?? displayFallback
 
   return {
@@ -151,11 +227,66 @@ export async function loadChoiceSetOptionsForOpen({
       }
       return { summary: freshSummary, aggregate }
     } catch (error) {
-      if (!(error instanceof ChoiceSetVersionAdvanced)) throw error
-      await onVersionAdvanced?.(error)
-      if (transitions >= maximumVersionRestarts) throw error
+      const versionAdvanced = error instanceof ChoiceSetVersionAdvanced
+      if (!versionAdvanced && !isCancelledError(error)) throw error
+      if (versionAdvanced) await onVersionAdvanced?.(error)
+      if (transitions >= maximumVersionRestarts) {
+        throw new Error(CHOICE_SET_REFRESH_RETRY_ERROR)
+      }
       transitions += 1
     }
+  }
+}
+
+export async function loadChoiceSetOptionsForAuthorization({
+  initialSummary,
+  refetchSummary,
+  beforeFetch,
+  fetchAggregate,
+  isCurrent,
+  maximumVersionRestarts = OPEN_VERSION_RESTARTS,
+}: {
+  initialSummary: ChoiceSetSummaryOut
+  refetchSummary: () => Promise<ChoiceSetSummaryOut>
+  beforeFetch: (freshSummary: ChoiceSetSummaryOut) => Promise<void>
+  fetchAggregate: (freshSummary: ChoiceSetSummaryOut) => Promise<ChoiceOptionAggregate>
+  isCurrent: () => boolean
+  maximumVersionRestarts?: number
+}): Promise<{
+  summary: ChoiceSetSummaryOut
+  aggregate: ChoiceOptionAggregate
+} | null> {
+  let useInitialSummary = true
+  const assertCurrent = (): void => {
+    if (!isCurrent()) throw new ChoiceSetAuthorizationObsolete()
+  }
+
+  try {
+    const result = await loadChoiceSetOptionsForOpen({
+      refetchSummary: async () => {
+        assertCurrent()
+        if (useInitialSummary) {
+          useInitialSummary = false
+          return initialSummary
+        }
+        const freshSummary = await refetchSummary()
+        assertCurrent()
+        return freshSummary
+      },
+      fetchAggregate: async (freshSummary) => {
+        await beforeFetch(freshSummary)
+        assertCurrent()
+        const aggregate = await fetchAggregate(freshSummary)
+        assertCurrent()
+        return aggregate
+      },
+      maximumVersionRestarts,
+    })
+    assertCurrent()
+    return result
+  } catch (error) {
+    if (error instanceof ChoiceSetAuthorizationObsolete) return null
+    throw error
   }
 }
 
@@ -189,6 +320,7 @@ export function useChoiceSetOptions(
   const summaryQuery = useQuery(
     sheetFocused ? sheetSummaryQueryOptions(setCode) : summaryQueryOptions(setCode),
   )
+  const refetchSummaryQuery = summaryQuery.refetch
   const queryableSummary = summaryQuery.isError ? null : (summaryQuery.data ?? null)
   const targetVersion = queryableSummary?.version ?? 0
   const aggregateQuery = useQuery({
@@ -199,14 +331,20 @@ export function useChoiceSetOptions(
     setCode: string
     options: readonly ChoiceOptionOut[]
   }>({ setCode, options: EMPTY_CHOICE_OPTIONS })
-  const previousVersionRef = useRef<number | null>(null)
+  const authorizationGenerationRef = useRef(0)
+  const authorizationTargetRef = useRef({ setCode, includeInactive })
   const preparationRef = useRef<ChoiceSetPreparationState | null>(null)
   const [preparationState, setPreparationState] =
     useState<ChoiceSetPreparationState | null>(null)
+  const [authorizedEpoch, setAuthorizedEpoch] =
+    useState<ChoiceSetAuthorizationEpoch | null>(null)
+  const [authorizationFailure, setAuthorizationFailure] =
+    useState<ChoiceSetAuthorizationFailure | null>(null)
+
+  authorizationTargetRef.current = { setCode, includeInactive }
 
   if (displayFallbackRef.current.setCode !== setCode) {
     displayFallbackRef.current = { setCode, options: EMPTY_CHOICE_OPTIONS }
-    previousVersionRef.current = null
   }
   if (aggregateQuery.data !== undefined && aggregateQuery.data.set_code === setCode) {
     displayFallbackRef.current = { setCode, options: aggregateQuery.data.items }
@@ -219,44 +357,22 @@ export function useChoiceSetOptions(
 
   const typedTransition = aggregateQuery.error instanceof ChoiceSetVersionAdvanced
   const optionsFailed = aggregateQuery.isError
+  const authorizationSettled =
+    queryableSummary !== null &&
+    isChoiceSetAuthorizationSettled(
+      authorizedEpoch,
+      setCode,
+      queryableSummary.version,
+      includeInactive,
+    )
   const derived = deriveChoiceSetOptionsState({
     summary: queryableSummary,
     aggregate: aggregateQuery.data ?? null,
     displayFallback: displayFallbackRef.current.options,
     summaryFailed: summaryQuery.isError || preparing || preparationError !== null,
     optionsFailed,
+    authorizationSettled,
   })
-
-  useEffect(() => {
-    const previousVersion = previousVersionRef.current
-    const currentVersion = queryableSummary?.version ?? null
-    previousVersionRef.current = currentVersion
-    if (
-      previousVersion === null ||
-      currentVersion === null ||
-      previousVersion === currentVersion
-    ) {
-      return
-    }
-
-    void (async () => {
-      await removeSupersededChoiceOptionQueries(
-        queryClient,
-        setCode,
-        currentVersion,
-        includeInactive,
-      )
-      try {
-        await queryClient.fetchQuery(
-          choiceOptionQueryOptions(queryClient, setCode, currentVersion, includeInactive),
-        )
-      } catch {
-        // The active query owns its ordinary retry/error state. Typed transitions prime the next
-        // version and invalidate summary inside the shared factory; consuming this promise avoids
-        // an unhandled rejection while keeping old rows display-only.
-      }
-    })()
-  }, [includeInactive, queryClient, queryableSummary?.version, setCode])
 
   const beginPreparation = useCallback((): number => {
     const next = beginChoiceSetPreparation(preparationRef.current, setCode)
@@ -281,18 +397,80 @@ export function useChoiceSetOptions(
   )
 
   const refetchFreshSummary = useCallback(async (): Promise<ChoiceSetSummaryOut> => {
-    const result = await summaryQuery.refetch({ throwOnError: true })
+    const result = await refetchSummaryQuery({ throwOnError: true })
     if (result.data === undefined) {
       throw result.error ?? new Error(`Choice set ${setCode} summary returned no data`)
     }
     return result.data
-  }, [setCode, summaryQuery])
+  }, [refetchSummaryQuery, setCode])
+
+  useEffect(() => {
+    const initialSummary = queryableSummary
+    const generation = authorizationGenerationRef.current + 1
+    authorizationGenerationRef.current = generation
+    if (initialSummary === null) return
+
+    let active = true
+    const isCurrent = () =>
+      active && authorizationGenerationRef.current === generation
+
+    void (async () => {
+      try {
+        const result = await loadChoiceSetOptionsForAuthorization({
+          initialSummary,
+          refetchSummary: refetchFreshSummary,
+          beforeFetch: (freshSummary) =>
+            removeSupersededChoiceOptionQueries(
+              queryClient,
+              setCode,
+              freshSummary.version,
+              includeInactive,
+            ),
+          fetchAggregate: (freshSummary) =>
+            queryClient.fetchQuery(
+              choiceOptionQueryOptions(
+                queryClient,
+                setCode,
+                freshSummary.version,
+                includeInactive,
+              ),
+            ),
+          isCurrent,
+        })
+        if (
+          result === null ||
+          !isCurrent() ||
+          result.summary.version !== initialSummary.version
+        ) {
+          return
+        }
+        setAuthorizedEpoch({
+          setCode,
+          version: initialSummary.version,
+          includeInactive,
+        })
+        setAuthorizationFailure(null)
+      } catch (error) {
+        if (!isCurrent()) return
+        setAuthorizationFailure({
+          setCode,
+          version: initialSummary.version,
+          includeInactive,
+          error: getApiErrorMessage(error),
+        })
+      }
+    })()
+
+    return () => {
+      active = false
+    }
+  }, [includeInactive, queryClient, queryableSummary, refetchFreshSummary, setCode])
 
   const prepareToOpen = useCallback(async (): Promise<void> => {
     const generation = beginPreparation()
     let nextError: string | null = null
     try {
-      await loadChoiceSetOptionsForOpen({
+      const result = await loadChoiceSetOptionsForOpen({
         refetchSummary: refetchFreshSummary,
         fetchAggregate: async (freshSummary) => {
           await removeSupersededChoiceOptionQueries(
@@ -318,6 +496,24 @@ export function useChoiceSetOptions(
             includeInactive,
           ),
       })
+      const epoch = getPreparedChoiceSetAuthorizationEpoch({
+        currentPreparation: preparationRef.current,
+        currentTarget: authorizationTargetRef.current,
+        setCode,
+        generation,
+        includeInactive,
+        cachedSummary:
+          queryClient.getQueryData<ChoiceSetSummaryOut>(
+            choiceSetKeys.summary(setCode),
+          ) ?? null,
+        loadedSummary: result.summary,
+        aggregate: result.aggregate,
+      })
+      if (epoch !== null) {
+        authorizationGenerationRef.current += 1
+        setAuthorizedEpoch(epoch)
+        setAuthorizationFailure(null)
+      }
     } catch (error) {
       nextError = getApiErrorMessage(error)
       throw error
@@ -352,9 +548,17 @@ export function useChoiceSetOptions(
 
   const ordinaryOptionsError =
     aggregateQuery.isError && !typedTransition ? getApiErrorMessage(aggregateQuery.error) : null
+  const backgroundAuthorizationError =
+    queryableSummary !== null &&
+    authorizationFailure?.setCode === setCode &&
+    authorizationFailure.version === queryableSummary.version &&
+    authorizationFailure.includeInactive === includeInactive
+      ? authorizationFailure.error
+      : null
   const error =
     preparationError ??
     (summaryQuery.isError ? getApiErrorMessage(summaryQuery.error) : null) ??
+    backgroundAuthorizationError ??
     ordinaryOptionsError
 
   return {

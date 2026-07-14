@@ -35,6 +35,7 @@ export interface SearchableChoiceProps {
   error?: string | null
   disabled?: boolean
   sourceActive?: boolean
+  sourceInactive?: boolean
   selectionReady?: boolean
   allowInactiveSelection?: boolean
   required?: boolean
@@ -94,6 +95,7 @@ export function SearchableChoice({
   error = null,
   disabled = false,
   sourceActive = true,
+  sourceInactive = false,
   selectionReady = true,
   allowInactiveSelection = false,
   required = false,
@@ -143,9 +145,7 @@ export function SearchableChoice({
   )
   const selectedItem = value === null ? undefined : options.find((item) => item.code === value)
   const selectedInactive =
-    value !== null &&
-    selectedItem !== undefined &&
-    (!selectedItem.is_active || !sourceActive)
+    value !== null && (sourceInactive || selectedItem?.is_active === false)
   const effectiveError = state.openError ?? error
   const generationReady =
     state.open &&
