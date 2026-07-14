@@ -93,7 +93,8 @@ Phase 2.5의 구현 완료 판정은 화면 인상만이 아니라, 고정된 �
 | Cell autosave | PASS | `qa_csv_task11=AUTOSAVE-TASK11`; debounce PATCH 200, header `저장됨` |
 | Dirty unload | PASS | `qa_csv_task11_b=UNLOAD-FLUSH-TASK11`; network 순서가 cell PATCH 200 → lock DELETE 204 |
 
-의도적으로 발생시킨 lock acquire 409 한 건은 B의 읽기 전용 전환 계약에 해당한다. 그 외 최종
+의도적으로 발생시킨 lock acquire 409 응답 3건은 B/B2/B3의 읽기 전용 전환 및 자동 재획득
+계약에 해당한다. 그 외 최종
 browser page error는 0건이며, 마지막 backend/frontend log scan에서 traceback, exception,
 의도하지 않은 5xx를 찾지 못했다.
 
