@@ -25,6 +25,8 @@ import { useUnsavedChanges } from '@/shared/navigation/useUnsavedChanges'
 import {
   canApplyChoicePreview,
   completeChoiceSetMutation,
+  getObservedChoiceSetConflict,
+  isChoiceSetOwnerCurrent,
   isCurrentChoicePreview,
   isExactChoiceSetAdminSnapshot,
   loadExactChoiceSetAdminSnapshot,
@@ -148,9 +150,11 @@ export function settleChoiceImportPreview(
 export function buildChoiceImportApplyPayload(
   session: ChoiceImportSession,
   currentVersion: number,
+  writeAuthorized = true,
 ): ChoiceImportIn | null {
   const preview = session.preview
   if (
+    !writeAuthorized ||
     session.conflict !== null ||
     preview === null ||
     !canApplyChoicePreview(preview, session.csvText, currentVersion)
@@ -165,12 +169,16 @@ export function buildChoiceImportApplyPayload(
 
 export interface ChoiceImportDialogProps {
   snapshot: ChoiceSetAdminSnapshot
+  observedSummary: ChoiceSetSummaryOut | undefined
+  observedSnapshot: ChoiceSetAdminSnapshot | null
   fallbackFocusRef: RefObject<HTMLElement>
   onClose: () => void
 }
 
 export function ChoiceImportDialog({
   snapshot: initialSnapshot,
+  observedSummary,
+  observedSnapshot,
   fallbackFocusRef,
   onClose,
 }: ChoiceImportDialogProps) {
@@ -181,6 +189,16 @@ export function ChoiceImportDialog({
     startChoiceImportSession,
   )
   const [snapshot, setSnapshot] = useState(initialSnapshot)
+  const writeAuthorized = isChoiceSetOwnerCurrent(
+    snapshot.summary.code,
+    snapshot.summary.version,
+    observedSnapshot,
+  )
+  const observedConflict = getObservedChoiceSetConflict(
+    snapshot.summary.code,
+    snapshot.summary.version,
+    observedSummary,
+  )
 
   const previewMutation = useMutation<
     ChoiceImportPreviewOut,
@@ -255,6 +273,7 @@ export function ChoiceImportDialog({
   function preview() {
     if (
       pendingAction !== null ||
+      !writeAuthorized ||
       session.csvText.trim() === '' ||
       session.conflict !== null ||
       !isExactChoiceSetAdminSnapshot(
@@ -273,6 +292,7 @@ export function ChoiceImportDialog({
   function apply() {
     if (
       pendingAction !== null ||
+      !writeAuthorized ||
       !isExactChoiceSetAdminSnapshot(
         snapshot.summary,
         snapshot.aggregate,
@@ -284,6 +304,7 @@ export function ChoiceImportDialog({
     const payload = buildChoiceImportApplyPayload(
       session,
       snapshot.summary.version,
+      writeAuthorized,
     )
     if (payload) applyMutation.mutate(payload)
   }
@@ -293,6 +314,8 @@ export function ChoiceImportDialog({
       session={session}
       currentVersion={snapshot.summary.version}
       pendingAction={pendingAction}
+      observedConflict={observedConflict}
+      writeAuthorized={writeAuthorized}
       error={
         session.conflict
           ? null
@@ -319,6 +342,8 @@ export interface ChoiceImportDialogViewProps {
   currentVersion: number
   session: ChoiceImportSession
   pendingAction: 'preview' | 'apply' | 'reload' | null
+  observedConflict?: ChoiceSetSummaryOut | null
+  writeAuthorized?: boolean
   error?: unknown
   fallbackFocusRef: RefObject<HTMLElement>
   onApply: () => void
@@ -332,6 +357,8 @@ export function ChoiceImportDialogView({
   currentVersion,
   session,
   pendingAction,
+  observedConflict = null,
+  writeAuthorized = true,
   error,
   fallbackFocusRef,
   onApply,
@@ -340,7 +367,12 @@ export function ChoiceImportDialogView({
   onPreview,
   onReload,
 }: ChoiceImportDialogViewProps) {
-  const applyPayload = buildChoiceImportApplyPayload(session, currentVersion)
+  const applyPayload = buildChoiceImportApplyPayload(
+    session,
+    currentVersion,
+    writeAuthorized,
+  )
+  const displayConflict = session.conflict ?? observedConflict
   const pending = pendingAction !== null
   return (
     <Dialog
@@ -355,7 +387,7 @@ export function ChoiceImportDialogView({
           <Button type="button" variant="ghost" disabled={pending} onClick={onClose}>
             취소
           </Button>
-          {session.conflict ? (
+          {displayConflict || !writeAuthorized ? (
             <Button
               type="button"
               variant="secondary"
@@ -371,7 +403,10 @@ export function ChoiceImportDialogView({
             variant="secondary"
             loading={pendingAction === 'preview'}
             disabled={
-              pending || session.csvText.trim() === '' || session.conflict !== null
+              pending ||
+              !writeAuthorized ||
+              session.csvText.trim() === '' ||
+              displayConflict !== null
             }
             onClick={onPreview}
           >
@@ -380,7 +415,7 @@ export function ChoiceImportDialogView({
           <Button
             type="button"
             loading={pendingAction === 'apply'}
-            disabled={pending || applyPayload === null}
+            disabled={pending || !writeAuthorized || applyPayload === null}
             onClick={onApply}
           >
             적용
@@ -410,10 +445,15 @@ export function ChoiceImportDialogView({
           </p>
         </div>
 
-        {session.conflict ? (
+        {displayConflict ? (
           <InlineAlert tone="warning">
-            다른 관리자가 버전 {session.conflict.version}로 변경했습니다. CSV와 미리보기는
+            다른 관리자가 버전 {displayConflict.version}로 변경했습니다. CSV와 미리보기는
             그대로 유지됩니다. 최신 버전을 불러온 뒤 다시 미리보세요.
+          </InlineAlert>
+        ) : !writeAuthorized ? (
+          <InlineAlert tone="warning">
+            최신 버전을 확인할 때까지 미리보기와 적용을 사용할 수 없습니다. 최신 버전을
+            불러온 뒤 다시 미리보세요.
           </InlineAlert>
         ) : null}
         {error ? (

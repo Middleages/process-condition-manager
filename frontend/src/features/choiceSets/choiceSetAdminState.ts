@@ -28,13 +28,46 @@ export function isExactChoiceSetAdminSnapshot(
     includeInactive &&
     aggregate.set_code === summary.code &&
     aggregate.version === summary.version &&
-    aggregate.items.length === summary.option_count
+    aggregate.items.length === summary.option_count &&
+    aggregate.items.filter((option) => option.is_active).length ===
+      summary.active_option_count
   )
 }
 
 export interface ChoiceSetAdminSnapshot {
   summary: ChoiceSetSummaryOut
   aggregate: ChoiceOptionAggregate
+}
+
+export function isChoiceSetOwnerCurrent(
+  ownerCode: string,
+  ownerVersion: number,
+  observedSnapshot: ChoiceSetAdminSnapshot | null,
+): boolean {
+  return (
+    observedSnapshot !== null &&
+    isExactChoiceSetAdminSnapshot(
+      observedSnapshot.summary,
+      observedSnapshot.aggregate,
+      true,
+    ) &&
+    observedSnapshot.summary.code === ownerCode &&
+    observedSnapshot.summary.version === ownerVersion
+  )
+}
+
+export function getObservedChoiceSetConflict(
+  ownerCode: string,
+  ownerVersion: number,
+  observedSummary: ChoiceSetSummaryOut | undefined,
+): ChoiceSetSummaryOut | null {
+  if (
+    observedSummary?.code !== ownerCode ||
+    observedSummary.version <= ownerVersion
+  ) {
+    return null
+  }
+  return observedSummary
 }
 
 export interface ChoiceSetAdminSnapshotLoaders {

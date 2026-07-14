@@ -162,6 +162,32 @@ describe('ChoiceOptionEditorDialog', () => {
     expect(mutate).not.toHaveBeenCalled()
   })
 
+  it('disables save synchronously when the observed summary no longer owns the draft version', () => {
+    let session = startChoiceOptionEditorSession({ kind: 'edit', option }, summary)
+    session = choiceOptionEditorReducer(session, {
+      type: 'change-field',
+      field: 'label',
+      value: '보존할 초안',
+    })
+    const html = renderDialog(session, false, [option], false)
+    const mutate = vi.fn()
+
+    expect(html).toContain('최신 버전을 확인할 때까지 저장할 수 없습니다')
+    expect(html).toMatch(
+      /<button[^>]*form="choice-option-editor-form"[^>]*disabled=""/,
+    )
+    expect(
+      submitChoiceOptionEditorSession(
+        'equipment_mode',
+        session,
+        snapshot,
+        mutate,
+        false,
+      ),
+    ).toBe(false)
+    expect(mutate).not.toHaveBeenCalled()
+  })
+
   it('shows case-only warning without disabling a valid create save', () => {
     let session = startChoiceOptionEditorSession({ kind: 'create' }, summary)
     session = choiceOptionEditorReducer(session, {
@@ -234,12 +260,14 @@ function renderDialog(
   session: ReturnType<typeof startChoiceOptionEditorSession>,
   pending: boolean,
   options: ChoiceOptionOut[],
+  writeAuthorized = true,
 ) {
   return renderToStaticMarkup(
     <ChoiceOptionEditorDialogView
       aggregate={{ set_code: summary.code, version: summary.version, items: options }}
       fallbackFocusRef={{ current: null }}
       pending={pending}
+      writeAuthorized={writeAuthorized}
       session={session}
       summary={summary}
       onAcknowledge={vi.fn()}

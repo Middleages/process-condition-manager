@@ -45,7 +45,11 @@ import {
   type ChoiceOptionEditorTarget,
 } from './ChoiceOptionEditorDialog'
 import { ChoiceImportDialog } from './ChoiceImportDialog'
-import { ChoiceSetEditorDrawer } from './ChoiceSetEditorDrawer'
+import {
+  ChoiceSetEditorDrawer,
+  choiceSetEditorSessionKey,
+  type ChoiceSetEditorTarget,
+} from './ChoiceSetEditorDrawer'
 import { ParameterSectionNav } from './ParameterSectionNav'
 import {
   choiceOptionQueryOptions,
@@ -77,6 +81,30 @@ type ChoiceOrderAction =
 export interface ChoiceReorderSubmission {
   setCode: string
   payload: ChoiceOptionOrderIn
+}
+
+export interface ChoiceSetAdminSessionOwner<T> {
+  setCode: string
+  snapshot: ChoiceSetAdminSnapshot
+  session: T
+}
+
+export function ownChoiceSetAdminSession<T>(
+  snapshot: ChoiceSetAdminSnapshot,
+  session: T,
+): ChoiceSetAdminSessionOwner<T> {
+  return {
+    setCode: snapshot.summary.code,
+    snapshot,
+    session,
+  }
+}
+
+export function choiceSetAdminSessionForRoute<T>(
+  owner: ChoiceSetAdminSessionOwner<T> | null,
+  setCode: string,
+): ChoiceSetAdminSessionOwner<T> | null {
+  return owner?.setCode === setCode ? owner : null
 }
 
 export function startChoiceOrderSession(
@@ -181,13 +209,26 @@ export function buildChoiceReorderSubmission(
 
 export function ChoiceSetDetailPage() {
   const { setCode = '' } = useParams<{ setCode: string }>()
+  return createChoiceSetDetailOwnerElement(setCode)
+}
+
+export function createChoiceSetDetailOwnerElement(setCode: string) {
+  return <ChoiceSetDetailRouteOwner key={setCode} setCode={setCode} />
+}
+
+function ChoiceSetDetailRouteOwner({ setCode }: { setCode: string }) {
   const [searchParams, setSearchParams] = useSearchParams()
   const state = parseChoiceSetDetailSearch(searchParams)
   const [queryDraft, setQueryDraft] = useState(state.query)
   const [visibleLimit, setVisibleLimit] = useState(100)
-  const [editor, setEditor] = useState<ChoiceOptionEditorTarget | null>(null)
-  const [metadataOpen, setMetadataOpen] = useState(false)
-  const [importOpen, setImportOpen] = useState(false)
+  const [editorOwner, setEditorOwner] = useState<
+    ChoiceSetAdminSessionOwner<ChoiceOptionEditorTarget> | null
+  >(null)
+  const [metadataEditor, setMetadataEditor] =
+    useState<ChoiceSetEditorTarget | null>(null)
+  const [importOwner, setImportOwner] = useState<
+    ChoiceSetAdminSessionOwner<true> | null
+  >(null)
   const [order, setOrder] = useState<ChoiceOrderSession | null>(null)
   const listHeadingRef = useRef<HTMLHeadingElement>(null)
   const queryClient = useQueryClient()
@@ -317,7 +358,20 @@ export function ChoiceSetDetailPage() {
     resetChoiceMutationErrors(reorderMutation.reset, reloadMutation.reset)
     reloadMutation.mutate()
   }
+
+  function openOptionEditor(target: ChoiceOptionEditorTarget) {
+    if (!snapshot) return
+    setEditorOwner(ownChoiceSetAdminSession(snapshot, target))
+  }
+
+  function openImport() {
+    if (!snapshot) return
+    setImportOwner(ownChoiceSetAdminSession(snapshot, true))
+  }
+
   const summary = summaryQuery.data
+  const routedEditorOwner = choiceSetAdminSessionForRoute(editorOwner, setCode)
+  const routedImportOwner = choiceSetAdminSessionForRoute(importOwner, setCode)
   const displayOptions = order?.orderedOptions ?? snapshot?.aggregate.items ?? []
   const filteredOptions = filterChoiceOptions(displayOptions, state)
   const pending = reorderMutation.isPending || reloadMutation.isPending
@@ -340,9 +394,11 @@ export function ChoiceSetDetailPage() {
       <ChoiceSetDetailRouteHeader
         setCode={setCode}
         summary={summary}
-        onAdd={() => setEditor({ kind: 'create' })}
-        onEditSet={() => setMetadataOpen(true)}
-        onImport={() => setImportOpen(true)}
+        onAdd={() => openOptionEditor({ kind: 'create' })}
+        onEditSet={() => {
+          if (summary) setMetadataEditor({ kind: 'edit', summary })
+        }}
+        onImport={openImport}
       />
 
       {summaryQuery.isPending ? (
@@ -363,8 +419,10 @@ export function ChoiceSetDetailPage() {
           listHeadingRef={listHeadingRef}
           reorderDisabled={reorderDisabled}
           onActiveChange={changeActive}
-          onDeactivate={(option) => setEditor({ kind: 'deactivate', option })}
-          onEdit={(option) => setEditor({ kind: 'edit', option })}
+          onDeactivate={(option) =>
+            openOptionEditor({ kind: 'deactivate', option })
+          }
+          onEdit={(option) => openOptionEditor({ kind: 'edit', option })}
           onLoadMore={() => setVisibleLimit((current) => current + 100)}
           onQueryChange={setQueryDraft}
           onReorder={reorder}
@@ -422,29 +480,39 @@ export function ChoiceSetDetailPage() {
         </InlineAlert>
       ) : null}
 
-      {snapshot && editor ? (
+      {routedEditorOwner ? (
         <ChoiceOptionEditorDialog
-          key={`${editor.kind}-${editor.kind === 'create' ? 'new' : editor.option.code}`}
-          setCode={setCode}
-          summary={snapshot.summary}
-          aggregate={snapshot.aggregate}
-          target={editor}
+          key={`${routedEditorOwner.session.kind}-${
+            routedEditorOwner.session.kind === 'create'
+              ? 'new'
+              : routedEditorOwner.session.option.code
+          }`}
+          setCode={routedEditorOwner.setCode}
+          summary={routedEditorOwner.snapshot.summary}
+          aggregate={routedEditorOwner.snapshot.aggregate}
+          observedSummary={summary}
+          observedSnapshot={snapshot}
+          target={routedEditorOwner.session}
           fallbackFocusRef={listHeadingRef}
-          onClose={() => setEditor(null)}
+          onClose={() => setEditorOwner(null)}
         />
       ) : null}
-      {snapshot && importOpen ? (
+      {routedImportOwner ? (
         <ChoiceImportDialog
-          snapshot={snapshot}
+          key={`import-${routedImportOwner.setCode}`}
+          snapshot={routedImportOwner.snapshot}
+          observedSummary={summary}
+          observedSnapshot={snapshot}
           fallbackFocusRef={listHeadingRef}
-          onClose={() => setImportOpen(false)}
+          onClose={() => setImportOwner(null)}
         />
       ) : null}
-      {metadataOpen && summary ? (
+      {metadataEditor ? (
         <ChoiceSetEditorDrawer
-          target={{ kind: 'edit', summary }}
+          key={choiceSetEditorSessionKey(metadataEditor)}
+          target={metadataEditor}
           fallbackFocusRef={listHeadingRef}
-          onClose={() => setMetadataOpen(false)}
+          onClose={() => setMetadataEditor(null)}
         />
       ) : null}
     </section>

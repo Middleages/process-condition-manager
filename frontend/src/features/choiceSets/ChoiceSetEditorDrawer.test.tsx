@@ -5,6 +5,7 @@ import type { ChoiceSetSummaryOut } from '@/api/types'
 
 import {
   buildChoiceSetEditorSubmission,
+  choiceSetEditorSessionKey,
   choiceSetEditorReducer,
   ChoiceSetEditorDrawerView,
   startChoiceSetEditorSession,
@@ -15,6 +16,19 @@ const summary = makeSummary(7)
 const latest = makeSummary(8, '다른 관리자의 이름')
 
 describe('ChoiceSetEditorDrawer', () => {
+  it('uses distinct editor ownership keys for list/detail metadata targets', () => {
+    expect(choiceSetEditorSessionKey({ kind: 'edit', summary })).toBe(
+      'edit-equipment_mode',
+    )
+    expect(
+      choiceSetEditorSessionKey({
+        kind: 'edit',
+        summary: { ...summary, code: 'other_mode' },
+      }),
+    ).toBe('edit-other_mode')
+    expect(choiceSetEditorSessionKey({ kind: 'create' })).toBe('create')
+  })
+
   it('captures the base version and serializes that exact expected_version', () => {
     let session = startChoiceSetEditorSession({ kind: 'edit', summary })
     session = choiceSetEditorReducer(session, {

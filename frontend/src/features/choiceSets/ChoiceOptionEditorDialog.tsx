@@ -30,6 +30,8 @@ import {
   CHOICE_CODE_HELP,
   completeChoiceSetMutation,
   findCaseOnlyCodeCollision,
+  getObservedChoiceSetConflict,
+  isChoiceSetOwnerCurrent,
   isExactChoiceSetAdminSnapshot,
   isUrlSafeChoiceCode,
   loadExactChoiceSetAdminSnapshot,
@@ -247,7 +249,9 @@ export function submitChoiceOptionEditorSession(
   session: ChoiceOptionEditorSession,
   snapshot: ChoiceSetAdminSnapshot,
   mutate: (submission: ChoiceOptionSubmission) => void,
+  writeAuthorized = true,
 ): boolean {
+  if (!writeAuthorized) return false
   const submission = buildChoiceOptionSubmission(setCode, session, snapshot)
   if (submission === null) return false
   mutate(submission)
@@ -258,6 +262,8 @@ export interface ChoiceOptionEditorDialogProps {
   setCode: string
   summary: ChoiceSetSummaryOut
   aggregate: ChoiceOptionAggregate
+  observedSummary: ChoiceSetSummaryOut | undefined
+  observedSnapshot: ChoiceSetAdminSnapshot | null
   target: ChoiceOptionEditorTarget
   fallbackFocusRef: RefObject<HTMLElement>
   onClose: () => void
@@ -267,6 +273,8 @@ export function ChoiceOptionEditorDialog({
   setCode,
   summary,
   aggregate,
+  observedSummary,
+  observedSnapshot,
   target,
   fallbackFocusRef,
   onClose,
@@ -281,6 +289,16 @@ export function ChoiceOptionEditorDialog({
     summary,
     aggregate,
   })
+  const writeAuthorized = isChoiceSetOwnerCurrent(
+    snapshot.summary.code,
+    snapshot.summary.version,
+    observedSnapshot,
+  )
+  const observedConflict = getObservedChoiceSetConflict(
+    snapshot.summary.code,
+    snapshot.summary.version,
+    observedSummary,
+  )
 
   const mutation = useMutation<ChoiceOptionMutationOut, unknown, ChoiceOptionSubmission>({
     mutationFn: (submission) =>
@@ -342,12 +360,14 @@ export function ChoiceOptionEditorDialog({
   })
 
   function submit() {
+    if (!writeAuthorized) return
     if (
       !submitChoiceOptionEditorSession(
         setCode,
         session,
         snapshot,
         mutation.mutate,
+        writeAuthorized,
       ) &&
       session.conflict === null &&
       session.mode !== 'deactivate'
@@ -362,6 +382,8 @@ export function ChoiceOptionEditorDialog({
       summary={snapshot.summary}
       session={session}
       pending={pending}
+      observedConflict={observedConflict}
+      writeAuthorized={writeAuthorized}
       mutationError={session.conflict === null ? mutation.error : null}
       reloadError={reloadMutation.error}
       fallbackFocusRef={fallbackFocusRef}
@@ -384,6 +406,8 @@ export interface ChoiceOptionEditorDialogViewProps {
   aggregate: ChoiceOptionAggregate
   session: ChoiceOptionEditorSession
   pending: boolean
+  observedConflict?: ChoiceSetSummaryOut | null
+  writeAuthorized?: boolean
   mutationError?: unknown
   reloadError?: unknown
   fallbackFocusRef: RefObject<HTMLElement>
@@ -402,6 +426,8 @@ export function ChoiceOptionEditorDialogView({
   aggregate,
   session,
   pending,
+  observedConflict = null,
+  writeAuthorized = true,
   mutationError,
   reloadError,
   fallbackFocusRef,
@@ -413,6 +439,7 @@ export function ChoiceOptionEditorDialogView({
 }: ChoiceOptionEditorDialogViewProps) {
   const snapshot = { summary, aggregate }
   const submission = buildChoiceOptionSubmission(summary.code, session, snapshot)
+  const displayConflict = session.conflict ?? observedConflict
   const codeInvalid =
     session.mode === 'create' &&
     session.draft.code !== '' &&
@@ -447,7 +474,7 @@ export function ChoiceOptionEditorDialogView({
           <Button type="button" variant="ghost" disabled={pending} onClick={onClose}>
             취소
           </Button>
-          {session.conflict ? (
+          {displayConflict || !writeAuthorized ? (
             <Button
               type="button"
               variant="secondary"
@@ -462,11 +489,11 @@ export function ChoiceOptionEditorDialogView({
             type="submit"
             variant={session.mode === 'deactivate' ? 'danger' : 'primary'}
             loading={pending}
-            disabled={pending || submission === null}
+            disabled={pending || !writeAuthorized || submission === null}
           >
             {session.mode === 'deactivate'
               ? '사용 중지'
-              : session.conflict || session.rebased
+              : displayConflict || session.rebased
                 ? '다시 저장'
                 : '저장'}
           </Button>
@@ -474,10 +501,15 @@ export function ChoiceOptionEditorDialogView({
       }
     >
       <form id="choice-option-editor-form" className="space-y-4" onSubmit={submit}>
-        {session.conflict ? (
+        {displayConflict ? (
           <InlineAlert tone="warning">
-            다른 관리자가 버전 {session.conflict.version}로 변경했습니다. 현재 초안은 그대로
+            다른 관리자가 버전 {displayConflict.version}로 변경했습니다. 현재 초안은 그대로
             유지됩니다. 최신 버전을 불러온 뒤 다시 저장하세요.
+          </InlineAlert>
+        ) : !writeAuthorized ? (
+          <InlineAlert tone="warning">
+            최신 버전을 확인할 때까지 저장할 수 없습니다. 최신 버전을 불러온 뒤 다시
+            저장하세요.
           </InlineAlert>
         ) : null}
         {mutationError ? (
@@ -496,7 +528,7 @@ export function ChoiceOptionEditorDialogView({
 
         {session.mode === 'deactivate' ? (
           <DeactivateImpact
-            summary={session.conflict ?? summary}
+            summary={displayConflict ?? summary}
             option={session.original}
             acknowledged={session.impactAcknowledged}
             disabled={pending}

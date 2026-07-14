@@ -30,6 +30,12 @@ export type ChoiceSetEditorTarget =
   | { kind: 'create' }
   | { kind: 'edit'; summary: ChoiceSetSummaryOut }
 
+export function choiceSetEditorSessionKey(
+  target: ChoiceSetEditorTarget,
+): string {
+  return target.kind === 'create' ? 'create' : `edit-${target.summary.code}`
+}
+
 export interface ChoiceSetEditorDraft {
   code: string
   displayName: string

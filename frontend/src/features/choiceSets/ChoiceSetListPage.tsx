@@ -13,6 +13,7 @@ import { PageHeader } from '@/shared/components/PageHeader'
 
 import {
   ChoiceSetEditorDrawer,
+  choiceSetEditorSessionKey,
   type ChoiceSetEditorTarget,
 } from './ChoiceSetEditorDrawer'
 import { ParameterSectionNav } from './ParameterSectionNav'
@@ -107,7 +108,7 @@ export function ChoiceSetListPage() {
       ) : null}
       {editor ? (
         <ChoiceSetEditorDrawer
-          key={editor.kind === 'create' ? 'create' : `edit-${editor.summary.code}`}
+          key={choiceSetEditorSessionKey(editor)}
           target={editor}
           fallbackFocusRef={listHeadingRef}
           onClose={() => setEditor(null)}

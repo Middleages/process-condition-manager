@@ -8,9 +8,12 @@ import {
   ChoiceSetDetailRouteHeader,
   ChoiceSetDetailView,
   buildChoiceReorderSubmission,
+  choiceSetAdminSessionForRoute,
   choiceOrderReducer,
+  createChoiceSetDetailOwnerElement,
   hasUnsavedChoiceOrder,
   isChoiceReorderAvailable,
+  ownChoiceSetAdminSession,
   startChoiceOrderSession,
 } from './ChoiceSetDetailPage'
 
@@ -36,6 +39,58 @@ const options: ChoiceOptionOut[] = Array.from({ length: 102 }, (_, index) => ({
 }))
 
 describe('ChoiceSetDetailPage', () => {
+  it('keys the complete detail owner by setCode so A state cannot survive on B', () => {
+    const ownerA = createChoiceSetDetailOwnerElement('A')
+    const ownerB = createChoiceSetDetailOwnerElement('B')
+
+    expect(ownerA.key).toBe('A')
+    expect(ownerA.props.setCode).toBe('A')
+    expect(ownerB.key).toBe('B')
+    expect(ownerB.props.setCode).toBe('B')
+  })
+
+  it('retains the editor-owned exact snapshot while the live pair temporarily disappears', () => {
+    const ownedSnapshot = {
+      summary: { ...summary, option_count: 3, active_option_count: 2 },
+      aggregate: {
+        set_code: summary.code,
+        version: summary.version,
+        items: options.slice(0, 3),
+      },
+    }
+    const owner = ownChoiceSetAdminSession(
+      ownedSnapshot,
+      { kind: 'create' as const },
+    )
+    const liveSnapshot = null
+
+    expect(liveSnapshot).toBeNull()
+    expect(choiceSetAdminSessionForRoute(owner, summary.code)).toBe(owner)
+    expect(owner.snapshot).toBe(ownedSnapshot)
+  })
+
+  it('discards an A-owned editor session before rendering the B route', () => {
+    const ownedSnapshot = {
+      summary: {
+        ...summary,
+        code: 'A',
+        option_count: 3,
+        active_option_count: 2,
+      },
+      aggregate: {
+        set_code: 'A',
+        version: summary.version,
+        items: options.slice(0, 3),
+      },
+    }
+    const owner = ownChoiceSetAdminSession(
+      ownedSnapshot,
+      { kind: 'create' as const },
+    )
+
+    expect(choiceSetAdminSessionForRoute(owner, 'B')).toBeNull()
+  })
+
   it('only permits full-code reorder when no query or lifecycle filter hides rows', () => {
     expect(isChoiceReorderAvailable({ query: '', active: 'all' })).toBe(true)
     expect(isChoiceReorderAvailable({ query: 'mode', active: 'all' })).toBe(false)

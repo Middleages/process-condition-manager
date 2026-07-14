@@ -71,3 +71,37 @@ All files are under `.omx/artifacts/phase-2-6/task-10/`. The final visual verdic
 - The 1024 list retains all data columns in an internal horizontal scroller. The action column is sticky and body overflow is absent, but hidden secondary columns still require horizontal scrolling.
 - Build output retains the repository's pre-existing Rollup PURE-annotation and bundle-size warnings from Glide Data Grid; Task 10 adds no dependency or new build error.
 - Browser evidence uses deterministic intercepted API fixtures to expose conflict/error states; live backend integration remains covered at the API contract layer rather than by an end-to-end server process in this task.
+
+## Follow-up root review — 2026-07-15
+
+### Result
+
+Closed all three root-review findings with a strict RED/GREEN follow-up and no dependency change:
+
+- An open option editor or CSV import now owns the exact snapshot captured when it opens. A focus refetch may temporarily make the live summary/aggregate pair inexact, but it no longer unmounts the owner or loses a draft, raw CSV, preview, or base version.
+- Each owner compares its current internal snapshot with the latest live exact summary/aggregate pair. Save, preview, and apply are disabled in the view and rejected again at the mutation seam whenever that pair is absent, checksum-invalid, or differently owned. Explicit child reload is the only path that advances the internal base, and writes remain locked until the parent cache converges on the same exact pair.
+- The complete detail workspace is keyed by route `setCode`, so a confirmed A→B navigation synchronously discards A order, debounce, row-window, mutation closures, and every overlay before B renders. Option/import owners are additionally route-guarded, while metadata drawers use one code-owned session key on both list and detail routes.
+- Exact admin snapshots now checksum both total option count and active option count.
+
+### Changed files
+
+- `frontend/src/features/choiceSets/ChoiceSetDetailPage.tsx` and `.test.tsx` — route-keyed workspace plus pinned, route-guarded option/import owners.
+- `frontend/src/features/choiceSets/ChoiceOptionEditorDialog.tsx` and `.test.tsx` — observed-summary ownership lock at both UI and submit seams without discarding the owned draft.
+- `frontend/src/features/choiceSets/ChoiceImportDialog.tsx` and `.test.tsx` — observed-summary lock for preview/apply while retaining CSV and preview evidence.
+- `frontend/src/features/choiceSets/ChoiceSetEditorDrawer.tsx` and `.test.tsx`, and `ChoiceSetListPage.tsx` — shared metadata session key by mode and set code.
+- `frontend/src/features/choiceSets/choiceSetAdminState.ts` and `.test.ts` — active lifecycle checksum and shared owner-current/conflict helpers.
+
+### Simplifications and evidence
+
+- Reused the children’s existing internal snapshot/reload flow instead of adding a second cache or draft store.
+- Used one keyed route boundary rather than asynchronous reset effects, eliminating the possible A-on-B render instead of repairing state after it leaks.
+- Kept the existing warning, reload, and disabled-control presentation; standard and previously captured conflict markup/styles are unchanged, so the 96/pass visual evidence remains representative. The follow-up adds ownership behavior, not a new layout or visual treatment.
+- RED: `.superpowers/sdd/task-10-followup-red.log` records eight initial ownership/checksum failures, two mutation-seam failures, and the independent review regression for a null/checksum-invalid live pair.
+- Focused GREEN: 5 files / 66 tests passed (`.superpowers/sdd/task-10-followup-green.log`).
+- Full frontend: 57 files / 513 tests passed (`.superpowers/sdd/task-10-followup-full-test.log`).
+- Typecheck, lint, and production build passed (`.superpowers/sdd/task-10-followup-static-build.log`). Build retains only the pre-existing Glide Data Grid PURE-annotation and bundle-size warnings.
+- Independent re-review found no remaining Critical or Important issue after the live exact-pair authorization regression was fixed.
+
+### Remaining risk
+
+- The ownership races are locked with pure state, rendering, route-key, and mutation-seam regressions. A live-browser focus-refetch race is not separately captured because the persistent UI treatment is the already-verified conflict/reload surface.

@@ -13,6 +13,8 @@ import {
   isExactChoiceSetAdminSnapshot,
   loadExactChoiceSetAdminSnapshot,
   moveOption,
+  getObservedChoiceSetConflict,
+  isChoiceSetOwnerCurrent,
   resetChoiceMutationErrors,
   toOrderPayload,
 } from './choiceSetAdminState'
@@ -63,6 +65,62 @@ describe('choice-set administration state', () => {
     expect(isExactChoiceSetAdminSnapshot(summary, { ...aggregate, version: 8 }, true)).toBe(false)
     expect(isExactChoiceSetAdminSnapshot(summary, { ...aggregate, set_code: 'other' }, true)).toBe(false)
     expect(isExactChoiceSetAdminSnapshot(summary, aggregate, false)).toBe(false)
+  })
+
+  it('rejects an aggregate whose active lifecycle checksum disagrees with the summary', () => {
+    const summary: ChoiceSetSummaryOut = {
+      code: 'mode',
+      display_name: 'Mode',
+      description: null,
+      is_active: true,
+      version: 7,
+      option_count: 3,
+      active_option_count: 1,
+      parameter_usage_count: 0,
+      profile_usage_fields: [],
+      created_at: '2026-07-14T00:00:00Z',
+      updated_at: '2026-07-14T00:00:00Z',
+    }
+
+    expect(
+      isExactChoiceSetAdminSnapshot(
+        summary,
+        { set_code: 'mode', version: 7, items: allOptions },
+        true,
+      ),
+    ).toBe(false)
+  })
+
+  it('fails an owned write closed as soon as another summary version is observed', () => {
+    const observed: ChoiceSetSummaryOut = {
+      code: 'mode',
+      display_name: 'Mode',
+      description: null,
+      is_active: true,
+      version: 8,
+      option_count: 3,
+      active_option_count: 2,
+      parameter_usage_count: 0,
+      profile_usage_fields: [],
+      created_at: '2026-07-14T00:00:00Z',
+      updated_at: '2026-07-14T00:00:00Z',
+    }
+    const observedSnapshot = {
+      summary: observed,
+      aggregate: { set_code: 'mode', version: 8, items: allOptions },
+    }
+
+    expect(isChoiceSetOwnerCurrent('mode', 7, observedSnapshot)).toBe(false)
+    expect(getObservedChoiceSetConflict('mode', 7, observed)).toBe(observed)
+    expect(isChoiceSetOwnerCurrent('mode', 8, observedSnapshot)).toBe(true)
+    expect(getObservedChoiceSetConflict('other', 7, observed)).toBeNull()
+    expect(isChoiceSetOwnerCurrent('mode', 8, null)).toBe(false)
+    expect(
+      isChoiceSetOwnerCurrent('mode', 8, {
+        summary: { ...observed, active_option_count: 1 },
+        aggregate: observedSnapshot.aggregate,
+      }),
+    ).toBe(false)
   })
 
   it('restarts a mismatched admin snapshot and returns only an exact complete pair', async () => {

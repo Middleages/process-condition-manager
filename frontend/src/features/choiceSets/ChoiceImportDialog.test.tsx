@@ -160,6 +160,24 @@ describe('ChoiceImportDialog', () => {
     expect(html).toContain('다시 미리보기')
   })
 
+  it('locks preview and apply synchronously when the observed owner version advances', () => {
+    let session = choiceImportReducer(startChoiceImportSession(), {
+      type: 'change-csv',
+      csvText: 'AUTO,자동,10,true',
+    })
+    session = choiceImportReducer(session, {
+      type: 'preview-success',
+      baseVersion: 3,
+      response: validPreview,
+    })
+    const html = renderDialog(session, 3, false)
+
+    expect(html).toContain('최신 버전을 확인할 때까지 미리보기와 적용을 사용할 수 없습니다')
+    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>[^<]*(?:<span[^>]*>)?다시 미리보기/)
+    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>[^<]*(?:<span[^>]*>)?적용/)
+    expect(buildChoiceImportApplyPayload(session, 3, false)).toBeNull()
+  })
+
   it('returns focus to the captured opener and keeps the heading as fallback', () => {
     const fallbackFocusRef = { current: null }
     const element = ChoiceImportDialogView({
@@ -182,12 +200,14 @@ describe('ChoiceImportDialog', () => {
 function renderDialog(
   session: ReturnType<typeof startChoiceImportSession>,
   currentVersion: number,
+  writeAuthorized = true,
 ) {
   return renderToStaticMarkup(
     <ChoiceImportDialogView
       currentVersion={currentVersion}
       fallbackFocusRef={{ current: null }}
       pendingAction={null}
+      writeAuthorized={writeAuthorized}
       session={session}
       onApply={vi.fn()}
       onChangeCsv={vi.fn()}
