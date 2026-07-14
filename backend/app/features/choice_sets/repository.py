@@ -162,20 +162,27 @@ class ChoiceSetRepository:
         *,
         include_inactive: bool = True,
         for_write: bool = False,
+        prelocked_set_codes: Collection[str] | None = None,
     ) -> dict[ChoiceKey, ResolvedChoice]:
         unique_keys = set(keys)
         if not unique_keys:
             return {}
         query_keys = unique_keys
         if for_write:
-            locked_sets = await self._lock_sets(
-                {set_code for set_code, _ in unique_keys}
-            )
+            if prelocked_set_codes is None:
+                locked_sets = await self._lock_sets(
+                    {set_code for set_code, _ in unique_keys}
+                )
+                locked_set_codes = set(locked_sets)
+            else:
+                locked_set_codes = set(prelocked_set_codes)
             query_keys = {
-                key for key in unique_keys if key[0] in locked_sets
+                key for key in unique_keys if key[0] in locked_set_codes
             }
             if not query_keys:
                 return {}
+        elif prelocked_set_codes is not None:
+            raise ValueError("prelocked_set_codes requires for_write=True")
 
         stmt = (
             select(
@@ -209,10 +216,14 @@ class ChoiceSetRepository:
         keys: Collection[ChoiceKey],
         *,
         for_write: bool = True,
+        prelocked_set_codes: Collection[str] | None = None,
     ) -> dict[ChoiceKey, ResolvedChoice]:
         unique_keys = set(keys)
         resolved = await self.resolve_options(
-            unique_keys, include_inactive=True, for_write=for_write
+            unique_keys,
+            include_inactive=True,
+            for_write=for_write,
+            prelocked_set_codes=prelocked_set_codes,
         )
         invalid = sorted(
             key
@@ -225,6 +236,12 @@ class ChoiceSetRepository:
                 f"활성 선택지가 아니다: {identities}", code="invalid_active_choice"
             )
         return resolved
+
+    async def lock_sets_for_write(
+        self, codes: Collection[str]
+    ) -> dict[str, ChoiceSet]:
+        """Acquire a caller-defined parent-set union once in global code order."""
+        return await self._lock_sets(codes)
 
     async def lock_active_sets_for_write(
         self, codes: Collection[str]

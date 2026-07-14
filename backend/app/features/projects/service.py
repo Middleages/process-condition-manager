@@ -43,6 +43,7 @@ _CHOICE_FIELDS = {
     "active_direction_code": "active_direction",
     "gate_direction_code": "gate_direction",
 }
+_PROFILE_CHOICE_SET_CODES = frozenset(_CHOICE_FIELDS.values())
 _REQUIRED_CHOICE_FIELDS = frozenset({"device_type_code", "project_category_code"})
 _DECIMAL_FIELDS = frozenset(
     {
@@ -221,14 +222,6 @@ class ProjectService:
         process = await self.reader.get_process(line_id, process_id)
         device_type_code = normalize_choice_code(data.device_type_code, 128)
         project_category_code = normalize_choice_code(data.project_category_code, 128)
-        await self.choice_repo.resolve_active_options(
-            {
-                ("device_type", device_type_code),
-                ("project_category", project_category_code),
-            },
-            for_write=True,
-        )
-
         seed = await self.metadata_provider.load_seed(
             line_id=line_id,
             process_id=process_id,
@@ -240,15 +233,6 @@ class ProjectService:
         final_values["project_category_code"] = project_category_code
         if "comment" in data.model_fields_set:
             final_values["comment"] = normalize_optional_text(data.comment)
-
-        optional_choice_keys = {
-            (_CHOICE_FIELDS[field], value)
-            for field in ("active_direction_code", "gate_direction_code")
-            if (value := final_values[field]) is not None
-        }
-        await self.choice_repo.resolve_active_options(
-            optional_choice_keys, for_write=True
-        )
 
         process_name = _normalize_required_text(process.display_name, "Process 이름")
         target_layers = await self.reader.get_layers(line_id, process_id)
@@ -271,6 +255,20 @@ class ProjectService:
             {layer.layer_key: layer for layer in backbone.layers} if backbone else {}
         )
         match_by_target = {match.target_layer_key: match for match in match_result.matches}
+
+        choice_keys = {
+            (set_code, value)
+            for field, set_code in _CHOICE_FIELDS.items()
+            if (value := final_values[field]) is not None
+        }
+        locked_sets = await self.choice_repo.lock_sets_for_write(
+            _PROFILE_CHOICE_SET_CODES
+        )
+        await self.choice_repo.resolve_active_options(
+            choice_keys,
+            for_write=True,
+            prelocked_set_codes=locked_sets,
+        )
 
         project = Project(
             line_id=line_id,
