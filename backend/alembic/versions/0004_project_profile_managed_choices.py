@@ -3,8 +3,8 @@
 Revision ID: 0004
 Revises: 0003
 
-No legacy data migration is approved.  The upgrade therefore verifies every mutable
-application table is empty before its first schema-changing operation.
+No legacy data migration is approved.  The upgrade therefore locks and verifies every
+mutable application table before its first schema-changing operation.
 """
 
 import re
@@ -66,10 +66,18 @@ _PROFILE_TEXT_COLUMNS = (
 
 
 def _assert_disposable_database(bind: Connection) -> None:
-    non_empty: list[str] = []
     for table_name in MUTABLE_TABLES:
         if _IDENTIFIER_RE.fullmatch(table_name) is None:
             raise RuntimeError(f"invalid migration table identifier: {table_name!r}")
+
+    # Every application write takes ROW EXCLUSIVE.  Acquiring SHARE on all mutable
+    # tables in one deterministic statement closes the check/DDL race while still
+    # allowing ordinary readers.  The locks live through the Alembic transaction.
+    locked_tables = ", ".join(MUTABLE_TABLES)
+    bind.execute(sa.text(f"LOCK TABLE {locked_tables} IN SHARE MODE"))
+
+    non_empty: list[str] = []
+    for table_name in MUTABLE_TABLES:
         has_rows = bind.scalar(
             sa.text(f"SELECT EXISTS (SELECT 1 FROM {table_name} LIMIT 1)")
         )

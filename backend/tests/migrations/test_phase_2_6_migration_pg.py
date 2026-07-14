@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 import inspect
+import time
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
+from threading import Event
 from typing import Any
 from unittest.mock import Mock
 
 import pytest
 import sqlalchemy as sa
 from alembic.config import Config
+from sqlalchemy import event
 from sqlalchemy.engine import Connection
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -174,6 +178,30 @@ def _assert_final_shape(connection: Connection) -> None:
     assert connection.scalar(sa.text("SELECT count(*) FROM choice_option")) == 0
 
 
+def _wait_until_session_is_lock_blocked(
+    database: TemporaryPostgresDatabase, application_name: str, *, timeout: float = 5
+) -> bool:
+    observer_engine = sa.create_engine(database.sync_url)
+    deadline = time.monotonic() + timeout
+    try:
+        with observer_engine.connect() as observer:
+            while time.monotonic() < deadline:
+                wait_event_type = observer.scalar(
+                    sa.text(
+                        "SELECT wait_event_type FROM pg_stat_activity "
+                        "WHERE datname = current_database() "
+                        "AND application_name = :application_name"
+                    ),
+                    {"application_name": application_name},
+                )
+                if wait_event_type == "Lock":
+                    return True
+                time.sleep(0.02)
+    finally:
+        observer_engine.dispose()
+    return False
+
+
 def test_empty_0003_upgrades_to_final_schema(migration_db: MigrationDatabase) -> None:
     migration_db.upgrade("0003")
     migration_db.upgrade("head")
@@ -210,6 +238,112 @@ def test_empty_final_schema_can_downgrade_to_0003_for_local_recovery(
     assert "choice_set_id" not in parameter_columns
     assert isinstance(parameter_columns["min_value"]["type"], sa.Float)
     assert isinstance(parameter_columns["max_value"]["type"], sa.Float)
+
+
+def test_preflight_table_locks_block_a_writer_until_destructive_ddl_commits(
+    migration_db: MigrationDatabase,
+) -> None:
+    migration_db.upgrade("0003")
+    ddl_reached = Event()
+    release_ddl = Event()
+    writer_started = Event()
+    paused = False
+
+    @event.listens_for(migration_db.connection, "before_cursor_execute")
+    def _pause_before_first_ddl(
+        _connection, _cursor, statement, _parameters, _context, _many
+    ) -> None:
+        nonlocal paused
+        if not paused and statement.lstrip().startswith("CREATE TABLE choice_set"):
+            paused = True
+            ddl_reached.set()
+            if not release_ddl.wait(timeout=10):
+                raise RuntimeError("timed out while pausing the migration before first DDL")
+
+    writer_application_name = "phase26_writer_after_preflight"
+    writer_engine = sa.create_engine(
+        migration_db.database.sync_url,
+        connect_args={"application_name": writer_application_name},
+    )
+
+    def _write_parameter() -> None:
+        with writer_engine.begin() as connection:
+            writer_started.set()
+            connection.execute(
+                sa.text(
+                    "INSERT INTO parameter (code, display_name, value_type) "
+                    "VALUES ('after_preflight', 'After preflight', 'text')"
+                )
+            )
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            migration = executor.submit(migration_db.upgrade, "head")
+            assert ddl_reached.wait(timeout=10)
+            writer = executor.submit(_write_parameter)
+            assert writer_started.wait(timeout=10)
+            writer_was_blocked = _wait_until_session_is_lock_blocked(
+                migration_db.database, writer_application_name
+            )
+            release_ddl.set()
+            migration.result(timeout=10)
+            writer.result(timeout=10)
+        assert writer_was_blocked
+        assert migration_db.current_revision() == "0004"
+        assert migration_db.connection.scalar(
+            sa.text(
+                "SELECT count(*) FROM parameter "
+                "WHERE code = 'after_preflight'"
+            )
+        ) == 1
+    finally:
+        release_ddl.set()
+        event.remove(
+            migration_db.connection, "before_cursor_execute", _pause_before_first_ddl
+        )
+        writer_engine.dispose()
+
+
+def test_writer_committed_before_lock_check_is_seen_and_leaves_0003_unchanged(
+    migration_db: MigrationDatabase,
+) -> None:
+    migration_db.upgrade("0003")
+    migration_application_name = "phase26_migration_waiting_for_writer"
+    migration_db.connection.execute(
+        sa.text("SET application_name = :application_name"),
+        {"application_name": migration_application_name},
+    )
+    migration_db.connection.commit()
+
+    writer_engine = sa.create_engine(migration_db.database.sync_url)
+    try:
+        with writer_engine.connect() as writer_connection:
+            writer_transaction = writer_connection.begin()
+            writer_connection.execute(
+                sa.text(
+                    "INSERT INTO parameter (code, display_name, value_type) "
+                    "VALUES ('committed_before_check', 'Committed before check', 'text')"
+                )
+            )
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                migration = executor.submit(migration_db.upgrade, "head")
+                migration_waited = _wait_until_session_is_lock_blocked(
+                    migration_db.database, migration_application_name
+                )
+                writer_transaction.commit()
+                with pytest.raises(RuntimeError, match="disposable app DB"):
+                    migration.result(timeout=10)
+            assert migration_waited
+    finally:
+        writer_engine.dispose()
+
+    inspector = sa.inspect(migration_db.connection)
+    assert migration_db.current_revision() == "0003"
+    assert "choice_set" not in inspector.get_table_names()
+    assert "parameter_option" in inspector.get_table_names()
+    assert "description" in {
+        column["name"] for column in inspector.get_columns("project")
+    }
 
 
 @pytest.mark.parametrize("table_name", MUTABLE_TABLES)

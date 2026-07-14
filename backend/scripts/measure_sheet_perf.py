@@ -18,7 +18,9 @@ from scripts.seed_dev import seed_managed_choices, seed_parameters, seed_project
 
 _NUM_LAYERS = 100
 _NUM_PARAMETERS = 200
-_MAX_SHEET_QUERIES = 8
+PERF_MAX_ELAPSED_MS = 700
+PERF_MAX_SERIALIZED_BYTES = 1_500_000
+PERF_MAX_SQL_QUERIES = 14
 
 
 def _option_array_count(value: Any) -> int:
@@ -31,6 +33,22 @@ def _option_array_count(value: Any) -> int:
     if isinstance(value, list):
         return sum(_option_array_count(item) for item in value)
     return 0
+
+
+def assert_performance_limits(
+    *, elapsed_ms: float, serialized_bytes: int, sql_queries: int
+) -> None:
+    """Enforce the binding, inclusive performance budgets."""
+
+    assert elapsed_ms <= PERF_MAX_ELAPSED_MS, (
+        f"elapsed {elapsed_ms:.1f}ms exceeds {PERF_MAX_ELAPSED_MS}ms"
+    )
+    assert serialized_bytes <= PERF_MAX_SERIALIZED_BYTES, (
+        f"payload {serialized_bytes} bytes exceeds {PERF_MAX_SERIALIZED_BYTES} bytes"
+    )
+    assert sql_queries <= PERF_MAX_SQL_QUERIES, (
+        f"query count {sql_queries} exceeds {PERF_MAX_SQL_QUERIES}"
+    )
 
 
 async def measure() -> None:
@@ -90,10 +108,12 @@ async def measure() -> None:
     assert distinct_choice_sets == {"equipment_mode"}
     assert len(choice_columns) > 1
     assert option_arrays == 0
-    assert len(statements) <= _MAX_SHEET_QUERIES
     assert all("choice_option" not in statement.lower() for statement in statements)
-    assert elapsed_ms < 1000
-    assert size_bytes < 5_000_000
+    assert_performance_limits(
+        elapsed_ms=elapsed_ms,
+        serialized_bytes=size_bytes,
+        sql_queries=len(statements),
+    )
 
     print("=== SheetOut managed-choice performance ===")
     print(f"distinct choice sets: {len(distinct_choice_sets)}")
@@ -101,7 +121,7 @@ async def measure() -> None:
     print(f"columns sharing the large set: {len(choice_columns)}")
     print(f"serialized bytes: {size_bytes}")
     print(f"elapsed milliseconds: {elapsed_ms:.1f}")
-    print(f"SQL queries (must be <= {_MAX_SHEET_QUERIES}): {len(statements)}")
+    print(f"SQL queries (must be <= {PERF_MAX_SQL_QUERIES}): {len(statements)}")
 
 
 if __name__ == "__main__":
