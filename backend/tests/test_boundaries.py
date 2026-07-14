@@ -35,6 +35,25 @@ def test_models_expose_base_metadata() -> None:
     assert Base.metadata is not None
 
 
+def test_choice_models_and_parameter_relation_are_registered() -> None:
+    """Task 2's additive aggregate is visible to create_all and later migrations."""
+    from app.models import Base
+
+    assert {"choice_set", "choice_option"} <= set(Base.metadata.tables)
+    assert "choice_set_id" in Base.metadata.tables["parameter"].c
+
+
+def test_fixed_profile_choice_set_mapping_is_exact() -> None:
+    from app.domain.choices.constants import PROFILE_CHOICE_SET_FIELDS
+
+    assert PROFILE_CHOICE_SET_FIELDS == {
+        "device_type": "device_type",
+        "project_category": "project_category",
+        "active_direction": "active_direction",
+        "gate_direction": "gate_direction",
+    }
+
+
 async def test_dev_stub_returns_admin() -> None:
     """개발 스텁이 켜지면 고정 admin을 반환한다 (라우터 인증 배선용)."""
     from app.core.config import settings

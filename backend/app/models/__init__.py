@@ -5,6 +5,7 @@ Base.metadata에 등록한다.
 """
 
 from app.core.db import Base
+from app.models.choice import ChoiceOption, ChoiceSet
 from app.models.parameter import Parameter, ParameterCategory, ParameterOption
 from app.models.project import (
     CellValue,
@@ -17,6 +18,8 @@ from app.models.project import (
 
 __all__ = [
     "Base",
+    "ChoiceSet",
+    "ChoiceOption",
     "Parameter",
     "ParameterCategory",
     "ParameterOption",

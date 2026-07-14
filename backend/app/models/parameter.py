@@ -5,6 +5,7 @@
 """
 
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     Boolean,
@@ -21,6 +22,9 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
 from app.domain.parameters.types import ValueType
+
+if TYPE_CHECKING:
+    from app.models.choice import ChoiceSet
 
 
 class ParameterCategory(Base):
@@ -61,6 +65,11 @@ class Parameter(Base):
     category_id: Mapped[int | None] = mapped_column(
         ForeignKey("parameter_category.id"), nullable=True, index=True
     )
+    # Task 2 adds the reusable ChoiceSet seam additively. Task 3 validates the binding
+    # rule and removes the legacy embedded ParameterOption relation in one cutover.
+    choice_set_id: Mapped[int | None] = mapped_column(
+        ForeignKey("choice_set.id"), nullable=True, index=True
+    )
     # number 타입 부가 속성 (검증 엔진이 사용)
     unit: Mapped[str | None] = mapped_column(String(32), nullable=True)
     min_value: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -79,6 +88,7 @@ class Parameter(Base):
     category: Mapped[ParameterCategory | None] = relationship(
         back_populates="parameters"
     )
+    choice_set: Mapped["ChoiceSet | None"] = relationship()
     options: Mapped[list["ParameterOption"]] = relationship(
         back_populates="parameter",
         cascade="all, delete-orphan",
