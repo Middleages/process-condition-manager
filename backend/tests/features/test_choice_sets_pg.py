@@ -93,6 +93,65 @@ def _assert_one_changed(results: list[tuple[str, object]]) -> None:
     assert conflict.code == "choice_set_changed"
 
 
+async def test_write_resolver_does_not_return_set_created_after_absent_lock_check(
+    pg_engine: AsyncEngine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    factory = async_sessionmaker(pg_engine, expire_on_commit=False, class_=AsyncSession)
+    absent_lock_checked = asyncio.Event()
+    concurrent_create_committed = asyncio.Event()
+    original_lock_sets = ChoiceSetRepository._lock_sets
+
+    async def pause_after_absent_lock_check(
+        self: ChoiceSetRepository, codes: set[str]
+    ) -> dict[str, ChoiceSet]:
+        locked = await original_lock_sets(self, codes)
+        if codes == {"appeared_after_lock"}:
+            assert locked == {}
+            absent_lock_checked.set()
+            await asyncio.wait_for(concurrent_create_committed.wait(), timeout=2)
+        return locked
+
+    monkeypatch.setattr(ChoiceSetRepository, "_lock_sets", pause_after_absent_lock_check)
+
+    async def create_after_absent_check() -> None:
+        await asyncio.wait_for(absent_lock_checked.wait(), timeout=2)
+        async with factory() as session:
+            choice_set = ChoiceSet(code="appeared_after_lock", display_name="Late set")
+            choice_set.options.append(ChoiceOption(code="A", label="Late option"))
+            session.add(choice_set)
+            await session.commit()
+        concurrent_create_committed.set()
+
+    creator = asyncio.create_task(create_after_absent_check())
+    async with factory() as resolver_session:
+        repository = ChoiceSetRepository(resolver_session)
+        resolved = await asyncio.wait_for(
+            repository.resolve_options(
+                {("appeared_after_lock", "A")},
+                for_write=True,
+            ),
+            timeout=2,
+        )
+        await resolver_session.commit()
+    await creator
+
+    # A row that appeared after the absent lock check was never locked by this
+    # transaction and therefore cannot be approved for a consumer write.
+    assert resolved == {}
+    async with factory() as verification_session:
+        persisted = await verification_session.scalar(
+            select(func.count())
+            .select_from(ChoiceOption)
+            .join(ChoiceSet, ChoiceSet.id == ChoiceOption.choice_set_id)
+            .where(
+                ChoiceSet.code == "appeared_after_lock",
+                ChoiceOption.code == "A",
+            )
+        )
+    assert persisted == 1
+
+
 async def test_competing_reorders_serialize_version_check_and_keep_one_complete_order(
     pg_engine: AsyncEngine,
 ) -> None:

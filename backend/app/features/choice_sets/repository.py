@@ -166,8 +166,16 @@ class ChoiceSetRepository:
         unique_keys = set(keys)
         if not unique_keys:
             return {}
+        query_keys = unique_keys
         if for_write:
-            await self._lock_sets({set_code for set_code, _ in unique_keys})
+            locked_sets = await self._lock_sets(
+                {set_code for set_code, _ in unique_keys}
+            )
+            query_keys = {
+                key for key in unique_keys if key[0] in locked_sets
+            }
+            if not query_keys:
+                return {}
 
         stmt = (
             select(
@@ -178,7 +186,7 @@ class ChoiceSetRepository:
                 ChoiceOption.is_active.label("option_is_active"),
             )
             .join(ChoiceOption, ChoiceOption.choice_set_id == ChoiceSet.id)
-            .where(tuple_(ChoiceSet.code, ChoiceOption.code).in_(sorted(unique_keys)))
+            .where(tuple_(ChoiceSet.code, ChoiceOption.code).in_(sorted(query_keys)))
         )
         if not include_inactive:
             stmt = stmt.where(
