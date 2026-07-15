@@ -2,11 +2,11 @@
 
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { appendFile, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { appendFile, mkdir, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises'
 import { execFileSync } from 'node:child_process'
 import { createRequire } from 'node:module'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 export const VIEWPORTS = Object.freeze([
   Object.freeze({ name: '1024x768', width: 1024, height: 768 }),
@@ -49,14 +49,21 @@ const DEFAULT_VIEWPORT = VIEWPORTS[1]
 const JSON_HEADERS = { 'content-type': 'application/json' }
 
 export function parseBrowserQaArgs(argv) {
-  const parsed = { baseUrl: null, apiUrl: null, output: null, help: false }
+  const parsed = {
+    baseUrl: null,
+    apiUrl: null,
+    manifest: null,
+    backendContainer: null,
+    output: null,
+    help: false,
+  }
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index]
     if (argument === '--help' || argument === '-h') {
       parsed.help = true
       continue
     }
-    if (!['--base-url', '--api-url', '--output'].includes(argument)) {
+    if (!['--base-url', '--api-url', '--manifest', '--backend-container', '--output'].includes(argument)) {
       throw new Error(`Unknown argument: ${argument}`)
     }
     const value = argv[index + 1]
@@ -64,16 +71,23 @@ export function parseBrowserQaArgs(argv) {
     index += 1
     if (argument === '--base-url') parsed.baseUrl = value.replace(/\/$/, '')
     if (argument === '--api-url') parsed.apiUrl = value.replace(/\/$/, '')
+    if (argument === '--manifest') parsed.manifest = value
+    if (argument === '--backend-container') parsed.backendContainer = value
     if (argument === '--output') parsed.output = value
   }
   if (parsed.help) return parsed
   const missing = []
   if (parsed.baseUrl === null) missing.push('--base-url')
   if (parsed.apiUrl === null) missing.push('--api-url')
+  if (parsed.manifest === null) missing.push('--manifest')
+  if (parsed.backendContainer === null) missing.push('--backend-container')
   if (parsed.output === null) missing.push('--output')
   if (missing.length > 0) throw new Error(`Missing required arguments: ${missing.join(', ')}`)
   assertLoopbackHttp(parsed.baseUrl, '--base-url')
   assertLoopbackHttp(parsed.apiUrl, '--api-url')
+  if (!/^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/.test(parsed.backendContainer)) {
+    throw new Error('--backend-container must be a safe Docker container name')
+  }
   return parsed
 }
 
@@ -110,7 +124,113 @@ export function isBoxInsideViewport(box, viewport) {
 }
 
 export function isSameOriginResourceFailure(response, baseUrl) {
-  return new URL(response.url).origin === new URL(baseUrl).origin && response.status >= 400
+  return classifySameOriginResponse(response.url, baseUrl) === 'static' &&
+    (!Number.isInteger(response.status) || response.status < 200 || response.status >= 300)
+}
+
+export function classifySameOriginResponse(rawUrl, baseUrl) {
+  const url = new URL(rawUrl)
+  if (url.origin !== new URL(baseUrl).origin) return 'external'
+  return isApiPath(url.pathname) ? 'api' : 'static'
+}
+
+export function verifyStaticResponseEvidence({ url, baseUrl, status, headers, body, manifest }) {
+  assert.equal(classifySameOriginResponse(url, baseUrl), 'static', 'response is not a same-origin static response')
+  assert(Number.isInteger(status) && status >= 200 && status < 300, `static response must be 2xx, got ${status}`)
+  const responseHeaders = headerReader(headers)
+  assert.equal(
+    responseHeaders('x-phase26-manifest-sha256'),
+    manifest.manifest_sha256,
+    'static manifest hash header mismatch',
+  )
+  assert.equal(
+    responseHeaders('x-phase26-dist-identity'),
+    manifest.dist.identity_sha256,
+    'static dist identity header mismatch',
+  )
+  assert.equal(
+    responseHeaders('x-phase26-source-git-sha'),
+    manifest.source.git_sha,
+    'static source Git SHA header mismatch',
+  )
+  const requestUrl = new URL(url)
+  const decoded = decodeURIComponent(requestUrl.pathname).replace(/^\/+/, '')
+  const fileMap = new Map(manifest.dist.files.map((entry) => [entry.path, entry]))
+  const expectedPath = fileMap.has(decoded)
+    ? decoded
+    : isAssetLikeBrowserPath(requestUrl.pathname) ? null : 'index.html'
+  assert.notEqual(expectedPath, null, `static asset is absent from manifest: ${requestUrl.pathname}`)
+  const expected = fileMap.get(expectedPath)
+  assert(expected, `manifest has no expected static file: ${expectedPath}`)
+  assert.equal(responseHeaders('x-phase26-file-path'), expectedPath, 'static file path header mismatch')
+  assert.equal(responseHeaders('x-phase26-file-sha256'), expected.sha256, 'static file hash header mismatch')
+  const bytes = Buffer.isBuffer(body) ? body : Buffer.from(body)
+  assert.equal(bytes.length, expected.bytes, 'static response body byte count mismatch')
+  const bodySha256 = createHash('sha256').update(bytes).digest('hex')
+  assert.equal(bodySha256, expected.sha256, 'static response body hash mismatch')
+  return { file_path: expectedPath, body_sha256: bodySha256 }
+}
+
+export function validateBackendContainerInspection({ container, image, expectedGitSha }) {
+  assert.equal(container?.State?.Running, true, 'backend container must be running')
+  assert.equal(
+    container?.HostConfig?.ReadonlyRootfs,
+    true,
+    'authoritative backend container must use a read-only root filesystem',
+  )
+  assert.equal(container?.Image, image?.Id, 'backend container image ID does not match inspected image')
+  const label = image?.Config?.Labels?.['org.process-condition-manager.phase26.git-sha'] ?? null
+  assert.equal(label, expectedGitSha, 'backend image label does not match the production Git SHA')
+  assert(Array.isArray(container?.Mounts), 'backend container mount inspection is missing')
+  const mounts = container.Mounts.map(({ Type, Source, Destination }) => ({
+    type: Type,
+    source: Source ?? null,
+    destination: Destination,
+  }))
+  assert.deepEqual(mounts, [], 'authoritative backend container must not have mounts')
+  const publishedBindings = container?.NetworkSettings?.Ports?.['8000/tcp']
+  assert(
+    Array.isArray(publishedBindings) && publishedBindings.length === 1,
+    'backend container must publish exactly 127.0.0.1:18000 for 8000/tcp',
+  )
+  const [publishedBinding] = publishedBindings
+  assert.deepEqual(
+    { HostIp: publishedBinding?.HostIp, HostPort: publishedBinding?.HostPort },
+    { HostIp: '127.0.0.1', HostPort: '18000' },
+    'backend container must publish exactly 127.0.0.1:18000 for 8000/tcp',
+  )
+  assert.match(container?.Id ?? '', /.+/, 'backend container ID is missing')
+  assert.match(image?.Id ?? '', /^sha256:.+/, 'backend image ID is missing')
+  return {
+    container_id: container.Id,
+    container_name: String(container.Name ?? '').replace(/^\//, ''),
+    image_id: image.Id,
+    git_sha_label: label,
+    running: true,
+    readonly_rootfs: true,
+    mounts,
+    published_endpoint: {
+      container_port: '8000/tcp',
+      host_ip: publishedBinding.HostIp,
+      host_port: Number(publishedBinding.HostPort),
+    },
+  }
+}
+
+function headerReader(headers) {
+  if (headers && typeof headers.get === 'function') return (name) => headers.get(name)
+  const normalized = Object.fromEntries(
+    Object.entries(headers ?? {}).map(([name, value]) => [name.toLowerCase(), value]),
+  )
+  return (name) => normalized[name.toLowerCase()] ?? null
+}
+
+function isApiPath(pathname) {
+  return pathname === '/api' || pathname.startsWith('/api/')
+}
+
+function isAssetLikeBrowserPath(pathname) {
+  return pathname === '/assets' || pathname.startsWith('/assets/') || path.posix.extname(pathname) !== ''
 }
 
 function assertLoopbackHttp(raw, name) {
@@ -135,7 +255,8 @@ function assertLoopbackHttp(raw, name) {
 function usage() {
   return [
     'Usage: node phase26_browser_qa.mjs --base-url http://127.0.0.1:15174',
-    '  --api-url http://127.0.0.1:18000/api --output <evidence-directory>',
+    '  --api-url http://127.0.0.1:18000/api --manifest <build-manifest.json>',
+    '  --backend-container <immutable-container> --output <evidence-directory>',
     '',
   ].join('\n')
 }
@@ -158,6 +279,7 @@ class BrowserQa {
     this.browser = null
     this.apiContext = null
     this.provenance = null
+    this.buildManifest = null
     this.seedProject = null
     this.createdProjects = []
     this.fixtureProcesses = []
@@ -167,9 +289,10 @@ class BrowserQa {
 
   async run() {
     assertSafeEvidenceOutput(this.output)
-    this.provenance = await sourceProvenance(this.output)
-    assert.equal(this.provenance.tracked_worktree_clean, true, 'tracked source tree must be clean before browser evidence')
-    await rm(this.output, { recursive: true, force: true })
+    this.provenance = await sourceProvenance(this.output, this.args.manifest, this.args.backendContainer)
+    assert.equal(this.provenance.worktree_clean_except_evidence, true, 'source tree must be clean except the evidence leaf')
+    this.buildManifest = this.provenance.production_build
+    await resetEvidenceArtifacts(this.output, this.args.manifest)
     await mkdir(this.screenshots, { recursive: true })
     await mkdir(this.aria, { recursive: true })
     this.browser = await this.playwright.chromium.launch({ headless: true })
@@ -258,7 +381,7 @@ class BrowserQa {
   async flushArtifacts({ startedAt, fatal }) {
     await Promise.allSettled(this.networkTasks)
     const browserVersion = this.browser?.version() ?? null
-    const completedProvenance = await sourceProvenance(this.output)
+    const completedProvenance = await sourceProvenance(this.output, this.args.manifest, this.args.backendContainer)
     assert.deepEqual(completedProvenance, this.provenance, 'source/build provenance changed during browser evidence')
     const payload = {
       schema_version: 1,
@@ -289,6 +412,7 @@ class BrowserQa {
   }
 
   async prepareDeterministicState() {
+    await this.assertProxyProvenance()
     const health = await this.apiRaw('/../health', { expected: 200, absoluteFromApiParent: true })
     const healthBody = JSON.parse(await health.text())
     assert.equal(healthBody.status, 'ok')
@@ -342,6 +466,40 @@ class BrowserQa {
     ).choice_set
     assert(equipment.option_count > 500, `equipment set must paginate, got ${equipment.option_count}`)
     return { seedProjectId: this.seedProject.id, equipmentOptions: equipment.option_count }
+  }
+
+  async assertProxyProvenance() {
+    const response = await this.apiContext.get(`${this.args.baseUrl}/api/projects?limit=1`, {
+      headers: { accept: 'application/json' },
+    })
+    assert.equal(response.status(), 200, `production proxy provenance probe failed: ${response.status()}`)
+    assert.equal(
+      response.headers()['x-phase26-backend-git-sha'],
+      this.buildManifest.source.git_sha,
+      'production proxy backend identity header mismatch',
+    )
+    assert.equal(
+      response.headers()['x-phase26-manifest-sha256'],
+      this.buildManifest.manifest_sha256,
+      'production proxy manifest header mismatch',
+    )
+    const body = await response.body()
+    this.network.push({
+      at: new Date().toISOString(),
+      scenario: null,
+      context: 'provenance-probe',
+      source: 'production-proxy',
+      phase: 'response',
+      method: 'GET',
+      url: `${this.args.baseUrl}/api/projects?limit=1`,
+      path: '/api/projects',
+      query: { limit: '1' },
+      status: response.status(),
+      body_sha256: createHash('sha256').update(body).digest('hex'),
+      response_version: null,
+      backend_git_sha: response.headers()['x-phase26-backend-git-sha'],
+      manifest_sha256: response.headers()['x-phase26-manifest-sha256'],
+    })
   }
 
   async apiRaw(apiPath, { expected, method = 'GET', data, headers, absoluteFromApiParent = false } = {}) {
@@ -416,7 +574,8 @@ class BrowserQa {
     const pendingRequests = new Set()
     this.pendingApiRequests.set(page, pendingRequests)
     page.on('request', (request) => {
-      if (!request.url().includes('/api/')) return
+      const classification = classifySameOriginResponse(request.url(), this.args.baseUrl)
+      if (classification !== 'api') return
       pendingRequests.add(request)
       const url = new URL(request.url())
       this.network.push({
@@ -426,14 +585,39 @@ class BrowserQa {
     })
     page.on('response', (response) => {
       const url = new URL(response.url())
-      if (!response.url().includes('/api/')) {
-        if (url.origin === new URL(this.args.baseUrl).origin) {
-          this.network.push({
-            at: new Date().toISOString(), scenario, context: label, source: label,
-            phase: 'resource-response', method: response.request().method(), url: response.url(),
-            path: url.pathname, query: Object.fromEntries(url.searchParams), status: response.status(),
-          })
+      const classification = classifySameOriginResponse(response.url(), this.args.baseUrl)
+      if (classification === 'external') return
+      if (classification === 'static') {
+        const headers = response.headers()
+        const entry = {
+          at: new Date().toISOString(), scenario, context: label, source: label,
+          phase: 'resource-response', method: response.request().method(), url: response.url(),
+          path: url.pathname, query: Object.fromEntries(url.searchParams), status: response.status(),
+          file_path: headers['x-phase26-file-path'] ?? null,
+          file_sha256: headers['x-phase26-file-sha256'] ?? null,
+          body_sha256: null,
+          manifest_sha256: headers['x-phase26-manifest-sha256'] ?? null,
+          dist_identity: headers['x-phase26-dist-identity'] ?? null,
+          source_git_sha: headers['x-phase26-source-git-sha'] ?? null,
+          integrity_error: null,
         }
+        this.network.push(entry)
+        const task = response.body().then((body) => {
+          const verified = verifyStaticResponseEvidence({
+            url: response.url(),
+            baseUrl: this.args.baseUrl,
+            status: response.status(),
+            headers,
+            body,
+            manifest: this.buildManifest,
+          })
+          entry.body_sha256 = verified.body_sha256
+          entry.file_path = verified.file_path
+        }).catch((error) => {
+          entry.integrity_error = error instanceof Error ? error.message : String(error)
+          throw error
+        })
+        this.networkTasks.push(task)
         return
       }
       const entry = {
@@ -463,10 +647,13 @@ class BrowserQa {
       this.networkTasks.push(task)
     })
     page.on('requestfailed', (request) => {
-      pendingRequests.delete(request)
       const url = new URL(request.url())
+      const classification = classifySameOriginResponse(request.url(), this.args.baseUrl)
+      if (classification === 'external') return
+      if (classification === 'api') pendingRequests.delete(request)
       this.network.push({
-        at: new Date().toISOString(), scenario, context: label, source: label, phase: 'failed', method: request.method(),
+        at: new Date().toISOString(), scenario, context: label, source: label,
+        phase: classification === 'api' ? 'failed' : 'resource-failed', method: request.method(),
         url: request.url(), path: url.pathname, query: Object.fromEntries(url.searchParams),
         error: request.failure()?.errorText ?? 'unknown',
       })
@@ -518,10 +705,28 @@ class BrowserQa {
         !isExpectedFailedRequest(entry.scenario, entry.method, entry.path, entry.error),
     )
     assert.deepEqual(unexpectedFailures, [], `unexpected failed API requests: ${JSON.stringify(unexpectedFailures)}`)
+    const unexpectedResourceFailures = this.network.filter((entry) => entry.phase === 'resource-failed')
+    assert.deepEqual(
+      unexpectedResourceFailures,
+      [],
+      `unexpected failed same-origin resource requests: ${JSON.stringify(unexpectedResourceFailures)}`,
+    )
     const unexpectedResources = this.network.filter(
       (entry) => entry.phase === 'resource-response' && isSameOriginResourceFailure(entry, this.args.baseUrl),
     )
     assert.deepEqual(unexpectedResources, [], `unexpected same-origin resource responses: ${JSON.stringify(unexpectedResources)}`)
+    const incompleteResources = this.network.filter(
+      (entry) => entry.phase === 'resource-response' && (
+        entry.integrity_error !== null ||
+        typeof entry.file_path !== 'string' ||
+        !/^[0-9a-f]{64}$/.test(entry.file_sha256 ?? '') ||
+        !/^[0-9a-f]{64}$/.test(entry.body_sha256 ?? '') ||
+        entry.manifest_sha256 !== this.buildManifest.manifest_sha256 ||
+        entry.dist_identity !== this.buildManifest.dist.identity_sha256 ||
+        entry.source_git_sha !== this.buildManifest.source.git_sha
+      ),
+    )
+    assert.deepEqual(incompleteResources, [], `incomplete static integrity evidence: ${JSON.stringify(incompleteResources)}`)
   }
 
   async goto(page, route, ready) {
@@ -2548,22 +2753,67 @@ function assertSafeEvidenceOutput(output) {
   assert.notEqual(normalized, path.parse(normalized).root)
 }
 
-function sourceCommitSha(output) {
-  const repoRoot = evidenceRepoRoot(output)
-  return execFileSync('git', ['-C', repoRoot, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()
-}
-
 function evidenceRepoRoot(output) {
   return path.resolve(output, '..', '..', '..', '..')
 }
 
-async function sourceProvenance(output) {
+export async function resetEvidenceArtifacts(output, manifestPath) {
+  const root = path.resolve(output)
+  const configuredManifest = path.resolve(manifestPath)
+  assert.equal(path.dirname(configuredManifest), root, 'build manifest must be directly inside the evidence leaf')
+  assert.equal(path.basename(configuredManifest), 'build-manifest.json', 'unexpected build manifest filename')
+  const resolvedManifest = await realpath(configuredManifest)
+  assert.equal(resolvedManifest, configuredManifest, 'build manifest must not be a symlink')
+  const before = await readFile(resolvedManifest)
+  const entries = await readdir(root)
+  for (const entry of entries) {
+    if (entry === 'build-manifest.json') continue
+    await rm(path.join(root, entry), { recursive: true, force: true })
+  }
+  const after = await readFile(resolvedManifest)
+  assert.deepEqual(after, before, 'evidence cleanup changed the build manifest')
+}
+
+async function sourceProvenance(output, manifestInput, backendContainer) {
   const repoRoot = evidenceRepoRoot(output)
-  const trackedStatus = execFileSync(
-    'git',
-    ['-C', repoRoot, 'status', '--porcelain', '--untracked-files=no'],
-    { encoding: 'utf8' },
-  ).trim()
+  const outputRoot = path.resolve(output)
+  const manifestPath = await realpath(manifestInput)
+  assert.equal(path.dirname(manifestPath), outputRoot, 'build manifest must be in the Task 15 evidence leaf')
+  assert.equal(path.basename(manifestPath), 'build-manifest.json')
+  assert.equal(manifestPath, path.resolve(manifestInput), 'build manifest must not be a symlink')
+  const manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
+  const { manifest_sha256: claimedManifestSha, ...manifestPayload } = manifest
+  assert.match(claimedManifestSha ?? '', /^[0-9a-f]{64}$/, 'build manifest digest is missing')
+  assert.equal(claimedManifestSha, sha256Json(manifestPayload), 'build manifest digest mismatch')
+  assert.equal(manifest.schema_version, 1, 'unsupported build manifest schema')
+
+  const gitSha = gitText(repoRoot, ['rev-parse', 'HEAD']).trim()
+  assert.equal(manifest.source.git_sha, gitSha, 'build manifest Git SHA is stale')
+  assert.equal(manifest.source.git_tree, gitText(repoRoot, ['rev-parse', 'HEAD^{tree}']).trim(), 'build manifest Git tree is stale')
+  assert.equal(
+    manifest.source.frontend_tree,
+    gitText(repoRoot, ['rev-parse', 'HEAD:frontend']).trim(),
+    'build manifest frontend tree is stale',
+  )
+
+  await assertBrowserWorktreeClean(repoRoot, outputRoot)
+  const expectedScripts = [
+    ['build_harness', 'scripts/qa/build_phase26_dist.mjs'],
+    ['browser_harness', 'scripts/qa/phase26_browser_qa.mjs'],
+    ['dist_server', 'scripts/qa/serve_phase26_dist.mjs'],
+  ]
+  assert.deepEqual(Object.keys(manifest.scripts), expectedScripts.map(([key]) => key), 'build manifest QA script set is incomplete')
+  for (const [key, relative] of expectedScripts) {
+    const current = await readFile(path.join(repoRoot, ...relative.split('/')))
+    const committed = gitBuffer(repoRoot, ['show', `HEAD:${relative}`])
+    assert.deepEqual(current, committed, `${relative} does not match HEAD`)
+    assert.deepEqual(manifest.scripts[key], {
+      path: relative,
+      bytes: current.length,
+      sha256: createHash('sha256').update(current).digest('hex'),
+      git_blob: gitText(repoRoot, ['rev-parse', `HEAD:${relative}`]).trim(),
+    }, `build manifest script provenance is stale: ${relative}`)
+  }
   const executedHarness = await readFile(fileURLToPath(import.meta.url))
   const repositoryHarness = await readFile(path.join(repoRoot, 'scripts', 'qa', 'phase26_browser_qa.mjs'))
   const executedHarnessSha256 = createHash('sha256').update(executedHarness).digest('hex')
@@ -2573,19 +2823,64 @@ async function sourceProvenance(output) {
     repositoryHarnessSha256,
     'executed browser harness does not match the checked-in source',
   )
+  assert.deepEqual(
+    { bytes: executedHarness.length, sha256: executedHarnessSha256 },
+    {
+      bytes: manifest.scripts.browser_harness.bytes,
+      sha256: manifest.scripts.browser_harness.sha256,
+    },
+    'executed browser harness does not match the build manifest provenance',
+  )
+  const packageLock = await readFile(path.join(repoRoot, 'frontend', 'package-lock.json'))
+  assert.deepEqual(manifest.source.package_lock, {
+    path: 'frontend/package-lock.json',
+    bytes: packageLock.length,
+    sha256: createHash('sha256').update(packageLock).digest('hex'),
+  }, 'build manifest package-lock provenance is stale')
+  assertNormalizedBrowserBuildEnvironment(manifest.build_env)
+  const buildHelper = await import(pathToFileURL(path.join(repoRoot, 'scripts', 'qa', 'build_phase26_dist.mjs')).href)
+  const installedToolchain = await buildHelper.captureInstalledBuildToolchain(
+    path.join(repoRoot, 'frontend'),
+    packageLock,
+    manifest.build_env.variables,
+    manifest.toolchain,
+  )
+  assert.deepEqual(installedToolchain, manifest.toolchain, 'installed production build toolchain differs from the manifest')
+  assert.equal(manifest.runtime.node, manifest.toolchain.runtime.node.version, 'manifest Node runtime is inconsistent')
+  assert.equal(manifest.runtime.npm, manifest.toolchain.runtime.npm.version, 'manifest npm runtime is inconsistent')
+  assert.equal(process.version, manifest.toolchain.runtime.node.version, 'build and browser Node versions differ')
+  assert.equal(
+    await realpath(process.execPath),
+    manifest.toolchain.runtime.node.path,
+    'executed browser Node binary differs from the production build runtime',
+  )
+  assert.deepEqual(manifest.fresh_build, {
+    removed_before_build: ['frontend/dist', 'frontend/tsconfig.tsbuildinfo'],
+    regenerated_before_build: ['frontend/node_modules'],
+    install_command: ['npm', 'ci', '--include=dev', '--no-audit', '--no-fund'],
+  }, 'production build did not declare fresh build artifact removal')
+  const distSnapshot = await productionBuildManifest(path.join(repoRoot, 'frontend', 'dist'))
+  assert.deepEqual(manifest.dist, distSnapshot, 'production dist differs from the build manifest')
+  const backend = inspectBackendContainer(backendContainer, gitSha)
   return {
-    git_sha: sourceCommitSha(output),
-    tracked_worktree_clean: trackedStatus === '',
+    git_sha: gitSha,
+    git_tree: manifest.source.git_tree,
+    frontend_tree: manifest.source.frontend_tree,
+    worktree_clean_except_evidence: true,
+    build_manifest_path: 'docs/superpowers/evidence/phase-2-6/build-manifest.json',
+    build_manifest_sha256: claimedManifestSha,
     harness_sha256: executedHarnessSha256,
-    production_build: await productionBuildManifest(path.join(repoRoot, 'frontend', 'dist')),
+    backend,
+    production_build: manifest,
   }
 }
 
 async function productionBuildManifest(distRoot) {
+  const root = await realpath(distRoot)
   const files = []
   const visit = async (directory, prefix = '') => {
     const entries = await readdir(directory, { withFileTypes: true })
-    entries.sort((left, right) => left.name.localeCompare(right.name))
+    entries.sort((left, right) => left.name < right.name ? -1 : left.name > right.name ? 1 : 0)
     for (const entry of entries) {
       const relative = prefix === '' ? entry.name : `${prefix}/${entry.name}`
       const absolute = path.join(directory, entry.name)
@@ -2593,7 +2888,9 @@ async function productionBuildManifest(distRoot) {
         await visit(absolute, relative)
       } else {
         assert(entry.isFile(), `production dist contains a non-file entry: ${relative}`)
-        const body = await readFile(absolute)
+        const resolved = await realpath(absolute)
+        assert(isInsidePath(root, resolved), `production dist entry escapes through a symlink: ${relative}`)
+        const body = await readFile(resolved)
         files.push({
           path: relative,
           bytes: body.length,
@@ -2607,9 +2904,89 @@ async function productionBuildManifest(distRoot) {
   assert(files.some(({ path: filename }) => /^assets\/.*\.js$/.test(filename)), 'production dist has no JavaScript asset')
   return {
     root: 'frontend/dist',
-    manifest_sha256: sha256Json(files),
+    identity_sha256: sha256Json(files),
     files,
   }
+}
+
+async function assertBrowserWorktreeClean(repoRoot, evidenceRoot) {
+  const evidenceRelative = path.relative(repoRoot, evidenceRoot).split(path.sep).join('/')
+  const tracked = splitNullBuffer(gitBuffer(repoRoot, ['diff', '--name-only', '-z', 'HEAD', '--']))
+  const untracked = splitNullBuffer(gitBuffer(repoRoot, ['ls-files', '--others', '--exclude-standard', '-z']))
+  const ignoredQa = splitNullBuffer(gitBuffer(repoRoot, [
+    'ls-files', '--others', '--ignored', '--exclude-standard', '-z', '--', 'scripts/qa',
+  ]))
+  const frontendEntries = await readdir(path.join(repoRoot, 'frontend'), { withFileTypes: true })
+  const environmentFiles = frontendEntries
+    .filter((entry) => entry.name === '.env' || entry.name.startsWith('.env.'))
+    .map((entry) => `frontend/${entry.name}`)
+  const rejected = [...new Set([...tracked, ...untracked, ...ignoredQa, ...environmentFiles])]
+    .map((entry) => entry.split(path.sep).join('/'))
+    .filter((entry) => entry !== evidenceRelative && !entry.startsWith(`${evidenceRelative}/`))
+    .sort()
+  assert.deepEqual(rejected, [], `source tree contains changes outside the evidence leaf: ${rejected.join(', ')}`)
+}
+
+function inspectBackendContainer(containerName, expectedGitSha) {
+  const containers = JSON.parse(execFileSync(
+    'docker',
+    ['inspect', '--type', 'container', containerName],
+    { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 },
+  ))
+  assert.equal(containers.length, 1, `expected exactly one backend container inspection for ${containerName}`)
+  const container = containers[0]
+  const images = JSON.parse(execFileSync(
+    'docker',
+    ['image', 'inspect', container.Image],
+    { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 },
+  ))
+  assert.equal(images.length, 1, `expected exactly one backend image inspection for ${container.Image}`)
+  return validateBackendContainerInspection({ container, image: images[0], expectedGitSha })
+}
+
+function assertNormalizedBrowserBuildEnvironment(buildEnvironment) {
+  assert.deepEqual(buildEnvironment?.vite, {}, 'production VITE environment must be empty')
+  const variables = buildEnvironment?.variables
+  assert(variables && typeof variables === 'object' && !Array.isArray(variables), 'normalized build variables are missing')
+  for (const key of ['PATH', 'HOME', 'TMPDIR', 'NPM_CONFIG_CACHE', 'NPM_CONFIG_USERCONFIG']) {
+    assert.equal(typeof variables[key], 'string')
+  }
+  const fixed = {
+    NODE_ENV: 'production',
+    CI: '1',
+    LANG: 'C.UTF-8',
+    LC_ALL: 'C.UTF-8',
+    TZ: 'UTC',
+    NPM_CONFIG_GLOBALCONFIG: '/dev/null',
+    NPM_CONFIG_UPDATE_NOTIFIER: 'false',
+    NPM_CONFIG_FUND: 'false',
+    NPM_CONFIG_AUDIT: 'false',
+    NO_COLOR: '1',
+    FORCE_COLOR: '0',
+  }
+  for (const [key, value] of Object.entries(fixed)) assert.equal(variables[key], value, `unexpected build env ${key}`)
+  assert.deepEqual(
+    Object.keys(variables).sort(),
+    ['PATH', 'HOME', 'TMPDIR', 'NPM_CONFIG_CACHE', 'NPM_CONFIG_USERCONFIG', ...Object.keys(fixed)].sort(),
+    'normalized build environment contains undeclared variables',
+  )
+}
+
+function gitText(repoRoot, args) {
+  return execFileSync('git', ['-C', repoRoot, ...args], { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 })
+}
+
+function gitBuffer(repoRoot, args) {
+  return execFileSync('git', ['-C', repoRoot, ...args], { encoding: null, maxBuffer: 32 * 1024 * 1024 })
+}
+
+function splitNullBuffer(value) {
+  return value.toString('utf8').split('\0').filter(Boolean)
+}
+
+function isInsidePath(root, candidate) {
+  const relative = path.relative(root, candidate)
+  return relative === '' || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative))
 }
 
 function responseVersionFromBody(body) {
