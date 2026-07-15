@@ -128,12 +128,18 @@ Phase 3의 choice 검증이 최종 레지스트리 계약 위에서 구현되도
 - 운영 데이터 보존 migration(현재 데이터 없음, fresh-start 전환)
 
 **완료 기준:**
-- [ ] 프로젝트 생성 시 Device Type·Category·Comment를 저장하고 상세에서 전체 Profile을 편집한다
-- [ ] Profile 편집이 프로젝트 잠금·dirty 보존·field-level event 계약을 지킨다
-- [ ] ChoiceSet 관리가 파라미터의 쉼표 선택지 입력을 대체한다
-- [ ] 수백 개 option을 키보드로 code/label 검색하고 기존 비활성값을 읽을 수 있다
-- [ ] 기존 백본·잠금·자동저장·붙여넣기·조건 행 업무 회귀가 없다
-- [ ] Phase 3가 추가 option-model migration 없이 choice 검증을 구현할 수 있다
+- [x] 프로젝트 생성 시 Device Type·Category·Comment를 저장하고 상세에서 전체 Profile을 편집한다
+- [x] Profile 편집이 프로젝트 잠금·dirty 보존·field-level event 계약을 지킨다
+- [x] ChoiceSet 관리가 파라미터의 쉼표 선택지 입력을 대체한다
+- [x] 수백 개 option을 키보드로 code/label 검색하고 기존 비활성값을 읽을 수 있다
+- [x] 기존 백본·잠금·자동저장·붙여넣기·조건 행 업무 회귀가 없다
+- [x] Phase 3가 추가 option-model migration 없이 choice 검증을 구현할 수 있다
+
+Phase 2.6 구현 완료: 2026-07-15. reset-only migration, PostgreSQL 동시성·원자성,
+Project Profile·Managed Choice 업무 회귀, 1024/1440/1920 반응형, keyboard 및 Chromium
+accessibility-tree 검증은
+[브라우저 QA 근거](../docs/superpowers/evidence/2026-07-14-phase-2-6-browser-qa.md)에 기록했다.
+이는 Phase 3의 option-model 선행 조건 완료를 뜻하며 Phase 3 검증 엔진 구현 완료를 뜻하지 않는다.
 
 ## Phase 3 — 검증 엔진
 

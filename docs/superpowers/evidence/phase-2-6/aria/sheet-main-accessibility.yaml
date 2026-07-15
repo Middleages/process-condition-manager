@@ -1,0 +1,30 @@
+- main:
+  - link "프로젝트 상세로 돌아가기":
+    - /url: /projects/1
+    - text: ← 상세
+  - link "PCM 프로젝트 목록":
+    - /url: /projects
+    - text: PCM
+  - heading "Seed large process-condition sheet" [level=1]
+  - text: 초안
+  - status "편집 및 저장 상태": 편집 잠금
+  - text: 행
+  - strong: "121"
+  - text: 컬럼
+  - strong: "200"
+  - button "전체" [pressed]
+  - button "photo"
+  - button "etch"
+  - button "clean"
+  - button "depo"
+  - button "cmp"
+  - text: 컬럼 검색
+  - textbox "컬럼 검색":
+    - /placeholder: "컬럼 검색 (예: ETCH_P012)"
+  - button "컬럼 점프"
+  - status
+  - text: 조건 행 관리 Layer/조건 셀을 클릭해 대상 행을 선택합니다.
+  - button "빈 행 추가" [disabled]
+  - button "복제" [disabled]
+  - button "삭제" [disabled]
+  - status: 범위 복사 Ctrl+C · 붙여넣기 Ctrl+V · 조건 행은 왼쪽 Layer/조건 셀 선택 · 빈 원(○)을 선택하면 POR 이양

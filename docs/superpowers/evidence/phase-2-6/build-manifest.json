@@ -1,0 +1,156 @@
+{
+  "schema_version": 1,
+  "source": {
+    "git_sha": "87b9c8e8b710540fa017de79aa70de87f1f9eb50",
+    "git_tree": "78568ca46019e329d768bfd5cd9d4e51e6918afe",
+    "frontend_tree": "279e87b33150955fb9558f9976cc83e7d1bdbb11",
+    "package_lock": {
+      "path": "frontend/package-lock.json",
+      "bytes": 131093,
+      "sha256": "fe55df68c59f1fd5f4245e4c1c328652bc64737f83c68edf022fe5218fa1a494"
+    }
+  },
+  "runtime": {
+    "node": "v22.22.0",
+    "npm": "11.11.1"
+  },
+  "toolchain": {
+    "runtime": {
+      "node": {
+        "path": "/home/appuser/.nvm/versions/node/v22.22.0/bin/node",
+        "version": "v22.22.0",
+        "bytes": 123405064,
+        "sha256": "1bec56ef7cfa9a76f3e0b7c0a87f220eb73f23102b9c0b4c7529a3f7c3ce7c31"
+      },
+      "npm": {
+        "path": "/home/appuser/.nvm/versions/node/v22.22.0/lib/node_modules/npm/bin/npm-cli.js",
+        "version": "11.11.1",
+        "bytes": 54,
+        "sha256": "8e5f6f3429f8cdbe693cdc29904e9d5a7b127a494bd15c804bd54c7403bfcbe7"
+      }
+    },
+    "typescript": {
+      "package_name": "typescript",
+      "package_path": "frontend/node_modules/typescript",
+      "package_version": "5.9.3",
+      "locked_version": "5.9.3",
+      "package_json": {
+        "path": "frontend/node_modules/typescript/package.json",
+        "bytes": 3620,
+        "sha256": "822ef7ca6452205657b6288b066481ecf508bfbf43455d715cf7d3ec457561e6"
+      },
+      "executable": {
+        "path": "frontend/node_modules/typescript/bin/tsc",
+        "bytes": 45,
+        "sha256": "8d5fa5bd883fec0979fc2004f1fe1d99aef40570155d550eadc0b03b55513bf0"
+      },
+      "reported_version": "Version 5.9.3"
+    },
+    "vite": {
+      "package_name": "vite",
+      "package_path": "frontend/node_modules/vite",
+      "package_version": "6.4.1",
+      "locked_version": "6.4.1",
+      "package_json": {
+        "path": "frontend/node_modules/vite/package.json",
+        "bytes": 5251,
+        "sha256": "3ea04db202b66563b87782a93563e50dbc220ceb9f6f4f941cdfd291bee05288"
+      },
+      "executable": {
+        "path": "frontend/node_modules/vite/bin/vite.js",
+        "bytes": 2542,
+        "sha256": "8498a58e0d311572c409038515df0e5d707bdc6ab5927153f487e36ef1c9052c"
+      },
+      "reported_version": "vite/6.4.1 linux-x64 node-v22.22.0"
+    }
+  },
+  "build_env": {
+    "variables": {
+      "PATH": "/home/appuser/go/bin:/home/appuser/.local/bin:/home/appuser/.codex/packages/standalone/releases/0.144.3-x86_64-unknown-linux-musl/codex-path:/home/appuser/.codex/tmp/arg0/codex-arg0Z2102k:/home/appuser/.omx-runs/run-20260714000700-afdd/.omx/runtime/bin:/home/appuser/go/bin:/home/appuser/.local/bin:/home/appuser/.local/bin:/home/appuser/.local/bin:/home/appuser/.cargo/bin:/home/appuser/.nvm/versions/node/v22.22.0/bin:/home/appuser/.local/bin:/home/appuser/.pyenv/shims:/home/appuser/.pyenv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/usr/lib/wsl/lib:/snap/bin",
+      "HOME": "/home/appuser/process-condition-manager/.worktrees/phase2-6-implementation/docs/superpowers/evidence/phase-2-6/.build-sandbox/home",
+      "TMPDIR": "/home/appuser/process-condition-manager/.worktrees/phase2-6-implementation/docs/superpowers/evidence/phase-2-6/.build-sandbox/tmp",
+      "NODE_ENV": "production",
+      "CI": "1",
+      "LANG": "C.UTF-8",
+      "LC_ALL": "C.UTF-8",
+      "TZ": "UTC",
+      "NPM_CONFIG_USERCONFIG": "/home/appuser/process-condition-manager/.worktrees/phase2-6-implementation/docs/superpowers/evidence/phase-2-6/.build-sandbox/user-npmrc",
+      "NPM_CONFIG_GLOBALCONFIG": "/dev/null",
+      "NPM_CONFIG_CACHE": "/home/appuser/process-condition-manager/.worktrees/phase2-6-implementation/docs/superpowers/evidence/phase-2-6/.build-sandbox/npm-cache",
+      "NPM_CONFIG_UPDATE_NOTIFIER": "false",
+      "NPM_CONFIG_FUND": "false",
+      "NPM_CONFIG_AUDIT": "false",
+      "NO_COLOR": "1",
+      "FORCE_COLOR": "0"
+    },
+    "vite": {}
+  },
+  "fresh_build": {
+    "removed_before_build": [
+      "frontend/dist",
+      "frontend/tsconfig.tsbuildinfo"
+    ],
+    "regenerated_before_build": [
+      "frontend/node_modules"
+    ],
+    "install_command": [
+      "npm",
+      "ci",
+      "--include=dev",
+      "--no-audit",
+      "--no-fund"
+    ]
+  },
+  "scripts": {
+    "build_harness": {
+      "path": "scripts/qa/build_phase26_dist.mjs",
+      "bytes": 20720,
+      "sha256": "3d91361b3831469c582df1476844e41b5242120c0e0602c853c450dcccab2ac4",
+      "git_blob": "0c194e8b6d5129e8aae8af7ae235042d2dc3f48b"
+    },
+    "browser_harness": {
+      "path": "scripts/qa/phase26_browser_qa.mjs",
+      "bytes": 158195,
+      "sha256": "4cfcebe02e9c896c4898ead464df0e2ce74b2e4fe2bda3ed9a373c5ecab309e8",
+      "git_blob": "e4198fce6c7544186f1cd6cf0d784a3604e2ffb7"
+    },
+    "dist_server": {
+      "path": "scripts/qa/serve_phase26_dist.mjs",
+      "bytes": 17353,
+      "sha256": "7f1130c454ca02849913caca367d793240dec6a7b29480888a58e9ff700330ab",
+      "git_blob": "ed4b8a08ca8eecc8725fc9a5e57f6e702d09c238"
+    }
+  },
+  "dist": {
+    "root": "frontend/dist",
+    "identity_sha256": "dca7bf2e43cfc926beed6629422a4caa6c67aa2187f1c40cd87bbb23e6caa981",
+    "files": [
+      {
+        "path": "assets/data-grid-overlay-editor-B7shdeDt.js",
+        "bytes": 3653,
+        "sha256": "8a87225cafc8d2aa3449bb5cfd964538f81927f2c6751485c8110c860f619bb2"
+      },
+      {
+        "path": "assets/index-BM-3-nTE.css",
+        "bytes": 48064,
+        "sha256": "c843c980b1e253933e33feab0ad78aaa9619dbf38fe92b516142a69d37a15dd5"
+      },
+      {
+        "path": "assets/index-CKqoVBIR.js",
+        "bytes": 910916,
+        "sha256": "b6643b46a2a50811de63a3a30fe5504117f36165835984cf7f99931522bd3131"
+      },
+      {
+        "path": "assets/number-overlay-editor-BuKnLFwE.js",
+        "bytes": 16352,
+        "sha256": "de8416ff6e6fbb6df4145237a98b4452a4b8cb3cd32e52767602258d4f48761d"
+      },
+      {
+        "path": "index.html",
+        "bytes": 908,
+        "sha256": "f4e6f2588b0e41981613bcaa80257909eb6d15a1f23ebbd2cdcafb87cbf7f79c"
+      }
+    ]
+  },
+  "manifest_sha256": "e59631a29d27e15324667bfaa01f8acb459ca928b72872931de4b4b122a45d4d"
+}

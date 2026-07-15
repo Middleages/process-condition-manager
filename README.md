@@ -50,12 +50,37 @@ curl --fail http://localhost:8000/health
 
 ```bash
 COMPOSE_PROJECT_NAME=pcm-phase26-qa \
-APP_DB_PORT=15442 INGEST_DB_PORT=15443 BACKEND_PORT=18000 FRONTEND_PORT=15173 \
+APP_DB_PORT=15432 INGEST_DB_PORT=15433 BACKEND_PORT=18000 FRONTEND_PORT=15173 \
   docker compose up --build
 ```
 
 지원되는 변수와 기본값은 `APP_DB_PORT=5432`, `INGEST_DB_PORT=5433`,
 `BACKEND_PORT=8000`, `FRONTEND_PORT=5173`입니다.
+
+위 Compose 격리 포트와 backend test DB를 혼동하지 마십시오. Phase 2.6 검증에서 별도
+`pcm-phase26-test-db` PostgreSQL은 `127.0.0.1:15442`를 사용하며, app/ingest Compose DB는
+각각 `15432`/`15433`입니다.
+
+## Phase 2.6 기능 경계
+
+- 모든 프로젝트는 동적 필드가 아닌 고정 1:1 Project Profile을 갖습니다. 생성 단계에서는
+  Device Type·Project Category·Comment만 받고, 상세 화면에서는 identity를 제외한 전체 Profile을
+  기존 프로젝트 잠금과 fencing token 아래 편집합니다. Device Ref는 모델과 화면에 없습니다.
+- 자동 metadata 경계는 **프로젝트 생성 시 Profile 초기값을 한 번 복사하는 용도**로만
+  존재합니다. 현재 구현은 외부 I/O가 없는 `ManualProjectMetadataProvider`이며, 조건표 셀은
+  모두 수동 입력입니다. 생성 후 Profile 값도 사용자가 명시적으로 편집해야 바뀝니다.
+- 고정 Profile choice는 `device_type`, `project_category`, `active_direction`,
+  `gate_direction` 네 managed ChoiceSet을 재사용합니다. option code는 안정적인 저장값이고 label과
+  정렬은 관리 화면에서 바꿀 수 있습니다. 이미 저장된 비활성 code는 읽을 수 있지만 신규 저장은
+  차단됩니다.
+- 조건표 choice column은 option 배열을 내장하지 않고 `choice_set_code`와 version만 받습니다.
+  code/label 검색, keyboard 선택, version 충돌 재시작, 실패 시 raw code 보존을 지원합니다.
+- 이 구현은 Phase 3가 추가 option-model migration 없이 choice 검증을 붙일 수 있는 기반까지
+  완료한 것이며, Phase 3 검증 엔진 자체나 승인 snapshot/Revision은 구현하지 않았습니다.
+
+구현·회귀·접근성 근거는
+[Phase 2.6 Browser QA Evidence](./docs/superpowers/evidence/2026-07-14-phase-2-6-browser-qa.md)에
+기록했습니다.
 
 ## Backend 개발 및 검증
 

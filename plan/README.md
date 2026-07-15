@@ -22,7 +22,7 @@
 | [phase-1-tasks.md](./phase-1-tasks.md) — 프로젝트 + 백본 (그리드 PoC 병행) | 구현 완료 (2026-07-09 검토 반영, EC1~EC6 충족) |
 | [phase-2-tasks.md](./phase-2-tasks.md) — 조건표 편집기 | 구현 완료 (2026-07-13, EC1~EC6 충족) |
 | [Phase 2.5 UI/UX 설계](../docs/superpowers/specs/2026-07-13-phase-2-5-ui-ux-design.md) — 구조개편 + 디자인 시스템 | 구현 완료 (2026-07-14, [브라우저 QA 근거](../docs/superpowers/evidence/2026-07-13-phase-2-5-browser-qa.md)) |
-| [Phase 2.6 Project Profile + Managed Choice 설계](../docs/superpowers/specs/2026-07-14-phase-2-6-project-profile-managed-choice-design.md) — 고정 프로젝트 기본정보 + 공유 선택지 | 설계 승인 (2026-07-14) |
+| [Phase 2.6 Project Profile + Managed Choice 설계](../docs/superpowers/specs/2026-07-14-phase-2-6-project-profile-managed-choice-design.md) — 고정 프로젝트 기본정보 + 공유 선택지 | 구현 완료 (2026-07-15, [브라우저 QA 근거](../docs/superpowers/evidence/2026-07-14-phase-2-6-browser-qa.md)) |
 | [phase-3-tasks.md](./phase-3-tasks.md) — 검증 엔진 | 계획 |
 | [phase-4-tasks.md](./phase-4-tasks.md) — 변경 이력 | 계획 |
 | [phase-5-tasks.md](./phase-5-tasks.md) — 승인 + Revision | 계획 |

@@ -1,0 +1,53 @@
+{
+  "capture_method": "Chrome DevTools Protocol Accessibility API",
+  "grid": {
+    "node_id": "113",
+    "backend_dom_node_id": 113,
+    "ignored": false,
+    "parent_node_id": "112",
+    "parent_backend_dom_node_id": 112,
+    "parent_role": "Canvas"
+  },
+  "table": {
+    "aria_row_count": 122,
+    "aria_col_count": 203
+  },
+  "exposed_descendant_counts": {
+    "rowgroup": 2,
+    "row": 24,
+    "columnheader": 11,
+    "gridcell": 253
+  },
+  "first_column_headers": [
+    "Layer / Step",
+    "조건",
+    "POR (○ 선택)"
+  ],
+  "visible_column_headers": [
+    "Layer / Step",
+    "조건",
+    "POR (○ 선택)",
+    "Parameter 000",
+    "Parameter 001",
+    "Parameter 002",
+    "Parameter 003",
+    "Parameter 004",
+    "Parameter 005",
+    "Parameter 006",
+    "Parameter 007"
+  ],
+  "sample_gridcells": [
+    "LYR00 (0000)",
+    "base",
+    "●",
+    "1.5",
+    "val-0-1",
+    "MODE_002",
+    "3",
+    "val-0-4",
+    "MODE_005",
+    "6",
+    "val-0-7",
+    "LYR01 (0010)"
+  ]
+}
