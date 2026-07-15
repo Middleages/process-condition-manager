@@ -273,7 +273,7 @@ describe('ProjectCreateWizard route restoration', () => {
 
     expect(html).toContain('LINE Z / outside first page')
     expect(html).not.toContain('LINE A / first')
-    expect(html).toContain('매칭 확인 · 프로젝트 정보</h2>')
+    expect(html).toContain('매칭 검토 및 프로젝트 정보</h2>')
     expect(html).toContain('현재 3/3')
     expect(html).toContain('완료')
   })
@@ -282,7 +282,7 @@ describe('ProjectCreateWizard route restoration', () => {
     const params = new URLSearchParams({ step: '3', process: directProcess.key })
     const html = renderWizard(`/projects/new?${params}`, false)
 
-    expect(html).toContain('매칭 확인 · 프로젝트 정보</h2>')
+    expect(html).toContain('매칭 검토 및 프로젝트 정보</h2>')
     expect(html).toContain('URL에서 선택한 Process를 복원하는 중입니다.')
     expect(html).toMatch(
       /<input(?=[^>]*id="project-part-id")(?=[^>]*disabled="")[^>]*>/,
@@ -299,6 +299,23 @@ describe('ProjectCreateWizard route restoration', () => {
     expect(html).toMatch(
       /<h2(?=[^>]*tabindex="-1")(?=[^>]*focus:outline-2)(?=[^>]*focus:outline-offset-2)(?=[^>]*focus:outline-brand-700)[^>]*>/,
     )
+  })
+
+  it('uses the approved Process title in progress and the matching step heading', () => {
+    const html = renderWizard('/projects/new', false)
+
+    expect(html).toContain('>Process 선택</span>')
+    expect(html).toContain('Process 선택</h2>')
+    expect(html).not.toContain('Process 확인')
+  })
+
+  it('uses the approved review title in progress and the matching step heading', () => {
+    const params = new URLSearchParams({ step: '3', process: directProcess.key })
+    const html = renderWizard(`/projects/new?${params}`, true)
+
+    expect(html).toContain('>매칭 검토 및 프로젝트 정보</span>')
+    expect(html).toContain('매칭 검토 및 프로젝트 정보</h2>')
+    expect(html).not.toContain('매칭 확인 · 프로젝트 정보')
   })
 
   it('uses one restrained work frame and a compact step progress contract', () => {
@@ -366,11 +383,25 @@ describe('ProjectCreateWizard route restoration', () => {
     expect(html).toContain('value="SOURCE::MANUAL"')
   })
 
+  it('separates matching review, required information, and bounded Layer detail', () => {
+    const html = renderAutomaticBackbonePreview()
+
+    expect(html).toContain('aria-labelledby="project-match-summary-title"')
+    expect(html).toContain('aria-labelledby="project-required-info-title"')
+    expect(html).toContain('aria-labelledby="project-layer-matches-title"')
+    expect(html).toContain('xl:grid-cols-[minmax(0,1fr)_minmax(22.5rem,26.25rem)]')
+    expect(html).toContain('xl:sticky')
+    expect(html).toContain('max-h-[26rem]')
+    expect(html).toMatch(
+      /project-required-info-title[\s\S]*project-part-id[\s\S]*project-category[\s\S]*project-create-action/,
+    )
+  })
+
   it('keeps the W1 third step and adds only the core Profile inputs', () => {
     const params = new URLSearchParams({ step: '3', process: directProcess.key })
     const html = renderWizard(`/projects/new?${params}`, true)
 
-    expect(html).toContain('매칭 확인 · 프로젝트 정보</h2>')
+    expect(html).toContain('매칭 검토 및 프로젝트 정보</h2>')
     expect(html).toContain('LINE')
     expect(html).toContain('LINE Z')
     expect(html).toContain('Device Type')

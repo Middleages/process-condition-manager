@@ -68,9 +68,9 @@ import {
 } from './wizardState'
 
 const STEPS = [
-  { index: 1, title: 'Process 확인' },
+  { index: 1, title: 'Process 선택' },
   { index: 2, title: '백본 선택' },
-  { index: 3, title: '매칭 확인 · 프로젝트 정보' },
+  { index: 3, title: '매칭 검토 및 프로젝트 정보' },
 ] as const
 
 const CREATE_DISABLED_MESSAGE: Record<CreateDisabledReason, string> = {
@@ -749,7 +749,7 @@ function ProcessStep({
       <StepHeading
         ref={headingRef}
         index={1}
-        title="Process 확인"
+        title="Process 선택"
         description="구조를 검색하고 단계 수, 영역, 기존 프로젝트 여부를 확인하세요."
       />
 
@@ -1111,160 +1111,214 @@ function PreviewStep({
       <StepHeading
         ref={headingRef}
         index={3}
-        title="매칭 확인 · 프로젝트 정보"
+        title="매칭 검토 및 프로젝트 정보"
         description="현재 구조와 정확히 일치하는 미리보기를 확인한 뒤 프로젝트 정보를 입력하세요."
       />
 
-      {selectedProcess ? (
-        <dl className="grid gap-2 rounded-lg border border-border-subtle bg-canvas p-3 sm:grid-cols-3">
-          <DetailStat label="LINE" value={selectedProcess.line_id} />
-          <DetailStat label="Process" value={selectedProcess.display_name} />
-          <DetailStat
-            label="백본"
-            value={backboneId === null ? '없이 시작' : `프로젝트 #${backboneId}`}
-          />
-        </dl>
-      ) : null}
-
-      {selectedProcessIsPending ? (
-        <InlineAlert tone="info">URL에서 선택한 Process를 복원하는 중입니다.</InlineAlert>
-      ) : null}
-      {selectedProcessError ? <RetryAlert error={selectedProcessError} onRetry={onRetryProcess} /> : null}
-      {backboneIsPending ? (
-        <InlineAlert tone="info">URL에서 선택한 백본을 복원하는 중입니다.</InlineAlert>
-      ) : null}
-      {backboneError ? <RetryAlert error={backboneError} onRetry={onRetryBackbone} /> : null}
-      {previewIsPending && !preview ? (
-        <InlineAlert tone="info">매칭 결과를 계산하는 중입니다.</InlineAlert>
-      ) : null}
-      {previewError ? <RetryAlert error={previewError} onRetry={onRetryPreview} /> : null}
-      {preview && (previewIsFetching || !previewIsCurrent) ? (
-        <InlineAlert tone="info">선택 변경을 반영한 새 매칭 결과를 계산하는 중입니다.</InlineAlert>
-      ) : null}
-
-      {preview ? (
-        <div className="space-y-3">
-          <dl className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-            <DetailStat label="매칭" value={`${preview.matched_count}개`} />
-            <DetailStat label="미매칭" value={`${preview.unmatched_count}개`} />
-            <DetailStat label="복사 조건" value={`${preview.copy_condition_count}개`} />
-            <DetailStat label="복사 셀" value={`${preview.copy_cell_count}개`} />
-          </dl>
-          <div className="overflow-x-auto rounded-lg border border-border-subtle">
-            <table className="w-full min-w-[720px] table-fixed text-left text-sm">
-              <thead className="bg-canvas text-xs font-semibold text-muted">
-                <tr className="h-9">
-                  <th className="w-[36%] px-3">Target Layer</th>
-                  <th className="w-[16%] px-3">매칭 상태</th>
-                  <th className="w-[48%] px-3">백본 Source / 수동 매칭</th>
-                </tr>
-              </thead>
-              <tbody>
-                {preview.matches.map((match) => (
-                  <PreviewMatchRow
-                    key={match.target_layer_key}
-                    match={match}
-                    backboneId={backboneId}
-                    backboneLayers={backboneLayers}
-                    baselineAutomaticSource={
-                      baselineAutomaticSources[match.target_layer_key] ?? null
-                    }
-                    disabled={controlsDisabled}
-                    selectedSource={overrides[match.target_layer_key] ?? ''}
-                    onOverrideChange={onOverrideChange}
-                  />
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      ) : null}
-
-      <div className="grid gap-4 border-t border-border-subtle pt-5 md:grid-cols-2">
-        <Field inputId="project-part-id" label="Part ID">
-          <input
-            className="input"
-            disabled={controlsDisabled}
-            required
-            value={partId}
-            onChange={(event) => onPartIdChange(event.target.value)}
-          />
-        </Field>
-        <Field inputId="project-name" label="프로젝트명">
-          <input
-            className="input"
-            disabled={controlsDisabled}
-            required
-            value={name}
-            onChange={(event) => onNameChange(event.target.value)}
-          />
-        </Field>
-        <RequiredProfileChoiceField
-          id="project-device-type"
-          label="Device Type"
-          value={deviceTypeCode}
-          resource={deviceTypes}
-          adminHref="/parameters/choice-sets/device_type"
-          disabled={controlsDisabled}
-          onChange={onDeviceTypeChange}
-        />
-        <RequiredProfileChoiceField
-          id="project-category"
-          label="Project Category"
-          value={projectCategoryCode}
-          resource={projectCategories}
-          adminHref="/parameters/choice-sets/project_category"
-          disabled={controlsDisabled}
-          onChange={onProjectCategoryChange}
-        />
-        <Field
-          className="md:col-span-2"
-          inputId="project-comment"
-          label="Comment"
-          help="선택 사항입니다. 입력하지 않으면 생성 provider의 기본값을 유지합니다."
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(22.5rem,26.25rem)] xl:items-start">
+        <section
+          aria-labelledby="project-match-summary-title"
+          className="order-1 min-w-0 space-y-3 xl:col-start-1 xl:row-start-1"
         >
-          <textarea
-            className="input min-h-24 resize-y py-2"
-            disabled={controlsDisabled}
-            value={comment}
-            onChange={(event) => onCommentChange(event.target.value)}
-          />
-        </Field>
+          <h3 className="text-sm font-bold text-ink-950" id="project-match-summary-title">
+            매칭 요약
+          </h3>
+
+          {selectedProcess ? (
+            <dl className="grid gap-2 rounded-lg border border-border-subtle bg-canvas p-3 sm:grid-cols-3">
+              <DetailStat label="LINE" value={selectedProcess.line_id} />
+              <DetailStat label="Process" value={selectedProcess.display_name} />
+              <DetailStat
+                label="백본"
+                value={backboneId === null ? '없이 시작' : `프로젝트 #${backboneId}`}
+              />
+            </dl>
+          ) : null}
+
+          {selectedProcessIsPending ? (
+            <InlineAlert tone="info">URL에서 선택한 Process를 복원하는 중입니다.</InlineAlert>
+          ) : null}
+          {selectedProcessError ? <RetryAlert error={selectedProcessError} onRetry={onRetryProcess} /> : null}
+          {backboneIsPending ? (
+            <InlineAlert tone="info">URL에서 선택한 백본을 복원하는 중입니다.</InlineAlert>
+          ) : null}
+          {backboneError ? <RetryAlert error={backboneError} onRetry={onRetryBackbone} /> : null}
+          {previewIsPending && !preview ? (
+            <InlineAlert tone="info">매칭 결과를 계산하는 중입니다.</InlineAlert>
+          ) : null}
+          {previewError ? <RetryAlert error={previewError} onRetry={onRetryPreview} /> : null}
+          {preview && (previewIsFetching || !previewIsCurrent) ? (
+            <InlineAlert tone="info">선택 변경을 반영한 새 매칭 결과를 계산하는 중입니다.</InlineAlert>
+          ) : null}
+
+          {preview ? (
+            <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border-subtle bg-border-subtle sm:grid-cols-4">
+              <div className="bg-canvas px-3 py-2">
+                <dt className="text-xs font-semibold text-muted">매칭</dt>
+                <dd className="mt-0.5 text-sm font-bold text-ink-950">
+                  {preview.matched_count}개
+                </dd>
+              </div>
+              <div className="bg-canvas px-3 py-2">
+                <dt className="text-xs font-semibold text-muted">미매칭</dt>
+                <dd className="mt-0.5 text-sm font-bold text-ink-950">
+                  {preview.unmatched_count}개
+                </dd>
+              </div>
+              <div className="bg-canvas px-3 py-2">
+                <dt className="text-xs font-semibold text-muted">복사 조건</dt>
+                <dd className="mt-0.5 text-sm font-bold text-ink-950">
+                  {preview.copy_condition_count}개
+                </dd>
+              </div>
+              <div className="bg-canvas px-3 py-2">
+                <dt className="text-xs font-semibold text-muted">복사 셀</dt>
+                <dd className="mt-0.5 text-sm font-bold text-ink-950">
+                  {preview.copy_cell_count}개
+                </dd>
+              </div>
+            </dl>
+          ) : null}
+        </section>
+
+        <aside
+          aria-labelledby="project-required-info-title"
+          className="order-2 rounded-lg border border-border-subtle bg-canvas p-4 xl:sticky xl:top-5 xl:col-start-2 xl:row-span-2 xl:row-start-1"
+        >
+          <h3 className="text-sm font-bold text-ink-950" id="project-required-info-title">
+            프로젝트 필수 정보
+          </h3>
+
+          <div className="mt-4 grid gap-4">
+            <Field inputId="project-part-id" label="Part ID">
+              <input
+                className="input"
+                disabled={controlsDisabled}
+                required
+                value={partId}
+                onChange={(event) => onPartIdChange(event.target.value)}
+              />
+            </Field>
+            <Field inputId="project-name" label="프로젝트명">
+              <input
+                className="input"
+                disabled={controlsDisabled}
+                required
+                value={name}
+                onChange={(event) => onNameChange(event.target.value)}
+              />
+            </Field>
+            <RequiredProfileChoiceField
+              id="project-device-type"
+              label="Device Type"
+              value={deviceTypeCode}
+              resource={deviceTypes}
+              adminHref="/parameters/choice-sets/device_type"
+              disabled={controlsDisabled}
+              onChange={onDeviceTypeChange}
+            />
+            <RequiredProfileChoiceField
+              id="project-category"
+              label="Project Category"
+              value={projectCategoryCode}
+              resource={projectCategories}
+              adminHref="/parameters/choice-sets/project_category"
+              disabled={controlsDisabled}
+              onChange={onProjectCategoryChange}
+            />
+            <Field
+              inputId="project-comment"
+              label="Comment"
+              help="선택 사항입니다. 입력하지 않으면 생성 provider의 기본값을 유지합니다."
+            >
+              <textarea
+                className="input min-h-24 resize-y py-2"
+                disabled={controlsDisabled}
+                value={comment}
+                onChange={(event) => onCommentChange(event.target.value)}
+              />
+            </Field>
+          </div>
+
+          <div className="mt-4 space-y-3 border-t border-border-subtle pt-4">
+            {createError ? (
+              <InlineAlert tone={duplicateHref ? 'warning' : 'error'}>
+                <p>{getApiErrorMessage(createError)}</p>
+                {duplicateHref ? (
+                  <Link className="mt-2 inline-flex font-bold underline underline-offset-2" to={duplicateHref}>
+                    {existingProjectId !== null ? '기존 프로젝트 열기' : '기존 프로젝트 목록에서 선택'}
+                  </Link>
+                ) : (
+                  <p className="mt-1 text-xs">입력 내용은 유지되었습니다. 확인 후 다시 시도해 주세요.</p>
+                )}
+              </InlineAlert>
+            ) : null}
+
+            {createDisabledReason ? (
+              <p className="text-sm font-medium text-muted" id="project-create-disabled-reason">
+                {CREATE_DISABLED_MESSAGE[createDisabledReason]}
+              </p>
+            ) : null}
+
+            <Button
+              aria-describedby={
+                createDisabledReason ? 'project-create-disabled-reason' : undefined
+              }
+              className="w-full"
+              disabled={createDisabledReason !== null}
+              id="project-create-action"
+              loading={createDisabledReason === 'submitting'}
+              type="submit"
+            >
+              프로젝트 생성
+            </Button>
+          </div>
+        </aside>
+
+        <section
+          aria-labelledby="project-layer-matches-title"
+          className="order-3 min-w-0 space-y-3 xl:col-start-1 xl:row-start-2"
+        >
+          <h3 className="text-sm font-bold text-ink-950" id="project-layer-matches-title">
+            Layer 매칭 상세
+          </h3>
+
+          {preview ? (
+            <div className="max-h-[26rem] overflow-auto rounded-lg border border-border-subtle">
+              <table className="w-full min-w-[720px] table-fixed text-left text-sm">
+                <thead className="bg-canvas text-xs font-semibold text-muted">
+                  <tr className="h-9">
+                    <th className="w-[36%] px-3">Target Layer</th>
+                    <th className="w-[16%] px-3">매칭 상태</th>
+                    <th className="w-[48%] px-3">백본 Source / 수동 매칭</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {preview.matches.map((match) => (
+                    <PreviewMatchRow
+                      key={match.target_layer_key}
+                      match={match}
+                      backboneId={backboneId}
+                      backboneLayers={backboneLayers}
+                      baselineAutomaticSource={
+                        baselineAutomaticSources[match.target_layer_key] ?? null
+                      }
+                      disabled={controlsDisabled}
+                      selectedSource={overrides[match.target_layer_key] ?? ''}
+                      onOverrideChange={onOverrideChange}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+        </section>
       </div>
 
-      {createError ? (
-        <InlineAlert tone={duplicateHref ? 'warning' : 'error'}>
-          <p>{getApiErrorMessage(createError)}</p>
-          {duplicateHref ? (
-            <Link className="mt-2 inline-flex font-bold underline underline-offset-2" to={duplicateHref}>
-              {existingProjectId !== null ? '기존 프로젝트 열기' : '기존 프로젝트 목록에서 선택'}
-            </Link>
-          ) : (
-            <p className="mt-1 text-xs">입력 내용은 유지되었습니다. 확인 후 다시 시도해 주세요.</p>
-          )}
-        </InlineAlert>
-      ) : null}
-
-      {createDisabledReason ? (
-        <p className="text-sm font-medium text-muted" id="project-create-disabled-reason">
-          {CREATE_DISABLED_MESSAGE[createDisabledReason]}
-        </p>
-      ) : null}
-
-      <div className="flex flex-wrap justify-between gap-2 border-t border-border-subtle pt-4">
+      <div className="flex flex-wrap gap-2 border-t border-border-subtle pt-4">
         <Button disabled={controlsDisabled} type="button" variant="secondary" onClick={onBack}>
           <ArrowLeft aria-hidden="true" size={16} />
           백본으로
-        </Button>
-        <Button
-          aria-describedby={
-            createDisabledReason ? 'project-create-disabled-reason' : undefined
-          }
-          disabled={createDisabledReason !== null}
-          loading={createDisabledReason === 'submitting'}
-          type="submit"
-        >
-          프로젝트 생성
         </Button>
       </div>
     </form>
