@@ -665,7 +665,7 @@ In a temporary QA script under `/tmp/pcm-project-browse-playwright`, route every
 | GET | `/api/projects` | `{ items: eightProjectSummaries, next_cursor: null }` |
 | GET | `/api/projects/42` | one `ProjectOut` with twelve layers |
 | GET | `/api/projects/42/profile` | the same object's `profile` |
-| POST | `/api/projects/42/lock` | `{ locked_by: 'qa-reviewer', lock_token: 'qa-lock-42', locked_at: '2026-07-16T00:00:00Z' }` |
+| POST | `/api/projects/42/lock` | `{ locked_by: 'qa-reviewer', lock_token: 'qa-lock-42', locked_at: '2026-07-16T00:00:00Z', expires_at: '2026-07-16T00:02:00Z' }` |
 | DELETE | `/api/projects/42/lock` | HTTP 204 |
 | GET | `/api/choice-sets/{code}` | active summary for `device_type`, `project_category`, `active_direction`, or `gate_direction` |
 | GET | `/api/choice-sets/{code}/options` | `{ set_code, version: 1, items, next_cursor: null }` for the same four codes |
