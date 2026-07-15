@@ -70,15 +70,15 @@ const project: ProjectOut = {
   ],
 }
 
-function renderDetail(): string {
+function renderDetail(projectData: ProjectOut = project): string {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { staleTime: Number.POSITIVE_INFINITY } },
   })
-  queryClient.setQueryData(['project', 42], project)
+  queryClient.setQueryData(['project', projectData.id], projectData)
 
   return renderToStaticMarkup(
     <QueryClientProvider client={queryClient}>
-      <StaticRouter location="/projects/42">
+      <StaticRouter location={`/projects/${projectData.id}`}>
         <Routes>
           <Route path="/projects/:projectId" element={<ProjectDetailPage />} />
         </Routes>
@@ -118,7 +118,7 @@ describe('ProjectDetailPage', () => {
     expect(html).toContain('truncate whitespace-nowrap')
   })
 
-  it('renders all fixed Profile values in six explicit groups before the Layer table', () => {
+  it('renders all fixed Profile values across core and advanced groups before the Layer table', () => {
     const html = renderDetail()
     const profileIndex = html.indexOf('id="project-profile-title"')
     const layersIndex = html.indexOf('id="project-layers-title"')
@@ -184,5 +184,66 @@ describe('ProjectDetailPage', () => {
     expect(html).toContain('기본정보 편집')
     expect(html).toContain('FOUNDRY · Foundry')
     expect(html).not.toContain('Device Ref')
+  })
+
+  it('centers the detail frame and derives a four-item backbone summary from layers', () => {
+    const single = renderDetail()
+    const multiple = renderDetail({
+      ...project,
+      layers: [
+        project.layers[0]!,
+        { ...project.layers[0]!, id: 8, source_project_id: 44 },
+        { ...project.layers[0]!, id: 9, source_project_id: 44 },
+      ],
+    })
+    const none = renderDetail({
+      ...project,
+      layers: [{ ...project.layers[0]!, source_project_id: null, source_layer_key: null }],
+    })
+
+    expect(single).toContain('max-w-[1600px]')
+    expect(single).toMatch(/>백본<[^]*?>#41</)
+    expect(multiple).toMatch(/>백본<[^]*?>2개 프로젝트</)
+    expect(none).toMatch(/>백본<[^]*?>없음</)
+  })
+
+  it('keeps core Profile visible and advanced Profile in a closed native disclosure before Layers', () => {
+    const html = renderDetail()
+    const coreIndex = html.indexOf('id="project-profile-title"')
+    const detailsIndex = html.indexOf('data-profile-details=""')
+    const layersIndex = html.indexOf('id="project-layers-title"')
+    const detailsTag = html.match(/<details[^>]*data-profile-details=""[^>]*>/)?.[0]
+
+    expect(html).toContain('>프로젝트 정보<')
+    expect(coreIndex).toBeGreaterThan(-1)
+    expect(detailsIndex).toBeGreaterThan(coreIndex)
+    expect(layersIndex).toBeGreaterThan(detailsIndex)
+    expect(detailsTag).toBeDefined()
+    expect(detailsTag).not.toContain(' open')
+    expect(html).toContain('<summary')
+    expect(html).toContain('>상세 공정 Profile<')
+
+    for (const group of ['identity', 'product', 'direction']) {
+      expect(html.indexOf(`data-profile-group="${group}"`)).toBeLessThan(detailsIndex)
+    }
+    for (const group of ['die-shot', 'wafer-position', 'layer-summary']) {
+      expect(html.indexOf(`data-profile-group="${group}"`)).toBeGreaterThan(detailsIndex)
+      expect(html.indexOf(`data-profile-group="${group}"`)).toBeLessThan(layersIndex)
+    }
+    for (const group of [
+      'identity',
+      'product',
+      'direction',
+      'die-shot',
+      'wafer-position',
+      'layer-summary',
+    ]) {
+      const groupTag = html.match(
+        new RegExp(`<section[^>]*data-profile-group="${group}"[^>]*>`),
+      )?.[0]
+      expect(groupTag, group).toBeDefined()
+      expect(groupTag, group).not.toContain('rounded-xl')
+      expect(groupTag, group).not.toContain('bg-surface')
+    }
   })
 })
