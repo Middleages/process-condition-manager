@@ -1,6 +1,8 @@
 """T2에서 이미 구현된 경계(seam) 검증: 예외 매핑, 인증 경계, 설정, 모델 메타데이터."""
 
+import ast
 from collections.abc import Callable
+from pathlib import Path
 from typing import Annotated, Any, get_args, get_type_hints
 
 import pytest
@@ -31,6 +33,32 @@ from app.features.conditions import router as conditions_router
 from app.features.locks import router as locks_router
 from app.features.parameters import router as parameters_router
 from app.features.projects import router as projects_router
+
+
+def test_validation_domain_has_no_framework_or_persistence_imports() -> None:
+    validation_dir = Path(__file__).parents[1] / "app" / "domain" / "validation"
+    forbidden_roots = {"fastapi", "pydantic", "sqlalchemy"}
+    forbidden_prefixes = ("app.models", "app.features")
+
+    violations: list[str] = []
+    for path in sorted(validation_dir.glob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            imported_modules: list[str]
+            if isinstance(node, ast.Import):
+                imported_modules = [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom) and node.module is not None:
+                imported_modules = [node.module]
+            else:
+                continue
+
+            for module in imported_modules:
+                if module.split(".", 1)[0] in forbidden_roots or module.startswith(
+                    forbidden_prefixes
+                ):
+                    violations.append(f"{path.name}:{node.lineno}: {module}")
+
+    assert violations == []
 
 
 def _depends(annotation: Any) -> DependsParam:
