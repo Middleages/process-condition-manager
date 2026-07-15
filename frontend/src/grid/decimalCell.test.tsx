@@ -43,6 +43,7 @@ describe('decimalCell', () => {
   it('is the only numeric Glide path and delegates commit validation to the shared validator', () => {
     expect(glideSource).toContain('makeDecimalCell')
     expect(glideSource).toContain('validateSingleCellEdit')
+    expect(glideSource).toContain('shouldPersistCellChange(oldValue, validation.value)')
     expect(decimalCellSource).toContain('event.stopPropagation()')
     expect(glideSource).not.toContain('GridCellKind.Number')
     expect(glideSource).not.toMatch(/Number\(trimmed\)/)

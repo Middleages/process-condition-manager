@@ -18,8 +18,23 @@ export type CellCandidateResult =
 
 export type CellChoiceValidationContext = Pick<
   SheetChoiceResource,
-  'setIsActive' | 'selectionReady' | 'selectableAggregate'
+  | 'setCode'
+  | 'targetVersion'
+  | 'summaryVersion'
+  | 'setIsActive'
+  | 'displayAggregate'
+  | 'selectableAggregate'
+  | 'selectionReady'
+  | 'isStale'
 >
+
+/** 정규화 뒤 값이 같으면 backend에 no-op update를 보내지 않는다. */
+export function shouldPersistCellChange(
+  oldValue: string | null,
+  nextValue: string | null,
+): boolean {
+  return oldValue !== nextValue
+}
 
 const optionIndexes = new WeakMap<
   ChoiceOptionAggregate,
@@ -56,8 +71,18 @@ export function validateCellCandidate(
     return failure('invalid_decimal', '올바른 소수 형식이 아닙니다.', raw)
   }
 
-  // 이미 저장된 inactive/raw code는 값을 바꾸지 않는 no-op으로 보존한다.
-  if (trimmed === oldValue) return { ok: true, value: oldValue }
+  const isUnchanged = trimmed === oldValue
+  const knownAggregate = exactKnownAggregate(column, context)
+
+  if (isUnchanged) {
+    // 조회 불가/오래된 display fallback일 때만 저장된 raw를 보존한다. 활성 여부와 무관하게
+    // 정확한 집합이 있으면 backend처럼 실제 option 존재를 확인해야 unknown no-op를 막는다.
+    if (knownAggregate === null) return { ok: true, value: oldValue }
+    if (!optionIndexForAggregate(knownAggregate).has(trimmed)) {
+      return failure('choice_unknown', '현재 선택지에 없는 코드입니다.', raw)
+    }
+    return { ok: true, value: oldValue }
+  }
   if (context?.setIsActive === false) {
     return failure(
       'choice_set_inactive',
@@ -95,6 +120,26 @@ export function validateCellCandidate(
 /** 단일 편집과 붙여넣기가 같은 규칙을 호출하는 명시적 경계. */
 export const validateSingleCellEdit = validateCellCandidate
 export const validatePasteCell = validateCellCandidate
+
+/** 선택 가능성과 분리된 exact knownness: inactive set도 기존 known code no-op은 허용한다. */
+function exactKnownAggregate(
+  column: ConditionGridColumn,
+  context: CellChoiceValidationContext | undefined,
+): ChoiceOptionAggregate | null {
+  if (
+    context === undefined ||
+    context.isStale ||
+    context.setCode !== column.choiceSetCode ||
+    context.summaryVersion === null ||
+    context.summaryVersion !== context.targetVersion
+  ) {
+    return null
+  }
+  const aggregate = context.displayAggregate
+  return aggregate?.set_code === context.setCode && aggregate.version === context.targetVersion
+    ? aggregate
+    : null
+}
 
 function failure(
   code: CellValidationErrorCode,

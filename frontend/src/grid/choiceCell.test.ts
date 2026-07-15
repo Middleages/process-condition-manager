@@ -2,7 +2,11 @@ import { describe, expect, it, vi } from 'vitest'
 
 import type { ChoiceOptionAggregate } from '@/api/types'
 import type { SheetChoiceResource } from './types'
-import { describeChoiceValue, makeChoiceCell } from './choiceCell'
+import {
+  describeChoiceValue,
+  finishChoiceEditingWithFocus,
+  makeChoiceCell,
+} from './choiceCell'
 import choiceCellSource from './choiceCell.tsx?raw'
 
 const aggregate: ChoiceOptionAggregate = {
@@ -81,5 +85,40 @@ describe('managed choice cell', () => {
     expect(choiceCellSource).toContain('event.stopPropagation()')
     expect(choiceCellSource).toContain('styleOverride: { minWidth: 320, minHeight: 320 }')
     expect(choiceCellSource).not.toMatch(/<select\b/)
+  })
+
+  it.each(['commit', 'cancel'] as const)(
+    'restores canvas focus after the overlay input refocuses on %s',
+    (kind) => {
+      const calls: string[] = []
+      const scheduled: Array<() => void> = []
+      const finish = vi.fn(() => calls.push('glide-finished'))
+      const restoreGridFocus = vi.fn(() => calls.push('grid-focused'))
+
+      finishChoiceEditingWithFocus(
+        finish,
+        kind === 'commit' ? makeChoiceCell('AUTO', resource(), false) : undefined,
+        restoreGridFocus,
+        (callback) => scheduled.push(callback),
+      )
+      // SearchableChoice synchronously focuses its input after onChange/onCancel returns.
+      calls.push('overlay-input-refocused')
+      expect(calls).toEqual(['glide-finished', 'overlay-input-refocused'])
+
+      scheduled[0]?.()
+      expect(calls).toEqual([
+        'glide-finished',
+        'overlay-input-refocused',
+        'grid-focused',
+      ])
+      expect(restoreGridFocus).toHaveBeenCalledOnce()
+    },
+  )
+
+  it('passes one adapter-owned focus callback through every choice cell payload', () => {
+    const restoreGridFocus = vi.fn()
+    const cell = makeChoiceCell('AUTO', resource(), false, undefined, restoreGridFocus)
+    expect(cell.data.restoreGridFocus).toBe(restoreGridFocus)
+    expect(choiceCellSource).toContain('finishChoiceEditingWithFocus(')
   })
 })

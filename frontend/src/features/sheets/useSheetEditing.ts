@@ -42,6 +42,41 @@ export interface PersistDirtySnapshotOptions {
   ) => void | Promise<void>
 }
 
+export type PasteIdentity = symbol
+
+export interface RetainedPasteSnapshot {
+  identity: PasteIdentity
+  snapshot: readonly DirtyCell[]
+}
+
+export type PasteSnapshotAction = 'prepare' | 'retry' | 'replace'
+
+/** 같은 review만 exact snapshot 재시도하고, 새 review는 이전 실패 snapshot을 교체한다. */
+export function resolvePasteSnapshotAction(
+  retained: RetainedPasteSnapshot | null,
+  identity: PasteIdentity,
+): PasteSnapshotAction {
+  if (retained === null) return 'prepare'
+  return retained.identity === identity ? 'retry' : 'replace'
+}
+
+/** 취소/교체는 서버 저장 성공과 같은 revision-equality 제거를 재사용한다. */
+export function discardRetainedPasteSnapshot(
+  retained: RetainedPasteSnapshot,
+  markSaved: (snapshot: readonly DirtyCell[]) => void,
+): null {
+  markSaved(retained.snapshot)
+  return null
+}
+
+/** Retained paste retries stay behind the panel Apply guard; reacquire resumes manual dirties only. */
+export function shouldResumeAutosaveAfterReacquire(
+  dirtyCount: number,
+  retainedPaste: RetainedPasteSnapshot | null,
+): boolean {
+  return dirtyCount > 0 && retainedPaste === null
+}
+
 /** Network 성공 이전에는 canonical cache/dirty 정리 콜백을 절대 호출하지 않는 작은 경계. */
 export async function persistDirtySnapshot({
   projectId,
@@ -110,7 +145,12 @@ export interface SheetEditing {
    * 배치로 바로 확정 저장한다. 같은 더티 버퍼를 거쳐 수동 편집과 순서를 보장한다. 잠금 미보유
    * 시 즉시 실패, 저장 중 409면 잠금 상실 처리 후 그대로 reject(상위가 스테이징을 유지·안내).
    */
-  applyPaste(prepareCells: () => readonly PersistedCell[]): Promise<boolean>
+  applyPaste(
+    identity: PasteIdentity,
+    prepareCells: () => readonly PersistedCell[],
+  ): Promise<boolean>
+  /** 실패한 paste review를 명시적으로 포기하고 그 review의 exact dirty revisions만 제거한다. */
+  abandonPaste(identity: PasteIdentity): void
   /**
    * 구조 변경(조건 행 추가/복제/삭제·POR 이양) 즉시 실행 헬퍼(T7). 더티 셀 버퍼와 분리된
    * 별도 API 호출을 감싸 잠금 검사·순서 보장·잠금 상실 처리를 재사용한다:
@@ -151,7 +191,7 @@ export function useSheetEditing(
   const engineRef = useRef<AutosaveEngine | null>(null)
   const onPersistedRef = useRef(options.onPersisted)
   const saveOriginRef = useRef<'manual' | 'paste'>('manual')
-  const pasteSnapshotRef = useRef<DirtyCell[] | null>(null)
+  const pasteSnapshotRef = useRef<RetainedPasteSnapshot | null>(null)
 
   const updateLockStatus = useCallback((next: LockStatus) => {
     lockStatusRef.current = next
@@ -215,7 +255,7 @@ export function useSheetEditing(
         }
         const snapshot =
           saveOriginRef.current === 'paste' && pasteSnapshotRef.current !== null
-            ? pasteSnapshotRef.current
+            ? pasteSnapshotRef.current.snapshot
             : dirtyCellList(useEditStore.getState().dirtyCells)
         if (snapshot.length === 0) return
         const origin = saveOriginRef.current
@@ -281,14 +321,19 @@ export function useSheetEditing(
   // 옛 자동저장이 붙여넣기를 되돌릴 수 없다. 실패하면 정확한 revision snapshot을 더티로
   // 보존해 같은 paste batch를 새 세대 할당 없이 재시도한다.
   const applyPaste = useCallback(
-    (prepareCells: () => readonly PersistedCell[]): Promise<boolean> => enqueueWrite(async (generation) => {
+    (
+      identity: PasteIdentity,
+      prepareCells: () => readonly PersistedCell[],
+    ): Promise<boolean> => enqueueWrite(async (generation) => {
       if (lockTokenRef.current === null || lockStatusRef.current !== 'held') {
         throw new LockRequiredError()
       }
 
       // 직전 paste 실패 snapshot이 남아 있으면 새 세대를 할당하거나 manual로
       // 재분류하지 않고, 그 정확한 snapshot을 paste origin으로 재시도한다.
-      if (saveOriginRef.current === 'paste' && pasteSnapshotRef.current !== null) {
+      const retained = pasteSnapshotRef.current
+      const action = resolvePasteSnapshotAction(retained, identity)
+      if (action === 'retry' && retained !== null) {
         try {
           await (engineRef.current?.flushNow() ?? Promise.resolve())
         } catch (error) {
@@ -296,6 +341,14 @@ export function useSheetEditing(
           throw error
         }
         return true
+      }
+      if (action === 'replace' && retained !== null) {
+        engineRef.current?.cancel()
+        pasteSnapshotRef.current = discardRetainedPasteSnapshot(
+          retained,
+          (snapshot) => useEditStore.getState().markSaved(snapshot),
+        )
+        saveOriginRef.current = 'manual'
       }
 
       // 붙여넣기보다 먼저 발생한 manual dirty는 먼저 확정한다.
@@ -314,7 +367,10 @@ export function useSheetEditing(
       const cells = prepareCells()
       if (cells.length === 0) return false
       saveOriginRef.current = 'paste'
-      pasteSnapshotRef.current = useEditStore.getState().setCells(cells)
+      pasteSnapshotRef.current = {
+        identity,
+        snapshot: useEditStore.getState().setCells(cells),
+      }
       try {
         await (engineRef.current?.flushNow() ?? Promise.resolve())
       } catch (error) {
@@ -328,6 +384,18 @@ export function useSheetEditing(
     }),
     [enqueueWrite, isCurrentSession],
   )
+
+  const abandonPaste = useCallback((identity: PasteIdentity) => {
+    const retained = pasteSnapshotRef.current
+    if (retained === null || retained.identity !== identity) return
+    engineRef.current?.cancel()
+    pasteSnapshotRef.current = discardRetainedPasteSnapshot(
+      retained,
+      (snapshot) => useEditStore.getState().markSaved(snapshot),
+    )
+    saveOriginRef.current = 'manual'
+    setSaveStatus('idle')
+  }, [])
 
   // 구조 변경(조건 행 추가/복제/삭제·POR 이양) 즉시 실행: 더티 셀 버퍼와 분리된 별도 API
   // 호출(T7 즉시 커밋). applyPaste와 같은 즉시-호출 패턴이되, 구조 변경 전에 진행 중인 셀
@@ -365,6 +433,7 @@ export function useSheetEditing(
   }, [])
 
   const retrySave = useCallback(() => {
+    if (pasteSnapshotRef.current !== null) return
     engineRef.current?.retry()
   }, [])
 
@@ -386,8 +455,15 @@ export function useSheetEditing(
         setEditingBy(null)
         updateLockStatus('held')
         startHeartbeat(generation)
-        // 보존된 더티가 있으면 이어서 저장.
-        if (useEditStore.getState().dirtyCells.size > 0) engineRef.current?.schedule()
+        // 수동 더티만 이어서 저장한다. Retained paste는 패널 Apply/Cancel 경계를 벗어나면 안 된다.
+        if (
+          shouldResumeAutosaveAfterReacquire(
+            useEditStore.getState().dirtyCells.size,
+            pasteSnapshotRef.current,
+          )
+        ) {
+          engineRef.current?.schedule()
+        }
       })
       .catch((error: unknown) => {
         if (!isCurrentSession(generation)) return
@@ -532,6 +608,7 @@ export function useSheetEditing(
     readOnly: lockStatus !== 'held',
     setCell,
     applyPaste,
+    abandonPaste,
     runStructuralChange,
     discard,
     retrySave,

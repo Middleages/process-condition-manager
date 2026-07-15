@@ -15,6 +15,7 @@ import type { SheetChoiceResource } from './types'
 interface LiveChoiceResourceStore {
   snapshot: SheetChoiceResource
   listeners: Set<() => void>
+  preparationEpoch: number
 }
 
 const liveChoiceResourceStores = new WeakMap<SheetChoiceResource, LiveChoiceResourceStore>()
@@ -44,6 +45,7 @@ export function createLiveChoiceResource(
   const store: LiveChoiceResourceStore = {
     snapshot: initialSnapshot,
     listeners: new Set(),
+    preparationEpoch: 0,
   }
   const resource = {} as SheetChoiceResource
   for (const key of liveChoiceResourceKeys) {
@@ -65,10 +67,24 @@ export function getLiveChoiceResourceSnapshot(
 export function stageLiveChoiceResource(
   resource: SheetChoiceResource,
   snapshot: SheetChoiceResource,
-): void {
+): () => boolean {
+  // Render only captures this exact snapshot. An abandoned render never invokes the closure.
+  return () => publishLiveChoiceResource(resource, snapshot)
+}
+
+/** Only the latest mandatory editor-open attempt may publish, including after a newer failure. */
+export function claimLiveChoiceResourcePreparation(
+  resource: SheetChoiceResource,
+): (snapshot: SheetChoiceResource) => boolean {
   const store = liveChoiceResourceStores.get(resource)
-  if (store === undefined) return
-  store.snapshot = snapshot
+  if (store === undefined) return () => false
+  const epoch = store.preparationEpoch + 1
+  store.preparationEpoch = epoch
+  return (snapshot) => {
+    const current = liveChoiceResourceStores.get(resource)
+    if (current === undefined || current.preparationEpoch !== epoch) return false
+    return publishLiveChoiceResource(resource, snapshot)
+  }
 }
 
 export function notifyLiveChoiceResource(resource: SheetChoiceResource): void {
@@ -80,9 +96,41 @@ export function notifyLiveChoiceResource(resource: SheetChoiceResource): void {
 export function publishLiveChoiceResource(
   resource: SheetChoiceResource,
   snapshot: SheetChoiceResource,
-): void {
-  stageLiveChoiceResource(resource, snapshot)
+): boolean {
+  const store = liveChoiceResourceStores.get(resource)
+  if (store === undefined) return false
+  const current = store.snapshot
+  // A delayed open/render may finish after a newer immutable version is already authoritative.
+  if (snapshot.targetVersion < current.targetVersion) return false
+  if (
+    snapshot.summaryVersion !== null &&
+    current.summaryVersion !== null &&
+    snapshot.summaryVersion < current.summaryVersion
+  ) {
+    return false
+  }
+  if (sameChoiceResourceState(current, snapshot)) return false
+  store.snapshot = snapshot
   notifyLiveChoiceResource(resource)
+  return true
+}
+
+function sameChoiceResourceState(
+  left: SheetChoiceResource,
+  right: SheetChoiceResource,
+): boolean {
+  return (
+    left.setCode === right.setCode &&
+    left.targetVersion === right.targetVersion &&
+    left.summaryVersion === right.summaryVersion &&
+    left.setIsActive === right.setIsActive &&
+    left.displayAggregate === right.displayAggregate &&
+    left.selectableAggregate === right.selectableAggregate &&
+    left.selectionReady === right.selectionReady &&
+    left.isStale === right.isStale &&
+    left.loading === right.loading &&
+    left.error === right.error
+  )
 }
 
 export function subscribeLiveChoiceResource(
@@ -116,6 +164,7 @@ export interface ChoiceCellPayload extends ChoiceValueDescription {
   readonly cellKind: 'choice-cell'
   readonly value: string
   readonly resource: SheetChoiceResource
+  readonly restoreGridFocus: () => void
 }
 
 export type ChoiceCell = CustomCell<ChoiceCellPayload>
@@ -152,8 +201,41 @@ export function describeChoiceValue(
   }
 }
 
-function payload(value: string, resource: SheetChoiceResource): ChoiceCellPayload {
-  return { cellKind: 'choice-cell', value, resource, ...describeChoiceValue(value, resource) }
+const NOOP_FOCUS = () => undefined
+
+function payload(
+  value: string,
+  resource: SheetChoiceResource,
+  restoreGridFocus: () => void,
+): ChoiceCellPayload {
+  return {
+    cellKind: 'choice-cell',
+    value,
+    resource,
+    restoreGridFocus,
+    ...describeChoiceValue(value, resource),
+  }
+}
+
+type FocusScheduler = (callback: () => void) => void
+
+function scheduleNextFrame(callback: () => void): void {
+  if (typeof requestAnimationFrame === 'function') {
+    requestAnimationFrame(callback)
+    return
+  }
+  setTimeout(callback, 0)
+}
+
+/** SearchableChoice의 동기 input refocus보다 뒤에서 Glide canvas focus를 복구한다. */
+export function finishChoiceEditingWithFocus(
+  finish: (value?: ChoiceCell) => void,
+  value: ChoiceCell | undefined,
+  restoreGridFocus: () => void,
+  schedule: FocusScheduler = scheduleNextFrame,
+): void {
+  finish(value)
+  schedule(restoreGridFocus)
 }
 
 export function makeChoiceCell(
@@ -161,6 +243,7 @@ export function makeChoiceCell(
   resource: SheetChoiceResource,
   readOnly: boolean,
   themeOverride?: Partial<Theme>,
+  restoreGridFocus: () => void = NOOP_FOCUS,
 ): ChoiceCell {
   return {
     kind: GridCellKind.Custom,
@@ -169,7 +252,7 @@ export function makeChoiceCell(
     activationBehaviorOverride: readOnly ? undefined : 'single-click',
     copyData: value,
     themeOverride,
-    data: payload(value, resource),
+    data: payload(value, resource, restoreGridFocus),
   }
 }
 
@@ -211,14 +294,28 @@ export const ChoiceEditor: ProvideEditorComponent<ChoiceCell> = ({
         openOnMount
         onOpen={resource.prepareToOpen}
         onRetry={resource.retry}
-        onCancel={() => onFinishedEditing(undefined)}
+        onCancel={() =>
+          finishChoiceEditingWithFocus(
+            onFinishedEditing,
+            undefined,
+            cell.data.restoreGridFocus,
+          )
+        }
         onChange={(next) => {
           const nextValue = next ?? ''
-          onFinishedEditing({
-            ...cell,
-            copyData: nextValue,
-            data: payload(nextValue, cell.data.resource),
-          })
+          finishChoiceEditingWithFocus(
+            onFinishedEditing,
+            {
+              ...cell,
+              copyData: nextValue,
+              data: payload(
+                nextValue,
+                cell.data.resource,
+                cell.data.restoreGridFocus,
+              ),
+            },
+            cell.data.restoreGridFocus,
+          )
         }}
       />
     </div>

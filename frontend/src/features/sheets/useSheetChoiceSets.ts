@@ -8,11 +8,11 @@ import type {
   SheetColumnOut,
 } from '@/api/types'
 import type { SheetChoiceResource } from '@/grid/types'
+import { useIsomorphicLayoutEffect } from '@/shared/lib/useIsomorphicLayoutEffect'
 import {
+  claimLiveChoiceResourcePreparation,
   createLiveChoiceResource,
   getLiveChoiceResourceSnapshot,
-  notifyLiveChoiceResource,
-  publishLiveChoiceResource,
   stageLiveChoiceResource,
 } from '@/grid/choiceCell'
 import {
@@ -193,6 +193,7 @@ export async function prepareLiveSheetChoiceResourceForOpen({
   onVersionAdvanced?: (error: ChoiceSetVersionAdvanced) => Promise<void> | void
   onPreparedVersion?: (version: number) => void
 }): Promise<void> {
+  const publishPrepared = claimLiveChoiceResourcePreparation(resource)
   const { summary, aggregate } = await loadSheetChoiceResourceForOpen({
     setCode,
     columnVersion,
@@ -203,8 +204,7 @@ export async function prepareLiveSheetChoiceResourceForOpen({
   onPreparedVersion?.(summary.version)
 
   const current = getLiveChoiceResourceSnapshot(resource)
-  publishLiveChoiceResource(
-    resource,
+  publishPrepared(
     deriveSheetChoiceResource({
       setCode,
       columnVersion: Math.max(columnVersion, summary.version),
@@ -234,6 +234,7 @@ export function useSheetChoiceSets(
   const [trackedTargets, setTrackedTargets] = useState<ReadonlyMap<string, number>>(() =>
     bootstrapSheetChoiceTargets(plans),
   )
+  const [, setCommittedResourceRevision] = useState(0)
   const liveResourcesRef = useRef(new Map<string, SheetChoiceResource>())
 
   const summaryQueries = useQueries({
@@ -306,6 +307,7 @@ export function useSheetChoiceSets(
   }, [includeInactive, plans, queryClient, targets])
 
   const resources = new Map<string, SheetChoiceResource>()
+  const resourceCommits: Array<() => boolean> = []
   for (let index = 0; index < plans.length; index += 1) {
     const plan = plans[index]
     const summaryQuery = summaryQueries[index]
@@ -389,17 +391,22 @@ export function useSheetChoiceSets(
     })
     if (liveResource === undefined) {
       liveResource = createLiveChoiceResource(snapshot)
-      liveResourcesRef.current.set(plan.setCode, liveResource)
     } else {
-      // Rendering may refresh the backing snapshot, but editor subscribers are notified only
-      // after commit so one component never updates another component during render.
-      stageLiveChoiceResource(liveResource, snapshot)
+      resourceCommits.push(stageLiveChoiceResource(liveResource, snapshot))
     }
     resources.set(plan.setCode, liveResource)
   }
 
-  useEffect(() => {
-    for (const resource of resources.values()) notifyLiveChoiceResource(resource)
+  useIsomorphicLayoutEffect(() => {
+    // Only a committed render installs handles or promotes its exact captured snapshots.
+    liveResourcesRef.current = new Map(resources)
+    let changed = false
+    for (const commit of resourceCommits) {
+      if (commit()) changed = true
+    }
+    // Make parent-derived paste authorization and canvas payloads observe the committed snapshot
+    // before paint; no render-time external store mutation can leak from abandoned work.
+    if (changed) setCommittedResourceRevision((revision) => revision + 1)
   }, [resources])
 
   return resources

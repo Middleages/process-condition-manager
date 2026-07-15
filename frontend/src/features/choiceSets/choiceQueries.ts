@@ -52,6 +52,9 @@ export function choiceOptionQueryOptions(
 ) {
   return queryOptions({
     queryKey: choiceSetKeys.options(code, summaryVersion, includeInactive),
+    // `(set, version, includeInactive)` is immutable. Summary refresh creates a new version key.
+    staleTime: Number.POSITIVE_INFINITY,
+    refetchOnWindowFocus: false,
     queryFn: async ({ signal }) => {
       const aggregate = await fetchAllChoiceOptions(
         code,

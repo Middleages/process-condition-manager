@@ -49,6 +49,7 @@ import {
 import {
   buildPasteStaging,
   parseTsv,
+  persistablePasteCells,
   revalidatePasteStaging,
   sheetChoiceAuthorizationEpoch,
   type PasteStagingResult,
@@ -281,11 +282,19 @@ function SheetEditor({
   // 붙여넣기 스테이징(적용 전 미리보기). null = 대기 중인 붙여넣기 없음.
   const [paste, setPasteState] = useState<PasteStagingResult | null>(null)
   const pasteRef = useRef<PasteStagingResult | null>(null)
+  const pasteIdentityRef = useRef<symbol | null>(null)
   const [pasteError, setPasteError] = useState<string | null>(null)
   const [applying, setApplying] = useState(false)
   const applyingRef = useRef(false)
 
-  const { readOnly, writeBusy, setCell, applyPaste, runStructuralChange } = editing
+  const {
+    readOnly,
+    writeBusy,
+    setCell,
+    applyPaste,
+    abandonPaste,
+    runStructuralChange,
+  } = editing
   const interaction = resolveSheetInteraction({
     readOnly,
     writeBusy,
@@ -461,6 +470,7 @@ function SheetEditor({
           return
         }
         setPasteError(null)
+        pasteIdentityRef.current = Symbol('sheet-paste-review')
         setPaste(result)
       },
       // POR 이양: 클릭된 행을 POR로. 성공 시 두 행(기존/신규)의 is_por가 바뀌므로 재조회한다.
@@ -491,17 +501,22 @@ function SheetEditor({
 
   const cancelPaste = useCallback(() => {
     if (!interaction.canCancelPaste || applyingRef.current) return
+    const pasteIdentity = pasteIdentityRef.current
+    if (pasteIdentity !== null) abandonPaste(pasteIdentity)
+    pasteIdentityRef.current = null
     setPaste(null)
     setPasteError(null)
-  }, [interaction.canCancelPaste, setPaste])
+  }, [interaction.canCancelPaste, abandonPaste, setPaste])
 
   const commitPaste = useCallback(async () => {
     if (!interaction.canApplyPaste || pasteRef.current === null || applyingRef.current) return
+    const pasteIdentity = pasteIdentityRef.current
+    if (pasteIdentity === null) return
     applyingRef.current = true
     setApplying(true)
     setPasteError(null)
     try {
-      const saved = await applyPaste(() => {
+      const saved = await applyPaste(pasteIdentity, () => {
         const currentPaste = pasteRef.current
         if (currentPaste === null) return []
         const current = pasteCommitRuntimeRef.current
@@ -513,16 +528,13 @@ function SheetEditor({
         )
         setPaste(latestPaste)
         // 현재 권한으로 다시 검증한 유효 셀만 첫 revision snapshot에 포함한다.
-        const validCells: PersistedCell[] = latestPaste.staging
-          .filter((cell) => cell.valid)
-          .map((cell) => ({
-            conditionId: cell.conditionId,
-            parameterCode: cell.parameterCode,
-            value: cell.value,
-          }))
+        const validCells: PersistedCell[] = persistablePasteCells(latestPaste, current.rows)
         return validCells
       })
-      if (saved) setPaste(null) // 성공 → 스테이징 종료(서버 스냅샷에 반영됨)
+      if (saved) {
+        pasteIdentityRef.current = null
+        setPaste(null) // 성공 → 스테이징 종료(서버 스냅샷에 반영됨)
+      }
     } catch (error) {
       // 실패(네트워크/409 등): 스테이징 유지 + 에러 표시 → 사용자가 다시 "적용" 가능.
       setPasteError(getApiErrorMessage(error))

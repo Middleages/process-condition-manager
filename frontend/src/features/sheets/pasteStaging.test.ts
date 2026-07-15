@@ -6,6 +6,7 @@ import type { ConditionGridColumn, ConditionGridRow, SheetChoiceResource } from 
 import {
   buildPasteStaging,
   parseTsv,
+  persistablePasteCells,
   revalidatePasteStaging,
   sheetChoiceAuthorizationEpoch,
 } from './pasteStaging'
@@ -218,6 +219,81 @@ describe('buildPasteStaging — choice matching', () => {
     ).toEqual({ conditionId: '1', parameterCode: 'pr_type', value: 'old', valid: true })
   })
 
+  it('rejects an unchanged stored raw code that the exact aggregate confirms is unknown', () => {
+    const displayedRows = [{ ...rows[0], values: { pr_type: 'RAW' } }, ...rows.slice(1)]
+
+    expect(
+      buildPasteStaging(
+        { conditionId: '1', parameterCode: 'pr_type' },
+        [['RAW']],
+        columns,
+        displayedRows,
+        choiceResources,
+      ).staging[0],
+    ).toEqual({
+      conditionId: '1',
+      parameterCode: 'pr_type',
+      value: 'RAW',
+      valid: false,
+      message: '현재 선택지에 없는 코드입니다.',
+      errorCode: 'choice_unknown',
+    })
+  })
+
+  it('rejects an unchanged unknown raw code from an exact loaded inactive set', () => {
+    const displayedRows = [{ ...rows[0], values: { pr_type: 'RAW' } }, ...rows.slice(1)]
+    const inactiveResources = new Map([
+      [
+        'photo_resist',
+        {
+          ...choiceResource,
+          setIsActive: false,
+          selectableAggregate: null,
+          selectionReady: false,
+        },
+      ],
+    ])
+
+    expect(
+      buildPasteStaging(
+        { conditionId: '1', parameterCode: 'pr_type' },
+        [['RAW']],
+        columns,
+        displayedRows,
+        inactiveResources,
+      ).staging[0],
+    ).toEqual(expect.objectContaining({ valid: false, errorCode: 'choice_unknown' }))
+  })
+
+  it('omits an unavailable-resource raw no-op from a mixed persisted batch', () => {
+    const displayedRows = [{ ...rows[0], values: { pr_type: 'RAW' } }, ...rows.slice(1)]
+    const unavailableResources = new Map([
+      [
+        'photo_resist',
+        {
+          ...choiceResource,
+          displayAggregate: null,
+          selectableAggregate: null,
+          selectionReady: false,
+          isStale: true,
+          error: 'network',
+        },
+      ],
+    ])
+    const staged = buildPasteStaging(
+      { conditionId: '1', parameterCode: 'pr_type' },
+      [['RAW', 'changed memo']],
+      columns,
+      displayedRows,
+      unavailableResources,
+    )
+
+    expect(staged.staging).toHaveLength(2)
+    expect(persistablePasteCells(staged, displayedRows)).toEqual([
+      { conditionId: '1', parameterCode: 'memo', value: 'changed memo' },
+    ])
+  })
+
   it('treats a blank choice cell as clearing (null, valid)', () => {
     expect(at('').value).toBeNull()
     expect(at('').valid).toBe(true)
@@ -235,6 +311,37 @@ describe('paste choice authorization refresh', () => {
 
     expect(sheetChoiceAuthorizationEpoch(unavailable)).not.toBe(
       sheetChoiceAuthorizationEpoch(choiceResources),
+    )
+  })
+
+  it('changes the callback epoch when an inactive set gains exact knownness', () => {
+    const unavailable = new Map([
+      [
+        'photo_resist',
+        {
+          ...choiceResource,
+          setIsActive: false,
+          displayAggregate: null,
+          selectableAggregate: null,
+          selectionReady: false,
+          isStale: true,
+        },
+      ],
+    ])
+    const exactInactive = new Map([
+      [
+        'photo_resist',
+        {
+          ...choiceResource,
+          setIsActive: false,
+          selectableAggregate: null,
+          selectionReady: false,
+        },
+      ],
+    ])
+
+    expect(sheetChoiceAuthorizationEpoch(unavailable)).not.toBe(
+      sheetChoiceAuthorizationEpoch(exactInactive),
     )
   })
 

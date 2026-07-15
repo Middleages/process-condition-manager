@@ -9,7 +9,7 @@
  * - 대상 열/행을 못 찾으면(현재 안 보이는 파라미터 등) 빈 스테이징 반환.
  * - 시트 끝(행/열)을 넘어가는 붙여넣기 데이터는 잘라내고 개수를 truncatedRows/Cols로 알린다.
  */
-import { validatePasteCell } from '@/grid/cellValue'
+import { shouldPersistCellChange, validatePasteCell } from '@/grid/cellValue'
 import type {
   ConditionGridColumn,
   ConditionGridRow,
@@ -22,6 +22,12 @@ export interface PasteStagingResult {
   staging: PasteStagingCell[]
   truncatedRows: number
   truncatedCols: number
+}
+
+export interface PersistablePasteCell {
+  conditionId: string
+  parameterCode: string
+  value: string | null
 }
 
 /**
@@ -40,6 +46,9 @@ export function sheetChoiceAuthorizationEpoch(
         resource.summaryVersion,
         resource.setIsActive,
         resource.selectionReady,
+        resource.isStale,
+        resource.displayAggregate?.set_code ?? null,
+        resource.displayAggregate?.version ?? null,
         resource.selectableAggregate?.set_code ?? null,
         resource.selectableAggregate?.version ?? null,
       ]),
@@ -181,4 +190,26 @@ export function revalidatePasteStaging(
     return cell
   })
   return { ...result, staging }
+}
+
+/** 유효해도 현재 표시값과 같은 진짜 no-op은 mixed batch에서 제외한다. */
+export function persistablePasteCells(
+  result: PasteStagingResult,
+  rows: readonly ConditionGridRow[],
+): PersistablePasteCell[] {
+  const rowsById = new Map(rows.map((row) => [row.id, row] as const))
+  const cells: PersistablePasteCell[] = []
+  for (const staged of result.staging) {
+    if (!staged.valid) continue
+    const row = rowsById.get(staged.conditionId)
+    if (row === undefined) continue
+    const oldValue = row.values[staged.parameterCode] ?? null
+    if (!shouldPersistCellChange(oldValue, staged.value)) continue
+    cells.push({
+      conditionId: staged.conditionId,
+      parameterCode: staged.parameterCode,
+      value: staged.value,
+    })
+  }
+  return cells
 }

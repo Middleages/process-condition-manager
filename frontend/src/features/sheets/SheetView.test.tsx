@@ -274,9 +274,12 @@ describe('SheetView focus shell integration', () => {
     expect(sheetViewSource).not.toContain('onPersisted: commitSaved')
     expect(sheetViewSource).toContain('sheetChoiceAuthorizationEpoch(choiceResources)')
     expect(sheetViewSource).toContain('revalidatePasteStaging(')
+    expect(sheetViewSource).toContain('persistablePasteCells(latestPaste, current.rows)')
     expect(sheetViewSource).toMatch(
-      /await applyPaste\(\(\) => \{[\s\S]*?revalidatePasteStaging\([\s\S]*?return validCells/,
+      /await applyPaste\(pasteIdentity,[\s\S]*?\(\) => \{[\s\S]*?revalidatePasteStaging\([\s\S]*?return validCells/,
     )
+    expect(sheetViewSource).toContain("Symbol('sheet-paste-review')")
+    expect(sheetViewSource).toContain('abandonPaste(pasteIdentity)')
   })
 
   it('renders truthful read-only discovery controls with accessible pressed and status semantics', () => {

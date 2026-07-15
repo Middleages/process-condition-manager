@@ -1,4 +1,4 @@
-import { QueryClient, QueryObserver } from '@tanstack/react-query'
+import { focusManager, QueryClient, QueryObserver } from '@tanstack/react-query'
 import type { AxiosRequestConfig, AxiosResponse } from 'axios'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -89,6 +89,8 @@ describe('choice-set query policy', () => {
 
   afterEach(() => {
     for (const client of clients.splice(0)) client.clear()
+    focusManager.setFocused(undefined)
+    vi.useRealTimers()
   })
 
   it('separates option aggregates by set version and activity policy', () => {
@@ -107,6 +109,44 @@ describe('choice-set query policy', () => {
   it('always refreshes summaries on focus and polls sheet summaries every minute', () => {
     expect(summaryQueryOptions('equipment_mode').refetchOnWindowFocus).toBe('always')
     expect(sheetSummaryQueryOptions('equipment_mode').refetchInterval).toBe(60_000)
+  })
+
+  it('treats exact versioned aggregates as immutable across 31s, focus, and editor open reuse', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-14T00:00:00Z'))
+    const client = createProductionQueryClient()
+    clients.push(client)
+    get.mockImplementation((_url: string, config?: AxiosRequestConfig) => {
+      const version = Number((config?.params as { version?: number } | undefined)?.version)
+      return Promise.resolve(response(page(version, [option(`V${version}`)], null)))
+    })
+    const versionSeven = choiceOptionQueryOptions(client, 'equipment_mode', 7, true)
+
+    expect(versionSeven.staleTime).toBe(Number.POSITIVE_INFINITY)
+    expect(versionSeven.refetchOnWindowFocus).toBe(false)
+    await client.fetchQuery(versionSeven)
+    vi.advanceTimersByTime(31_000)
+    await client.fetchQuery(versionSeven)
+
+    const observer = new QueryObserver(client, versionSeven)
+    client.mount()
+    const unsubscribe = observer.subscribe(() => undefined)
+    focusManager.setFocused(false)
+    focusManager.setFocused(true)
+    await Promise.resolve()
+    await Promise.resolve()
+
+    // Opening another shared-set cell uses the same exact cache key.
+    await client.fetchQuery(versionSeven)
+    expect(get).toHaveBeenCalledTimes(1)
+
+    await client.fetchQuery(choiceOptionQueryOptions(client, 'equipment_mode', 8, true))
+    expect(get).toHaveBeenCalledTimes(2)
+
+    unsubscribe()
+    client.unmount()
+    focusManager.setFocused(undefined)
+    vi.useRealTimers()
   })
 
   it('invalidates list and changed summary while removing only that sets option aggregates', async () => {

@@ -4,7 +4,13 @@ import type { CellsPatchOut } from '@/api/types'
 
 import type { DirtyCell } from './editStore'
 import { reconcileSuccessfulPatch } from './persistenceReconciliation'
-import { persistDirtySnapshot } from './useSheetEditing'
+import {
+  discardRetainedPasteSnapshot,
+  persistDirtySnapshot,
+  resolvePasteSnapshotAction,
+  shouldResumeAutosaveAfterReacquire,
+  type RetainedPasteSnapshot,
+} from './useSheetEditing'
 
 const snapshot: DirtyCell[] = [
   { conditionId: '1', parameterCode: 'decimal', value: '001.5000', revision: 11 },
@@ -94,5 +100,41 @@ describe('persistDirtySnapshot', () => {
 
     releaseCacheFence()
     await expect(persistence).resolves.toBe(response)
+  })
+})
+
+describe('retained paste identity', () => {
+  it('does not auto-flush a retained paste after lock reacquisition', () => {
+    const retained: RetainedPasteSnapshot = {
+      identity: Symbol('paste-a'),
+      snapshot,
+    }
+
+    expect(shouldResumeAutosaveAfterReacquire(1, retained)).toBe(false)
+    expect(shouldResumeAutosaveAfterReacquire(1, null)).toBe(true)
+    expect(shouldResumeAutosaveAfterReacquire(0, null)).toBe(false)
+  })
+
+  it('retries only the same review and replaces failed A before preparing B', () => {
+    const pasteA = Symbol('paste-a')
+    const pasteB = Symbol('paste-b')
+    const retained: RetainedPasteSnapshot = { identity: pasteA, snapshot }
+
+    expect(resolvePasteSnapshotAction(retained, pasteA)).toBe('retry')
+    expect(resolvePasteSnapshotAction(retained, pasteB)).toBe('replace')
+    expect(resolvePasteSnapshotAction(null, pasteB)).toBe('prepare')
+  })
+
+  it('explicit cancel discards only the exact retained revisions', () => {
+    const retained: RetainedPasteSnapshot = {
+      identity: Symbol('paste-a'),
+      snapshot,
+    }
+    const markSaved = vi.fn()
+
+    discardRetainedPasteSnapshot(retained, markSaved)
+
+    expect(markSaved).toHaveBeenCalledOnce()
+    expect(markSaved).toHaveBeenCalledWith(snapshot)
   })
 })

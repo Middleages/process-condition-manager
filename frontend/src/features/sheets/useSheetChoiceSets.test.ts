@@ -20,6 +20,8 @@ import { ChoiceSetVersionAdvanced } from '@/features/choiceSets/choiceQueries'
 import {
   createLiveChoiceResource,
   getLiveChoiceResourceSnapshot,
+  publishLiveChoiceResource,
+  stageLiveChoiceResource,
   subscribeLiveChoiceResource,
 } from '@/grid/choiceCell'
 
@@ -281,5 +283,182 @@ describe('loadSheetChoiceResourceForOpen', () => {
     expect(notified).toHaveBeenCalledOnce()
     expect(onPreparedVersion).toHaveBeenCalledWith(8)
     unsubscribe()
+  })
+
+  it('does not expose a staged render snapshot until its exact commit callback runs', () => {
+    const live = createLiveChoiceResource(
+      deriveSheetChoiceResource({
+        setCode: 'equipment_mode',
+        columnVersion: 7,
+        summary: summary('equipment_mode', 7),
+        targetAggregate: aggregate('equipment_mode', 7),
+        displayFallback: null,
+        summaryFailed: false,
+        aggregateFailed: false,
+        loading: false,
+      }),
+    )
+    const versionEight = deriveSheetChoiceResource({
+      setCode: 'equipment_mode',
+      columnVersion: 8,
+      summary: summary('equipment_mode', 8),
+      targetAggregate: aggregate('equipment_mode', 8),
+      displayFallback: null,
+      summaryFailed: false,
+      aggregateFailed: false,
+      loading: false,
+    })
+
+    const commitVersionEight = stageLiveChoiceResource(live, versionEight)
+
+    // An abandoned render never calls its commit callback.
+    expect(getLiveChoiceResourceSnapshot(live).targetVersion).toBe(7)
+    expect(live.targetVersion).toBe(7)
+
+    expect(commitVersionEight()).toBe(true)
+    expect(getLiveChoiceResourceSnapshot(live).targetVersion).toBe(8)
+    expect(hookSource).toContain('resourceCommits.push(stageLiveChoiceResource(')
+    expect(hookSource).toContain('useIsomorphicLayoutEffect')
+  })
+
+  it('ignores a delayed v7 editor-open result after v8 has already been published', async () => {
+    const live = createLiveChoiceResource(
+      deriveSheetChoiceResource({
+        setCode: 'equipment_mode',
+        columnVersion: 7,
+        summary: summary('equipment_mode', 7),
+        targetAggregate: aggregate('equipment_mode', 7),
+        displayFallback: null,
+        summaryFailed: false,
+        aggregateFailed: false,
+        loading: false,
+      }),
+    )
+    let releaseV7!: () => void
+    const delayedV7 = new Promise<ChoiceSetSummaryOut>((resolve) => {
+      releaseV7 = () => resolve(summary('equipment_mode', 7))
+    })
+    const lateOpen = prepareLiveSheetChoiceResourceForOpen({
+      resource: live,
+      setCode: 'equipment_mode',
+      columnVersion: 7,
+      refetchSummary: () => delayedV7,
+      fetchAggregate: async (version) => aggregate('equipment_mode', version),
+    })
+    const versionEight = deriveSheetChoiceResource({
+      setCode: 'equipment_mode',
+      columnVersion: 8,
+      summary: summary('equipment_mode', 8),
+      targetAggregate: aggregate('equipment_mode', 8),
+      displayFallback: null,
+      summaryFailed: false,
+      aggregateFailed: false,
+      loading: false,
+    })
+    publishLiveChoiceResource(live, versionEight)
+
+    releaseV7()
+    await lateOpen
+
+    expect(live.targetVersion).toBe(8)
+    expect(live.summaryVersion).toBe(8)
+    expect(live.selectableAggregate?.version).toBe(8)
+  })
+
+  it('does not let an older same-version open undo a newer mandatory-refresh failure', async () => {
+    const versionEight = deriveSheetChoiceResource({
+      setCode: 'equipment_mode',
+      columnVersion: 8,
+      summary: summary('equipment_mode', 8),
+      targetAggregate: aggregate('equipment_mode', 8),
+      displayFallback: null,
+      summaryFailed: false,
+      aggregateFailed: false,
+      loading: false,
+    })
+    const live = createLiveChoiceResource(versionEight)
+    let releaseOlderAggregate!: () => void
+    let olderAggregateRequested!: () => void
+    const olderAggregateStarted = new Promise<void>((resolve) => {
+      olderAggregateRequested = resolve
+    })
+    const olderAggregate = new Promise<ChoiceOptionAggregate>((resolve) => {
+      releaseOlderAggregate = () => resolve(aggregate('equipment_mode', 8))
+    })
+    const olderOpen = prepareLiveSheetChoiceResourceForOpen({
+      resource: live,
+      setCode: 'equipment_mode',
+      columnVersion: 8,
+      refetchSummary: async () => summary('equipment_mode', 8),
+      fetchAggregate: async () => {
+        olderAggregateRequested()
+        return olderAggregate
+      },
+    })
+    await olderAggregateStarted
+
+    await expect(
+      prepareLiveSheetChoiceResourceForOpen({
+        resource: live,
+        setCode: 'equipment_mode',
+        columnVersion: 8,
+        refetchSummary: async () => {
+          throw new Error('network failed')
+        },
+        fetchAggregate: async (version) => aggregate('equipment_mode', version),
+      }),
+    ).rejects.toThrow('network failed')
+
+    publishLiveChoiceResource(
+      live,
+      deriveSheetChoiceResource({
+        setCode: 'equipment_mode',
+        columnVersion: 8,
+        summary: null,
+        targetAggregate: aggregate('equipment_mode', 8),
+        displayFallback: aggregate('equipment_mode', 8),
+        summaryFailed: true,
+        aggregateFailed: false,
+        loading: false,
+        error: 'network failed',
+      }),
+    )
+    releaseOlderAggregate()
+    await olderOpen
+
+    expect(live.summaryVersion).toBeNull()
+    expect(live.selectionReady).toBe(false)
+    expect(live.error).toBe('network failed')
+  })
+
+  it('does not replace a healthy v8 publication with an older summary at the same target', () => {
+    const versionEight = deriveSheetChoiceResource({
+      setCode: 'equipment_mode',
+      columnVersion: 8,
+      summary: summary('equipment_mode', 8),
+      targetAggregate: aggregate('equipment_mode', 8),
+      displayFallback: null,
+      summaryFailed: false,
+      aggregateFailed: false,
+      loading: false,
+    })
+    const live = createLiveChoiceResource(versionEight)
+    const notified = vi.fn()
+    subscribeLiveChoiceResource(live, notified)
+    const staleSummary = deriveSheetChoiceResource({
+      setCode: 'equipment_mode',
+      columnVersion: 8,
+      summary: summary('equipment_mode', 7),
+      targetAggregate: aggregate('equipment_mode', 8),
+      displayFallback: null,
+      summaryFailed: false,
+      aggregateFailed: false,
+      loading: false,
+    })
+
+    expect(publishLiveChoiceResource(live, staleSummary)).toBe(false)
+    expect(live.summaryVersion).toBe(8)
+    expect(live.selectionReady).toBe(true)
+    expect(notified).not.toHaveBeenCalled()
   })
 })

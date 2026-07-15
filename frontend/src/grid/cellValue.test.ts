@@ -4,6 +4,7 @@ import type { ChoiceOptionAggregate } from '@/api/types'
 
 import type { ConditionGridColumn, SheetChoiceResource } from './types'
 import {
+  shouldPersistCellChange,
   validateCellCandidate,
   validatePasteCell,
   validateSingleCellEdit,
@@ -56,6 +57,12 @@ function resource(overrides: Partial<SheetChoiceResource> = {}): SheetChoiceReso
 }
 
 describe('validateCellCandidate', () => {
+  it('omits normalized true no-ops from persistence', () => {
+    expect(shouldPersistCellChange('RAW', 'RAW')).toBe(false)
+    expect(shouldPersistCellChange(null, null)).toBe(false)
+    expect(shouldPersistCellChange('RAW', 'AUTO')).toBe(true)
+  })
+
   it('trims text and treats blank input as clear', () => {
     expect(validateCellCandidate(textColumn, 'old', '  note  ')).toEqual({ ok: true, value: 'note' })
     expect(validateCellCandidate(textColumn, 'old', '   ')).toEqual({ ok: true, value: null })
@@ -97,9 +104,40 @@ describe('validateCellCandidate', () => {
         choiceColumn,
         'RAW',
         'RAW',
-        resource({ selectableAggregate: null, selectionReady: false, error: 'network' }),
+        resource({
+          displayAggregate: null,
+          selectableAggregate: null,
+          selectionReady: false,
+          isStale: true,
+          error: 'network',
+        }),
       ),
     ).toEqual({ ok: true, value: 'RAW' })
+  })
+
+  it('rejects an unchanged stored raw code when the exact aggregate confirms it is unknown', () => {
+    expect(validateSingleCellEdit(choiceColumn, 'RAW', ' RAW ', resource())).toEqual(
+      expect.objectContaining({ ok: false, code: 'choice_unknown' }),
+    )
+  })
+
+  it('uses an exact inactive-set aggregate for knownness without allowing new selection', () => {
+    const inactiveSet = resource({
+      setIsActive: false,
+      selectableAggregate: null,
+      selectionReady: false,
+    })
+
+    expect(validateSingleCellEdit(choiceColumn, 'LEGACY', 'LEGACY', inactiveSet)).toEqual({
+      ok: true,
+      value: 'LEGACY',
+    })
+    expect(validateSingleCellEdit(choiceColumn, 'RAW', 'RAW', inactiveSet)).toEqual(
+      expect.objectContaining({ ok: false, code: 'choice_unknown' }),
+    )
+    expect(validateSingleCellEdit(choiceColumn, null, 'AUTO', inactiveSet)).toEqual(
+      expect.objectContaining({ ok: false, code: 'choice_set_inactive' }),
+    )
   })
 
   it('rejects changed inactive, unknown, inactive-set, and stale-resource choices', () => {

@@ -38,7 +38,7 @@ import '@glideapps/glide-data-grid/dist/index.css'
 import { useIsomorphicLayoutEffect } from '@/shared/lib/useIsomorphicLayoutEffect'
 
 import { choiceCellRenderer, isChoiceCell, makeChoiceCell } from './choiceCell'
-import { validateSingleCellEdit } from './cellValue'
+import { shouldPersistCellChange, validateSingleCellEdit } from './cellValue'
 import { decimalCellRenderer, isDecimalCell, makeDecimalCell } from './decimalCell'
 import {
   IDENTITY_COLUMN_COUNT,
@@ -141,6 +141,7 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
   ConditionGridProps
 >(function GlideConditionGrid({ data, view, callbacks, pasteStaging }, ref) {
   const gridRef = useRef<DataEditorRef>(null)
+  const restoreGridFocus = useCallback(() => gridRef.current?.focus(), [])
   const readOnly = view?.readOnly ?? false
   const rows = data.rows
 
@@ -265,7 +266,13 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
             copyData: raw ?? '',
           }
         }
-        return makeChoiceCell(raw ?? '', resource, readOnly, themeOverride)
+        return makeChoiceCell(
+          raw ?? '',
+          resource,
+          readOnly,
+          themeOverride,
+          restoreGridFocus,
+        )
       }
       // text → 텍스트 셀.
       return {
@@ -278,7 +285,16 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
         copyData: raw ?? '',
       }
     },
-    [rows, visibleColumns, groupMeta, statusIndex, stagingIndex, readOnly, data.choiceResources],
+    [
+      rows,
+      visibleColumns,
+      groupMeta,
+      statusIndex,
+      stagingIndex,
+      readOnly,
+      data.choiceResources,
+      restoreGridFocus,
+    ],
   )
 
   const handleCellEdited = useCallback(
@@ -294,13 +310,10 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
         column.choiceSetCode === null
           ? undefined
           : data.choiceResources?.get(column.choiceSetCode)
-      const validation = validateSingleCellEdit(
-        column,
-        row.values[column.key] ?? null,
-        candidate ?? '',
-        resource,
-      )
+      const oldValue = row.values[column.key] ?? null
+      const validation = validateSingleCellEdit(column, oldValue, candidate ?? '', resource)
       if (!validation.ok) return
+      if (!shouldPersistCellChange(oldValue, validation.value)) return
       callbacks?.onCellEdit?.({
         conditionId: target.conditionId,
         parameterCode: target.parameterCode,
