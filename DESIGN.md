@@ -3,13 +3,15 @@
 ## Source of truth
 
 - **Status:** Active
-- **Last refreshed:** 2026-07-14
+- **Last refreshed:** 2026-07-16
 - **Primary product surfaces:** 프로젝트 목록·생성·상세, Process Catalog, 조건표 편집기,
   파라미터 레지스트리·ChoiceSet 관리
 - **Detailed Phase 2.5 specification:**
   [`docs/superpowers/specs/2026-07-13-phase-2-5-ui-ux-design.md`](./docs/superpowers/specs/2026-07-13-phase-2-5-ui-ux-design.md)
 - **Detailed Phase 2.6 specification:**
   [`docs/superpowers/specs/2026-07-14-phase-2-6-project-profile-managed-choice-design.md`](./docs/superpowers/specs/2026-07-14-phase-2-6-project-profile-managed-choice-design.md)
+- **Project creation clarity specification:**
+  [`docs/superpowers/specs/2026-07-16-project-creation-clarity-design.md`](./docs/superpowers/specs/2026-07-16-project-creation-clarity-design.md)
 - **Evidence reviewed:**
   - `plan/05-ui-wireframe.md` — 화면 지도와 업무 흐름
   - `plan/phase-2-tasks.md` — 현재 편집기 기능·제약과 Phase 2 완료 근거
@@ -22,6 +24,7 @@
   - `frontend/src/features/sheets/SheetView.tsx` — 조건표 편집·잠금·붙여넣기 흐름
   - 2026-07-13 사용자 승인: A2 / V1 / P1 / W1 / M1 / S1-C
   - 2026-07-14 사용자 승인: 고정 Project Profile / 공유 ChoiceSet / searchable choice
+  - 2026-07-16 사용자 승인: A — 작업 집중형 3단계 프로젝트 생성 명료화
 
 이 문서는 PCM UI/UX와 디자인 시스템의 정본이다. 구현 중 충돌이 발견되면 화면별
 임시 예외를 늘리기 전에 이 문서와 상세 스펙을 갱신한다.
@@ -145,6 +148,7 @@
 - **Approved patterns:**
   - P1 검색·표 중심 프로젝트 목록
   - W1 전체 화면 단계형 프로젝트 생성
+  - W1-A 작업 집중형 생성: 얇은 진행 표시, 단계당 한 결정, 마지막 단계의 매칭 검토/필수 정보 분리
   - M1 목록 + 오른쪽 편집 드로어
   - 고정 Project Profile definition grid + 잠금 기반 오른쪽 편집 드로어
   - ChoiceSet 목록 + option 전체 페이지 관리

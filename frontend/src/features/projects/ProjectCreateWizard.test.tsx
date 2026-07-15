@@ -1,9 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import type { ReactElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { createMemoryRouter, RouterProvider, StaticRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 
 import type {
+  BackboneCandidateOut,
   MatchPreviewOut,
   ProcessDetailOut,
   ProcessListOut,
@@ -11,6 +13,7 @@ import type {
 } from '@/api/types'
 import type { ChoiceSetOptionsResource } from '@/features/choiceSets/useChoiceSetOptions'
 
+import { ProjectCreatePage } from './ProjectCreatePage'
 import { ProjectCreateWizard, RequiredProfileChoiceField } from './ProjectCreateWizard'
 import { previewFingerprint } from './wizardState'
 
@@ -69,6 +72,19 @@ const automaticPreview: MatchPreviewOut = {
   ],
 }
 
+const backboneCandidate: BackboneCandidateOut = {
+  id: 17,
+  name: 'Reference backbone',
+  line_id: directProcess.line_id,
+  process_id: directProcess.process_id,
+  part_id: 'REF-17',
+  status: 'draft',
+  layer_count: 4,
+  match_rate: 0.75,
+  matched_count: 3,
+  unmatched_count: 1,
+}
+
 const projectProfile: ProjectProfileOut = {
   project_id: 7,
   process_name: 'Source',
@@ -103,7 +119,11 @@ const projectProfile: ProjectProfileOut = {
   updated_at: '2026-07-14T00:00:00Z',
 }
 
-function renderWizard(location: string, seedSelectedProcess: boolean): string {
+function renderWizard(
+  location: string,
+  seedSelectedProcess: boolean,
+  routeElement: ReactElement = <ProjectCreateWizard onCreated={vi.fn()} />,
+): string {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false, staleTime: Number.POSITIVE_INFINITY },
@@ -118,6 +138,10 @@ function renderWizard(location: string, seedSelectedProcess: boolean): string {
   if (seedSelectedProcess) {
     queryClient.setQueryData(['process', directProcess.key], directProcess)
     queryClient.setQueryData(
+      ['backbone-candidates', directProcess.line_id, directProcess.process_id],
+      [backboneCandidate],
+    )
+    queryClient.setQueryData(
       ['backbone-preview', previewFingerprint(directProcess.key, null, {})],
       {
         fingerprint: previewFingerprint(directProcess.key, null, {}),
@@ -130,7 +154,7 @@ function renderWizard(location: string, seedSelectedProcess: boolean): string {
     [
       {
         path: '/projects/new',
-        element: <ProjectCreateWizard onCreated={vi.fn()} />,
+        element: routeElement,
       },
     ],
     { initialEntries: [location] },
@@ -249,8 +273,8 @@ describe('ProjectCreateWizard route restoration', () => {
 
     expect(html).toContain('LINE Z / outside first page')
     expect(html).not.toContain('LINE A / first')
-    expect(html).toContain('매칭 확인 · 프로젝트 정보</h2>')
-    expect(html).toContain('현재 단계')
+    expect(html).toContain('매칭 검토 및 프로젝트 정보</h2>')
+    expect(html).toContain('현재 3/3')
     expect(html).toContain('완료')
   })
 
@@ -258,7 +282,7 @@ describe('ProjectCreateWizard route restoration', () => {
     const params = new URLSearchParams({ step: '3', process: directProcess.key })
     const html = renderWizard(`/projects/new?${params}`, false)
 
-    expect(html).toContain('매칭 확인 · 프로젝트 정보</h2>')
+    expect(html).toContain('매칭 검토 및 프로젝트 정보</h2>')
     expect(html).toContain('URL에서 선택한 Process를 복원하는 중입니다.')
     expect(html).toMatch(
       /<input(?=[^>]*id="project-part-id")(?=[^>]*disabled="")[^>]*>/,
@@ -277,6 +301,80 @@ describe('ProjectCreateWizard route restoration', () => {
     )
   })
 
+  it('uses the approved Process title in progress and the matching step heading', () => {
+    const html = renderWizard('/projects/new', false)
+
+    expect(html).toContain('>Process 선택</span>')
+    expect(html).toContain('Process 선택</h2>')
+    expect(html).not.toContain('Process 확인')
+  })
+
+  it('uses the approved review title in progress and the matching step heading', () => {
+    const params = new URLSearchParams({ step: '3', process: directProcess.key })
+    const html = renderWizard(`/projects/new?${params}`, true)
+
+    expect(html).toContain('>매칭 검토 및 프로젝트 정보</span>')
+    expect(html).toContain('매칭 검토 및 프로젝트 정보</h2>')
+    expect(html).not.toContain('매칭 확인 · 프로젝트 정보')
+  })
+
+  it('uses one restrained work frame and a compact step progress contract', () => {
+    const params = new URLSearchParams({ step: '3', process: directProcess.key })
+    const html = renderWizard(`/projects/new?${params}`, true)
+
+    expect(html).toContain('aria-label="프로젝트 생성 진행"')
+    expect(html).toContain('aria-current="step"')
+    expect(html).toContain('현재 3/3')
+    expect(html).not.toContain('>3단계<')
+    expect(html).not.toContain('shadow-sm')
+  })
+
+  it('presents Process results as one scan list with a sticky selected summary', () => {
+    const html = renderWizard('/projects/new', false)
+
+    expect(html).toContain('aria-label="Process 선택 목록"')
+    expect(html).toContain('aria-label="선택한 Process 요약"')
+    expect(html).not.toContain('class="grid gap-2 md:grid-cols-2"')
+    expect(html).toMatch(
+      /<ul(?=[^>]*aria-label="Process 선택 목록")(?=[^>]*max-h-\[32rem\])(?=[^>]*overflow-y-auto)[^>]*>/,
+    )
+    expect(html).toMatch(
+      /<aside(?=[^>]*aria-label="선택한 Process 요약")(?=[^>]*xl:sticky)(?=[^>]*xl:top-5)[^>]*>/,
+    )
+  })
+
+  it('keeps the sole Process continue action inside the selected summary', () => {
+    const html = renderWizard('/projects/new', false)
+
+    const selectedSummary = html.match(
+      /<aside(?=[^>]*aria-label="선택한 Process 요약")[\s\S]*?<\/aside>/,
+    )?.[0]
+    expect(selectedSummary).toContain('백본 선택으로')
+    expect(html.match(/백본 선택으로/g)).toHaveLength(1)
+  })
+
+  it('presents backbone choices as one compact comparison list with no backbone first', () => {
+    const params = new URLSearchParams({ step: '2', process: directProcess.key })
+    const html = renderWizard(`/projects/new?${params}`, true)
+
+    expect(html).toContain('aria-label="백본 선택 목록"')
+    expect(html).toContain('백본 없이 시작')
+    expect(html.indexOf('백본 없이 시작')).toBeLessThan(html.indexOf(backboneCandidate.name))
+    expect(html).toContain('REF-17 · Layer 3/4')
+    expect(html).toContain('매칭 75% · 미매칭 1')
+    expect(html).toContain('aria-pressed="true"')
+  })
+
+  it('frames the full creation route with a clear title and project-list return action', () => {
+    const html = renderWizard('/projects/new', false, <ProjectCreatePage />)
+
+    expect(html).toContain('새 프로젝트 만들기')
+    expect(html).toContain('href="/projects"')
+    expect(html).toContain('프로젝트 목록')
+    expect(html).toContain('max-w-[1440px]')
+    expect(html).toContain('class="btn-secondary gap-2"')
+  })
+
   it('offers a manual override for an automatic match with an accurate default', () => {
     const html = renderAutomaticBackbonePreview()
 
@@ -285,11 +383,65 @@ describe('ProjectCreateWizard route restoration', () => {
     expect(html).toContain('value="SOURCE::MANUAL"')
   })
 
+  it('separates matching review, required information, and bounded Layer detail', () => {
+    const html = renderAutomaticBackbonePreview()
+
+    expect(html).toContain('aria-labelledby="project-match-summary-title"')
+    expect(html).toContain('aria-labelledby="project-required-info-title"')
+    expect(html).toContain('aria-labelledby="project-layer-matches-title"')
+    expect(html).toContain('xl:grid-cols-[minmax(0,1fr)_minmax(22.5rem,26.25rem)]')
+    expect(html).toContain('xl:sticky')
+    expect(html).toContain('max-h-[26rem]')
+    expect(html).toMatch(
+      /project-required-info-title[\s\S]*project-part-id[\s\S]*project-category[\s\S]*project-create-action/,
+    )
+  })
+
+  it('shows the current step count only in progress, not again in the body heading', () => {
+    const params = new URLSearchParams({ step: '3', process: directProcess.key })
+    const html = renderWizard(`/projects/new?${params}`, true)
+
+    expect(html.match(/현재 3\/3/g)).toHaveLength(1)
+  })
+
+  it('starts the responsive review grid before the h2 so the required aside aligns at xl', () => {
+    const html = renderAutomaticBackbonePreview()
+    const gridStart = html.indexOf(
+      'xl:grid-cols-[minmax(0,1fr)_minmax(22.5rem,26.25rem)]',
+    )
+    const heading = html.indexOf('매칭 검토 및 프로젝트 정보</h2>')
+    const requiredAside = html.indexOf('aria-labelledby="project-required-info-title"')
+
+    expect(gridStart).toBeGreaterThan(-1)
+    expect(gridStart).toBeLessThan(heading)
+    expect(heading).toBeLessThan(requiredAside)
+  })
+
+  it('uses the approved compact optional-comment guidance', () => {
+    const html = renderAutomaticBackbonePreview()
+
+    expect(html).toContain('선택 사항입니다. 비우면 생성 기본값을 유지합니다.')
+    expect(html).toMatch(/<textarea(?=[^>]*class="[^"]*min-h-16)[^>]*>/)
+  })
+
+  it('renders Process and backbone identity as one strip without nested stat cards', () => {
+    const html = renderAutomaticBackbonePreview()
+    const matchSummary = html.match(
+      /<section(?=[^>]*aria-labelledby="project-match-summary-title")[\s\S]*?<\/section>/,
+    )?.[0]
+    const identityStrip = matchSummary?.match(/<dl[\s\S]*?<\/dl>/)?.[0]
+
+    expect(identityStrip).toBeDefined()
+    expect(identityStrip).not.toMatch(
+      /<div class="[^"]*rounded-lg border border-border-subtle/,
+    )
+  })
+
   it('keeps the W1 third step and adds only the core Profile inputs', () => {
     const params = new URLSearchParams({ step: '3', process: directProcess.key })
     const html = renderWizard(`/projects/new?${params}`, true)
 
-    expect(html).toContain('매칭 확인 · 프로젝트 정보</h2>')
+    expect(html).toContain('매칭 검토 및 프로젝트 정보</h2>')
     expect(html).toContain('LINE')
     expect(html).toContain('LINE Z')
     expect(html).toContain('Device Type')
