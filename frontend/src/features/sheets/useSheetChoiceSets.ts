@@ -336,28 +336,14 @@ export function useSheetChoiceSets(
         setCode: plan.setCode,
         columnVersion: targets[index] ?? plan.version,
         refetchSummary: refetchFreshSummary,
-        fetchAggregate: async (version) => {
-          await removeSupersededChoiceOptionQueries(
-            queryClient,
-            plan.setCode,
-            version,
-            includeInactive,
-          )
-          return queryClient.fetchQuery(
+        fetchAggregate: (version) =>
+          queryClient.fetchQuery(
             choiceOptionQueryOptions(
               queryClient,
               plan.setCode,
               version,
               includeInactive,
             ),
-          )
-        },
-        onVersionAdvanced: (transition) =>
-          removeSupersededChoiceOptionQueries(
-            queryClient,
-            plan.setCode,
-            transition.responseVersion,
-            includeInactive,
           ),
         onPreparedVersion: (version) =>
           setTrackedTargets((current) => {

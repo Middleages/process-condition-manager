@@ -136,6 +136,17 @@ describe('sheet choice query plan', () => {
     expect(hookSource).toContain('includeInactive = true')
     expect(hookSource).not.toContain('useChoiceSetOptions(')
   })
+
+  it('moves the observed target before pruning superseded queries during editor open', () => {
+    const prepareStart = hookSource.indexOf('const prepareToOpen = async')
+    const transitionEnd = hookSource.indexOf('const typedTransition', prepareStart)
+    const prepareSource = hookSource.slice(prepareStart, transitionEnd)
+
+    expect(prepareStart).toBeGreaterThanOrEqual(0)
+    expect(transitionEnd).toBeGreaterThan(prepareStart)
+    expect(prepareSource).not.toContain('removeSupersededChoiceOptionQueries(')
+    expect(prepareSource).toContain('onPreparedVersion:')
+  })
 })
 
 describe('deriveSheetChoiceResource', () => {

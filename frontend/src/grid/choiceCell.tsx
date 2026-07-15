@@ -5,7 +5,7 @@ import type {
   ProvideEditorComponent,
   Theme,
 } from '@glideapps/glide-data-grid'
-import { useCallback, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useSyncExternalStore } from 'react'
 
 import { SearchableChoice } from '@/shared/components/SearchableChoice'
 
@@ -227,6 +227,20 @@ function scheduleNextFrame(callback: () => void): void {
   setTimeout(callback, 0)
 }
 
+export function focusChoiceEditorAfterActivation(
+  findEditor: () => { focus: () => void } | null = () =>
+    document.getElementById('sheet-choice-editor'),
+  schedule: FocusScheduler = scheduleNextFrame,
+): () => void {
+  let active = true
+  schedule(() => {
+    if (active) findEditor()?.focus()
+  })
+  return () => {
+    active = false
+  }
+}
+
 /** SearchableChoice의 동기 input refocus보다 뒤에서 Glide canvas focus를 복구한다. */
 export function finishChoiceEditingWithFocus(
   finish: (value?: ChoiceCell) => void,
@@ -263,6 +277,7 @@ export const ChoiceEditor: ProvideEditorComponent<ChoiceCell> = ({
   const resource = useLiveChoiceResource(cell.data.resource)
   const { value } = cell.data
   const currentDescription = describeChoiceValue(value, resource)
+  useEffect(() => focusChoiceEditorAfterActivation(), [])
   return (
     <div
       className="min-w-[280px] bg-surface p-2"

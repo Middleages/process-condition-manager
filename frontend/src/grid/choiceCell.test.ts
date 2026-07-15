@@ -5,6 +5,7 @@ import type { SheetChoiceResource } from './types'
 import {
   describeChoiceValue,
   finishChoiceEditingWithFocus,
+  focusChoiceEditorAfterActivation,
   makeChoiceCell,
 } from './choiceCell'
 import choiceCellSource from './choiceCell.tsx?raw'
@@ -114,6 +115,29 @@ describe('managed choice cell', () => {
       expect(restoreGridFocus).toHaveBeenCalledOnce()
     },
   )
+
+  it('refocuses the overlay input after Glide finishes the activating pointer event', () => {
+    const focus = vi.fn()
+    const scheduled: Array<() => void> = []
+    const cleanup = focusChoiceEditorAfterActivation(
+      () => ({ focus }),
+      (callback) => scheduled.push(callback),
+    )
+
+    expect(focus).not.toHaveBeenCalled()
+    scheduled[0]?.()
+    expect(focus).toHaveBeenCalledOnce()
+
+    const cancelledFocus = vi.fn()
+    const cancelled = focusChoiceEditorAfterActivation(
+      () => ({ focus: cancelledFocus }),
+      (callback) => scheduled.push(callback),
+    )
+    cancelled()
+    scheduled[1]?.()
+    expect(cancelledFocus).not.toHaveBeenCalled()
+    cleanup()
+  })
 
   it('passes one adapter-owned focus callback through every choice cell payload', () => {
     const restoreGridFocus = vi.fn()
