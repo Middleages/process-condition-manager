@@ -35,6 +35,8 @@ parameter
   choice_set_id FK      -- choice 타입일 때 공유 ChoiceSet
   category_id   FK      -- 카테고리 (관리자 설정 가능)
   unit, min, max        -- number 타입 부가 속성; min/max는 NUMERIC, API는 canonical decimal string
+  required               -- 모든 타입의 단독 필수 규칙, 기본 false
+  pattern, pattern_hint  -- text의 bounded portable pattern + 사용자용 형식 안내
   sort_order
   is_active             -- soft delete. 하드 삭제 금지
   created_at, updated_at
@@ -58,7 +60,8 @@ choice_option
 - ChoiceSet 변경은 Draft에 live 반영하고, Approved/Archived는 승인 시점 snapshot의
   active·inactive 전체 option code·label·활성 상태를 사용한다. 비활성 기존값도 승인본에서
   label을 잃지 않는다.
-- 검증 규칙 중 파라미터 단독 규칙(range, required, pattern)은 레지스트리 속성으로 두고, cross-layer 규칙은 Phase 3에서 별도 테이블로 확장한다.
+- 검증 규칙 중 파라미터 단독 규칙(range, required, pattern)은 레지스트리 속성으로 둔다. pattern은 Python/JavaScript 공통 bounded subset이며 raw pattern 대신 필수 pattern_hint를 사용자에게 표시한다.
+- relation 규칙은 Phase 3의 `validation_rule`에 immutable code, severity, strict scope/spec JSONB, monotonic version, is_active로 저장한다. Phase 3 family는 `required_if`와 모든 이전 layer POR membership 두 개다.
 
 ## 3. 파라미터 스냅샷 정책 (결정 D-08, 정책 a)
 
@@ -67,8 +70,8 @@ choice_option
 | Draft / Review | **live** — 항상 현재 레지스트리(`is_active=true`)를 따른다. 새 파라미터가 추가되면 즉시 빈 컬럼으로 나타난다 |
 | Approved / Archived | **frozen** — 승인 시점에 레지스트리 전체(정의+선택지)를 `parameter_snapshot`(JSONB)으로 동결. 이후 레지스트리가 어떻게 바뀌어도 당시 모습 그대로 렌더링 |
 
-- snapshot version 2는 active parameter가 참조하는 ChoiceSet과 고정 Profile ChoiceSet 4개를
-  top-level에서 code로 deduplicate하고, 각 set의 active·inactive 전체 option을 동결한다.
+- Phase 2.6 snapshot version 2는 active parameter가 참조하는 ChoiceSet과 고정 Profile ChoiceSet 4개를 top-level에서 code로 deduplicate하고 각 set의 active·inactive 전체 option을 동결했다.
+- Phase 3 snapshot version 3은 v2 내용에 `required`, `pattern`, `pattern_hint`, 승인 프로젝트에 적용된 relation rule code/version/scope/spec, validation basis를 추가한다. Phase 5 승인본은 v3를 사용한다.
 - 조회 API는 프로젝트 상태에 따라 live 레지스트리 또는 스냅샷 중 하나를 컬럼 정의로 반환한다. 프론트는 구분할 필요 없이 받은 정의로 그리드를 구성한다.
 - Revision 생성(Approved → 새 Draft) 시 새 Draft는 다시 live를 따른다.
 
@@ -98,6 +101,8 @@ sheet_layer             -- 프로젝트 생성 시 적재 데이터의 layer 구
   layer_key, layer_name
   stepseq, layer_no     -- 매칭 키 (D-15) — 구조 속성 보존
   area, sort_order
+  source_project_id, source_layer_key
+  backbone_snapshot      -- Phase 4: nullable JSONB, 최신 copy/replacement immutable baseline
 
 layer_condition         -- 같은 layer/step의 다중 조건 행 (D-16)
   id PK, layer_id FK
@@ -199,3 +204,4 @@ provider도 프로젝트 생성 시 한 번만 호출하며 결과를 `project_p
 - **layer 매칭 규칙 (D-15)**: 자동 매칭 키는 `stepseq + layer_no` 조합 (layer 이름은 매칭 키로 부적합). 자동 매칭 실패분은 생성 미리보기에서 **사용자가 수동 매칭**으로 백본 layer를 직접 지정할 수 있다. 수동 매칭 결과는 생성 요청에 오버라이드로 포함된다.
 - 최종 미매칭 layer는 빈 값으로 시작한다. 이후 레이어별 백본 교체(소스: 다른 프로젝트의 layer) 또는 엑셀 붙여넣기로 채운다.
 - 백본 프로젝트가 하나도 없는 부트스트랩 상황은 "백본 없이 시작"(전체 빈 값)으로 처리한다. 레거시 시스템 데이터 이관은 별도 검토 항목(D-15 비고)으로, 이 모델의 전제가 아니다.
+- Phase 4 whole-sheet diff는 source 프로젝트의 이후 live 값이 아니라 **프로젝트 생성·최근 layer 교체 당시의 versioned immutable source snapshot**을 기준으로 한다. matched layer마다 모든 source condition identity/label/order/POR와 sparse cell map을 보존하고, 현재의 모든 조건 행·셀을 added/changed/cleared/removed/unchanged로 비교한다.

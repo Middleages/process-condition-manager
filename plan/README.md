@@ -23,8 +23,8 @@
 | [phase-2-tasks.md](./phase-2-tasks.md) — 조건표 편집기 | 구현 완료 (2026-07-13, EC1~EC6 충족) |
 | [Phase 2.5 UI/UX 설계](../docs/superpowers/specs/2026-07-13-phase-2-5-ui-ux-design.md) — 구조개편 + 디자인 시스템 | 구현 완료 (2026-07-14, [브라우저 QA 근거](../docs/superpowers/evidence/2026-07-13-phase-2-5-browser-qa.md)) |
 | [Phase 2.6 Project Profile + Managed Choice 설계](../docs/superpowers/specs/2026-07-14-phase-2-6-project-profile-managed-choice-design.md) — 고정 프로젝트 기본정보 + 공유 선택지 | 구현 완료 (2026-07-15, [브라우저 QA 근거](../docs/superpowers/evidence/2026-07-14-phase-2-6-browser-qa.md)) |
-| [phase-3-tasks.md](./phase-3-tasks.md) — 검증 엔진 | 계획 |
-| [phase-4-tasks.md](./phase-4-tasks.md) — 변경 이력 | 계획 |
+| [phase-3-tasks.md](./phase-3-tasks.md) — 검증 엔진 | 설계 승인 (2026-07-15, [상세 설계](../docs/superpowers/specs/2026-07-15-phase-3-validation-engine-design.md)) |
+| [phase-4-tasks.md](./phase-4-tasks.md) — 변경 이력 + 백본 기준 비교 | 계획 (immutable 전체 diff handoff 승인) |
 | [phase-5-tasks.md](./phase-5-tasks.md) — 승인 + Revision | 계획 |
 | [phase-6-tasks.md](./phase-6-tasks.md) — 전산 출력 | 계획 |
 
@@ -63,6 +63,8 @@
 | D-19 | API 진입점 | 백엔드 API를 **`/api` 단일 프리픽스**로 통합, URL 버저닝(v1)은 미도입 — 소비자가 동반 배포되는 자사 SPA 하나뿐이라 실익이 없다. SPA 페이지 경로(`/projects` 등)와 API 경로의 이름공간 충돌을 제거하고, dev proxy·운영 리버스 프록시 규칙을 1개로 줄인다. `/health`는 컨테이너 헬스체크용으로 루트 유지 | 2026-07-10 확정. 배경: 기능별 루트 경로가 쌓이며 vite proxy에 죽은 `/api` 항목·`/projects` 누락이 발생. [phase-2-tasks.md](./phase-2-tasks.md) P2-D5/T0에서 실행 |
 | D-20 | Phase 2.5 UI/UX | **상단 전역 내비 + 조건표 집중 모드**, Precision Teal 디자인 시스템, 프로젝트 목록/생성/상세 route 분리, 목록 중심 파라미터 관리 drawer를 채택한다. 향후 검증·이력·코멘트는 content가 있을 때만 열리는 하단 반응형 workbench가 수용한다. 백엔드/API와 Phase 2 persistence/domain/lock/autosave 정책은 변경하지 않는다 | 2026-07-13 사용자 승인. [`DESIGN.md`](../DESIGN.md), [상세 설계](../docs/superpowers/specs/2026-07-13-phase-2-5-ui-ux-design.md) |
 | D-21 | Phase 2.6 Project Profile + Managed Choice | 프로젝트 기본정보는 고정 1:1 Profile로 두고 생성 시 복사한 값도 이후 편집 가능하게 한다. 조건표 셀은 전부 수동 입력이다. 업무 선택지는 안정적 code·가변 label을 갖는 공유 ChoiceSet으로 관리하고 Draft에는 live 반영한다. 비활성 기존값은 경고와 함께 보존·승인 가능하며 신규 선택은 막고, 승인본은 향후 snapshot으로 동결한다. 실제 PARTID DB 연동은 provider 경계만 두고 이연한다 | 2026-07-14 사용자 승인. [상세 설계](../docs/superpowers/specs/2026-07-14-phase-2-6-project-profile-managed-choice-design.md) |
+| D-22 | Phase 3 검증 엔진 | 단독 규칙은 parameter metadata, 관계 규칙은 versioned typed JSON(`required_if`, 모든 이전 layer POR membership)으로 관리한다. 현재 모든 조건 행을 검증하고 cross-layer 후보만 POR로 제한한다. bounded portable pattern, 프론트 즉시 mirror, 저장 뒤 서버 authoritative validation, stable issue/message mapper, snapshot v3 + basis hash를 채택한다 | 2026-07-15 사용자 승인. [상세 설계](../docs/superpowers/specs/2026-07-15-phase-3-validation-engine-design.md) |
+| D-23 | 백본 기준 전체 비교 | 현재 조건표는 source 프로젝트의 live 값이 아니라 **프로젝트 생성·최근 layer 교체 당시 immutable snapshot**과 비교한다. POR만이 아니라 모든 조건 행·셀을 added/changed/cleared/removed/unchanged로 분류하며 Phase 4에서 이력과 함께 구현한다 | 2026-07-15 사용자 승인. [Phase 4 계획](./phase-4-tasks.md) |
 
 ## 미확정 항목
 
