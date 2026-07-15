@@ -17,6 +17,7 @@ from app.features.parameters.router import router as parameters_router
 from app.features.processes.router import router as processes_router
 from app.features.projects.router import router as projects_router
 from app.features.sheets.router import router as sheets_router
+from app.features.validation.router import router as validation_router
 
 health_router = APIRouter(tags=["health"])
 
@@ -45,6 +46,7 @@ def create_app() -> FastAPI:
     api_router.include_router(locks_router)
     api_router.include_router(cells_router)
     api_router.include_router(conditions_router)
+    api_router.include_router(validation_router)
     app.include_router(api_router)
 
     # 이중 엔진 참조 보관 (실사용은 각 feature/ingest가 세션 의존성으로 접근)

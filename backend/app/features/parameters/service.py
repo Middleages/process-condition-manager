@@ -28,6 +28,7 @@ from app.features.parameters.schema import (
     ParameterOut,
     ParameterUpdate,
 )
+from app.features.validation.repository import ValidationRuleRepository
 from app.models.choice import ChoiceSet
 from app.models.parameter import Parameter, ParameterCategory
 
@@ -36,6 +37,7 @@ class ParameterService:
     def __init__(self, repo: ParameterRepository) -> None:
         self.repo = repo
         self.choice_sets = ChoiceSetRepository(repo.session)
+        self.validation_rules = ValidationRuleRepository(repo.session)
 
     async def create_category(self, data: CategoryCreate) -> ParameterCategory:
         code = validate_code(data.code)
@@ -118,8 +120,10 @@ class ParameterService:
         return await self._outputs(parameters)
 
     async def update_parameter(self, parameter_id: int, data: ParameterUpdate) -> ParameterOut:
-        parameter = await self._get_parameter_model(parameter_id)
+        parameter = await self._get_parameter_for_update_model(parameter_id)
         fields = data.model_fields_set
+        if data.is_active is False and parameter.is_active:
+            await self._ensure_parameter_can_deactivate(parameter)
         if (
             "category_id" in fields
             and data.category_id is not None
@@ -195,7 +199,9 @@ class ParameterService:
         return (await self._outputs([parameter]))[0]
 
     async def deactivate_parameter(self, parameter_id: int) -> ParameterOut:
-        parameter = await self._get_parameter_model(parameter_id)
+        parameter = await self._get_parameter_for_update_model(parameter_id)
+        if parameter.is_active:
+            await self._ensure_parameter_can_deactivate(parameter)
         parameter.is_active = False
         await self.repo.session.flush()
         return (await self._outputs([parameter]))[0]
@@ -238,6 +244,20 @@ class ParameterService:
         if parameter is None:
             raise NotFoundError(f"파라미터를 찾을 수 없다: {parameter_id}")
         return parameter
+
+    async def _get_parameter_for_update_model(self, parameter_id: int) -> Parameter:
+        parameter = await self.repo.get_parameter_for_update(parameter_id)
+        if parameter is None:
+            raise NotFoundError(f"파라미터를 찾을 수 없다: {parameter_id}")
+        return parameter
+
+    async def _ensure_parameter_can_deactivate(self, parameter: Parameter) -> None:
+        if await self.validation_rules.active_rule_references_parameter(parameter.code):
+            raise ConflictError(
+                "활성 검증 규칙이 참조하는 파라미터는 비활성화할 수 없다",
+                code="parameter_referenced_by_validation_rule",
+                details={"parameter_code": parameter.code},
+            )
 
     async def _existing_context(self) -> dict[str, dict[str, str | None]]:
         parameters = await self.repo.list_parameters(include_inactive=True)

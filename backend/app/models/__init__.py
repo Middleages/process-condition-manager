@@ -16,6 +16,7 @@ from app.models.project import (
     ProjectProfile,
     SheetLayer,
 )
+from app.models.validation import ValidationRule
 
 __all__ = [
     "Base",
@@ -30,4 +31,5 @@ __all__ = [
     "CellValue",
     "ChangeEvent",
     "EditLock",
+    "ValidationRule",
 ]

@@ -101,6 +101,39 @@ def test_existing_parameters_upgrade_with_safe_validation_defaults(
     assert cast(sa.String, columns["pattern"]["type"]).length == 256
     assert cast(sa.String, columns["pattern_hint"]["type"]).length == 256
 
+    inspector = sa.inspect(migration_db.connection)
+    rule_columns = {column["name"]: column for column in inspector.get_columns("validation_rule")}
+    assert set(rule_columns) == {
+        "id",
+        "code",
+        "name",
+        "description",
+        "severity",
+        "scope",
+        "spec",
+        "version",
+        "is_active",
+        "created_at",
+        "updated_at",
+    }
+    assert str(rule_columns["scope"]["type"]) == "JSONB"
+    assert str(rule_columns["spec"]["type"]) == "JSONB"
+    assert {constraint["name"] for constraint in inspector.get_check_constraints(
+        "validation_rule"
+    )} >= {
+        "ck_validation_rule_code_format",
+        "ck_validation_rule_name_nonblank",
+        "ck_validation_rule_description_nonblank",
+        "ck_validation_rule_severity",
+        "ck_validation_rule_scope_object",
+        "ck_validation_rule_spec_object",
+        "ck_validation_rule_version",
+    }
+    assert {index["name"] for index in inspector.get_indexes("validation_rule")} >= {
+        "ix_validation_rule_active_code",
+        "ix_validation_rule_code",
+    }
+
 
 def test_legacy_non_number_numeric_metadata_survives_the_unvalidated_constraint(
     migration_db: MigrationDatabase,
@@ -211,6 +244,7 @@ def test_validation_columns_downgrade_without_losing_parameter_rows(
         column["name"] for column in sa.inspect(migration_db.connection).get_columns("parameter")
     }
     assert {"required", "pattern", "pattern_hint"}.isdisjoint(columns)
+    assert "validation_rule" not in sa.inspect(migration_db.connection).get_table_names()
     assert (
         migration_db.connection.scalar(
             sa.text("SELECT count(*) FROM parameter WHERE code = 'mask_id'")

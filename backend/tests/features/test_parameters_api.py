@@ -528,6 +528,64 @@ async def test_deactivate_is_soft_delete(db_client: AsyncClient) -> None:
     assert [row["code"] for row in all_parameters.json()] == ["overlay"]
 
 
+async def test_active_rules_fence_both_parameter_deactivation_paths(
+    db_client: AsyncClient,
+) -> None:
+    source = (
+        await db_client.post(
+            "/api/parameters",
+            json={"code": "source_ref", "display_name": "Source", "value_type": "text"},
+        )
+    ).json()
+    await db_client.post(
+        "/api/parameters",
+        json={"code": "target_ref", "display_name": "Target", "value_type": "text"},
+    )
+    created_rule = await db_client.post(
+        "/api/validation-rules",
+        json={
+            "code": "dependent_rule",
+            "name": "Dependent rule",
+            "severity": "error",
+            "spec": {
+                "schema_version": 1,
+                "type": "required_if",
+                "when_parameter_code": "source_ref",
+                "equals": "yes",
+                "required_parameter_code": "target_ref",
+            },
+        },
+    )
+    assert created_rule.status_code == 201, created_rule.text
+
+    ordinary_update = await db_client.patch(
+        f"/api/parameters/{source['id']}", json={"display_name": "Renamed source"}
+    )
+    patch_deactivate = await db_client.patch(
+        f"/api/parameters/{source['id']}", json={"is_active": False}
+    )
+    route_deactivate = await db_client.post(
+        f"/api/parameters/{source['id']}/deactivate"
+    )
+    assert ordinary_update.status_code == 200, ordinary_update.text
+    for blocked in (patch_deactivate, route_deactivate):
+        assert blocked.status_code == 409, blocked.text
+        assert blocked.json()["code"] == "parameter_referenced_by_validation_rule"
+
+    deactivated_rule = await db_client.patch(
+        "/api/validation-rules/dependent_rule",
+        json={"expected_version": 1, "is_active": False},
+    )
+    assert deactivated_rule.status_code == 200, deactivated_rule.text
+    allowed = await db_client.patch(
+        f"/api/parameters/{source['id']}", json={"is_active": False}
+    )
+    repeated = await db_client.post(f"/api/parameters/{source['id']}/deactivate")
+    assert allowed.status_code == 200, allowed.text
+    assert repeated.status_code == 200, repeated.text
+    assert repeated.json()["is_active"] is False
+
+
 async def test_get_missing_parameter_404(db_client: AsyncClient) -> None:
     response = await db_client.get("/api/parameters/999")
     assert response.status_code == 404

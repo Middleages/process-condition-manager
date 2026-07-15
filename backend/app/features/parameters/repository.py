@@ -49,6 +49,15 @@ class ParameterRepository:
     async def get_parameter(self, parameter_id: int) -> Parameter | None:
         return await self.session.get(Parameter, parameter_id)
 
+    async def get_parameter_for_update(self, parameter_id: int) -> Parameter | None:
+        stmt = (
+            select(Parameter)
+            .where(Parameter.id == parameter_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        return (await self.session.execute(stmt)).scalar_one_or_none()
+
     async def get_parameter_by_code(self, code: str) -> Parameter | None:
         stmt = select(Parameter).where(Parameter.code == code)
         return (await self.session.execute(stmt)).scalar_one_or_none()
