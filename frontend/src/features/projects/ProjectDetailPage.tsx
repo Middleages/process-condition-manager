@@ -335,16 +335,14 @@ function ProjectDetail({ project }: { project: ProjectOut }) {
 function ProfileGroup({
   group,
   title,
-  className,
   children,
 }: {
   group: string
   title: string
-  className?: string
   children: ReactNode
 }) {
   return (
-    <section data-profile-group={group} className={`min-w-0 p-4 ${className ?? ''}`}>
+    <section data-profile-group={group} className="min-w-0 p-4">
       <h3 className="text-sm font-bold text-ink-950">{title}</h3>
       <dl className="mt-3 grid gap-x-4 gap-y-3 sm:grid-cols-2">{children}</dl>
     </section>
