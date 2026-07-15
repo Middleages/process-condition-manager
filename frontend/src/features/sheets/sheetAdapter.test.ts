@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import type { SheetOut } from '@/api/types'
+import type { SheetColumnOut, SheetOut } from '@/api/types'
 
-import type { DirtyCell } from './editStore'
+import type { PersistedCell } from './editStore'
 import {
   applySavedToSheet,
+  SheetAdapterError,
   shouldReplaceSheetWithError,
   toConditionGridData,
 } from './sheetAdapter'
@@ -18,7 +19,8 @@ const sheet: SheetOut = {
       category_code: 'coat',
       unit: 'rpm',
       description: '스핀 속도',
-      choice_options: [],
+      choice_set_code: null,
+      choice_set_version: null,
       sort_order: 2,
     },
     {
@@ -28,7 +30,8 @@ const sheet: SheetOut = {
       category_code: 'coat',
       unit: null,
       description: null,
-      choice_options: ['pos', 'neg'],
+      choice_set_code: 'photo_resist',
+      choice_set_version: 7,
       sort_order: 1,
     },
   ],
@@ -56,7 +59,8 @@ describe('toConditionGridData', () => {
       categoryCode: 'coat',
       unit: null,
       description: null,
-      choiceOptions: ['pos', 'neg'],
+      choiceSetCode: 'photo_resist',
+      choiceSetVersion: 7,
     })
   })
 
@@ -73,6 +77,45 @@ describe('toConditionGridData', () => {
     toConditionGridData(sheet)
     expect(sheet.columns.map((c) => c.parameter_code)).toEqual(original)
   })
+
+  const malformedBindingCases: ReadonlyArray<readonly [string, Partial<SheetColumnOut>]> = [
+    ['choice missing version', { value_type: 'choice', choice_set_code: 'photo_resist', choice_set_version: null }],
+    ['choice missing code', { value_type: 'choice', choice_set_code: null, choice_set_version: 7 }],
+    ['choice padded code', { value_type: 'choice', choice_set_code: ' photo_resist ', choice_set_version: 7 }],
+    ['non-choice with binding', { value_type: 'text', choice_set_code: 'photo_resist', choice_set_version: 7 }],
+  ]
+
+  it.each(malformedBindingCases)('fails closed for malformed column bindings: %s', (_label, overrides) => {
+    const malformed: SheetOut = {
+      ...sheet,
+      columns: [{ ...sheet.columns[0], ...overrides }],
+    }
+
+    expect(() => toConditionGridData(malformed)).toThrowError(
+      expect.objectContaining<Partial<SheetAdapterError>>({
+        name: 'SheetAdapterError',
+        code: 'invalid_choice_binding',
+        requiresRefetch: true,
+      }),
+    )
+  })
+
+  it('fails closed when one set is bound to conflicting sheet versions', () => {
+    const conflict: SheetOut = {
+      ...sheet,
+      columns: [
+        sheet.columns[1],
+        { ...sheet.columns[1], parameter_code: 'pr_type_2', choice_set_version: 8 },
+      ],
+    }
+
+    expect(() => toConditionGridData(conflict)).toThrowError(
+      expect.objectContaining<Partial<SheetAdapterError>>({
+        code: 'conflicting_choice_versions',
+        requiresRefetch: true,
+      }),
+    )
+  })
 })
 
 describe('shouldReplaceSheetWithError', () => {
@@ -85,14 +128,14 @@ describe('shouldReplaceSheetWithError', () => {
 
 describe('applySavedToSheet', () => {
   it('writes saved values into the matching row cells, keeping others', () => {
-    const saved: DirtyCell[] = [{ conditionId: '11', parameterCode: 'spin_speed', value: '1600' }]
+    const saved: PersistedCell[] = [{ conditionId: '11', parameterCode: 'spin_speed', value: '1600' }]
     const next = applySavedToSheet(sheet, saved)
     expect(next.rows[0].cells.spin_speed).toBe('1600')
     expect(next.rows[0].cells.pr_type).toBe('pos')
   })
 
   it('removes the cell key when the saved value is null (sparse representation)', () => {
-    const saved: DirtyCell[] = [{ conditionId: '11', parameterCode: 'pr_type', value: null }]
+    const saved: PersistedCell[] = [{ conditionId: '11', parameterCode: 'pr_type', value: null }]
     const next = applySavedToSheet(sheet, saved)
     expect('pr_type' in next.rows[0].cells).toBe(false)
   })

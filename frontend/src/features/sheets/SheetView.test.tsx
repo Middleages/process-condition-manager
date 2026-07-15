@@ -71,7 +71,8 @@ const sheet: SheetOut = {
       category_code: 'process',
       unit: 'mTorr',
       description: null,
-      choice_options: [],
+      choice_set_code: null,
+      choice_set_version: null,
       sort_order: 1,
     },
   ],
@@ -236,6 +237,45 @@ describe('SheetView focus shell integration', () => {
     expect(sheetViewSource).not.toMatch(/<SheetEditor\s+key=\{(?:sheet|category|paste|header)/)
     expect(sheetViewSource).toMatch(
       /const commitSaved = useCallback\([\s\S]*?\[queryClient, projectId\],\s*\)/,
+    )
+  })
+
+  it('fails closed on malformed Sheet choice bindings before mounting the editing lock', () => {
+    const queryClient = client()
+    queryClient.setQueryData(['project', 7], project)
+    queryClient.setQueryData(['sheet', 7], {
+      ...sheet,
+      columns: [
+        {
+          ...sheet.columns[0],
+          value_type: 'choice',
+          choice_set_code: 'equipment_mode',
+          choice_set_version: null,
+        },
+      ],
+    })
+
+    const html = renderSheet(queryClient)
+
+    expect(html).toContain('시트 컬럼 정보가 완전하지 않습니다')
+    expect(html).not.toContain('data-sheet-editor="true"')
+    expect(html).not.toContain('data-sheet-editing-status="true"')
+    expect(sheetViewSource).toContain('sheetQuery.refetch')
+  })
+
+  it('transports one shared resource map and reconciles canonical responses against request revisions', () => {
+    expect(sheetViewSource).toContain('useSheetChoiceSets(sheet.columns)')
+    expect(sheetViewSource).toContain('choiceResources')
+    expect(sheetViewSource).toMatch(
+      /buildPasteStaging\([\s\S]*?visibleColumns,[\s\S]*?displayRows,[\s\S]*?choiceResources/,
+    )
+    expect(sheetViewSource).toContain('reconcileSuccessfulPatch(')
+    expect(sheetViewSource).toContain('commitSaved')
+    expect(sheetViewSource).not.toContain('onPersisted: commitSaved')
+    expect(sheetViewSource).toContain('sheetChoiceAuthorizationEpoch(choiceResources)')
+    expect(sheetViewSource).toContain('revalidatePasteStaging(')
+    expect(sheetViewSource).toMatch(
+      /await applyPaste\(\(\) => \{[\s\S]*?revalidatePasteStaging\([\s\S]*?return validCells/,
     )
   })
 

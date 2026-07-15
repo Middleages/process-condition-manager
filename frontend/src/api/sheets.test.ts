@@ -25,7 +25,8 @@ const sampleSheet: SheetOut = {
       category_code: 'litho',
       unit: 'mJ',
       description: '노광 에너지',
-      choice_options: [],
+      choice_set_code: null,
+      choice_set_version: null,
       sort_order: 0,
     },
   ],
@@ -62,5 +63,6 @@ describe('sheets api client', () => {
 
     expect(get).toHaveBeenCalledWith('/projects/42/sheet')
     expect(result).toEqual(sampleSheet)
+    expect(result.columns[0]).not.toHaveProperty('choice_options')
   })
 })

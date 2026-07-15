@@ -56,4 +56,28 @@ describe('patchCells', () => {
       { headers: { 'X-Lock-Token': 'tok-2' } },
     )
   })
+
+  it('returns canonical decimal strings and stable choice codes without coercion', async () => {
+    const out: CellsPatchOut = {
+      cells: [
+        { condition_id: 11, parameter_code: 'thickness', value: '1.5' },
+        { condition_id: 11, parameter_code: 'mode', value: 'AUTO' },
+      ],
+      batch_id: 'batch-canonical',
+    }
+    patch.mockResolvedValue(response(out))
+
+    const result = await patchCells(
+      7,
+      [
+        { condition_id: 11, parameter_code: 'thickness', value: '001.5000' },
+        { condition_id: 11, parameter_code: 'mode', value: 'AUTO' },
+      ],
+      'manual',
+      'tok-canonical',
+    )
+
+    expect(result.cells).toEqual(out.cells)
+    expect(typeof result.cells[0].value).toBe('string')
+  })
 })

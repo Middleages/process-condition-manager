@@ -14,6 +14,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { getLockConflictHolder, isLockConflict } from '@/api/client'
 import { patchCells } from '@/api/cells'
 import { acquireLock, heartbeatLock, releaseLock, releaseLockOnUnload } from '@/api/locks'
+import type { CellUpdateOrigin, CellsPatchOut } from '@/api/types'
 
 import {
   createAsyncQueue,
@@ -21,7 +22,44 @@ import {
   type AutosaveEngine,
   type SaveState,
 } from './autosave'
-import { dirtyCellList, toCellUpdateIn, useEditStore, type DirtyCell } from './editStore'
+import {
+  dirtyCellList,
+  toCellUpdateIn,
+  useEditStore,
+  type DirtyCell,
+  type PersistedCell,
+} from './editStore'
+
+export interface PersistDirtySnapshotOptions {
+  projectId: number
+  requestSnapshot: readonly DirtyCell[]
+  origin: CellUpdateOrigin
+  lockToken: string
+  send?: typeof patchCells
+  onPersisted: (
+    response: CellsPatchOut,
+    requestSnapshot: readonly DirtyCell[],
+  ) => void | Promise<void>
+}
+
+/** Network 성공 이전에는 canonical cache/dirty 정리 콜백을 절대 호출하지 않는 작은 경계. */
+export async function persistDirtySnapshot({
+  projectId,
+  requestSnapshot,
+  origin,
+  lockToken,
+  send = patchCells,
+  onPersisted,
+}: PersistDirtySnapshotOptions): Promise<CellsPatchOut> {
+  const response = await send(
+    projectId,
+    requestSnapshot.map(toCellUpdateIn),
+    origin,
+    lockToken,
+  )
+  await onPersisted(response, requestSnapshot)
+  return response
+}
 
 /** 잠금 상태. held일 때만 편집 가능. */
 export type LockStatus =
@@ -45,7 +83,10 @@ class LockRequiredError extends Error {
 
 export interface UseSheetEditingOptions {
   /** 저장 성공분을 서버 스냅샷(react-query 캐시)에 반영하는 콜백. markSaved 전에 호출된다. */
-  onPersisted?: (cells: DirtyCell[]) => void
+  onPersisted?: (
+    response: CellsPatchOut,
+    requestSnapshot: readonly DirtyCell[],
+  ) => void | Promise<void>
   /** 서버가 시트 잠금 요약으로 공급한 heartbeat/readonly 재획득 주기. */
   heartbeatMs?: number
   /** 최초 시트 조회가 알려 준 현재 잠금 보유자. 이후 충돌 응답으로 갱신한다. */
@@ -69,7 +110,7 @@ export interface SheetEditing {
    * 배치로 바로 확정 저장한다. 같은 더티 버퍼를 거쳐 수동 편집과 순서를 보장한다. 잠금 미보유
    * 시 즉시 실패, 저장 중 409면 잠금 상실 처리 후 그대로 reject(상위가 스테이징을 유지·안내).
    */
-  applyPaste(cells: DirtyCell[]): Promise<void>
+  applyPaste(prepareCells: () => readonly PersistedCell[]): Promise<boolean>
   /**
    * 구조 변경(조건 행 추가/복제/삭제·POR 이양) 즉시 실행 헬퍼(T7). 더티 셀 버퍼와 분리된
    * 별도 API 호출을 감싸 잠금 검사·순서 보장·잠금 상실 처리를 재사용한다:
@@ -110,6 +151,7 @@ export function useSheetEditing(
   const engineRef = useRef<AutosaveEngine | null>(null)
   const onPersistedRef = useRef(options.onPersisted)
   const saveOriginRef = useRef<'manual' | 'paste'>('manual')
+  const pasteSnapshotRef = useRef<DirtyCell[] | null>(null)
 
   const updateLockStatus = useCallback((next: LockStatus) => {
     lockStatusRef.current = next
@@ -171,26 +213,34 @@ export function useSheetEditing(
         if (token === null || lockStatusRef.current !== 'held') {
           throw new LockRequiredError()
         }
-        const snapshot = dirtyCellList(useEditStore.getState().dirtyCells)
+        const snapshot =
+          saveOriginRef.current === 'paste' && pasteSnapshotRef.current !== null
+            ? pasteSnapshotRef.current
+            : dirtyCellList(useEditStore.getState().dirtyCells)
         if (snapshot.length === 0) return
-        // origin은 이 snapshot 한 번에만 적용한다. paste 저장 중 도착한 후속 수동 편집은
-        // flushNow의 다음 반복에서 manual로 기록되어 audit batch 의미가 섞이지 않는다.
         const origin = saveOriginRef.current
-        saveOriginRef.current = 'manual'
         try {
-          await patchCells(
-            projectIdRef.current,
-            snapshot.map(toCellUpdateIn),
+          await persistDirtySnapshot({
+            projectId: projectIdRef.current,
+            requestSnapshot: snapshot,
             origin,
-            token,
-          )
+            lockToken: token,
+            onPersisted: (response, requestSnapshot) => {
+              const callback = onPersistedRef.current
+              if (callback === undefined) {
+                useEditStore.getState().markSaved(requestSnapshot)
+              } else {
+                return callback(response, requestSnapshot)
+              }
+            },
+          })
         } catch (error) {
           // 저장 중 잠금 탈취(409) → 상실 처리 후 치명 오류로 던져 재시도를 멈춘다.
           if (isLockConflict(error)) handleLockLost(error)
           throw error
         }
-        onPersistedRef.current?.(snapshot) // 서버 스냅샷 반영(markSaved 전)
-        useEditStore.getState().markSaved(snapshot)
+        saveOriginRef.current = 'manual'
+        pasteSnapshotRef.current = null
       },
     })
   }
@@ -199,7 +249,7 @@ export function useSheetEditing(
     (conditionId: string, parameterCode: string, value: string | null) => {
       // 구조 변경/붙여넣기가 실행 중일 때 새 autosave가 별도 HTTP 요청으로 추월하지 않게 한다.
       if (lockStatusRef.current !== 'held' || immediatePendingRef.current > 0) return
-      useEditStore.getState().setCell(conditionId, parameterCode, value)
+      useEditStore.getState().setCell({ conditionId, parameterCode, value })
       engineRef.current?.schedule()
     },
     [],
@@ -228,16 +278,27 @@ export function useSheetEditing(
 
   // 붙여넣기 적용: 기존 수동 더티를 먼저 확정한 뒤 붙여넣기 값을 같은 더티 버퍼에 병합하고
   // origin=paste로 즉시 flush한다. 동일 셀의 이전 수동 값은 붙여넣기 값으로 대체되므로 나중에
-  // 옛 자동저장이 붙여넣기를 되돌릴 수 없다. 실패하면 스테이징 재시도를 위해 임시 더티만 걷어낸다.
+  // 옛 자동저장이 붙여넣기를 되돌릴 수 없다. 실패하면 정확한 revision snapshot을 더티로
+  // 보존해 같은 paste batch를 새 세대 할당 없이 재시도한다.
   const applyPaste = useCallback(
-    (cells: DirtyCell[]): Promise<void> => enqueueWrite(async (generation) => {
-      if (cells.length === 0) return
+    (prepareCells: () => readonly PersistedCell[]): Promise<boolean> => enqueueWrite(async (generation) => {
       if (lockTokenRef.current === null || lockStatusRef.current !== 'held') {
         throw new LockRequiredError()
       }
 
-      // 붙여넣기보다 먼저 발생한 수동 편집은 먼저 저장한다. 진행 중 저장도 실제 완료까지 기다리고,
-      // 실패하면 rejection이 전파되어 붙여넣기를 시작하지 않는다.
+      // 직전 paste 실패 snapshot이 남아 있으면 새 세대를 할당하거나 manual로
+      // 재분류하지 않고, 그 정확한 snapshot을 paste origin으로 재시도한다.
+      if (saveOriginRef.current === 'paste' && pasteSnapshotRef.current !== null) {
+        try {
+          await (engineRef.current?.flushNow() ?? Promise.resolve())
+        } catch (error) {
+          if (isCurrentSession(generation)) engineRef.current?.cancel()
+          throw error
+        }
+        return true
+      }
+
+      // 붙여넣기보다 먼저 발생한 manual dirty는 먼저 확정한다.
       await (engineRef.current?.flushNow() ?? Promise.resolve())
       if (
         !isCurrentSession(generation) ||
@@ -247,29 +308,23 @@ export function useSheetEditing(
         throw new LockRequiredError()
       }
 
+      // 대기 중 choice summary/version이 바뀐 수 있으므로, 첫 revision 할당 바로 앞에서
+      // 현재 공유 resource를 읽는 준비 콜백을 실행한다. 실패 후 재시도는 위 snapshot 분기를 타
+      // 콜백을 다시 실행하지 않고 이미 할당한 exact revision을 보존한다.
+      const cells = prepareCells()
+      if (cells.length === 0) return false
       saveOriginRef.current = 'paste'
-      useEditStore.getState().setCells(cells)
+      pasteSnapshotRef.current = useEditStore.getState().setCells(cells)
       try {
         await (engineRef.current?.flushNow() ?? Promise.resolve())
       } catch (error) {
-        // 강제 flush 실패가 잡아 둔 백오프를 중단하고, 아직 같은 값인 붙여넣기 셀만 더티에서
-        // 제거한다. 저장 중 사용자가 다시 편집한 셀은 markSaved의 snapshot 보호로 남는다.
+        // 백오프만 중단하고 dirty + exact snapshot + paste origin을 모두 보존한다.
         if (isCurrentSession(generation)) {
           engineRef.current?.cancel()
-          useEditStore.getState().markSaved(cells)
         }
         throw error
-      } finally {
-        saveOriginRef.current = 'manual'
-        // 실패 중 새 편집이 들어왔다면 일반 수동 자동저장으로 다시 시작한다.
-        if (
-          isCurrentSession(generation) &&
-          lockStatusRef.current === 'held' &&
-          useEditStore.getState().dirtyCells.size > 0
-        ) {
-          engineRef.current?.schedule()
-        }
       }
+      return true
     }),
     [enqueueWrite, isCurrentSession],
   )
@@ -303,6 +358,8 @@ export function useSheetEditing(
 
   const discard = useCallback(() => {
     useEditStore.getState().clearAll()
+    pasteSnapshotRef.current = null
+    saveOriginRef.current = 'manual'
     engineRef.current?.cancel()
     setSaveStatus('idle')
   }, [])
@@ -352,6 +409,8 @@ export function useSheetEditing(
     onPersistedRef.current = options.onPersisted
 
     useEditStore.getState().clearAll() // 새 시트 → 더티 버퍼 리셋
+    pasteSnapshotRef.current = null
+    saveOriginRef.current = 'manual'
     engine?.cancel()
     updateLockStatus('acquiring')
     setEditingBy(options.initialEditingBy ?? null)

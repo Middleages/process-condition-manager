@@ -1,12 +1,3 @@
-/**
- * choice(선택지) 파라미터용 Glide 커스텀 셀.
- *
- * Glide 코어에는 드롭다운 셀이 없다. 공식 애드온(@glideapps/glide-data-grid-cells)의
- * DropdownCell은 react-select와 @toast-ui/editor(마크다운 WYSIWYG)까지 끌고 와서 폐쇄망
- * 배포(D-12)에 과하다. 그래서 코어만으로 자체 구현한다 — 값 + ▾를 캔버스에 그리고, 편집
- * 오버레이로 네이티브 <select>를 띄운다. 이 커스텀 셀 타입은 어댑터(grid/) 안에만 존재하며
- * 라이브러리 경계 바깥으로 새어나가지 않는다(P4).
- */
 import { GridCellKind, drawTextCell } from '@glideapps/glide-data-grid'
 import type {
   CustomCell,
@@ -14,23 +5,160 @@ import type {
   ProvideEditorComponent,
   Theme,
 } from '@glideapps/glide-data-grid'
+import { useCallback, useSyncExternalStore } from 'react'
 
-export interface ChoiceCellData {
-  readonly kind: 'choice-cell'
-  readonly value: string
-  readonly options: readonly string[]
+import { SearchableChoice } from '@/shared/components/SearchableChoice'
+
+import { optionIndexForAggregate } from './cellValue'
+import type { SheetChoiceResource } from './types'
+
+interface LiveChoiceResourceStore {
+  snapshot: SheetChoiceResource
+  listeners: Set<() => void>
 }
 
-export type ChoiceCell = CustomCell<ChoiceCellData>
+const liveChoiceResourceStores = new WeakMap<SheetChoiceResource, LiveChoiceResourceStore>()
+const liveChoiceResourceKeys = [
+  'setCode',
+  'targetVersion',
+  'summaryVersion',
+  'setIsActive',
+  'displayAggregate',
+  'selectableAggregate',
+  'selectionReady',
+  'isStale',
+  'loading',
+  'error',
+  'prepareToOpen',
+  'retry',
+] as const satisfies readonly (keyof SheetChoiceResource)[]
+
+/**
+ * Glide owns an editor overlay after opening it, so a later grid render cannot replace the
+ * resource prop captured by that overlay. This stable handle forwards every field to a live
+ * snapshot while keeping one shared identity per set (and no per-cell option copy).
+ */
+export function createLiveChoiceResource(
+  initialSnapshot: SheetChoiceResource,
+): SheetChoiceResource {
+  const store: LiveChoiceResourceStore = {
+    snapshot: initialSnapshot,
+    listeners: new Set(),
+  }
+  const resource = {} as SheetChoiceResource
+  for (const key of liveChoiceResourceKeys) {
+    Object.defineProperty(resource, key, {
+      enumerable: true,
+      get: () => store.snapshot[key],
+    })
+  }
+  liveChoiceResourceStores.set(resource, store)
+  return resource
+}
+
+export function getLiveChoiceResourceSnapshot(
+  resource: SheetChoiceResource,
+): SheetChoiceResource {
+  return liveChoiceResourceStores.get(resource)?.snapshot ?? resource
+}
+
+export function stageLiveChoiceResource(
+  resource: SheetChoiceResource,
+  snapshot: SheetChoiceResource,
+): void {
+  const store = liveChoiceResourceStores.get(resource)
+  if (store === undefined) return
+  store.snapshot = snapshot
+}
+
+export function notifyLiveChoiceResource(resource: SheetChoiceResource): void {
+  const store = liveChoiceResourceStores.get(resource)
+  if (store === undefined) return
+  for (const listener of store.listeners) listener()
+}
+
+export function publishLiveChoiceResource(
+  resource: SheetChoiceResource,
+  snapshot: SheetChoiceResource,
+): void {
+  stageLiveChoiceResource(resource, snapshot)
+  notifyLiveChoiceResource(resource)
+}
+
+export function subscribeLiveChoiceResource(
+  resource: SheetChoiceResource,
+  listener: () => void,
+): () => void {
+  const store = liveChoiceResourceStores.get(resource)
+  if (store === undefined) return () => undefined
+  store.listeners.add(listener)
+  return () => store.listeners.delete(listener)
+}
+
+export function useLiveChoiceResource(resource: SheetChoiceResource): SheetChoiceResource {
+  const subscribe = useCallback(
+    (listener: () => void) => subscribeLiveChoiceResource(resource, listener),
+    [resource],
+  )
+  const getSnapshot = useCallback(() => getLiveChoiceResourceSnapshot(resource), [resource])
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
+}
+
+export type ChoiceValueDescription = {
+  kind: 'empty' | 'active' | 'inactive' | 'raw' | 'error'
+  displayText: string
+  tooltip: string
+  badge: string | null
+  retry: (() => Promise<void>) | null
+}
+
+export interface ChoiceCellPayload extends ChoiceValueDescription {
+  readonly cellKind: 'choice-cell'
+  readonly value: string
+  readonly resource: SheetChoiceResource
+}
+
+export type ChoiceCell = CustomCell<ChoiceCellPayload>
 
 export function isChoiceCell(cell: CustomCell): cell is ChoiceCell {
-  return (cell.data as Partial<ChoiceCellData>).kind === 'choice-cell'
+  return (cell.data as Partial<ChoiceCellPayload>).cellKind === 'choice-cell'
 }
 
-/** choice 셀 팩토리. themeOverride로 그룹 배경/상태 오버레이를 전달받는다. */
+export function describeChoiceValue(
+  value: string,
+  resource: SheetChoiceResource,
+): ChoiceValueDescription {
+  if (value === '') {
+    return { kind: 'empty', displayText: '', tooltip: '', badge: null, retry: null }
+  }
+  const aggregate = resource.displayAggregate
+  const option = aggregate === null ? undefined : optionIndexForAggregate(aggregate).get(value)
+  if (option !== undefined) {
+    const inactive = resource.setIsActive === false || !option.is_active
+    return {
+      kind: inactive ? 'inactive' : 'active',
+      displayText: option.label,
+      tooltip: `${option.code} · ${option.label}`,
+      badge: inactive ? '사용 중지됨' : null,
+      retry: resource.error === null ? null : resource.retry,
+    }
+  }
+  return {
+    kind: resource.error === null ? 'raw' : 'error',
+    displayText: value,
+    tooltip: value,
+    badge: null,
+    retry: resource.error === null ? null : resource.retry,
+  }
+}
+
+function payload(value: string, resource: SheetChoiceResource): ChoiceCellPayload {
+  return { cellKind: 'choice-cell', value, resource, ...describeChoiceValue(value, resource) }
+}
+
 export function makeChoiceCell(
   value: string,
-  options: readonly string[],
+  resource: SheetChoiceResource,
   readOnly: boolean,
   themeOverride?: Partial<Theme>,
 ): ChoiceCell {
@@ -41,38 +169,59 @@ export function makeChoiceCell(
     activationBehaviorOverride: readOnly ? undefined : 'single-click',
     copyData: value,
     themeOverride,
-    data: { kind: 'choice-cell', value, options },
+    data: payload(value, resource),
   }
 }
 
-const ChoiceEditor: ProvideEditorComponent<ChoiceCell> = (props) => {
-  const { value: cell, onFinishedEditing } = props
-  const { value, options } = cell.data
+export const ChoiceEditor: ProvideEditorComponent<ChoiceCell> = ({
+  value: cell,
+  onFinishedEditing,
+}) => {
+  const resource = useLiveChoiceResource(cell.data.resource)
+  const { value } = cell.data
+  const currentDescription = describeChoiceValue(value, resource)
   return (
-    <select
-      autoFocus
-      defaultValue={value}
-      style={{
-        width: '100%',
-        height: '100%',
-        border: 'none',
-        outline: 'none',
-        padding: '0 8px',
-        background: 'transparent',
-        font: 'inherit',
-      }}
-      onChange={(event) => {
-        const next = event.target.value
-        onFinishedEditing({ ...cell, copyData: next, data: { ...cell.data, value: next } })
+    <div
+      className="min-w-[280px] bg-surface p-2"
+      onKeyDown={(event) => {
+        if (
+          event.key === 'Enter' ||
+          event.key === 'Escape' ||
+          event.key === 'ArrowDown' ||
+          event.key === 'ArrowUp' ||
+          event.key === 'Home' ||
+          event.key === 'End'
+        ) {
+          event.stopPropagation()
+        }
       }}
     >
-      <option value="">(비움)</option>
-      {options.map((option) => (
-        <option key={option} value={option}>
-          {option}
-        </option>
-      ))}
-    </select>
+      <SearchableChoice
+        id="sheet-choice-editor"
+        label="선택지"
+        value={value === '' ? null : value}
+        options={resource.displayAggregate?.items ?? []}
+        loading={resource.loading}
+        error={resource.error}
+        sourceActive={resource.setIsActive === true}
+        sourceInactive={currentDescription.kind === 'inactive'}
+        selectionReady={resource.selectionReady}
+        allowClear
+        autoFocus
+        openOnMount
+        onOpen={resource.prepareToOpen}
+        onRetry={resource.retry}
+        onCancel={() => onFinishedEditing(undefined)}
+        onChange={(next) => {
+          const nextValue = next ?? ''
+          onFinishedEditing({
+            ...cell,
+            copyData: nextValue,
+            data: payload(nextValue, cell.data.resource),
+          })
+        }}
+      />
+    </div>
   )
 }
 
@@ -80,13 +229,15 @@ export const choiceCellRenderer: CustomRenderer<ChoiceCell> = {
   kind: GridCellKind.Custom,
   isMatch: isChoiceCell,
   draw: (args, cell) => {
-    // 값은 좌측, 드롭다운 표식(▾)은 우측에 옅게.
-    drawTextCell(args, cell.data.value, cell.contentAlign)
+    const badge = cell.data.badge === null ? '' : ` · ${cell.data.badge}`
+    const error = cell.data.kind === 'error' ? ' ⚠' : ''
+    drawTextCell(args, `${cell.data.displayText}${badge}${error}`, cell.contentAlign)
     drawTextCell(args, '▾', 'right')
   },
   provideEditor: () => ({
     editor: ChoiceEditor,
     disablePadding: true,
+    styleOverride: { minWidth: 320, minHeight: 320 },
   }),
-  onPaste: (val, data) => ({ ...data, value: val }),
+  onPaste: (raw, data) => ({ ...data, value: raw, ...describeChoiceValue(raw, data.resource) }),
 }

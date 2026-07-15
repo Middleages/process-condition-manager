@@ -439,8 +439,9 @@ export interface SheetColumnOut {
   category_code: string | null
   unit: string | null
   description: string | null
-  // choice 타입일 때만 채워진다 (number/text는 빈 리스트).
-  choice_options: string[]
+  // choice 타입일 때만 둘 다 채워진다. option은 SheetOut에 임베드하지 않는다.
+  choice_set_code: string | null
+  choice_set_version: number | null
   sort_order: number
 }
 

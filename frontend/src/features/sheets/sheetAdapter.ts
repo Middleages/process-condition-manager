@@ -7,12 +7,67 @@
 import type { SheetColumnOut, SheetOut, SheetRowOut } from '@/api/types'
 import type { ConditionGridColumn, ConditionGridData, ConditionGridRow } from '@/grid/types'
 
-import type { DirtyCell } from './editStore'
+import type { PersistedCell } from './editStore'
+
+export type SheetAdapterErrorCode =
+  | 'invalid_choice_binding'
+  | 'conflicting_choice_versions'
+
+/** 편집 잠금을 마운트하기 전 Sheet 계약을 fail-closed하는 typed error. */
+export class SheetAdapterError extends Error {
+  readonly requiresRefetch = true
+
+  constructor(
+    readonly code: SheetAdapterErrorCode,
+    message: string,
+  ) {
+    super(message)
+    this.name = 'SheetAdapterError'
+  }
+}
+
+export function assertSheetColumnBindings(columns: readonly SheetColumnOut[]): void {
+  const versions = new Map<string, number>()
+  for (const column of columns) {
+    const code = column.choice_set_code
+    const version = column.choice_set_version
+    const hasCode = typeof code === 'string' && code !== '' && code === code.trim()
+    const hasVersion = Number.isInteger(version) && (version as number) > 0
+
+    if (column.value_type === 'choice') {
+      if (!hasCode || !hasVersion) {
+        throw new SheetAdapterError(
+          'invalid_choice_binding',
+          `Choice column ${column.parameter_code} requires a set code and positive version`,
+        )
+      }
+      const normalizedCode = code
+      const normalizedVersion = version as number
+      const existing = versions.get(normalizedCode)
+      if (existing !== undefined && existing !== normalizedVersion) {
+        throw new SheetAdapterError(
+          'conflicting_choice_versions',
+          `Choice set ${normalizedCode} has conflicting Sheet versions`,
+        )
+      }
+      versions.set(normalizedCode, normalizedVersion)
+      continue
+    }
+
+    if (code !== null || version !== null) {
+      throw new SheetAdapterError(
+        'invalid_choice_binding',
+        `Non-choice column ${column.parameter_code} cannot bind a choice set`,
+      )
+    }
+  }
+}
 
 /** 컬럼 정의를 sort_order 순으로 정렬해 도메인 컬럼으로 변환한다. */
 export function toConditionGridColumns(
   columns: readonly SheetColumnOut[],
 ): ConditionGridColumn[] {
+  assertSheetColumnBindings(columns)
   return [...columns]
     .sort((a, b) => a.sort_order - b.sort_order)
     .map((column) => ({
@@ -22,7 +77,8 @@ export function toConditionGridColumns(
       categoryCode: column.category_code,
       unit: column.unit,
       description: column.description,
-      choiceOptions: column.choice_options,
+      choiceSetCode: column.choice_set_code,
+      choiceSetVersion: column.choice_set_version,
     }))
 }
 
@@ -60,9 +116,9 @@ export function shouldReplaceSheetWithError(
  * 반영한다. 그래야 더티 제거 후에도 그리드가 저장된 값을 계속 보여준다(스냅샷 되돌림 방지).
  * value=null(셀 비우기)은 희소 표현을 지켜 키를 제거한다.
  */
-export function applySavedToSheet(sheet: SheetOut, cells: readonly DirtyCell[]): SheetOut {
+export function applySavedToSheet(sheet: SheetOut, cells: readonly PersistedCell[]): SheetOut {
   if (cells.length === 0) return sheet
-  const byCondition = new Map<number, DirtyCell[]>()
+  const byCondition = new Map<number, PersistedCell[]>()
   for (const cell of cells) {
     const id = Number(cell.conditionId)
     const list = byCondition.get(id)

@@ -14,11 +14,12 @@ import { getApiErrorMessage } from '@/api/client'
 import { addCondition, deleteCondition, setConditionPor } from '@/api/conditions'
 import { getProject } from '@/api/projects'
 import { getSheet } from '@/api/sheets'
-import type { ProjectOut, SheetOut } from '@/api/types'
+import type { CellsPatchOut, ProjectOut, SheetOut } from '@/api/types'
 import { GlideConditionGrid } from '@/grid'
 import type {
   ConditionGridCallbacks,
   ConditionGridColumn,
+  ConditionGridData,
   ConditionGridHandle,
   ConditionGridRow,
 } from '@/grid'
@@ -43,15 +44,27 @@ import {
   toCellStatuses,
   useEditStore,
   type DirtyCell,
+  type PersistedCell,
 } from './editStore'
-import { buildPasteStaging, parseTsv, type PasteStagingResult } from './pasteStaging'
+import {
+  buildPasteStaging,
+  parseTsv,
+  revalidatePasteStaging,
+  sheetChoiceAuthorizationEpoch,
+  type PasteStagingResult,
+} from './pasteStaging'
+import {
+  commitCanonicalSheetCells,
+  reconcileSuccessfulPatch,
+} from './persistenceReconciliation'
 import { resolveSheetInteraction } from './sheetInteraction'
 import { SheetFocusFrame } from './SheetFocusFrame'
 import {
-  applySavedToSheet,
+  SheetAdapterError,
   shouldReplaceSheetWithError,
   toConditionGridData,
 } from './sheetAdapter'
+import { useSheetChoiceSets } from './useSheetChoiceSets'
 import { useSheetEditing, type SheetEditing } from './useSheetEditing'
 
 const COLUMN_SEARCH_STATUS_ID = 'sheet-column-search-status'
@@ -100,6 +113,17 @@ export function SheetView({ projectId }: { projectId: number }) {
   }
 
   const sheet = sheetQuery.data
+  let data: ConditionGridData
+  try {
+    data = toConditionGridData(sheet)
+  } catch (error) {
+    if (!(error instanceof SheetAdapterError)) throw error
+    return (
+      <SheetStateFrame projectId={projectId} project={project} projectError={projectError}>
+        <MalformedSheetState onRefetch={sheetQuery.refetch} />
+      </SheetStateFrame>
+    )
+  }
 
   if (sheet.columns.length === 0 || sheet.rows.length === 0) {
     return (
@@ -118,8 +142,29 @@ export function SheetView({ projectId }: { projectId: number }) {
       project={project}
       projectError={projectError}
       sheet={sheet}
+      data={data}
       sheetRefetchError={sheetQuery.isError ? sheetQuery.error : null}
     />
+  )
+}
+
+function MalformedSheetState({ onRefetch }: { onRefetch: () => Promise<unknown> }) {
+  const requestedRefetch = useRef(false)
+  useEffect(() => {
+    if (requestedRefetch.current) return
+    requestedRefetch.current = true
+    void onRefetch()
+  }, [onRefetch])
+
+  return (
+    <InlineAlert tone="error">
+      <div className="flex flex-wrap items-center gap-2">
+        <span>시트 컬럼 정보가 완전하지 않습니다. 최신 시트를 다시 조회하세요.</span>
+        <Button onClick={() => void onRefetch()} size="compact" type="button" variant="secondary">
+          다시 조회
+        </Button>
+      </div>
+    </InlineAlert>
   )
 }
 
@@ -152,32 +197,42 @@ function SheetEditor({
   project,
   projectError,
   sheet,
+  data,
   sheetRefetchError,
 }: {
   projectId: number
   project?: ProjectOut
   projectError: unknown
   sheet: SheetOut
+  data: ConditionGridData
   sheetRefetchError: unknown
 }) {
   const queryClient = useQueryClient()
   const liveTitleRef = useRef<HTMLHeadingElement>(null)
 
-  const data = useMemo(() => toConditionGridData(sheet), [sheet])
+  const choiceResources = useSheetChoiceSets(sheet.columns)
   const dirtyCells = useEditStore(selectDirtyCells)
 
   // 저장 성공분을 서버 스냅샷(캐시)에 확정 반영 → 더티 제거 후에도 저장값 유지.
   const commitSaved = useCallback(
-    (cells: DirtyCell[]) => {
-      queryClient.setQueryData<SheetOut>(['sheet', projectId], (prev) =>
-        prev ? applySavedToSheet(prev, cells) : prev,
-      )
-    },
+    (cells: readonly PersistedCell[]) => commitCanonicalSheetCells(queryClient, projectId, cells),
     [queryClient, projectId],
   )
 
+  const handlePersisted = useCallback(
+    async (response: CellsPatchOut, requestSnapshot: readonly DirtyCell[]) => {
+      await reconcileSuccessfulPatch(
+        response,
+        requestSnapshot,
+        commitSaved,
+        (snapshot) => useEditStore.getState().markSaved(snapshot),
+      )
+    },
+    [commitSaved],
+  )
+
   const editing = useSheetEditing(projectId, {
-    onPersisted: commitSaved,
+    onPersisted: handlePersisted,
     heartbeatMs: sheet.lock.heartbeat_seconds * 1000,
     initialEditingBy: sheet.lock.locked_by,
   })
@@ -208,8 +263,12 @@ function SheetEditor({
   const displayRows = useMemo(() => applyDirtyToRows(data.rows, dirtyCells), [data.rows, dirtyCells])
   const statuses = useMemo(() => toCellStatuses(dirtyCells), [dirtyCells])
   const gridData = useMemo(
-    () => ({ ...data, rows: displayRows, statuses }),
-    [data, displayRows, statuses],
+    () => ({ ...data, rows: displayRows, statuses, choiceResources }),
+    [data, displayRows, statuses, choiceResources],
+  )
+  const choiceAuthorizationEpoch = useMemo(
+    () => sheetChoiceAuthorizationEpoch(choiceResources),
+    [choiceResources],
   )
 
   // 붙여넣기 대상 매핑 기준 컬럼 순서 — 그리드가 view.activeCategory로 거르는 것과 동일한
@@ -239,7 +298,13 @@ function SheetEditor({
   // 오염시키지 않으며, commit 뒤 브라우저가 다음 callback을 실행하기 전에는 최신화된다.
   const pasteCallbackGeneration = useMemo(
     () => Symbol('sheet-paste-context'),
-    [interaction.canStagePaste, activeCategory, visibleColumns, data.rows],
+    [
+      interaction.canStagePaste,
+      activeCategory,
+      visibleColumns,
+      displayRows,
+      choiceAuthorizationEpoch,
+    ],
   )
   const pasteCallbackRuntimeRef = useRef({
     generation: pasteCallbackGeneration,
@@ -256,6 +321,20 @@ function SheetEditor({
     pasteRef.current = next
     setPasteState(next)
   }, [])
+  const pasteCommitRuntimeRef = useRef({
+    generation: pasteCallbackGeneration,
+    columns: data.columns,
+    rows: displayRows,
+    choiceResources,
+  })
+  useIsomorphicLayoutEffect(() => {
+    commitPasteCallbackRuntime(pasteCommitRuntimeRef, {
+      generation: pasteCallbackGeneration,
+      columns: data.columns,
+      rows: displayRows,
+      choiceResources,
+    })
+  }, [pasteCallbackGeneration, data.columns, displayRows, choiceResources])
 
   // 숨겨진 category 결과는 category state가 실제 commit되어 visibleColumns가 바뀐 뒤에만
   // 스크롤한다. setActiveCategory 직후의 오래된 adapter ref에는 명령하지 않는다.
@@ -370,7 +449,13 @@ function SheetEditor({
         ) {
           return
         }
-        const result = buildPasteStaging(target, parseTsv(tsv), visibleColumns, data.rows)
+        const result = buildPasteStaging(
+          target,
+          parseTsv(tsv),
+          visibleColumns,
+          displayRows,
+          choiceResources,
+        )
         // 매핑되는 셀도 없고 잘린 것도 없으면(대상 밖 등) 무시.
         if (result.staging.length === 0 && result.truncatedRows === 0 && result.truncatedCols === 0) {
           return
@@ -395,7 +480,8 @@ function SheetEditor({
       interaction,
       setCell,
       visibleColumns,
-      data.rows,
+      displayRows,
+      choiceResources,
       performStructural,
       projectId,
       setPaste,
@@ -411,26 +497,32 @@ function SheetEditor({
 
   const commitPaste = useCallback(async () => {
     if (!interaction.canApplyPaste || pasteRef.current === null || applyingRef.current) return
-    const currentPaste = pasteRef.current
-    // 유효한 셀만 적용 대상 — 불일치 셀은 제외하고 개수로만 안내한다.
-    const validCells: DirtyCell[] = currentPaste.staging
-      .filter((cell) => cell.valid)
-      .map((cell) => ({
-        conditionId: cell.conditionId,
-        parameterCode: cell.parameterCode,
-        value: cell.value,
-      }))
-    if (validCells.length === 0) {
-      setPaste(null) // 적용할 유효 셀이 없으면 스테이징만 폐기
-      setPasteError(null)
-      return
-    }
     applyingRef.current = true
     setApplying(true)
     setPasteError(null)
     try {
-      await applyPaste(validCells)
-      setPaste(null) // 성공 → 스테이징 종료(서버 스냅샷에 반영됨)
+      const saved = await applyPaste(() => {
+        const currentPaste = pasteRef.current
+        if (currentPaste === null) return []
+        const current = pasteCommitRuntimeRef.current
+        const latestPaste = revalidatePasteStaging(
+          currentPaste,
+          current.columns,
+          current.rows,
+          current.choiceResources,
+        )
+        setPaste(latestPaste)
+        // 현재 권한으로 다시 검증한 유효 셀만 첫 revision snapshot에 포함한다.
+        const validCells: PersistedCell[] = latestPaste.staging
+          .filter((cell) => cell.valid)
+          .map((cell) => ({
+            conditionId: cell.conditionId,
+            parameterCode: cell.parameterCode,
+            value: cell.value,
+          }))
+        return validCells
+      })
+      if (saved) setPaste(null) // 성공 → 스테이징 종료(서버 스냅샷에 반영됨)
     } catch (error) {
       // 실패(네트워크/409 등): 스테이징 유지 + 에러 표시 → 사용자가 다시 "적용" 가능.
       setPasteError(getApiErrorMessage(error))

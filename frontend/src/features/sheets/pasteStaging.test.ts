@@ -1,16 +1,49 @@
 import { describe, expect, it } from 'vitest'
 
-import type { ConditionGridColumn, ConditionGridRow } from '@/grid/types'
+import type { ChoiceOptionAggregate } from '@/api/types'
+import type { ConditionGridColumn, ConditionGridRow, SheetChoiceResource } from '@/grid/types'
 
-import { buildPasteStaging, parseTsv } from './pasteStaging'
+import {
+  buildPasteStaging,
+  parseTsv,
+  revalidatePasteStaging,
+  sheetChoiceAuthorizationEpoch,
+} from './pasteStaging'
 
 // 컬럼 순서(= 화면에 보이는 순서): exposure(number) · spin_speed(number) · pr_type(choice) · memo(text)
 const columns: ConditionGridColumn[] = [
-  { key: 'exposure', headerName: '노광량', valueType: 'number', categoryCode: 'litho', unit: 'mJ' },
-  { key: 'spin_speed', headerName: 'Spin', valueType: 'number', categoryCode: 'coat', unit: 'rpm' },
-  { key: 'pr_type', headerName: 'PR', valueType: 'choice', categoryCode: 'coat', choiceOptions: ['pos', 'neg'] },
-  { key: 'memo', headerName: '메모', valueType: 'text', categoryCode: null },
+  { key: 'exposure', headerName: '노광량', valueType: 'number', categoryCode: 'litho', unit: 'mJ', choiceSetCode: null, choiceSetVersion: null },
+  { key: 'spin_speed', headerName: 'Spin', valueType: 'number', categoryCode: 'coat', unit: 'rpm', choiceSetCode: null, choiceSetVersion: null },
+  { key: 'pr_type', headerName: 'PR', valueType: 'choice', categoryCode: 'coat', choiceSetCode: 'photo_resist', choiceSetVersion: 7 },
+  { key: 'memo', headerName: '메모', valueType: 'text', categoryCode: null, choiceSetCode: null, choiceSetVersion: null },
 ]
+
+const choiceAggregate: ChoiceOptionAggregate = {
+  set_code: 'photo_resist',
+  version: 7,
+  items: [
+    { code: 'pos', label: 'Positive', sort_order: 0, is_active: true },
+    { code: 'neg', label: 'Negative', sort_order: 1, is_active: true },
+    { code: 'old', label: 'Old', sort_order: 2, is_active: false },
+  ],
+}
+
+const choiceResource: SheetChoiceResource = {
+  setCode: 'photo_resist',
+  targetVersion: 7,
+  summaryVersion: 7,
+  setIsActive: true,
+  displayAggregate: choiceAggregate,
+  selectableAggregate: choiceAggregate,
+  selectionReady: true,
+  isStale: false,
+  loading: false,
+  error: null,
+  prepareToOpen: async () => undefined,
+  retry: async () => undefined,
+}
+
+const choiceResources = new Map([['photo_resist', choiceResource]])
 
 const rows: ConditionGridRow[] = [
   { id: '1', layerKey: 'L1', layerLabel: 'L1 (S01)', conditionLabel: 'C1', isPor: true, values: {} },
@@ -64,6 +97,7 @@ describe('buildPasteStaging — mapping', () => {
       ],
       columns,
       rows,
+      choiceResources,
     )
     expect(result.truncatedRows).toBe(0)
     expect(result.truncatedCols).toBe(0)
@@ -81,6 +115,7 @@ describe('buildPasteStaging — mapping', () => {
       [['1']],
       columns,
       rows,
+      choiceResources,
     )
     expect(result).toEqual({ staging: [], truncatedRows: 0, truncatedCols: 0 })
   })
@@ -91,6 +126,7 @@ describe('buildPasteStaging — mapping', () => {
       [['1']],
       columns,
       rows,
+      choiceResources,
     )
     expect(result).toEqual({ staging: [], truncatedRows: 0, truncatedCols: 0 })
   })
@@ -101,6 +137,7 @@ describe('buildPasteStaging — mapping', () => {
       [],
       columns,
       rows,
+      choiceResources,
     )
     expect(result).toEqual({ staging: [], truncatedRows: 0, truncatedCols: 0 })
   })
@@ -108,7 +145,7 @@ describe('buildPasteStaging — mapping', () => {
 
 describe('buildPasteStaging — number strict parsing', () => {
   const at = (raw: string) =>
-    buildPasteStaging({ conditionId: '1', parameterCode: 'exposure' }, [[raw]], columns, rows)
+    buildPasteStaging({ conditionId: '1', parameterCode: 'exposure' }, [[raw]], columns, rows, choiceResources)
       .staging[0]
 
   it('accepts integers and decimals (trimming surrounding space)', () => {
@@ -118,15 +155,14 @@ describe('buildPasteStaging — number strict parsing', () => {
   })
 
   it('rejects comma-formatted numbers, keeping the raw value for the user to fix', () => {
-    // "1,234"는 정규식에서 걸러지고 Number("1,234")도 NaN이라 이중으로 안전하다.
-    expect(Number('1,234')).toBeNaN()
     const cell = at('1,234')
     expect(cell).toEqual({
       conditionId: '1',
       parameterCode: 'exposure',
       value: '1,234',
       valid: false,
-      message: '숫자 형식이 아니다',
+      message: '올바른 소수 형식이 아닙니다.',
+      errorCode: 'invalid_decimal',
     })
   })
 
@@ -134,7 +170,7 @@ describe('buildPasteStaging — number strict parsing', () => {
     expect(at('abc').valid).toBe(false)
     expect(at('50%').valid).toBe(false)
     expect(at('1e3').valid).toBe(false)
-    expect(at('1500.').valid).toBe(false)
+    expect(at('1500.').value).toBe('1500')
   })
 
   it('treats a blank cell as clearing the cell (null, always valid)', () => {
@@ -145,10 +181,10 @@ describe('buildPasteStaging — number strict parsing', () => {
 
 describe('buildPasteStaging — choice matching', () => {
   const at = (raw: string) =>
-    buildPasteStaging({ conditionId: '1', parameterCode: 'pr_type' }, [[raw]], columns, rows)
+    buildPasteStaging({ conditionId: '1', parameterCode: 'pr_type' }, [[raw]], columns, rows, choiceResources)
       .staging[0]
 
-  it('accepts a value present in choiceOptions', () => {
+  it('accepts a value present in the shared selectable aggregate', () => {
     expect(at('pos')).toEqual({ conditionId: '1', parameterCode: 'pr_type', value: 'pos', valid: true })
   })
 
@@ -158,13 +194,86 @@ describe('buildPasteStaging — choice matching', () => {
       parameterCode: 'pr_type',
       value: 'unknown',
       valid: false,
-      message: '선택지에 없는 값이다',
+      message: '현재 선택지에 없는 코드입니다.',
+      errorCode: 'choice_unknown',
     })
+  })
+
+  it('rejects a newly pasted inactive code with the shared domain identifier', () => {
+    expect(at('old')).toEqual(
+      expect.objectContaining({ valid: false, errorCode: 'choice_option_inactive' }),
+    )
+  })
+
+  it('uses the displayed dirty overlay as old-value context for unchanged inactive cells', () => {
+    const displayedRows = [{ ...rows[0], values: { pr_type: 'old' } }, ...rows.slice(1)]
+    expect(
+      buildPasteStaging(
+        { conditionId: '1', parameterCode: 'pr_type' },
+        [['old']],
+        columns,
+        displayedRows,
+        choiceResources,
+      ).staging[0],
+    ).toEqual({ conditionId: '1', parameterCode: 'pr_type', value: 'old', valid: true })
   })
 
   it('treats a blank choice cell as clearing (null, valid)', () => {
     expect(at('').value).toBeNull()
     expect(at('').valid).toBe(true)
+  })
+})
+
+describe('paste choice authorization refresh', () => {
+  it('changes the callback epoch when exact selectable authorization changes', () => {
+    const unavailable = new Map([
+      [
+        'photo_resist',
+        { ...choiceResource, selectionReady: false, selectableAggregate: null },
+      ],
+    ])
+
+    expect(sheetChoiceAuthorizationEpoch(unavailable)).not.toBe(
+      sheetChoiceAuthorizationEpoch(choiceResources),
+    )
+  })
+
+  it('revalidates a staged active code against the latest aggregate before allocation', () => {
+    const staged = buildPasteStaging(
+      { conditionId: '1', parameterCode: 'pr_type' },
+      [['pos']],
+      columns,
+      rows,
+      choiceResources,
+    )
+    const versionEight: ChoiceOptionAggregate = {
+      set_code: 'photo_resist',
+      version: 8,
+      items: [{ code: 'pos', label: 'Positive', sort_order: 0, is_active: false }],
+    }
+    const latestResources = new Map([
+      [
+        'photo_resist',
+        {
+          ...choiceResource,
+          targetVersion: 8,
+          summaryVersion: 8,
+          displayAggregate: versionEight,
+          selectableAggregate: versionEight,
+        },
+      ],
+    ])
+
+    expect(
+      revalidatePasteStaging(staged, columns, rows, latestResources).staging[0],
+    ).toEqual({
+      conditionId: '1',
+      parameterCode: 'pr_type',
+      value: 'pos',
+      valid: false,
+      message: '사용 중지된 선택지는 새 값으로 저장할 수 없습니다.',
+      errorCode: 'choice_option_inactive',
+    })
   })
 })
 
@@ -175,6 +284,7 @@ describe('buildPasteStaging — text', () => {
       [['  자유 입력  ']],
       columns,
       rows,
+      choiceResources,
     )
     expect(result.staging[0]).toEqual({
       conditionId: '1',
@@ -193,6 +303,7 @@ describe('buildPasteStaging — boundary truncation', () => {
       [['10'], ['20'], ['30']],
       columns,
       rows,
+      choiceResources,
     )
     expect(result.truncatedRows).toBe(2)
     expect(result.truncatedCols).toBe(0)
@@ -208,6 +319,7 @@ describe('buildPasteStaging — boundary truncation', () => {
       [['pos', 'note', 'overflow']],
       columns,
       rows,
+      choiceResources,
     )
     expect(result.truncatedRows).toBe(0)
     expect(result.truncatedCols).toBe(1)
@@ -223,6 +335,7 @@ describe('buildPasteStaging — boundary truncation', () => {
       ],
       columns,
       rows,
+      choiceResources,
     )
     expect(result.truncatedRows).toBe(1)
     expect(result.truncatedCols).toBe(1)
