@@ -2,7 +2,6 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tansta
 import { ArrowLeft, ArrowRight, Check, Search } from 'lucide-react'
 import {
   type FormEvent,
-  type ReactNode,
   forwardRef,
   useEffect,
   useMemo,
@@ -748,7 +747,6 @@ function ProcessStep({
     <div className="space-y-5">
       <StepHeading
         ref={headingRef}
-        index={1}
         title="Process 선택"
         description="구조를 검색하고 단계 수, 영역, 기존 프로젝트 여부를 확인하세요."
       />
@@ -866,12 +864,25 @@ function ProcessStep({
                 <p className="font-semibold text-ink-950">{selectedProcess.display_name}</p>
                 <p className="mt-0.5 font-mono text-xs text-muted">{selectedProcess.key}</p>
               </div>
-              <dl className="grid grid-cols-2 gap-2 text-sm">
-                <DetailStat label="Step" value={`${selectedProcess.step_count}개`} />
-                <DetailStat
-                  label="Area"
-                  value={selectedProcess.area_names.join(', ') || '없음'}
-                />
+              <dl className="grid grid-cols-2 divide-x divide-border-subtle overflow-hidden rounded-lg border border-border-subtle bg-surface text-sm">
+                <div className="min-w-0 px-3 py-2">
+                  <dt className="text-xs font-semibold text-muted">Step</dt>
+                  <dd
+                    className="mt-0.5 truncate text-sm font-bold text-ink-950"
+                    title={`${selectedProcess.step_count}개`}
+                  >
+                    {selectedProcess.step_count}개
+                  </dd>
+                </div>
+                <div className="min-w-0 px-3 py-2">
+                  <dt className="text-xs font-semibold text-muted">Area</dt>
+                  <dd
+                    className="mt-0.5 truncate text-sm font-bold text-ink-950"
+                    title={selectedProcess.area_names.join(', ') || '없음'}
+                  >
+                    {selectedProcess.area_names.join(', ') || '없음'}
+                  </dd>
+                </div>
               </dl>
               {selectedProcess.has_project ? (
                 <InlineAlert tone="warning">
@@ -938,7 +949,6 @@ function BackboneStep({
     <div className="space-y-5">
       <StepHeading
         ref={headingRef}
-        index={2}
         title="백본 선택"
         description={`${selectedProcess?.display_name ?? '선택한 Process'}에 복사할 값의 기준을 선택하세요.`}
       />
@@ -1108,78 +1118,106 @@ function PreviewStep({
 
   return (
     <form className="space-y-5" onSubmit={onSubmit}>
-      <StepHeading
-        ref={headingRef}
-        index={3}
-        title="매칭 검토 및 프로젝트 정보"
-        description="현재 구조와 정확히 일치하는 미리보기를 확인한 뒤 프로젝트 정보를 입력하세요."
-      />
-
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(22.5rem,26.25rem)] xl:items-start">
-        <section
-          aria-labelledby="project-match-summary-title"
-          className="order-1 min-w-0 space-y-3 xl:col-start-1 xl:row-start-1"
-        >
-          <h3 className="text-sm font-bold text-ink-950" id="project-match-summary-title">
-            매칭 요약
-          </h3>
+        <div className="order-1 min-w-0 space-y-5 xl:col-start-1 xl:row-start-1">
+          <StepHeading
+            ref={headingRef}
+            title="매칭 검토 및 프로젝트 정보"
+            description="현재 구조와 정확히 일치하는 미리보기를 확인한 뒤 프로젝트 정보를 입력하세요."
+          />
 
-          {selectedProcess ? (
-            <dl className="grid gap-2 rounded-lg border border-border-subtle bg-canvas p-3 sm:grid-cols-3">
-              <DetailStat label="LINE" value={selectedProcess.line_id} />
-              <DetailStat label="Process" value={selectedProcess.display_name} />
-              <DetailStat
-                label="백본"
-                value={backboneId === null ? '없이 시작' : `프로젝트 #${backboneId}`}
-              />
-            </dl>
-          ) : null}
+          <section
+            aria-labelledby="project-match-summary-title"
+            className="space-y-3"
+          >
+            <h3 className="text-sm font-bold text-ink-950" id="project-match-summary-title">
+              매칭 요약
+            </h3>
 
-          {selectedProcessIsPending ? (
-            <InlineAlert tone="info">URL에서 선택한 Process를 복원하는 중입니다.</InlineAlert>
-          ) : null}
-          {selectedProcessError ? <RetryAlert error={selectedProcessError} onRetry={onRetryProcess} /> : null}
-          {backboneIsPending ? (
-            <InlineAlert tone="info">URL에서 선택한 백본을 복원하는 중입니다.</InlineAlert>
-          ) : null}
-          {backboneError ? <RetryAlert error={backboneError} onRetry={onRetryBackbone} /> : null}
-          {previewIsPending && !preview ? (
-            <InlineAlert tone="info">매칭 결과를 계산하는 중입니다.</InlineAlert>
-          ) : null}
-          {previewError ? <RetryAlert error={previewError} onRetry={onRetryPreview} /> : null}
-          {preview && (previewIsFetching || !previewIsCurrent) ? (
-            <InlineAlert tone="info">선택 변경을 반영한 새 매칭 결과를 계산하는 중입니다.</InlineAlert>
-          ) : null}
+            {selectedProcess ? (
+              <dl className="grid gap-px overflow-hidden rounded-lg border border-border-subtle bg-border-subtle sm:grid-cols-3">
+                <div className="min-w-0 bg-canvas px-3 py-2">
+                  <dt className="text-xs font-semibold text-muted">LINE</dt>
+                  <dd
+                    className="mt-0.5 truncate text-sm font-bold text-ink-950"
+                    title={selectedProcess.line_id}
+                  >
+                    {selectedProcess.line_id}
+                  </dd>
+                </div>
+                <div className="min-w-0 bg-canvas px-3 py-2">
+                  <dt className="text-xs font-semibold text-muted">Process</dt>
+                  <dd
+                    className="mt-0.5 truncate text-sm font-bold text-ink-950"
+                    title={selectedProcess.display_name}
+                  >
+                    {selectedProcess.display_name}
+                  </dd>
+                </div>
+                <div className="min-w-0 bg-canvas px-3 py-2">
+                  <dt className="text-xs font-semibold text-muted">백본</dt>
+                  <dd
+                    className="mt-0.5 truncate text-sm font-bold text-ink-950"
+                    title={backboneId === null ? '없이 시작' : `프로젝트 #${backboneId}`}
+                  >
+                    {backboneId === null ? '없이 시작' : `프로젝트 #${backboneId}`}
+                  </dd>
+                </div>
+              </dl>
+            ) : null}
 
-          {preview ? (
-            <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border-subtle bg-border-subtle sm:grid-cols-4">
-              <div className="bg-canvas px-3 py-2">
-                <dt className="text-xs font-semibold text-muted">매칭</dt>
-                <dd className="mt-0.5 text-sm font-bold text-ink-950">
-                  {preview.matched_count}개
-                </dd>
-              </div>
-              <div className="bg-canvas px-3 py-2">
-                <dt className="text-xs font-semibold text-muted">미매칭</dt>
-                <dd className="mt-0.5 text-sm font-bold text-ink-950">
-                  {preview.unmatched_count}개
-                </dd>
-              </div>
-              <div className="bg-canvas px-3 py-2">
-                <dt className="text-xs font-semibold text-muted">복사 조건</dt>
-                <dd className="mt-0.5 text-sm font-bold text-ink-950">
-                  {preview.copy_condition_count}개
-                </dd>
-              </div>
-              <div className="bg-canvas px-3 py-2">
-                <dt className="text-xs font-semibold text-muted">복사 셀</dt>
-                <dd className="mt-0.5 text-sm font-bold text-ink-950">
-                  {preview.copy_cell_count}개
-                </dd>
-              </div>
-            </dl>
-          ) : null}
-        </section>
+            {selectedProcessIsPending ? (
+              <InlineAlert tone="info">URL에서 선택한 Process를 복원하는 중입니다.</InlineAlert>
+            ) : null}
+            {selectedProcessError ? (
+              <RetryAlert error={selectedProcessError} onRetry={onRetryProcess} />
+            ) : null}
+            {backboneIsPending ? (
+              <InlineAlert tone="info">URL에서 선택한 백본을 복원하는 중입니다.</InlineAlert>
+            ) : null}
+            {backboneError ? (
+              <RetryAlert error={backboneError} onRetry={onRetryBackbone} />
+            ) : null}
+            {previewIsPending && !preview ? (
+              <InlineAlert tone="info">매칭 결과를 계산하는 중입니다.</InlineAlert>
+            ) : null}
+            {previewError ? (
+              <RetryAlert error={previewError} onRetry={onRetryPreview} />
+            ) : null}
+            {preview && (previewIsFetching || !previewIsCurrent) ? (
+              <InlineAlert tone="info">선택 변경을 반영한 새 매칭 결과를 계산하는 중입니다.</InlineAlert>
+            ) : null}
+
+            {preview ? (
+              <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border-subtle bg-border-subtle sm:grid-cols-4">
+                <div className="bg-canvas px-3 py-2">
+                  <dt className="text-xs font-semibold text-muted">매칭</dt>
+                  <dd className="mt-0.5 text-sm font-bold text-ink-950">
+                    {preview.matched_count}개
+                  </dd>
+                </div>
+                <div className="bg-canvas px-3 py-2">
+                  <dt className="text-xs font-semibold text-muted">미매칭</dt>
+                  <dd className="mt-0.5 text-sm font-bold text-ink-950">
+                    {preview.unmatched_count}개
+                  </dd>
+                </div>
+                <div className="bg-canvas px-3 py-2">
+                  <dt className="text-xs font-semibold text-muted">복사 조건</dt>
+                  <dd className="mt-0.5 text-sm font-bold text-ink-950">
+                    {preview.copy_condition_count}개
+                  </dd>
+                </div>
+                <div className="bg-canvas px-3 py-2">
+                  <dt className="text-xs font-semibold text-muted">복사 셀</dt>
+                  <dd className="mt-0.5 text-sm font-bold text-ink-950">
+                    {preview.copy_cell_count}개
+                  </dd>
+                </div>
+              </dl>
+            ) : null}
+          </section>
+        </div>
 
         <aside
           aria-labelledby="project-required-info-title"
@@ -1189,7 +1227,7 @@ function PreviewStep({
             프로젝트 필수 정보
           </h3>
 
-          <div className="mt-4 grid gap-4">
+          <div className="mt-3 grid gap-3">
             <Field inputId="project-part-id" label="Part ID">
               <input
                 className="input"
@@ -1229,10 +1267,10 @@ function PreviewStep({
             <Field
               inputId="project-comment"
               label="Comment"
-              help="선택 사항입니다. 입력하지 않으면 생성 provider의 기본값을 유지합니다."
+              help="선택 사항입니다. 비우면 생성 기본값을 유지합니다."
             >
               <textarea
-                className="input min-h-24 resize-y py-2"
+                className="input min-h-16 resize-y py-2"
                 disabled={controlsDisabled}
                 value={comment}
                 onChange={(event) => onCommentChange(event.target.value)}
@@ -1240,7 +1278,7 @@ function PreviewStep({
             </Field>
           </div>
 
-          <div className="mt-4 space-y-3 border-t border-border-subtle pt-4">
+          <div className="mt-3 space-y-2 border-t border-border-subtle pt-3">
             {createError ? (
               <InlineAlert tone={duplicateHref ? 'warning' : 'error'}>
                 <p>{getApiErrorMessage(createError)}</p>
@@ -1416,16 +1454,13 @@ function ChoiceAdminLink({ href }: { href: string }) {
 
 const StepHeading = forwardRef<
   HTMLHeadingElement,
-  { index: number; title: string; description: string }
->(function StepHeading({ index, title, description }, ref) {
+  { title: string; description: string }
+>(function StepHeading({ title, description }, ref) {
   return (
     <div>
-      <p className="text-xs font-bold text-brand-700">
-        현재 {index}/{STEPS.length}
-      </p>
       <h2
         ref={ref}
-        className="mt-1 rounded-sm text-xl font-bold text-ink-950 focus:outline-2 focus:outline-offset-2 focus:outline-brand-700"
+        className="rounded-sm text-xl font-bold text-ink-950 focus:outline-2 focus:outline-offset-2 focus:outline-brand-700"
         tabIndex={-1}
       >
         {title}
@@ -1434,17 +1469,6 @@ const StepHeading = forwardRef<
     </div>
   )
 })
-
-function DetailStat({ label, value }: { label: string; value: ReactNode }) {
-  return (
-    <div className="min-w-0 rounded-lg border border-border-subtle bg-surface px-3 py-2">
-      <dt className="text-xs font-semibold text-muted">{label}</dt>
-      <dd className="mt-0.5 truncate text-sm font-bold text-ink-950" title={typeof value === 'string' ? value : undefined}>
-        {value}
-      </dd>
-    </div>
-  )
-}
 
 function BackboneOption({
   disabled,

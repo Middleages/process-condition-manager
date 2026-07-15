@@ -397,6 +397,46 @@ describe('ProjectCreateWizard route restoration', () => {
     )
   })
 
+  it('shows the current step count only in progress, not again in the body heading', () => {
+    const params = new URLSearchParams({ step: '3', process: directProcess.key })
+    const html = renderWizard(`/projects/new?${params}`, true)
+
+    expect(html.match(/현재 3\/3/g)).toHaveLength(1)
+  })
+
+  it('starts the responsive review grid before the h2 so the required aside aligns at xl', () => {
+    const html = renderAutomaticBackbonePreview()
+    const gridStart = html.indexOf(
+      'xl:grid-cols-[minmax(0,1fr)_minmax(22.5rem,26.25rem)]',
+    )
+    const heading = html.indexOf('매칭 검토 및 프로젝트 정보</h2>')
+    const requiredAside = html.indexOf('aria-labelledby="project-required-info-title"')
+
+    expect(gridStart).toBeGreaterThan(-1)
+    expect(gridStart).toBeLessThan(heading)
+    expect(heading).toBeLessThan(requiredAside)
+  })
+
+  it('uses the approved compact optional-comment guidance', () => {
+    const html = renderAutomaticBackbonePreview()
+
+    expect(html).toContain('선택 사항입니다. 비우면 생성 기본값을 유지합니다.')
+    expect(html).toMatch(/<textarea(?=[^>]*class="[^"]*min-h-16)[^>]*>/)
+  })
+
+  it('renders Process and backbone identity as one strip without nested stat cards', () => {
+    const html = renderAutomaticBackbonePreview()
+    const matchSummary = html.match(
+      /<section(?=[^>]*aria-labelledby="project-match-summary-title")[\s\S]*?<\/section>/,
+    )?.[0]
+    const identityStrip = matchSummary?.match(/<dl[\s\S]*?<\/dl>/)?.[0]
+
+    expect(identityStrip).toBeDefined()
+    expect(identityStrip).not.toMatch(
+      /<div class="[^"]*rounded-lg border border-border-subtle/,
+    )
+  })
+
   it('keeps the W1 third step and adds only the core Profile inputs', () => {
     const params = new URLSearchParams({ step: '3', process: directProcess.key })
     const html = renderWizard(`/projects/new?${params}`, true)
