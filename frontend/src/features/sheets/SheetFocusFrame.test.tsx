@@ -32,6 +32,9 @@ describe('SheetFocusFrame', () => {
     expect(html).toContain('data-sheet-grid-host="true"')
     expect(html).toContain('min-h-0 min-w-0 overflow-hidden')
     expect(html).toContain('data-sheet-workbench="true"')
+    expect(html).toContain(
+      'class="min-h-0 min-w-0 overflow-hidden" data-sheet-workbench="true"',
+    )
     expect(html).toContain('future workbench')
   })
 })

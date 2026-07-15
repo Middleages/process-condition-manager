@@ -35,7 +35,7 @@ export function SheetFocusFrame({
         {children}
       </div>
       {workbench != null ? (
-        <div className="min-w-0" data-sheet-workbench>
+        <div className="min-h-0 min-w-0 overflow-hidden" data-sheet-workbench>
           {workbench}
         </div>
       ) : null}

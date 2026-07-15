@@ -58,6 +58,7 @@ import {
 } from './persistenceReconciliation'
 import { resolveSheetInteraction } from './sheetInteraction'
 import { SheetFocusFrame } from './SheetFocusFrame'
+import { ValidationWorkbench } from './ValidationWorkbench'
 import {
   SheetAdapterError,
   shouldReplaceSheetWithError,
@@ -68,8 +69,17 @@ import {
 import { useSheetChoiceSets } from './useSheetChoiceSets'
 import { useSheetEditing, type SheetEditing } from './useSheetEditing'
 import { useSheetValidation } from './useSheetValidation'
+import { VALIDATION_SERVER_FAILURE } from './validationState'
+import {
+  enrichValidationIssues,
+  resolveValidationDefinitionAvailability,
+  resolveValidationIssueNavigation,
+  shouldMountValidationWorkbench,
+  type ValidationWorkbenchIssue,
+} from './validationWorkbenchState'
 
 const COLUMN_SEARCH_STATUS_ID = 'sheet-column-search-status'
+const VALIDATION_DEFINITIONS_STATUS_ID = 'validation-definitions-status'
 
 /**
  * 시트 조회 → 편집 가능한 그리드 렌더링 (T3 범위).
@@ -263,6 +273,11 @@ function SheetEditor({
   const [columnQuery, setColumnQuery] = useState('')
   const [columnSearchStatus, setColumnSearchStatus] = useState('')
   const [pendingColumnJump, setPendingColumnJump] = useState<string | null>(null)
+  const [pendingValidationJump, setPendingValidationJump] = useState<{
+    conditionId: string
+    parameterCode: string
+  } | null>(null)
+  const [validationNavigationStatus, setValidationNavigationStatus] = useState<string | null>(null)
 
   // 서버 행 위에 더티 값을 얹어 표시(편집값 즉시 반영) + 더티 셀 상태 오버레이.
   const displayRows = useMemo(() => applyDirtyToRows(data.rows, dirtyCells), [data.rows, dirtyCells])
@@ -279,6 +294,13 @@ function SheetEditor({
       throw error
     }
   }, [project, sheet, choiceResources, choiceAuthorizationEpoch])
+  const validationDefinitionAvailability = resolveValidationDefinitionAvailability({
+    projectAvailable: project !== undefined,
+    projectError,
+    resources: choiceResources.values(),
+    definitionsAvailable: validationDefinitions !== null,
+  })
+  const validationDefinitionsPending = validationDefinitionAvailability === 'pending'
   const validationDefinitionAuthority = useMemo(
     () => Symbol('sheet-validation-definitions'),
     [
@@ -320,6 +342,14 @@ function SheetEditor({
   const visibleColumns = useMemo(
     () => visibleParameterColumns(data.columns, activeCategory),
     [data.columns, activeCategory],
+  )
+  const validationIssues = useMemo(
+    () => enrichValidationIssues(validation.issues, data.columns, displayRows),
+    [validation.issues, data.columns, displayRows],
+  )
+  const showValidationWorkbench = shouldMountValidationWorkbench(
+    validation.issues,
+    validation.explicitValidationCompleted,
   )
 
   // 붙여넣기 스테이징(적용 전 미리보기). null = 대기 중인 붙여넣기 없음.
@@ -397,6 +427,21 @@ function SheetEditor({
     setPendingColumnJump(null)
   }, [pendingColumnJump, visibleColumns])
 
+  // A hidden validation target is published only after its category state is requested. This
+  // effect observes committed visibleColumns and then crosses the domain-only grid adapter once.
+  useEffect(() => {
+    if (pendingValidationJump === null) return
+    if (!visibleColumns.some((column) => column.key === pendingValidationJump.parameterCode)) return
+    if (!displayRows.some((row) => row.id === pendingValidationJump.conditionId)) {
+      setValidationNavigationStatus('이동할 검증 대상 셀을 찾지 못했습니다.')
+      setPendingValidationJump(null)
+      return
+    }
+    gridRef.current?.scrollToCell(pendingValidationJump.conditionId, pendingValidationJump.parameterCode)
+    setValidationNavigationStatus('검증 대상 셀로 이동했습니다.')
+    setPendingValidationJump(null)
+  }, [pendingValidationJump, visibleColumns, displayRows])
+
   // 조건 행 관리(T7): 추가/복제/삭제 대상은 좌측 식별 컬럼 클릭으로 활성화한 행 하나다.
   // POR 이양은 활성 행과 무관하게 POR 컬럼 클릭으로 바로 실행한다. 구조 변경은 더티 셀 버퍼와
   // 분리된 즉시 API 호출(runStructuralChange)이고, 성공하면 시트 쿼리를 무효화해 다시 조회한다
@@ -426,6 +471,11 @@ function SheetEditor({
     // exact validation adapter; refresh both halves before provisional evaluation resumes.
     void queryClient.invalidateQueries({ queryKey: ['project', projectId] })
   }, [queryClient, projectId])
+
+  const retryValidationDefinitions = useCallback(() => {
+    refreshSheet()
+    for (const resource of choiceResources.values()) void resource.retry()
+  }, [refreshSheet, choiceResources])
 
   // 구조 변경 공용 실행: 잠금 검사·더티 flush·잠금 상실 처리(runStructuralChange)를 감싸
   // UI 상태(진행 중/에러)와 재조회를 얹는다. 성공하면 true, 실패하면 에러를 표시하고 false.
@@ -606,6 +656,7 @@ function SheetEditor({
     const match = data.columns.find((column) => column.key === result.parameterCode)
     setColumnSearchStatus(`${match?.headerName ?? result.parameterCode} 컬럼으로 이동했습니다.`)
     if (result.requiresCategoryChange) {
+      setPendingValidationJump(null)
       setPendingColumnJump(result.parameterCode)
       setActiveCategory(result.categoryCode)
       return
@@ -617,10 +668,39 @@ function SheetEditor({
     (category: string | null) => {
       if (!interaction.canSwitchCategory || pasteRef.current !== null) return
       setPendingColumnJump(null)
+      setPendingValidationJump(null)
       setColumnSearchStatus('')
       setActiveCategory(category)
     },
     [interaction.canSwitchCategory],
+  )
+
+  const activateValidationIssue = useCallback(
+    (issue: ValidationWorkbenchIssue) => {
+      if (!interaction.canSwitchCategory || pasteRef.current !== null) {
+        setValidationNavigationStatus('붙여넣기를 적용 또는 취소한 뒤 이동해 주세요.')
+        return
+      }
+      const navigation = resolveValidationIssueNavigation(
+        issue,
+        data.columns,
+        displayRows,
+        activeCategory,
+      )
+      setPendingColumnJump(null)
+      if (navigation.kind === 'missing-target') {
+        setValidationNavigationStatus('이동할 검증 대상 셀을 찾지 못했습니다.')
+        return
+      }
+      if (navigation.kind === 'reveal-category') {
+        setActiveCategory(navigation.categoryCode)
+        setPendingValidationJump(navigation.target)
+        return
+      }
+      gridRef.current?.scrollToCell(navigation.target.conditionId, navigation.target.parameterCode)
+      setValidationNavigationStatus('검증 대상 셀로 이동했습니다.')
+    },
+    [interaction.canSwitchCategory, data.columns, displayRows, activeCategory],
   )
 
   return (
@@ -657,6 +737,60 @@ function SheetEditor({
               {interaction.canTransferPor ? ' — 빈 원(○)을 선택하면 POR 이양' : null}
             </InlineAlert>
           ) : null}
+          {validationDefinitionsPending ? (
+            <InlineAlert
+              className="rounded-md px-2 py-1.5 text-xs"
+              data-testid="validation-definitions-pending"
+              id={VALIDATION_DEFINITIONS_STATUS_ID}
+              tone="info"
+            >
+              검증 규칙을 불러오는 중
+            </InlineAlert>
+          ) : null}
+          {validationDefinitionAvailability === 'unavailable' ? (
+            <InlineAlert
+              className="rounded-md px-2 py-1.5 text-xs"
+              data-testid="validation-configuration-alert"
+              tone="error"
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <span>{validation.provisional.failure}</span>
+                <Button
+                  onClick={retryValidationDefinitions}
+                  size="compact"
+                  type="button"
+                  variant="secondary"
+                >
+                  다시 조회
+                </Button>
+              </div>
+            </InlineAlert>
+          ) : null}
+          {!showValidationWorkbench &&
+          validationDefinitionAvailability === 'ready' &&
+          validation.issueAuthority !== 'unavailable' &&
+          validation.serverFailure !== null ? (
+            <InlineAlert
+              className="rounded-md px-2 py-1.5 text-xs"
+              data-testid="validation-action-failure"
+              tone="warning"
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <span>{validation.serverFailure}</span>
+                {validation.serverConfirmation === 'failed' &&
+                validation.serverFailure === VALIDATION_SERVER_FAILURE ? (
+                  <Button
+                    onClick={() => void validation.retry()}
+                    size="compact"
+                    type="button"
+                    variant="secondary"
+                  >
+                    다시 시도
+                  </Button>
+                ) : null}
+              </div>
+            </InlineAlert>
+          ) : null}
           <div className="flex min-w-0 flex-wrap items-center gap-2" data-testid="sheet-category-tabs">
             <SheetMetrics rowCount={data.rows.length} colCount={data.columns.length} />
             {categories.length > 0 ? (
@@ -681,6 +815,23 @@ function SheetEditor({
               </>
             ) : null}
             <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2">
+              <Button
+                aria-describedby={
+                  validationDefinitionsPending ? VALIDATION_DEFINITIONS_STATUS_ID : undefined
+                }
+                data-testid="sheet-explicit-validation"
+                disabled={paste !== null || validationDefinitionAvailability !== 'ready'}
+                loading={
+                  validationDefinitionsPending ||
+                  validation.serverConfirmation === 'waiting-for-persistence' ||
+                  validation.serverConfirmation === 'validating'
+                }
+                onClick={() => void validation.explicitlyValidate()}
+                size="compact"
+                type="button"
+              >
+                검증
+              </Button>
               <label
                 className="shrink-0 text-xs font-semibold text-ink-950"
                 htmlFor="sheet-column-search"
@@ -749,6 +900,21 @@ function SheetEditor({
           ) : null}
           <InteractionGuide editing={editing} mode={interaction.mode} />
         </div>
+      }
+      workbench={
+        showValidationWorkbench ? (
+          <ValidationWorkbench
+            definitionsPending={validationDefinitionsPending}
+            issues={validationIssues}
+            summary={validation.summary}
+            issueAuthority={validation.issueAuthority}
+            serverConfirmation={validation.serverConfirmation}
+            serverFailure={validation.serverFailure}
+            navigationStatus={validationNavigationStatus}
+            onIssueActivate={activateValidationIssue}
+            onRetry={() => void validation.retry()}
+          />
+        ) : undefined
       }
     >
       <div
