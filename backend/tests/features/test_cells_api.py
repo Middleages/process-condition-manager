@@ -14,6 +14,7 @@
 """
 
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 
 import pytest
 from httpx import AsyncClient, Response
@@ -22,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.parameters.types import ValueType
 from app.models.choice import ChoiceSet
+from app.models.parameter import Parameter
 from app.models.project import (
     CellValue,
     ChangeEvent,
@@ -534,6 +536,40 @@ async def test_patch_cells_accepts_valid_number(
     assert resp.status_code == 200, resp.text
     assert (await _cell_value(db_session, cond1, "temp_c"))[1] == "1500"
     assert (await _cell_value(db_session, cond2, "temp_c"))[1] == "12.5"
+
+
+async def test_patch_cells_persists_soft_range_and_pattern_violations(
+    db_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Business validation remains outside the hard, atomic write boundary."""
+    project_id, cond1, cond2 = await _seed_project(db_session)
+    await _seed_parameters(db_session)
+    number = (
+        await db_session.execute(select(Parameter).where(Parameter.code == "temp_c"))
+    ).scalar_one()
+    number.min_value = Decimal("10")
+    number.max_value = Decimal("20")
+    text = (
+        await db_session.execute(select(Parameter).where(Parameter.code == "memo"))
+    ).scalar_one()
+    text.pattern = "[A-Z]{2}"
+    text.pattern_hint = "대문자 2자리"
+    await db_session.commit()
+    token = await _acquire(db_client, project_id)
+
+    response = await _patch(
+        db_client,
+        project_id,
+        [
+            {"condition_id": cond1, "parameter_code": "temp_c", "value": "25"},
+            {"condition_id": cond2, "parameter_code": "memo", "value": "bad"},
+        ],
+        token=token,
+    )
+
+    assert response.status_code == 200, response.text
+    assert (await _cell_value(db_session, cond1, "temp_c"))[1] == "25"
+    assert (await _cell_value(db_session, cond2, "memo"))[1] == "bad"
 
 
 async def test_number_write_returns_and_stores_canonical_value(

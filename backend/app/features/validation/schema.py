@@ -12,7 +12,7 @@ from pydantic import (
     model_validator,
 )
 
-from app.domain.validation.types import ValidationSeverity
+from app.domain.validation.types import IssueDetailValue, ValidationSeverity
 
 CodeText = Annotated[
     str,
@@ -153,3 +153,28 @@ class ValidationRuleOut(BaseModel):
     is_active: bool
     created_at: datetime
     updated_at: datetime
+
+
+class ValidationSummaryOut(BaseModel):
+    error_count: int = Field(ge=0)
+    warning_count: int = Field(ge=0)
+
+
+class ValidationIssueOut(BaseModel):
+    key: str
+    code: str
+    rule_code: str | None
+    rule_version: int | None
+    severity: ValidationSeverity
+    condition_id: int
+    layer_key: str
+    parameter_code: str
+    details: dict[str, IssueDetailValue] = Field(default_factory=dict)
+
+
+class ProjectValidationOut(BaseModel):
+    summary: ValidationSummaryOut
+    issues: list[ValidationIssueOut]
+    evaluated_at: datetime
+    basis_hash: str
+    rule_versions: dict[str, int]

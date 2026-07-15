@@ -108,7 +108,13 @@ async def measure() -> None:
     assert distinct_choice_sets == {"equipment_mode"}
     assert len(choice_columns) > 1
     assert option_arrays == 0
-    assert all("choice_option" not in statement.lower() for statement in statements)
+    choice_option_queries = sum(
+        "choice_option" in statement.lower() and "select" in statement.lower()
+        for statement in statements
+    )
+    # Task 5's shared validation basis needs complete active/inactive identities,
+    # but selectin loading must still fetch a shared set in one bounded query.
+    assert choice_option_queries == 1
     assert_performance_limits(
         elapsed_ms=elapsed_ms,
         serialized_bytes=size_bytes,
@@ -119,6 +125,7 @@ async def measure() -> None:
     print(f"distinct choice sets: {len(distinct_choice_sets)}")
     print(f"choice options in SheetOut payload (must be 0): {option_arrays}")
     print(f"columns sharing the large set: {len(choice_columns)}")
+    print(f"choice-option basis queries (must be 1): {choice_option_queries}")
     print(f"serialized bytes: {size_bytes}")
     print(f"elapsed milliseconds: {elapsed_ms:.1f}")
     print(f"SQL queries (must be <= {PERF_MAX_SQL_QUERIES}): {len(statements)}")

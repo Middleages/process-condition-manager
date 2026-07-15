@@ -9,6 +9,7 @@
 """
 
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 
 import pytest
 from httpx import AsyncClient
@@ -59,6 +60,9 @@ async def _seed_parameters(session: AsyncSession) -> None:
         value_type=ValueType.NUMBER,
         category_id=category.id,
         unit="rpm",
+        min_value=Decimal("0"),
+        max_value=Decimal("2000"),
+        required=True,
         sort_order=1,
     )
     equipment_mode = await seed_choice_set(
@@ -79,14 +83,22 @@ async def _seed_parameters(session: AsyncSession) -> None:
     choice_param.display_name = "PR Type"
     choice_param.sort_order = 2
     choice_param.category = None
+    text_param = Parameter(
+        code="mask_name",
+        display_name="Mask Name",
+        value_type=ValueType.TEXT,
+        pattern="[A-Z]{2}-[0-9]{4}",
+        pattern_hint="영문 대문자 2자리-숫자 4자리",
+        sort_order=3,
+    )
     inactive_param = Parameter(
         code="legacy_flag",
         display_name="Legacy",
         value_type=ValueType.TEXT,
-        sort_order=3,
+        sort_order=4,
         is_active=False,
     )
-    session.add_all([number_param, choice_param, inactive_param])
+    session.add_all([number_param, choice_param, text_param, inactive_param])
     await session.flush()
 
 
@@ -157,7 +169,7 @@ async def test_sheet_columns_include_only_live_parameters(
     columns = resp.json()["columns"]
     codes = [column["parameter_code"] for column in columns]
     # 비활성(legacy_flag) 제외, sort_order 순.
-    assert codes == ["spin_speed", "pr_type"]
+    assert codes == ["spin_speed", "pr_type", "mask_name"]
 
 
 async def test_sheet_column_metadata_maps_category_and_choices(
@@ -173,6 +185,11 @@ async def test_sheet_column_metadata_maps_category_and_choices(
     assert spin["value_type"] == "number"
     assert spin["category_code"] == "photo"
     assert spin["unit"] == "rpm"
+    assert spin["min_value"] == "0"
+    assert spin["max_value"] == "2000"
+    assert spin["required"] is True
+    assert spin["pattern"] is None
+    assert spin["pattern_hint"] is None
     assert spin["choice_set_code"] is None
     assert spin["choice_set_version"] is None
     assert "choice_options" not in spin
@@ -183,6 +200,19 @@ async def test_sheet_column_metadata_maps_category_and_choices(
     assert pr["choice_set_code"] == "equipment_mode"
     assert pr["choice_set_version"] == 1
     assert "choice_options" not in pr
+
+    mask = columns["mask_name"]
+    assert mask["unit"] is None
+    assert mask["min_value"] is None
+    assert mask["max_value"] is None
+    assert mask["required"] is False
+    assert mask["pattern"] == "[A-Z]{2}-[0-9]{4}"
+    assert mask["pattern_hint"] == "영문 대문자 2자리-숫자 4자리"
+
+    body = resp.json()
+    assert body["validation_rules"] == []
+    assert body["validation_basis_hash"].startswith("sha256:")
+    assert "options" not in resp.text
 
 
 def test_broken_choice_parameter_is_not_projected() -> None:
@@ -214,6 +244,9 @@ async def test_sheet_rows_sorted_by_layer_and_condition_index(
     # P1-D3 병기 라벨.
     assert rows[0]["layer_label"] == "CLN (010)"
     assert rows[0]["is_por"] is True
+    assert [
+        (row["layer_sort_order"], row["condition_index"]) for row in rows
+    ] == [(1, 1), (2, 1), (2, 2)]
 
 
 async def test_sheet_cells_are_sparse(
