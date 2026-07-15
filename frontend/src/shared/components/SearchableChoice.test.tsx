@@ -48,6 +48,27 @@ describe('SearchableChoice SSR contract', () => {
     expect(html).toContain('FOUNDRY · Foundry')
   })
 
+  it('can visually hide only the empty selected status while keeping it live', () => {
+    const emptyHtml = renderChoice({ value: null, visuallyHideEmptyStatus: true })
+    const emptyStatus = emptyHtml.match(
+      /<div(?=[^>]*id="equipment-mode-selected-status")(?=[^>]*role="status")[^>]*class="([^"]*)"[^>]*>[\s\S]*?<\/div>/,
+    )
+
+    expect(emptyStatus).toBeDefined()
+    expect(emptyStatus?.[0]).toContain('aria-live="polite"')
+    expect(emptyStatus?.[0]).toContain('선택 없음')
+    expect(emptyStatus?.[1]?.split(' ')).toContain('sr-only')
+
+    const selectedHtml = renderChoice({ visuallyHideEmptyStatus: true })
+    const selectedStatus = selectedHtml.match(
+      /<div(?=[^>]*id="equipment-mode-selected-status")(?=[^>]*role="status")[^>]*class="([^"]*)"[^>]*>[\s\S]*?<\/div>/,
+    )
+
+    expect(selectedStatus).toBeDefined()
+    expect(selectedStatus?.[0]).toContain('FOUNDRY · Foundry')
+    expect(selectedStatus?.[1]?.split(' ')).not.toContain('sr-only')
+  })
+
   it('shows an inactive current value but excludes it from new default selections', () => {
     const html = renderChoice({ value: 'OLD', openOnMount: true })
 

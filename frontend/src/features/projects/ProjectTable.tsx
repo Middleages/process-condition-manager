@@ -12,7 +12,7 @@ export interface ProjectTableProps {
 export function ProjectTable({ projects, from, onProjectOpen }: ProjectTableProps) {
   return (
     <div className="max-w-full overflow-x-auto rounded-xl border border-border-subtle bg-surface">
-      <table className="w-full min-w-[1040px] table-fixed text-left text-sm">
+      <table className="w-full min-w-[920px] table-fixed text-left text-sm">
         <thead className="bg-canvas text-xs font-semibold uppercase tracking-wide text-muted">
           <tr className="h-9">
             <th className="w-[20%] whitespace-nowrap px-4 py-0" scope="col">
