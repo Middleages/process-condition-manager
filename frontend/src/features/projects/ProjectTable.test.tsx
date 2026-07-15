@@ -74,6 +74,8 @@ describe('ProjectTable', () => {
     expect(html).toContain('P-42')
     expect(html).toContain('Foundry')
     expect(html).toContain('Logic')
+    expect(html).toContain('min-w-[920px]')
+    expect(html).not.toContain('min-w-[1040px]')
     expect(html).toContain('<tr class="h-9">')
     expect(html).toContain('class="h-9 border-t border-border-subtle')
     expect(html).toContain('leading-4')

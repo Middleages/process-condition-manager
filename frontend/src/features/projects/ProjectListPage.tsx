@@ -127,7 +127,7 @@ export function ProjectListPage() {
   }
 
   return (
-    <section className="space-y-5">
+    <section className="mx-auto w-full max-w-[1600px] space-y-5">
       <PageHeader
         data-page-title
         tabIndex={-1}
@@ -144,43 +144,50 @@ export function ProjectListPage() {
         }
       />
 
-      <div className="grid gap-3 lg:grid-cols-[minmax(18rem,1.4fr)_minmax(14rem,1fr)_minmax(14rem,1fr)_auto] lg:items-end">
-        <label className="grid w-full max-w-xl gap-1.5 text-sm font-semibold text-ink-950">
-          프로젝트 검색
-          <span className="relative block">
-            <Search
-              aria-hidden="true"
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted"
-              size={16}
-              strokeWidth={2}
-            />
-            <input
-              className="input pl-9"
-              placeholder="프로젝트명 또는 Part ID"
-              type="search"
-              value={queryDraft}
-              onChange={(event) => setQueryDraft(event.target.value)}
-            />
-          </span>
-        </label>
-        <ProjectChoiceFilter
-          id="project-list-device-type"
-          label="Device Type"
-          value={routeState.deviceTypeCode}
-          resource={deviceTypes}
-          onChange={updateDeviceTypeFilter}
-        />
-        <ProjectChoiceFilter
-          id="project-list-category"
-          label="Project Category"
-          value={routeState.projectCategoryCode}
-          resource={projectCategories}
-          onChange={updateProjectCategoryFilter}
-        />
-        <p className="pb-1 text-sm font-medium tabular-nums text-muted">
-          불러온 {projects.length}개
-        </p>
-      </div>
+      <section aria-labelledby="project-filter-title" className="space-y-3">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 id="project-filter-title" className="text-base font-bold text-ink-950">
+            프로젝트 찾기
+          </h2>
+          <p className="text-sm font-medium tabular-nums text-muted">
+            불러온 {projects.length}개
+          </p>
+        </div>
+        <div className="grid gap-3 lg:grid-cols-3 lg:items-start">
+          <label className="grid w-full gap-1.5 text-sm font-semibold text-ink-950">
+            프로젝트 검색
+            <span className="relative block">
+              <Search
+                aria-hidden="true"
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted"
+                size={16}
+                strokeWidth={2}
+              />
+              <input
+                className="input pl-9"
+                placeholder="프로젝트명 또는 Part ID"
+                type="search"
+                value={queryDraft}
+                onChange={(event) => setQueryDraft(event.target.value)}
+              />
+            </span>
+          </label>
+          <ProjectChoiceFilter
+            id="project-list-device-type"
+            label="Device Type"
+            value={routeState.deviceTypeCode}
+            resource={deviceTypes}
+            onChange={updateDeviceTypeFilter}
+          />
+          <ProjectChoiceFilter
+            id="project-list-category"
+            label="Project Category"
+            value={routeState.projectCategoryCode}
+            resource={projectCategories}
+            onChange={updateProjectCategoryFilter}
+          />
+        </div>
+      </section>
 
       {projectsQuery.isPending ? (
         <InlineAlert tone="info">프로젝트 목록을 불러오는 중입니다.</InlineAlert>
@@ -255,6 +262,7 @@ export function ProjectChoiceFilter({
       selectionReady={state.selectionReady}
       allowInactiveSelection
       allowClear
+      visuallyHideEmptyStatus
       onOpen={resource.prepareToOpen}
       onRetry={resource.retryOptions}
       onChange={onChange}

@@ -123,6 +123,21 @@ describe('ProjectListPage', () => {
     expect(html).toContain('UNKNOWN_DEVICE')
     expect(html).toContain('UNKNOWN_CATEGORY')
   })
+
+  it('uses one restrained work frame and one semantic three-control finder', () => {
+    const html = renderList('/projects')
+    const finder = html.match(
+      /<section(?=[^>]*aria-labelledby="project-filter-title")[^>]*>[\s\S]*?<\/section>/,
+    )?.[0]
+
+    expect(html).toContain('max-w-[1600px]')
+    expect(finder).toBeDefined()
+    expect(finder).toContain('id="project-filter-title"')
+    expect(finder).toContain('>프로젝트 찾기<')
+    expect(finder).toContain('불러온 1개')
+    expect(finder).toContain('lg:grid-cols-3')
+    expect(finder).not.toContain('lg:grid-cols-[minmax(18rem,1.4fr)')
+  })
 })
 
 describe('ProjectChoiceFilter', () => {
@@ -157,5 +172,19 @@ describe('ProjectChoiceFilter', () => {
     expect(html).toContain('Device Type 조회에 실패했습니다.')
     expect(html).toContain('선택 해제')
     expect(html).toContain('다시 시도')
+
+    const emptyHtml = renderToStaticMarkup(
+      <ProjectChoiceFilter
+        id="project-list-device-type"
+        label="Device Type"
+        value={null}
+        resource={resource}
+        onChange={vi.fn()}
+      />,
+    )
+    expect(emptyHtml).toMatch(
+      /id="project-list-device-type-selected-status"[^>]*class="[^"]*sr-only[^"]*"|class="[^"]*sr-only[^"]*"[^>]*id="project-list-device-type-selected-status"/,
+    )
+    expect(emptyHtml).toContain('선택 없음')
   })
 })

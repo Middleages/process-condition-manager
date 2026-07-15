@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft, ExternalLink, Pencil } from 'lucide-react'
+import { ArrowLeft, ChevronDown, ExternalLink, Pencil } from 'lucide-react'
 import { useRef, useState, type ReactNode } from 'react'
 import { Link, useLocation, useParams } from 'react-router-dom'
 
@@ -28,7 +28,7 @@ export function ProjectDetailPage() {
   })
 
   return (
-    <section className="space-y-5">
+    <section className="mx-auto w-full max-w-[1600px] space-y-5">
       <PageHeader
         data-page-title
         tabIndex={-1}
@@ -99,23 +99,35 @@ function ProjectDetail({ project }: { project: ProjectOut }) {
     conditionCount: project.layers.reduce((sum, layer) => sum + layer.condition_count, 0),
     cellCount: project.layers.reduce((sum, layer) => sum + layer.cell_count, 0),
   }
+  const backboneProjectIds = new Set(
+    project.layers.flatMap((layer) =>
+      layer.source_project_id === null ? [] : [layer.source_project_id],
+    ),
+  )
+  const backboneSummary =
+    backboneProjectIds.size === 0
+      ? '없음'
+      : backboneProjectIds.size === 1
+        ? `#${[...backboneProjectIds][0]}`
+        : `${backboneProjectIds.size}개 프로젝트`
 
   return (
     <div className="space-y-5">
-      <dl className="grid overflow-hidden rounded-xl border border-border-subtle bg-surface sm:grid-cols-3">
+      <dl className="grid overflow-hidden rounded-xl border border-border-subtle bg-surface sm:grid-cols-4">
         <SummaryItem label="Layer" value={summary.layerCount} />
         <SummaryItem label="조건 행" value={summary.conditionCount} />
         <SummaryItem label="Cell" value={summary.cellCount} />
+        <SummaryItem label="백본" value={backboneSummary} />
       </dl>
 
       <section aria-labelledby="project-profile-title" className="space-y-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 id="project-profile-title" className="text-lg font-bold text-ink-950">
-              프로젝트 기본정보
+              프로젝트 정보
             </h2>
             <p className="mt-0.5 text-sm text-muted">
-              고정 Profile과 분류 값을 확인합니다. Identity는 편집할 수 없습니다.
+              업무에 필요한 식별·분류·방향을 먼저 확인합니다.
             </p>
           </div>
           <button
@@ -130,26 +142,47 @@ function ProjectDetail({ project }: { project: ProjectOut }) {
           </button>
         </div>
 
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          <ProfileGroup group="identity" title="Identity">
-            <DefinitionItem label="LINE" value={project.line_id} mono />
-            <DefinitionItem label="Process ID" value={project.process_id} mono />
-            <DefinitionItem label="PARTID" value={project.part_id} mono />
-          </ProfileGroup>
+        <div className="overflow-hidden rounded-xl border border-border-subtle bg-surface">
+          <div className="grid divide-y divide-border-subtle xl:grid-cols-3 xl:divide-x xl:divide-y-0">
+            <ProfileGroup group="identity" title="Identity">
+              <DefinitionItem label="LINE" value={project.line_id} mono />
+              <DefinitionItem label="Process ID" value={project.process_id} mono />
+              <DefinitionItem label="PARTID" value={project.part_id} mono />
+            </ProfileGroup>
+            <ProfileGroup group="product" title="Product">
+              <DefinitionItem label="Process Name" value={project.profile.process_name} />
+              <ChoiceDefinitionItem label="Device Type" choice={project.profile.device_type} />
+              <ChoiceDefinitionItem label="Category" choice={project.profile.project_category} />
+              <DefinitionItem label="Comment" value={project.profile.comment} />
+            </ProfileGroup>
+            <ProfileGroup group="direction" title="Direction">
+              <ChoiceDefinitionItem label="Active Direction" choice={project.profile.active_direction} />
+              <ChoiceDefinitionItem label="Gate Direction" choice={project.profile.gate_direction} />
+            </ProfileGroup>
+          </div>
+        </div>
+      </section>
 
-          <ProfileGroup group="product" title="Product">
-            <DefinitionItem label="Process Name" value={project.profile.process_name} />
-            <ChoiceDefinitionItem label="Device Type" choice={project.profile.device_type} />
-            <ChoiceDefinitionItem label="Category" choice={project.profile.project_category} />
-            <DefinitionItem label="Comment" value={project.profile.comment} />
-          </ProfileGroup>
-
-          <ProfileGroup group="direction" title="Direction">
-            <ChoiceDefinitionItem label="Active Direction" choice={project.profile.active_direction} />
-            <ChoiceDefinitionItem label="Gate Direction" choice={project.profile.gate_direction} />
-          </ProfileGroup>
-
-          <ProfileGroup group="die-shot" title="Die/Shot" className="md:col-span-2 xl:col-span-2">
+      <details
+        className="group overflow-hidden rounded-xl border border-border-subtle bg-surface"
+        data-profile-details=""
+      >
+        <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-4 px-4 py-3 text-left [&::-webkit-details-marker]:hidden">
+          <span>
+            <span className="block text-sm font-bold text-ink-950">상세 공정 Profile</span>
+            <span className="mt-0.5 block text-xs text-muted">
+              Die/Shot, Wafer Position, Layer Summary를 확인합니다.
+            </span>
+          </span>
+          <ChevronDown
+            aria-hidden="true"
+            className="shrink-0 text-muted transition-transform group-open:rotate-180"
+            size={18}
+            strokeWidth={2}
+          />
+        </summary>
+        <div className="grid divide-y divide-border-subtle border-t border-border-subtle xl:grid-cols-3 xl:divide-x xl:divide-y-0">
+          <ProfileGroup group="die-shot" title="Die/Shot">
             <DefinitionItem label="Gross Die" value={project.profile.gross_die} />
             <DefinitionItem label="Pitch X" value={project.profile.pitch_x} mono />
             <DefinitionItem label="Pitch Y" value={project.profile.pitch_y} mono />
@@ -160,15 +193,13 @@ function ProjectDetail({ project }: { project: ProjectOut }) {
             <DefinitionItem label="Shot Count" value={project.profile.shot_count} />
             <DefinitionItem label="Full Shot" value={project.profile.full_shot} />
           </ProfileGroup>
-
           <ProfileGroup group="wafer-position" title="Wafer Position">
             <DefinitionItem label="Map Offset X" value={project.profile.map_offset_x} mono />
             <DefinitionItem label="Map Offset Y" value={project.profile.map_offset_y} mono />
             <DefinitionItem label="Scribe Lane X" value={project.profile.scribe_lane_x} mono />
             <DefinitionItem label="Scribe Lane Y" value={project.profile.scribe_lane_y} mono />
           </ProfileGroup>
-
-          <ProfileGroup group="layer-summary" title="Layer Summary" className="md:col-span-2 xl:col-span-3">
+          <ProfileGroup group="layer-summary" title="Layer Summary">
             <DefinitionItem label="Layer Total" value={project.profile.layer_total} />
             <DefinitionItem label="EUV" value={project.profile.euv} />
             <DefinitionItem label="IMM" value={project.profile.imm} />
@@ -180,7 +211,7 @@ function ProjectDetail({ project }: { project: ProjectOut }) {
             <DefinitionItem label="Metal Layer Count" value={project.profile.metal_layer_count} />
           </ProfileGroup>
         </div>
-      </section>
+      </details>
 
       <section aria-labelledby="project-layers-title" className="space-y-3">
         <div>
@@ -304,19 +335,14 @@ function ProjectDetail({ project }: { project: ProjectOut }) {
 function ProfileGroup({
   group,
   title,
-  className,
   children,
 }: {
   group: string
   title: string
-  className?: string
   children: ReactNode
 }) {
   return (
-    <section
-      data-profile-group={group}
-      className={`rounded-xl border border-border-subtle bg-surface p-4 ${className ?? ''}`}
-    >
+    <section data-profile-group={group} className="min-w-0 p-4">
       <h3 className="text-sm font-bold text-ink-950">{title}</h3>
       <dl className="mt-3 grid gap-x-4 gap-y-3 sm:grid-cols-2">{children}</dl>
     </section>
@@ -370,7 +396,7 @@ function ChoiceDefinitionItem({
   )
 }
 
-function SummaryItem({ label, value }: { label: string; value: number }) {
+function SummaryItem({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="border-b border-border-subtle px-4 py-3 last:border-b-0 sm:border-b-0 sm:border-r sm:last:border-r-0">
       <dt className="text-xs font-semibold uppercase tracking-wide text-muted">{label}</dt>

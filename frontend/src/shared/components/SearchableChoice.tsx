@@ -41,6 +41,7 @@ export interface SearchableChoiceProps {
   allowInactiveSelection?: boolean
   required?: boolean
   allowClear?: boolean
+  visuallyHideEmptyStatus?: boolean
   autoFocus?: boolean
   openOnMount?: boolean
   onOpen?: () => Promise<void>
@@ -102,6 +103,7 @@ export function SearchableChoice({
   allowInactiveSelection = false,
   required = false,
   allowClear = false,
+  visuallyHideEmptyStatus = false,
   autoFocus = false,
   openOnMount = false,
   onOpen,
@@ -378,6 +380,7 @@ export function SearchableChoice({
         className={cn(
           'flex min-h-5 flex-wrap items-center gap-2 text-xs',
           selectedInactive ? 'text-warning' : 'text-muted',
+          visuallyHideEmptyStatus && value === null && 'sr-only',
         )}
         role="status"
         aria-live="polite"
