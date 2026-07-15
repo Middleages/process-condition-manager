@@ -530,7 +530,7 @@ export function ProjectCreateWizard({ onCreated }: { onCreated: (projectId: numb
         onStepChange={goToStep}
       />
 
-      <section className="rounded-xl border border-border-subtle bg-surface p-4 shadow-sm sm:p-5">
+      <section className="rounded-xl border border-border-subtle bg-surface p-4 sm:p-5">
         {renderedStep === 1 ? (
           <ProcessStep
             headingRef={stepHeadingRef}
@@ -649,25 +649,32 @@ function WizardStepper({
   onStepChange: (step: 1 | 2 | 3) => void
 }) {
   return (
-    <nav aria-label="프로젝트 생성 단계" className="rounded-xl border border-border-subtle bg-surface p-2">
-      <ol className="grid gap-2 sm:grid-cols-3">
+    <nav
+      aria-label="프로젝트 생성 진행"
+      className="border-y border-border-subtle bg-canvas px-2 py-1.5"
+    >
+      <ol className="grid gap-1 sm:grid-cols-3">
         {STEPS.map((step) => {
           const isCurrent = step.index === currentStep
           const isComplete = step.index < currentStep
           const enabled = canVisitStep(step.index, processReady, backboneReady)
-          const status = isCurrent ? '현재 단계' : isComplete ? '완료' : '미완료'
+          const status = isCurrent
+            ? `현재 ${step.index}/${STEPS.length}`
+            : isComplete
+              ? '완료'
+              : '대기'
 
           return (
             <li key={step.index}>
               <button
                 aria-current={isCurrent ? 'step' : undefined}
                 className={cn(
-                  'flex min-h-14 w-full items-center gap-3 rounded-lg border px-3 py-2 text-left transition-colors',
+                  'flex min-h-10 w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors',
                   isCurrent
-                    ? 'border-brand-700 bg-brand-100 text-ink-950'
+                    ? 'bg-brand-100 text-ink-950'
                     : isComplete
-                      ? 'border-border-control bg-surface text-ink-950 hover:bg-canvas'
-                      : 'border-transparent bg-canvas text-muted',
+                      ? 'text-ink-950 hover:bg-surface'
+                      : 'text-muted',
                 )}
                 disabled={interactionLocked || !enabled || isCurrent}
                 type="button"
@@ -676,13 +683,13 @@ function WizardStepper({
                 <span
                   aria-hidden="true"
                   className={cn(
-                    'flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-xs font-bold',
+                    'flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold',
                     isCurrent || isComplete
-                      ? 'border-brand-700 bg-brand-700 text-white'
-                      : 'border-border-control bg-surface text-muted',
+                      ? 'bg-brand-700 text-white'
+                      : 'border border-border-control bg-surface text-muted',
                   )}
                 >
-                  {isComplete ? <Check size={15} strokeWidth={2.5} /> : step.index}
+                  {isComplete ? <Check size={13} strokeWidth={2.5} /> : step.index}
                 </span>
                 <span className="min-w-0">
                   <span className="block truncate text-sm font-semibold">{step.title}</span>
@@ -1348,7 +1355,9 @@ const StepHeading = forwardRef<
 >(function StepHeading({ index, title, description }, ref) {
   return (
     <div>
-      <p className="text-xs font-bold text-brand-700">{index}단계</p>
+      <p className="text-xs font-bold text-brand-700">
+        현재 {index}/{STEPS.length}
+      </p>
       <h2
         ref={ref}
         className="mt-1 rounded-sm text-xl font-bold text-ink-950 focus:outline-2 focus:outline-offset-2 focus:outline-brand-700"

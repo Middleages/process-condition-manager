@@ -1,4 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import type { ReactElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { createMemoryRouter, RouterProvider, StaticRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
@@ -11,6 +12,7 @@ import type {
 } from '@/api/types'
 import type { ChoiceSetOptionsResource } from '@/features/choiceSets/useChoiceSetOptions'
 
+import { ProjectCreatePage } from './ProjectCreatePage'
 import { ProjectCreateWizard, RequiredProfileChoiceField } from './ProjectCreateWizard'
 import { previewFingerprint } from './wizardState'
 
@@ -103,7 +105,11 @@ const projectProfile: ProjectProfileOut = {
   updated_at: '2026-07-14T00:00:00Z',
 }
 
-function renderWizard(location: string, seedSelectedProcess: boolean): string {
+function renderWizard(
+  location: string,
+  seedSelectedProcess: boolean,
+  routeElement: ReactElement = <ProjectCreateWizard onCreated={vi.fn()} />,
+): string {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false, staleTime: Number.POSITIVE_INFINITY },
@@ -130,7 +136,7 @@ function renderWizard(location: string, seedSelectedProcess: boolean): string {
     [
       {
         path: '/projects/new',
-        element: <ProjectCreateWizard onCreated={vi.fn()} />,
+        element: routeElement,
       },
     ],
     { initialEntries: [location] },
@@ -250,7 +256,7 @@ describe('ProjectCreateWizard route restoration', () => {
     expect(html).toContain('LINE Z / outside first page')
     expect(html).not.toContain('LINE A / first')
     expect(html).toContain('매칭 확인 · 프로젝트 정보</h2>')
-    expect(html).toContain('현재 단계')
+    expect(html).toContain('현재 3/3')
     expect(html).toContain('완료')
   })
 
@@ -275,6 +281,27 @@ describe('ProjectCreateWizard route restoration', () => {
     expect(html).toMatch(
       /<h2(?=[^>]*tabindex="-1")(?=[^>]*focus:outline-2)(?=[^>]*focus:outline-offset-2)(?=[^>]*focus:outline-brand-700)[^>]*>/,
     )
+  })
+
+  it('uses one restrained work frame and a compact step progress contract', () => {
+    const params = new URLSearchParams({ step: '3', process: directProcess.key })
+    const html = renderWizard(`/projects/new?${params}`, true)
+
+    expect(html).toContain('aria-label="프로젝트 생성 진행"')
+    expect(html).toContain('aria-current="step"')
+    expect(html).toContain('현재 3/3')
+    expect(html).not.toContain('>3단계<')
+    expect(html).not.toContain('shadow-sm')
+  })
+
+  it('frames the full creation route with a clear title and project-list return action', () => {
+    const html = renderWizard('/projects/new', false, <ProjectCreatePage />)
+
+    expect(html).toContain('새 프로젝트 만들기')
+    expect(html).toContain('href="/projects"')
+    expect(html).toContain('프로젝트 목록')
+    expect(html).toContain('max-w-[1440px]')
+    expect(html).toContain('class="btn-secondary gap-2"')
   })
 
   it('offers a manual override for an automatic match with an accurate default', () => {
