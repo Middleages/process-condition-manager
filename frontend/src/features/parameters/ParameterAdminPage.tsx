@@ -1,317 +1,373 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { FormEvent, ReactNode, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { FolderPlus, Plus, Search, Upload } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 
-import { createCategory, listCategories } from '@/api/categories'
-import {
-  createParameter,
-  deactivateParameter,
-  listParameters,
-  replaceParameterOptions,
-  updateParameter,
-} from '@/api/parameters'
-import type { ParameterOut, ValueType } from '@/api/types'
+import { listCategories } from '@/api/categories'
 import { getApiErrorMessage } from '@/api/client'
-import { ErrorMessage, LoadingMessage } from '@/shared/components/StatusMessage'
+import { listParameters } from '@/api/parameters'
+import type { CategoryOut, ParameterOut, ValueType } from '@/api/types'
+import { Badge } from '@/shared/components/Badge'
+import { Button } from '@/shared/components/Button'
+import { InlineAlert } from '@/shared/components/InlineAlert'
+import { PageHeader } from '@/shared/components/PageHeader'
 
-import { CsvImportPanel } from './CsvImportPanel'
-
+import { CategoryCreateDialog } from './CategoryCreateDialog'
+import { CsvImportDialog } from './CsvImportDialog'
+import { ParameterEditorDrawer } from './ParameterEditorDrawer'
+import { deriveParameterRegistryRoute } from './parameterAdminState'
 import {
-  initialParameterFormState,
-  stateFromParameter,
-  toCreatePayload,
-  toUpdatePayload,
-  type ParameterFormState,
-} from './form'
+  filterParameterRegistry,
+  parseParameterRegistrySearch,
+  serializeParameterRegistrySearch,
+  shouldIncludeInactive,
+  type EditTarget,
+  type ParameterRegistryState,
+} from './registryState'
 
-const valueTypes: ValueType[] = ['text', 'number', 'choice', 'date', 'boolean']
+const VALUE_TYPES: ValueType[] = ['text', 'number', 'choice', 'date', 'boolean']
 
 export function ParameterAdminPage() {
-  const queryClient = useQueryClient()
-  const [includeInactive, setIncludeInactive] = useState(false)
-  const [editing, setEditing] = useState<ParameterOut | null>(null)
-  const [categoryCode, setCategoryCode] = useState('')
-  const [categoryDisplayName, setCategoryDisplayName] = useState('')
-  const [form, setForm] = useState<ParameterFormState>(initialParameterFormState)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const parsedState = parseParameterRegistrySearch(searchParams)
+  const includeInactive = shouldIncludeInactive(parsedState.active)
+  const [queryDraft, setQueryDraft] = useState(parsedState.query)
+  const [csvOpen, setCsvOpen] = useState(false)
+  const [categoryOpen, setCategoryOpen] = useState(false)
+  const listHeadingRef = useRef<HTMLHeadingElement>(null)
 
   const parametersQuery = useQuery({
     queryKey: ['parameters', includeInactive],
     queryFn: () => listParameters(includeInactive),
   })
   const categoriesQuery = useQuery({
-    queryKey: ['parameter-categories'],
-    queryFn: () => listCategories(false),
+    queryKey: ['parameter-categories', true],
+    queryFn: () => listCategories(true),
   })
+  const route = deriveParameterRegistryRoute(
+    searchParams,
+    categoriesQuery.isSuccess ? categoriesQuery.data : null,
+  )
+  const state = route.state
+  const repairSearch = route.repair?.toString() ?? null
+  const rows = filterParameterRegistry(
+    parametersQuery.data ?? [],
+    categoriesQuery.data ?? [],
+    state,
+  )
 
-  const saveMutation = useMutation({
-    mutationFn: async () => {
-      if (editing) {
-        const updated = await updateParameter(editing.id, toUpdatePayload(form))
-        if (form.valueType === 'choice') {
-          return replaceParameterOptions(updated.id, toCreatePayload(form).options ?? [])
-        }
-        return updated
-      }
-      return createParameter(toCreatePayload(form))
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['parameters'] })
-      resetForm()
-    },
-  })
+  useEffect(() => {
+    setQueryDraft(state.query)
+  }, [state.query])
 
-  const createCategoryMutation = useMutation({
-    mutationFn: () =>
-      createCategory({
-        code: categoryCode.trim(),
-        display_name: categoryDisplayName.trim(),
-      }),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['parameter-categories'] })
-      setCategoryCode('')
-      setCategoryDisplayName('')
-    },
-  })
+  useEffect(() => {
+    if (queryDraft === state.query) return
 
-  const deactivateMutation = useMutation({
-    mutationFn: deactivateParameter,
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['parameters'] })
-    },
-  })
+    const timeout = window.setTimeout(() => {
+      setSearchParams(
+        serializeParameterRegistrySearch({ ...state, query: queryDraft }),
+        { replace: true },
+      )
+    }, 250)
 
-  function resetForm() {
-    setEditing(null)
-    setForm(initialParameterFormState)
+    return () => window.clearTimeout(timeout)
+  }, [queryDraft, setSearchParams, state])
+
+  useEffect(() => {
+    if (repairSearch === null) return
+    setSearchParams(new URLSearchParams(repairSearch), { replace: true })
+  }, [repairSearch, setSearchParams])
+
+  function pushState(next: ParameterRegistryState) {
+    setSearchParams(serializeParameterRegistrySearch(next))
   }
 
-  function startEdit(parameter: ParameterOut) {
-    setEditing(parameter)
-    setForm(stateFromParameter(parameter))
+  function setFilter<K extends 'category' | 'type' | 'active'>(
+    key: K,
+    value: ParameterRegistryState[K],
+  ) {
+    pushState({ ...state, [key]: value })
   }
 
-  function updateField<K extends keyof ParameterFormState>(key: K, value: ParameterFormState[K]) {
-    setForm((current) => ({ ...current, [key]: value }))
+  function openEditor(edit: EditTarget) {
+    pushState({ ...state, edit })
   }
 
-  function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    saveMutation.mutate()
-  }
-
-  function submitCategory(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    createCategoryMutation.mutate()
-  }
+  const editorKey = editTargetKey(state.edit)
 
   return (
-    <section className="space-y-6">
-      <div>
-        <p className="text-sm text-cyan-700">Phase 0 · EC1/EC3 확인</p>
-        <h2 className="text-2xl font-semibold">파라미터 관리</h2>
-        <p className="mt-2 text-sm text-slate-500">
-          파라미터를 추가·수정·비활성화하고 목록 반영을 즉시 확인한다.
-        </p>
-      </div>
+    <section className="space-y-5">
+      <PageHeader
+        data-page-title
+        tabIndex={-1}
+        title="파라미터 레지스트리"
+        description="파라미터를 검색하고 목록을 유지한 채 옆에서 생성·수정합니다."
+        actions={
+          <>
+            <Button type="button" variant="secondary" onClick={() => setCsvOpen(true)}>
+              <Upload aria-hidden="true" size={16} strokeWidth={2} />
+              CSV 가져오기
+            </Button>
+            <Button type="button" variant="secondary" onClick={() => setCategoryOpen(true)}>
+              <FolderPlus aria-hidden="true" size={16} strokeWidth={2} />
+              카테고리 추가
+            </Button>
+            <Button type="button" onClick={() => openEditor({ kind: 'new' })}>
+              <Plus aria-hidden="true" size={16} strokeWidth={2} />
+              새 파라미터
+            </Button>
+          </>
+        }
+      />
 
-      <CsvImportPanel />
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(260px,2fr)_minmax(150px,1fr)_minmax(130px,.8fr)_minmax(130px,.8fr)]">
+        <label className="grid gap-1.5 text-sm font-semibold text-ink-950">
+          검색
+          <span className="relative block">
+            <Search
+              aria-hidden="true"
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted"
+              size={16}
+              strokeWidth={2}
+            />
+            <input
+              className="input pl-9"
+              placeholder="code, 표시명, 카테고리, 단위"
+              type="search"
+              value={queryDraft}
+              onChange={(event) => setQueryDraft(event.target.value)}
+            />
+          </span>
+        </label>
 
-      <form onSubmit={submitCategory} className="rounded-xl border border-slate-200 bg-white shadow-sm p-5">
-        <h3 className="mb-4 text-lg font-semibold">카테고리 추가</h3>
-        <div className="grid gap-4 md:grid-cols-[1fr_1fr_auto]">
-          <Field label="Category code">
-            <input
-              className="input"
-              value={categoryCode}
-              onChange={(event) => setCategoryCode(event.target.value)}
-              required
-            />
-          </Field>
-          <Field label="표시명">
-            <input
-              className="input"
-              value={categoryDisplayName}
-              onChange={(event) => setCategoryDisplayName(event.target.value)}
-              required
-            />
-          </Field>
-          <div className="flex items-end">
-            <button className="btn-secondary" type="submit" disabled={createCategoryMutation.isPending}>
-              카테고리 저장
-            </button>
-          </div>
-        </div>
-        {createCategoryMutation.isError ? (
-          <p className="mt-3 text-sm text-red-600">{getApiErrorMessage(createCategoryMutation.error)}</p>
-        ) : null}
-      </form>
+        <label className="grid gap-1.5 text-sm font-semibold text-ink-950">
+          카테고리
+          <select
+            className="input"
+            disabled={categoriesQuery.isPending || categoriesQuery.isError}
+            value={state.category ?? ''}
+            onChange={(event) => setFilter('category', event.target.value || null)}
+          >
+            <option value="">전체 카테고리</option>
+            {(categoriesQuery.data ?? []).map((category) => (
+              <option key={category.id} value={category.code}>
+                {category.display_name}
+                {category.is_active ? '' : ' (비활성)'}
+              </option>
+            ))}
+          </select>
+        </label>
 
-      <form onSubmit={submit} className="rounded-xl border border-slate-200 bg-white shadow-sm p-5">
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <h3 className="text-lg font-semibold">{editing ? '파라미터 수정' : '파라미터 추가'}</h3>
-          {editing ? (
-            <button type="button" className="text-sm text-slate-600 underline" onClick={resetForm}>
-              새 파라미터 입력
-            </button>
-          ) : null}
-        </div>
-        <div className="grid gap-4 md:grid-cols-2">
-          <Field label="Code">
-            <input
-              className="input"
-              value={form.code}
-              onChange={(event) => updateField('code', event.target.value)}
-              disabled={editing !== null}
-              required
-            />
-          </Field>
-          <Field label="표시명">
-            <input
-              className="input"
-              value={form.displayName}
-              onChange={(event) => updateField('displayName', event.target.value)}
-              required
-            />
-          </Field>
-          <Field label="타입">
-            <select
-              className="input"
-              value={form.valueType}
-              onChange={(event) => updateField('valueType', event.target.value as ValueType)}
-              disabled={editing !== null}
-            >
-              {valueTypes.map((type) => (
-                <option key={type} value={type}>
-                  {type}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="카테고리">
-            <select
-              className="input"
-              value={form.categoryId}
-              onChange={(event) => updateField('categoryId', event.target.value)}
-            >
-              <option value="">없음</option>
-              {(categoriesQuery.data ?? []).map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.display_name}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="단위">
-            <input
-              className="input"
-              value={form.unit}
-              onChange={(event) => updateField('unit', event.target.value)}
-            />
-          </Field>
-          <Field label="최소값">
-            <input
-              className="input"
-              type="number"
-              value={form.minValue}
-              onChange={(event) => updateField('minValue', event.target.value)}
-            />
-          </Field>
-          <Field label="최대값">
-            <input
-              className="input"
-              type="number"
-              value={form.maxValue}
-              onChange={(event) => updateField('maxValue', event.target.value)}
-            />
-          </Field>
-          <Field label="설명">
-            <input
-              className="input"
-              value={form.description}
-              onChange={(event) => updateField('description', event.target.value)}
-            />
-          </Field>
-          <Field label="선택지(choice, 쉼표 구분)">
-            <input
-              className="input"
-              value={form.optionsText}
-              onChange={(event) => updateField('optionsText', event.target.value)}
-              disabled={form.valueType !== 'choice' || editing !== null}
-              placeholder="pos, neg"
-            />
-          </Field>
-        </div>
-        <div className="mt-4 flex items-center gap-3">
-          <button className="btn-primary" type="submit" disabled={saveMutation.isPending}>
-            {saveMutation.isPending ? '저장 중...' : '저장'}
-          </button>
-          {saveMutation.isError ? <span className="text-sm text-red-600">{getApiErrorMessage(saveMutation.error)}</span> : null}
-        </div>
-      </form>
+        <label className="grid gap-1.5 text-sm font-semibold text-ink-950">
+          타입
+          <select
+            className="input"
+            value={state.type ?? ''}
+            onChange={(event) => setFilter('type', (event.target.value || null) as ValueType | null)}
+          >
+            <option value="">전체 타입</option>
+            {VALUE_TYPES.map((valueType) => (
+              <option key={valueType} value={valueType}>
+                {valueType}
+              </option>
+            ))}
+          </select>
+        </label>
 
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold">파라미터 목록</h3>
-        <label className="flex items-center gap-2 text-sm text-slate-600">
-          <input
-            type="checkbox"
-            checked={includeInactive}
-            onChange={(event) => setIncludeInactive(event.target.checked)}
-          />
-          비활성 포함
+        <label className="grid gap-1.5 text-sm font-semibold text-ink-950">
+          상태
+          <select
+            className="input"
+            value={state.active}
+            onChange={(event) =>
+              setFilter('active', event.target.value as ParameterRegistryState['active'])
+            }
+          >
+            <option value="active">활성</option>
+            <option value="all">전체</option>
+            <option value="inactive">비활성</option>
+          </select>
         </label>
       </div>
 
-      {parametersQuery.isLoading ? <LoadingMessage /> : null}
-      {parametersQuery.isError ? <ErrorMessage message={getApiErrorMessage(parametersQuery.error)} /> : null}
-      {parametersQuery.data ? (
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50 text-slate-600">
-              <tr>
-                <th className="px-4 py-3">code</th>
-                <th className="px-4 py-3">표시명</th>
-                <th className="px-4 py-3">타입</th>
-                <th className="px-4 py-3">상태</th>
-                <th className="px-4 py-3">작업</th>
-              </tr>
-            </thead>
-            <tbody>
-              {parametersQuery.data.map((parameter) => (
-                <tr key={parameter.id} className="border-t border-slate-200">
-                  <td className="px-4 py-3 font-mono text-cyan-700">{parameter.code}</td>
-                  <td className="px-4 py-3">{parameter.display_name}</td>
-                  <td className="px-4 py-3">{parameter.value_type}</td>
-                  <td className="px-4 py-3">{parameter.is_active ? 'active' : 'inactive'}</td>
-                  <td className="space-x-2 px-4 py-3">
-                    <button className="btn-secondary" type="button" onClick={() => startEdit(parameter)}>
-                      수정
-                    </button>
-                    <button
-                      className="btn-danger"
-                      type="button"
-                      disabled={!parameter.is_active || deactivateMutation.isPending}
-                      onClick={() => deactivateMutation.mutate(parameter.id)}
-                    >
-                      비활성화
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {parametersQuery.data.length === 0 ? (
-            <p className="p-4 text-sm text-slate-500">등록된 파라미터가 없다.</p>
-          ) : null}
+      {categoriesQuery.isError ? (
+        <InlineAlert tone="error">
+          카테고리를 불러오지 못했습니다. {getApiErrorMessage(categoriesQuery.error)}
+        </InlineAlert>
+      ) : null}
+
+      <section aria-labelledby="parameter-list-heading" className="space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <h2
+            ref={listHeadingRef}
+            id="parameter-list-heading"
+            data-parameter-list-heading
+            className="rounded-sm text-lg font-bold text-ink-950 focus:outline-2 focus:outline-offset-2 focus:outline-brand-700"
+            tabIndex={-1}
+          >
+            파라미터 목록
+          </h2>
+          <p className="text-sm font-medium tabular-nums text-muted">{rows.length}개</p>
         </div>
+
+        {parametersQuery.isPending ? (
+          <InlineAlert tone="info">파라미터 목록을 불러오는 중입니다.</InlineAlert>
+        ) : null}
+        {parametersQuery.isError ? (
+          <InlineAlert className="flex flex-wrap items-center justify-between gap-3" tone="error">
+            <span>{getApiErrorMessage(parametersQuery.error)}</span>
+            <Button size="compact" type="button" variant="secondary" onClick={() => parametersQuery.refetch()}>
+              다시 시도
+            </Button>
+          </InlineAlert>
+        ) : null}
+
+        {!parametersQuery.isPending && !parametersQuery.isError ? (
+          rows.length > 0 ? (
+            <ParameterRegistryTable
+              categories={categoriesQuery.data ?? []}
+              parameters={rows}
+              onEdit={(id) => openEditor({ kind: 'existing', id })}
+            />
+          ) : (
+            <div className="rounded-xl border border-dashed border-border-control bg-surface px-5 py-8 text-center">
+              <p className="font-semibold text-ink-950">조건에 맞는 파라미터가 없습니다.</p>
+              <p className="mt-1 text-sm text-muted">검색어나 필터를 바꿔 보세요.</p>
+            </div>
+          )
+        ) : null}
+      </section>
+
+      <CsvImportDialog open={csvOpen} onClose={() => setCsvOpen(false)} />
+      <CategoryCreateDialog open={categoryOpen} onClose={() => setCategoryOpen(false)} />
+      {state.edit.kind !== 'closed' ? (
+        <ParameterEditorDrawer
+          key={editorKey}
+          categories={categoriesQuery.data ?? []}
+          fallbackFocusRef={listHeadingRef}
+          target={state.edit}
+          onClose={() => openEditor({ kind: 'closed' })}
+        />
       ) : null}
     </section>
   )
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+interface ParameterRegistryTableProps {
+  parameters: readonly ParameterOut[]
+  categories: readonly CategoryOut[]
+  onEdit: (parameterId: number) => void
+}
+
+export function ParameterRegistryTable({
+  parameters,
+  categories,
+  onEdit,
+}: ParameterRegistryTableProps) {
+  const categoriesById = new Map(categories.map((category) => [category.id, category]))
+
   return (
-    <label className="space-y-1 text-sm text-slate-600">
-      <span>{label}</span>
-      {children}
-    </label>
+    <div className="min-w-0 overflow-x-auto rounded-xl border border-border-subtle bg-surface">
+      <table className="w-full min-w-[880px] table-fixed text-left text-sm">
+        <colgroup>
+          <col className="w-[18%]" />
+          <col className="w-[20%]" />
+          <col className="w-[9%]" />
+          <col className="w-[14%]" />
+          <col className="w-[20%]" />
+          <col className="w-[9%]" />
+          <col className="w-[10%]" />
+        </colgroup>
+        <thead className="bg-canvas text-xs font-semibold text-muted">
+          <tr className="h-9">
+            <th className="px-3" scope="col">Code</th>
+            <th className="px-3" scope="col">표시명</th>
+            <th className="px-3" scope="col">타입</th>
+            <th className="px-3" scope="col">카테고리</th>
+            <th className="px-3" scope="col">단위 / 제약</th>
+            <th className="px-3" scope="col">상태</th>
+            <th className="px-3 text-right" scope="col">작업</th>
+          </tr>
+        </thead>
+        <tbody>
+          {parameters.map((parameter) => {
+            const category =
+              parameter.category_id === null
+                ? undefined
+                : categoriesById.get(parameter.category_id)
+
+            return (
+              <tr
+                key={parameter.id}
+                className="h-9 shadow-[inset_0_1px_0_var(--color-border-subtle)]"
+              >
+                <td className="min-w-0 overflow-hidden px-3">
+                  <span className="block truncate whitespace-nowrap font-mono text-xs font-semibold text-brand-700" title={parameter.code}>
+                    {parameter.code}
+                  </span>
+                </td>
+                <td className="min-w-0 overflow-hidden px-3">
+                  <span className="block truncate whitespace-nowrap font-medium text-ink-950" title={parameter.display_name}>
+                    {parameter.display_name}
+                  </span>
+                </td>
+                <td className="px-3 text-xs text-muted">{parameter.value_type}</td>
+                <td className="min-w-0 overflow-hidden px-3">
+                  <span className="block truncate whitespace-nowrap text-muted" title={category?.display_name ?? '미분류'}>
+                    {category?.display_name ?? '미분류'}
+                  </span>
+                </td>
+                <td className="min-w-0 overflow-hidden px-3">
+                  <span className="block truncate whitespace-nowrap text-muted" title={parameterConstraintSummary(parameter)}>
+                    {parameterConstraintSummary(parameter)}
+                  </span>
+                </td>
+                <td className="px-3">
+                  {parameter.is_active ? (
+                    <Badge tone="neutral">활성</Badge>
+                  ) : (
+                    <Badge tone="warning">비활성</Badge>
+                  )}
+                </td>
+                <td className="px-3 text-right">
+                  <Button
+                    data-parameter-edit-trigger={parameter.id}
+                    type="button"
+                    variant="ghost"
+                    onClick={() => onEdit(parameter.id)}
+                  >
+                    수정
+                  </Button>
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
   )
+}
+
+function parameterConstraintSummary(parameter: ParameterOut): string {
+  if (parameter.value_type === 'choice') {
+    const count = parameter.options.filter((option) => option.is_active).length
+    return `${count}개 선택지${parameter.unit ? ` · ${parameter.unit}` : ''}`
+  }
+
+  const range =
+    parameter.min_value !== null && parameter.max_value !== null
+      ? `${parameter.min_value}–${parameter.max_value}`
+      : parameter.min_value !== null
+        ? `≥ ${parameter.min_value}`
+        : parameter.max_value !== null
+          ? `≤ ${parameter.max_value}`
+          : ''
+  if (range && parameter.unit) return `${range} ${parameter.unit}`
+  return range || parameter.unit || '—'
+}
+
+function editTargetKey(target: EditTarget): string {
+  if (target.kind === 'existing') return `existing:${target.id}`
+  if (target.kind === 'invalid') return `invalid:${target.raw}`
+  return target.kind
 }

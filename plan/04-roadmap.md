@@ -4,14 +4,15 @@
 
 각 Phase는 수직 슬라이스(P3)로 완성한다 — DB부터 UI까지 관통해 **실제로 동작을 확인한 뒤** 다음 Phase로 넘어간다. 완료 기준(Exit Criteria)을 만족하지 못하면 다음 Phase를 시작하지 않는다.
 
-Phase별 세부 작업 계획(작업 분해·의존 관계·결정 항목)은 `phase-N-tasks.md`로 관리한다: [Phase 0](./phase-0-tasks.md) · [Phase 1](./phase-1-tasks.md) · [Phase 2](./phase-2-tasks.md) · [Phase 3](./phase-3-tasks.md) · [Phase 4](./phase-4-tasks.md) · [Phase 5](./phase-5-tasks.md) · [Phase 6](./phase-6-tasks.md)
+Phase별 세부 작업 계획(작업 분해·의존 관계·결정 항목)은 `phase-N-tasks.md`로 관리한다: [Phase 0](./phase-0-tasks.md) · [Phase 1](./phase-1-tasks.md) · [Phase 2](./phase-2-tasks.md) · [Phase 2.5 UI/UX 설계](../docs/superpowers/specs/2026-07-13-phase-2-5-ui-ux-design.md) · [Phase 3](./phase-3-tasks.md) · [Phase 4](./phase-4-tasks.md) · [Phase 5](./phase-5-tasks.md) · [Phase 6](./phase-6-tasks.md)
 
 ```mermaid
 flowchart LR
     P0[Phase 0<br/>리셋 + 기반] --> P1[Phase 1<br/>프로젝트 + 백본]
     P0 -.그리드 PoC 병행.- P1
     P1 --> P2[Phase 2<br/>조건표 편집기]
-    P2 --> P3[Phase 3<br/>검증 엔진]
+    P2 --> P25[Phase 2.5<br/>UI/UX 구조개편]
+    P25 --> P3[Phase 3<br/>검증 엔진]
     P3 --> P4[Phase 4<br/>변경 이력]
     P4 --> P5[Phase 5<br/>승인 + Revision]
     P5 --> P6[Phase 6<br/>출력]
@@ -71,6 +72,38 @@ flowchart LR
 - [x] 두 브라우저로 동시 접근 시 한쪽만 편집 가능하다
 
 Phase 2 완료: 2026-07-13. 상세 EC1~EC6 근거는 [phase-2-tasks.md](./phase-2-tasks.md) 참고.
+
+## Phase 2.5 — UI/UX 구조개편 + 디자인 시스템
+
+Phase 2 기능을 운영 가능한 화면 구조로 재배치하고, Phase 3~6이 일관된 UI 계약 위에서
+확장되도록 한다. 디자인 정본은 [`DESIGN.md`](../DESIGN.md), 승인된 상세 범위는
+[Phase 2.5 UI/UX 설계](../docs/superpowers/specs/2026-07-13-phase-2-5-ui-ux-design.md)를 따른다.
+
+**범위:**
+- 상단 전역 내비게이션 + 조건표 40px 집중 모드, 전역 `max-w-6xl` 제거
+- 프로젝트 목록/생성/상세/조건표 route 분리
+- 검색·표 중심 프로젝트 목록과 세 단계 프로젝트 생성
+- 목록 중심 파라미터 관리 + 편집 drawer, CSV/category 보조 작업 분리
+- Precision Teal semantic token과 공통 버튼·폼·상태·drawer/dialog 접근성 계약
+- Phase 3~5 검증·이력·코멘트를 위한 content-gated 하단 workbench 슬롯
+- 기존 Phase 2 잠금·자동저장·붙여넣기·조건 행 흐름 회귀 검증
+
+**비목표:**
+- 백엔드/API 변경
+- Phase 3 검증 엔진·문구 mapper 선행 구현
+- Phase 4~6 이력·승인·출력 기능 선행 구현
+- 새 UI framework나 모바일 조건표 편집 최적화
+
+**완료 기준:**
+- [x] 프로젝트 목록·생성·상세·시트가 독립 URL과 단일 화면 책임을 갖는다
+- [x] 조건표가 브라우저의 남은 폭·높이를 사용하며 Phase 2 편집 계약이 회귀하지 않는다
+- [x] 파라미터 목록이 첫 viewport에 보이고 생성·수정은 접근 가능한 drawer에서 수행된다
+- [x] semantic token과 공통 상태·폼·버튼 규칙이 핵심 화면에 적용된다
+- [x] 1024/1440/1920 브라우저 QA, 키보드 QA, 전체 frontend gate가 통과한다
+
+Phase 2.5 구현 완료: 2026-07-14. 자동화 게이트, route/history·업무 회귀,
+1024/1440/1920 반응형·키보드 QA와 최종 시각 판정은
+[브라우저 QA 근거](../docs/superpowers/evidence/2026-07-13-phase-2-5-browser-qa.md)에 기록했다.
 
 ## Phase 3 — 검증 엔진
 

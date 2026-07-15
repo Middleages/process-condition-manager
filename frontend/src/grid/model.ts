@@ -15,7 +15,7 @@ import type { CellStatus, ConditionGridColumn, ConditionGridRow, PasteStagingCel
 export const IDENTITY_COLUMNS = [
   { id: '__layer__', title: 'Layer / Step' },
   { id: '__condition__', title: '조건' },
-  { id: '__por__', title: 'POR' },
+  { id: '__por__', title: 'POR (○ 선택)' },
 ] as const
 
 export const IDENTITY_COLUMN_COUNT = IDENTITY_COLUMNS.length
@@ -40,6 +40,48 @@ export function distinctCategories(columns: readonly ConditionGridColumn[]): str
     }
   }
   return result
+}
+
+export type ColumnJumpResult =
+  | { kind: 'empty' }
+  | { kind: 'not-found' }
+  | {
+      kind: 'match'
+      parameterCode: string
+      categoryCode: string | null
+      requiresCategoryChange: boolean
+    }
+
+/**
+ * 컬럼 검색 결과를 현재 카테고리와 함께 해석한다.
+ *
+ * 같은 검색어가 여러 컬럼에 걸리면 현재 보이는 컬럼을 먼저 고른다. 숨겨진 결과만 있으면 그
+ * 컬럼의 카테고리(null이면 전체 보기)로 전환해야 함을 호출자에게 알린다. 실제 상태 전환과
+ * scroll 명령은 React commit 경계가 있으므로 이 순수 함수가 수행하지 않는다.
+ */
+export function resolveColumnJump(
+  columns: readonly ConditionGridColumn[],
+  activeCategory: string | null,
+  rawQuery: string,
+): ColumnJumpResult {
+  const query = rawQuery.trim().toLocaleLowerCase()
+  if (query === '') return { kind: 'empty' }
+
+  const matches = (column: ConditionGridColumn): boolean =>
+    column.key.trim().toLocaleLowerCase().includes(query) ||
+    column.headerName.trim().toLocaleLowerCase().includes(query)
+  const isVisible = (column: ConditionGridColumn): boolean =>
+    activeCategory === null || column.categoryCode === activeCategory
+
+  const match = columns.find((column) => isVisible(column) && matches(column)) ?? columns.find(matches)
+  if (match === undefined) return { kind: 'not-found' }
+
+  return {
+    kind: 'match',
+    parameterCode: match.key,
+    categoryCode: match.categoryCode,
+    requiresCategoryChange: !isVisible(match),
+  }
 }
 
 /** 연속된 같은 layerKey 행의 그룹 한 개. */
@@ -114,6 +156,36 @@ export function formatNumberDisplay(value: string | null | undefined, unit?: str
 /** 붙여넣기 매트릭스(행×열 문자열)를 TSV 텍스트로 되돌린다. onPaste 콜백 계약이 TSV 문자열이므로. */
 export function matrixToTsv(values: readonly (readonly string[])[]): string {
   return values.map((row) => row.join('\t')).join('\n')
+}
+
+/**
+ * 비동기 클립보드 콜백이 시작 당시의 시트 문맥에서 아직 유효한지 판정한다.
+ *
+ * 붙여넣기 권한이나 보이는 컬럼/행이 바뀌면 호출자가 새 generation을 발급한다. 콜백은
+ * 시작할 때 캡처한 generation과 현재 generation이 같고, 현재 정책도 허용할 때만 좌표를
+ * 해석할 수 있다. 라이브러리와 React 상태를 모르는 작은 공용 가드로 두어 어댑터와 상위
+ * 스테이징 경계에서 같은 규칙을 적용한다.
+ */
+export function isCurrentPasteCallback(
+  snapshotGeneration: symbol,
+  currentGeneration: symbol,
+  enabled: boolean,
+): boolean {
+  return enabled && snapshotGeneration === currentGeneration
+}
+
+/**
+ * 커밋된 붙여넣기 문맥만 runtime ref에 게시한다.
+ *
+ * React 호출자는 반드시 layout effect 같은 commit 단계에서 이 함수를 호출한다. render 중
+ * 만들어졌다가 폐기된 snapshot은 이 함수를 통과하지 않으므로, 이미 커밋된 콜백의 generation을
+ * 오염시키지 않는다. 작은 production primitive로 분리해 그 경계를 순수 테스트할 수 있게 한다.
+ */
+export function commitPasteCallbackRuntime<T extends { generation: symbol }>(
+  runtimeRef: { current: T },
+  committed: T,
+): void {
+  runtimeRef.current = committed
 }
 
 /**
