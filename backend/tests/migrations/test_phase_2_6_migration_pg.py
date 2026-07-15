@@ -204,14 +204,14 @@ def _wait_until_session_is_lock_blocked(
 
 def test_empty_0003_upgrades_to_final_schema(migration_db: MigrationDatabase) -> None:
     migration_db.upgrade("0003")
-    migration_db.upgrade("head")
+    migration_db.upgrade("0004")
 
     assert migration_db.current_revision() == "0004"
     _assert_final_shape(migration_db.connection)
 
 
 def test_fresh_base_upgrades_to_final_schema(migration_db: MigrationDatabase) -> None:
-    migration_db.upgrade("head")
+    migration_db.upgrade("0004")
 
     assert migration_db.current_revision() == "0004"
     _assert_final_shape(migration_db.connection)
@@ -220,7 +220,7 @@ def test_fresh_base_upgrades_to_final_schema(migration_db: MigrationDatabase) ->
 def test_empty_final_schema_can_downgrade_to_0003_for_local_recovery(
     migration_db: MigrationDatabase,
 ) -> None:
-    migration_db.upgrade("head")
+    migration_db.upgrade("0004")
     migration_db.downgrade("0003")
 
     inspector = sa.inspect(migration_db.connection)
@@ -278,7 +278,7 @@ def test_preflight_table_locks_block_a_writer_until_destructive_ddl_commits(
 
     try:
         with ThreadPoolExecutor(max_workers=2) as executor:
-            migration = executor.submit(migration_db.upgrade, "head")
+            migration = executor.submit(migration_db.upgrade, "0004")
             assert ddl_reached.wait(timeout=10)
             writer = executor.submit(_write_parameter)
             assert writer_started.wait(timeout=10)
@@ -326,7 +326,7 @@ def test_writer_committed_before_lock_check_is_seen_and_leaves_0003_unchanged(
                 )
             )
             with ThreadPoolExecutor(max_workers=1) as executor:
-                migration = executor.submit(migration_db.upgrade, "head")
+                migration = executor.submit(migration_db.upgrade, "0004")
                 migration_waited = _wait_until_session_is_lock_blocked(
                     migration_db.database, migration_application_name
                 )
@@ -354,7 +354,7 @@ def test_any_mutable_row_blocks_before_ddl(
     migration_db.insert_guard_row(table_name)
 
     with pytest.raises(RuntimeError, match="disposable app DB"):
-        migration_db.upgrade("head")
+        migration_db.upgrade("0004")
 
     inspector = sa.inspect(migration_db.connection)
     assert migration_db.current_revision() == "0003"
@@ -373,7 +373,7 @@ def test_offline_upgrade_is_rejected(migration_db: MigrationDatabase) -> None:
 def test_phase_2_6_owned_schema_matches_orm_metadata(
     migration_db: MigrationDatabase,
 ) -> None:
-    migration_db.upgrade("head")
+    migration_db.upgrade("0004")
     inspector = sa.inspect(migration_db.connection)
 
     for table_name in ("choice_set", "choice_option", "project_profile"):
@@ -485,7 +485,7 @@ def test_phase_2_6_owned_schema_matches_orm_metadata(
 def test_choice_binding_accepts_valid_orm_rows_and_rejects_invalid_raw_row(
     migration_db: MigrationDatabase,
 ) -> None:
-    migration_db.upgrade("head")
+    migration_db.upgrade("0004")
 
     with Session(bind=migration_db.connection) as session:
         choice_set = session.scalar(

@@ -352,11 +352,18 @@ export function ParameterRegistryTable({
 
 function parameterConstraintSummary(parameter: ParameterOut): string {
   if (parameter.value_type === 'choice') {
-    return parameter.choice_set
+    const choiceSet = parameter.choice_set
       ? `${parameter.choice_set.code} · ${parameter.choice_set.display_name}`
       : '선택지 집합 없음'
+    return parameter.required ? `필수 · ${choiceSet}` : choiceSet
   }
-  if (parameter.value_type !== 'number') return '—'
+  if (parameter.value_type === 'text') {
+    const guidance = [
+      parameter.required ? '필수' : null,
+      parameter.pattern_hint,
+    ].filter((value): value is string => value !== null)
+    return guidance.join(' · ') || '—'
+  }
 
   const range =
     parameter.min_value !== null && parameter.max_value !== null
@@ -366,8 +373,10 @@ function parameterConstraintSummary(parameter: ParameterOut): string {
         : parameter.max_value !== null
           ? `≤ ${parameter.max_value}`
           : ''
-  if (range && parameter.unit) return `${range} ${parameter.unit}`
-  return range || parameter.unit || '—'
+  const numeric = range && parameter.unit ? `${range} ${parameter.unit}` : range || parameter.unit
+  if (parameter.required && numeric) return `필수 · ${numeric}`
+  if (parameter.required) return '필수'
+  return numeric || '—'
 }
 
 function editTargetKey(target: EditTarget): string {

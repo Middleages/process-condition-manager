@@ -12,6 +12,7 @@ from app.domain.parameters.rules import (
     normalize_number_bounds,
     validate_choice_set_binding,
     validate_code,
+    validate_number_metadata,
 )
 from app.domain.parameters.types import ValueType
 
@@ -115,9 +116,7 @@ def parse_rows(text: str) -> list[dict[str, str]]:
 
     headers = [normalize_header(cell) for cell in raw_header]
     if "options" in headers or any(header.endswith("_options") for header in headers):
-        raise CsvImportError(
-            "options 컬럼은 더 이상 지원하지 않는다; choice_set_code를 사용하라"
-        )
+        raise CsvImportError("options 컬럼은 더 이상 지원하지 않는다; choice_set_code를 사용하라")
     if "code" not in headers:
         raise CsvImportError("필수 컬럼 code가 없다")
 
@@ -205,15 +204,20 @@ def _to_payload(
             code="invalid_active_choice_set",
         )
 
-    min_value, max_value = normalize_number_bounds(
-        row.get("min_value"), row.get("max_value")
+    unit = row.get("unit", "").strip() or None
+    min_value, max_value = normalize_number_bounds(row.get("min_value"), row.get("max_value"))
+    validate_number_metadata(
+        value_type,
+        unit=unit,
+        min_value=min_value,
+        max_value=max_value,
     )
     return ImportPayload(
         code=code,
         display_name=row.get("display_name", "").strip() or code,
         value_type=value_type,
         category=_resolve_category(row.get("category")),
-        unit=row.get("unit", "").strip() or None,
+        unit=unit,
         min_value=min_value,
         max_value=max_value,
         choice_set_code=choice_set_code,

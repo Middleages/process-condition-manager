@@ -60,14 +60,15 @@ const FIELD_ORDER: Array<keyof ParameterFormState> = [
   'displayName',
   'valueType',
   'categoryId',
+  'required',
   'choiceSetCode',
   'unit',
   'minValue',
   'maxValue',
+  'pattern',
+  'patternHint',
   'description',
 ]
-const UNSUPPORTED_CLEAR_MESSAGE =
-  '현재 API에서는 설명·단위·카테고리·최소/최대값을 비울 수 없습니다. 기존 값을 복원하거나 해당 변경을 취소한 뒤 저장해 주세요.'
 
 type OpenEditTarget = Exclude<EditTarget, { kind: 'closed' }>
 type ActiveChoiceSetLoader = (
@@ -238,7 +239,6 @@ export function ParameterEditorDrawer({
   )
   const currentPlan = createPlan ?? updatePlan
   const fieldErrors = currentPlan?.fieldErrors ?? {}
-  const unsupportedClears = updatePlan?.unsupportedClears ?? []
   const dirty = currentPlan?.dirty ?? false
   const createChoiceSetResourceBlocked = shouldBlockParameterChoiceSetCreateResource({
     isCreate: target.kind === 'new',
@@ -310,7 +310,6 @@ export function ParameterEditorDrawer({
 
     if (
       Object.keys(fieldErrors).length > 0 ||
-      unsupportedClears.length > 0 ||
       createChoiceSetResourceBlocked
     ) {
       setShowValidation(true)
@@ -340,8 +339,7 @@ export function ParameterEditorDrawer({
         ? '파라미터 수정'
         : '파라미터를 열 수 없습니다'
   const invalidPlan =
-    currentPlan !== null &&
-    (Object.keys(fieldErrors).length > 0 || unsupportedClears.length > 0)
+    currentPlan !== null && Object.keys(fieldErrors).length > 0
 
   return (
     <>
@@ -398,7 +396,6 @@ export function ParameterEditorDrawer({
           touched={touched}
           saveError={saveMutation.error}
           fieldsLocked={pending}
-          unsupportedClears={unsupportedClears.length > 0}
           choiceSets={choiceSetsQuery.data ?? []}
           choiceSetsLoading={choiceSetsQuery.isPending || choiceSetResourceBlocked}
           choiceSetsError={
@@ -472,7 +469,6 @@ interface EditorBodyProps {
   touched: ReadonlySet<keyof ParameterFormState>
   saveError: unknown
   fieldsLocked: boolean
-  unsupportedClears: boolean
   choiceSets: readonly ChoiceSetSummaryOut[]
   choiceSetsLoading: boolean
   choiceSetsError: string | null
@@ -499,7 +495,6 @@ function EditorBody({
   touched,
   saveError,
   fieldsLocked,
-  unsupportedClears,
   choiceSets,
   choiceSetsLoading,
   choiceSetsError,
@@ -555,7 +550,6 @@ function EditorBody({
         </div>
       ) : null}
 
-      {unsupportedClears ? <InlineAlert tone="warning">{UNSUPPORTED_CLEAR_MESSAGE}</InlineAlert> : null}
       {detailPresentation?.kind === 'editor' && detailPresentation.refetchError ? (
         <ParameterDetailRefetchError error={detailQuery.error} onRetry={onRetryDetail} />
       ) : null}
@@ -623,6 +617,20 @@ function EditorBody({
             ))}
           </select>
         </Field>
+        <label
+          className="flex items-center gap-2 text-sm font-semibold text-ink-950"
+          htmlFor="parameter-required"
+        >
+          <input
+            id="parameter-required"
+            data-parameter-field="required"
+            type="checkbox"
+            checked={form.required}
+            onBlur={() => onFieldBlur('required')}
+            onChange={(event) => onFieldChange('required', event.target.checked)}
+          />
+          필수 입력
+        </label>
       </fieldset>
 
       {form.valueType === 'choice' ? (
@@ -647,38 +655,68 @@ function EditorBody({
       ) : null}
 
       <fieldset className="grid gap-4 border-t border-border-subtle pt-5" disabled={fieldsLocked}>
-        <legend className="mb-3 text-sm font-bold text-ink-950">범위와 설명</legend>
-        <Field inputId="parameter-unit" label="단위" error={errorFor('unit')}>
-          <input
-            className="input"
-            data-parameter-field="unit"
-            value={form.unit}
-            onBlur={() => onFieldBlur('unit')}
-            onChange={(event) => onFieldChange('unit', event.target.value)}
-          />
-        </Field>
-        <div className="grid grid-cols-2 gap-3">
-          <Field inputId="parameter-min-value" label="최소값" error={errorFor('minValue')}>
-            <input
-              className="input"
-              data-parameter-field="minValue"
-              inputMode="decimal"
-              value={form.minValue}
-              onBlur={() => onFieldBlur('minValue')}
-              onChange={(event) => onFieldChange('minValue', event.target.value)}
-            />
-          </Field>
-          <Field inputId="parameter-max-value" label="최대값" error={errorFor('maxValue')}>
-            <input
-              className="input"
-              data-parameter-field="maxValue"
-              inputMode="decimal"
-              value={form.maxValue}
-              onBlur={() => onFieldBlur('maxValue')}
-              onChange={(event) => onFieldChange('maxValue', event.target.value)}
-            />
-          </Field>
-        </div>
+        <legend className="mb-3 text-sm font-bold text-ink-950">검증과 설명</legend>
+        {form.valueType === 'number' ? (
+          <>
+            <Field inputId="parameter-unit" label="단위" error={errorFor('unit')}>
+              <input
+                className="input"
+                data-parameter-field="unit"
+                value={form.unit}
+                onBlur={() => onFieldBlur('unit')}
+                onChange={(event) => onFieldChange('unit', event.target.value)}
+              />
+            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field inputId="parameter-min-value" label="최소값" error={errorFor('minValue')}>
+                <input
+                  className="input"
+                  data-parameter-field="minValue"
+                  inputMode="decimal"
+                  value={form.minValue}
+                  onBlur={() => onFieldBlur('minValue')}
+                  onChange={(event) => onFieldChange('minValue', event.target.value)}
+                />
+              </Field>
+              <Field inputId="parameter-max-value" label="최대값" error={errorFor('maxValue')}>
+                <input
+                  className="input"
+                  data-parameter-field="maxValue"
+                  inputMode="decimal"
+                  value={form.maxValue}
+                  onBlur={() => onFieldBlur('maxValue')}
+                  onChange={(event) => onFieldChange('maxValue', event.target.value)}
+                />
+              </Field>
+            </div>
+          </>
+        ) : null}
+        {form.valueType === 'text' ? (
+          <>
+            <Field inputId="parameter-pattern" label="패턴 (관리자용)" error={errorFor('pattern')}>
+              <input
+                className="input font-mono"
+                data-parameter-field="pattern"
+                value={form.pattern}
+                onBlur={() => onFieldBlur('pattern')}
+                onChange={(event) => onFieldChange('pattern', event.target.value)}
+              />
+            </Field>
+            <Field
+              inputId="parameter-pattern-hint"
+              label="사용자 형식 안내"
+              error={errorFor('patternHint')}
+            >
+              <input
+                className="input"
+                data-parameter-field="patternHint"
+                value={form.patternHint}
+                onBlur={() => onFieldBlur('patternHint')}
+                onChange={(event) => onFieldChange('patternHint', event.target.value)}
+              />
+            </Field>
+          </>
+        ) : null}
         <Field inputId="parameter-description" label="설명" error={errorFor('description')}>
           <textarea
             className="input h-24 resize-y py-2"

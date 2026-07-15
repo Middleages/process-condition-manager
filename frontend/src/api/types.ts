@@ -30,6 +30,9 @@ export interface ParameterOut {
   unit: string | null
   min_value: string | null
   max_value: string | null
+  required: boolean
+  pattern: string | null
+  pattern_hint: string | null
   choice_set: ChoiceSetSummaryOut | null
   sort_order: number
   is_active: boolean
@@ -45,6 +48,9 @@ export interface ParameterCreate {
   unit?: string | null
   min_value?: string | null
   max_value?: string | null
+  required?: boolean
+  pattern?: string | null
+  pattern_hint?: string | null
   sort_order?: number
 }
 
@@ -55,6 +61,9 @@ export interface ParameterUpdate {
   unit?: string | null
   min_value?: string | null
   max_value?: string | null
+  required?: boolean | null
+  pattern?: string | null
+  pattern_hint?: string | null
   sort_order?: number | null
   is_active?: boolean | null
 }

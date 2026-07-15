@@ -23,6 +23,9 @@ const numberParameter: ParameterOut = {
   unit: 'mJ',
   min_value: '0',
   max_value: '100',
+  required: false,
+  pattern: null,
+  pattern_hint: null,
   choice_set: null,
   sort_order: 0,
   is_active: true,
@@ -96,7 +99,7 @@ describe('atomic parameter persistence', () => {
     expect(client.update).toHaveBeenCalledTimes(1)
   })
 
-  it('makes no request for clean, invalid, or unsupported-clear plans', async () => {
+  it('makes no request for clean or invalid plans and persists explicit clears', async () => {
     const client = api()
     const clean = buildParameterUpdatePlan(numberParameter, stateFromParameter(numberParameter))
     const invalid = buildParameterCreatePlan({
@@ -104,10 +107,12 @@ describe('atomic parameter persistence', () => {
       code: '',
       displayName: '',
     })
-    const unsupportedClear = buildParameterUpdatePlan(numberParameter, {
+    const explicitClear = buildParameterUpdatePlan(numberParameter, {
       ...stateFromParameter(numberParameter),
       unit: '',
     })
+    const cleared = { ...numberParameter, unit: null }
+    client.update.mockResolvedValue(cleared)
 
     await expect(
       persistParameter(
@@ -118,14 +123,15 @@ describe('atomic parameter persistence', () => {
     await expect(
       persistParameter({ mode: 'create', plan: invalid }, client),
     ).rejects.toThrow('field errors')
-    await expect(
-      persistParameter(
-        { mode: 'edit', parameterId: numberParameter.id, plan: unsupportedClear },
-        client,
-      ),
-    ).rejects.toThrow('Unsupported parameter clears')
-
     expect(client.create).not.toHaveBeenCalled()
     expect(client.update).not.toHaveBeenCalled()
+
+    await expect(
+      persistParameter(
+        { mode: 'edit', parameterId: numberParameter.id, plan: explicitClear },
+        client,
+      ),
+    ).resolves.toBe(cleared)
+    expect(client.update).toHaveBeenCalledWith(numberParameter.id, { unit: null })
   })
 })

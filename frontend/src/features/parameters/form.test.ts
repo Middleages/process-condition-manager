@@ -42,6 +42,9 @@ const numberParameter: ParameterOut = {
   unit: 'mJ',
   min_value: '10',
   max_value: '100',
+  required: false,
+  pattern: null,
+  pattern_hint: null,
   choice_set: null,
   sort_order: 0,
   is_active: true,
@@ -77,6 +80,9 @@ describe('parameter form transport', () => {
       'unit',
       'minValue',
       'maxValue',
+      'required',
+      'pattern',
+      'patternHint',
       'choiceSetCode',
     ])
     expect(initialParameterFormState).not.toHaveProperty('optionsText')
@@ -103,6 +109,9 @@ describe('parameter form transport', () => {
       unit: 'nm',
       min_value: '1.5',
       max_value: '90071992547409931234567890.5',
+      required: false,
+      pattern: null,
+      pattern_hint: null,
     })
   })
 
@@ -134,6 +143,9 @@ describe('parameter form transport', () => {
       unit: '',
       minValue: '',
       maxValue: '',
+      required: false,
+      pattern: '',
+      patternHint: '',
       choiceSetCode: 'equipment_mode',
     })
   })
@@ -154,6 +166,9 @@ describe('parameter form transport', () => {
       unit: null,
       min_value: null,
       max_value: null,
+      required: false,
+      pattern: null,
+      pattern_hint: null,
     })
     expect(payload).not.toHaveProperty('code')
     expect(payload).not.toHaveProperty('value_type')
@@ -185,6 +200,9 @@ describe('parameter create plans', () => {
         unit: 'mJ',
         min_value: '1.5',
         max_value: '100',
+        required: false,
+        pattern: null,
+        pattern_hint: null,
       },
       fieldErrors: {},
       dirty: true,
@@ -197,6 +215,7 @@ describe('parameter create plans', () => {
         ...initialParameterFormState,
         code: 'pitch',
         displayName: 'Pitch',
+        valueType: 'number',
         minValue: value,
       })
 
@@ -209,6 +228,7 @@ describe('parameter create plans', () => {
       ...initialParameterFormState,
       code: 'pitch',
       displayName: 'Pitch',
+      valueType: 'number',
       minValue: '0.50',
       maxValue: '0.5',
     })
@@ -216,6 +236,7 @@ describe('parameter create plans', () => {
       ...initialParameterFormState,
       code: 'pitch',
       displayName: 'Pitch',
+      valueType: 'number',
       minValue: '9007199254740993',
       maxValue: '9007199254740992.9999',
     })
@@ -298,7 +319,6 @@ describe('parameter safe update plans', () => {
         max_value: '90',
       },
       fieldErrors: {},
-      unsupportedClears: [],
       dirty: true,
     })
     expect(plan).not.toHaveProperty('options')
@@ -335,7 +355,7 @@ describe('parameter safe update plans', () => {
     expect(plan.payload).not.toHaveProperty('choice_set_code')
   })
 
-  it('preserves the explicit unsupported-clear contract without putting null in PATCH', () => {
+  it('serializes explicit nullable clears instead of silently omitting them', () => {
     const plan = buildParameterUpdatePlan(numberParameter, {
       ...stateFromParameter(numberParameter),
       description: '',
@@ -345,15 +365,71 @@ describe('parameter safe update plans', () => {
       maxValue: '',
     })
 
-    expect(plan.unsupportedClears).toEqual([
-      'description',
-      'categoryId',
-      'unit',
-      'minValue',
-      'maxValue',
-    ])
-    expect(plan.payload).toEqual({})
+    expect(plan.payload).toEqual({
+      description: null,
+      category_id: null,
+      unit: null,
+      min_value: null,
+      max_value: null,
+    })
     expect(plan.dirty).toBe(true)
+  })
+
+  it('hydrates and PATCHes required and the pattern pair atomically', () => {
+    const original: ParameterOut = {
+      ...choiceParameter,
+      code: 'mask_id',
+      value_type: 'text',
+      choice_set: null,
+      required: true,
+      pattern: '[A-Z]{2}-[0-9]{4}',
+      pattern_hint: '영문 대문자 2자리-숫자 4자리',
+    }
+    const hydrated = stateFromParameter(original)
+
+    expect(hydrated).toMatchObject({
+      required: true,
+      pattern: '[A-Z]{2}-[0-9]{4}',
+      patternHint: '영문 대문자 2자리-숫자 4자리',
+    })
+    expect(
+      buildParameterUpdatePlan(original, {
+        ...hydrated,
+        required: false,
+        patternHint: 'AA-0000 형식',
+      }).payload,
+    ).toEqual({
+      required: false,
+      pattern: '[A-Z]{2}-[0-9]{4}',
+      pattern_hint: 'AA-0000 형식',
+    })
+    expect(
+      buildParameterUpdatePlan(original, {
+        ...hydrated,
+        pattern: '',
+        patternHint: '',
+      }).payload,
+    ).toEqual({ pattern: null, pattern_hint: null })
+  })
+
+  it('requires pattern and user-facing hint together for text parameters', () => {
+    const missingHint = buildParameterCreatePlan({
+      ...initialParameterFormState,
+      code: 'mask_id',
+      displayName: 'Mask ID',
+      valueType: 'text',
+      pattern: '[A-Z]{2}',
+    })
+    const hintOnly = buildParameterCreatePlan({
+      ...initialParameterFormState,
+      code: 'mask_id',
+      displayName: 'Mask ID',
+      valueType: 'text',
+      patternHint: '영문 대문자 2자리',
+    })
+
+    expect(missingHint.fieldErrors.patternHint).toBeDefined()
+    expect(hintOnly.fieldErrors.pattern).toBeDefined()
   })
 
   it('reports blank display name, malformed decimals, and reversed bounds', () => {

@@ -2,8 +2,9 @@
 
 from typing import cast
 
+import pytest
 from httpx import AsyncClient
-from sqlalchemy import Enum, Table, event
+from sqlalchemy import Enum, String, Table, event
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.models.parameter import Parameter
@@ -36,9 +37,237 @@ def test_parameter_metadata_persists_lowercase_enum_and_binding_constraint() -> 
     table = cast(Table, Parameter.__table__)
     enum_type = cast(Enum, table.c.value_type.type)
     assert enum_type.enums == ["number", "text", "choice"]
-    assert "ck_parameter_choice_set_binding" in {
-        constraint.name for constraint in table.constraints
+    assert {
+        "ck_parameter_choice_set_binding",
+        "ck_parameter_number_metadata",
+        "ck_parameter_pattern_pair",
+    } <= {constraint.name for constraint in table.constraints}
+    assert table.c.required.nullable is False
+    assert table.c.required.server_default is not None
+    assert cast(String, table.c.pattern.type).length == 256
+    assert cast(String, table.c.pattern_hint.type).length == 256
+
+
+async def test_create_text_validation_metadata_is_normalized_and_returned(
+    db_client: AsyncClient,
+) -> None:
+    response = await db_client.post(
+        "/api/parameters",
+        json={
+            "code": "mask_id",
+            "display_name": "Mask ID",
+            "value_type": "text",
+            "required": True,
+            "pattern": "[A-Z]{2}-[0-9]{4}",
+            "pattern_hint": "  영문 대문자 2자리-숫자 4자리  ",
+        },
+    )
+
+    assert response.status_code == 201, response.text
+    assert response.json()["required"] is True
+    assert response.json()["pattern"] == "[A-Z]{2}-[0-9]{4}"
+    assert response.json()["pattern_hint"] == "영문 대문자 2자리-숫자 4자리"
+
+
+@pytest.mark.parametrize(
+    ("metadata", "code"),
+    [
+        ({"pattern": "[A-Z]{2}"}, "pattern_hint_required"),
+        ({"pattern_hint": "영문 대문자 2자리"}, "pattern_required"),
+        (
+            {"pattern": "(a+)+", "pattern_hint": "안전한 형식"},
+            "portable_pattern_invalid",
+        ),
+    ],
+)
+async def test_create_rejects_incomplete_or_nonportable_text_pattern(
+    db_client: AsyncClient,
+    metadata: dict[str, str],
+    code: str,
+) -> None:
+    response = await db_client.post(
+        "/api/parameters",
+        json={
+            "code": "mask_id",
+            "display_name": "Mask ID",
+            "value_type": "text",
+            **metadata,
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == code
+
+
+@pytest.mark.parametrize(
+    ("value_type", "metadata"),
+    [
+        ("text", {"unit": "nm"}),
+        ("text", {"min_value": "0"}),
+        ("choice", {"max_value": "10", "choice_set_code": "equipment_mode"}),
+        (
+            "number",
+            {"pattern": "[0-9]{1,3}", "pattern_hint": "숫자 1~3자리"},
+        ),
+    ],
+)
+async def test_create_rejects_metadata_owned_by_another_value_type(
+    db_client: AsyncClient,
+    db_session: AsyncSession,
+    value_type: str,
+    metadata: dict[str, str],
+) -> None:
+    if value_type == "choice":
+        await seed_choice_set(db_session, code="equipment_mode")
+        await db_session.commit()
+    response = await db_client.post(
+        "/api/parameters",
+        json={
+            "code": "metadata_owner",
+            "display_name": "Metadata owner",
+            "value_type": value_type,
+            **metadata,
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] in {
+        "number_metadata_not_allowed",
+        "pattern_not_allowed",
     }
+
+
+async def test_patch_omission_preserves_and_explicit_null_clears_nullable_metadata(
+    db_client: AsyncClient,
+) -> None:
+    category = (
+        await db_client.post(
+            "/api/parameters/categories",
+            json={"code": "photo", "display_name": "Photo"},
+        )
+    ).json()
+    created = (
+        await db_client.post(
+            "/api/parameters",
+            json={
+                "code": "dose",
+                "display_name": "Dose",
+                "description": "Wafer dose",
+                "value_type": "number",
+                "category_id": category["id"],
+                "unit": "mJ",
+                "min_value": "1",
+                "max_value": "100",
+            },
+        )
+    ).json()
+
+    preserved = await db_client.patch(
+        f"/api/parameters/{created['id']}",
+        json={"required": True},
+    )
+    assert preserved.status_code == 200, preserved.text
+    assert preserved.json()["description"] == "Wafer dose"
+    assert preserved.json()["category_id"] == category["id"]
+    assert preserved.json()["unit"] == "mJ"
+    assert preserved.json()["min_value"] == "1"
+    assert preserved.json()["max_value"] == "100"
+    assert preserved.json()["required"] is True
+
+    cleared = await db_client.patch(
+        f"/api/parameters/{created['id']}",
+        json={
+            "description": None,
+            "category_id": None,
+            "unit": None,
+            "min_value": None,
+            "max_value": None,
+        },
+    )
+    assert cleared.status_code == 200, cleared.text
+    assert {
+        key: cleared.json()[key]
+        for key in ("description", "category_id", "unit", "min_value", "max_value")
+    } == {
+        "description": None,
+        "category_id": None,
+        "unit": None,
+        "min_value": None,
+        "max_value": None,
+    }
+    assert cleared.json()["required"] is True
+
+
+async def test_patch_pattern_pair_is_atomic_and_hint_only_is_rejected(
+    db_client: AsyncClient,
+) -> None:
+    created = (
+        await db_client.post(
+            "/api/parameters",
+            json={
+                "code": "mask_id",
+                "display_name": "Mask ID",
+                "value_type": "text",
+                "pattern": "[A-Z]{2}-[0-9]{4}",
+                "pattern_hint": "영문 대문자 2자리-숫자 4자리",
+            },
+        )
+    ).json()
+
+    preserved = await db_client.patch(
+        f"/api/parameters/{created['id']}",
+        json={"display_name": "Mask identifier"},
+    )
+    assert preserved.status_code == 200, preserved.text
+    assert preserved.json()["pattern"] == "[A-Z]{2}-[0-9]{4}"
+    assert preserved.json()["pattern_hint"] == "영문 대문자 2자리-숫자 4자리"
+
+    hint_only = await db_client.patch(
+        f"/api/parameters/{created['id']}",
+        json={"pattern_hint": "다른 안내"},
+    )
+    pattern_only = await db_client.patch(
+        f"/api/parameters/{created['id']}",
+        json={"pattern": "[A-Z]{3}"},
+    )
+    contradictory_clear = await db_client.patch(
+        f"/api/parameters/{created['id']}",
+        json={"pattern": None, "pattern_hint": "남겨 둘 수 없는 안내"},
+    )
+    assert hint_only.status_code == 422
+    assert pattern_only.status_code == 422
+    assert contradictory_clear.status_code == 422
+
+    cleared = await db_client.patch(
+        f"/api/parameters/{created['id']}",
+        json={"pattern": None},
+    )
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json()["pattern"] is None
+    assert cleared.json()["pattern_hint"] is None
+
+
+async def test_patch_rejects_required_null_and_non_number_metadata(
+    db_client: AsyncClient,
+) -> None:
+    created = (
+        await db_client.post(
+            "/api/parameters",
+            json={"code": "note", "display_name": "Note", "value_type": "text"},
+        )
+    ).json()
+
+    required_null = await db_client.patch(
+        f"/api/parameters/{created['id']}",
+        json={"required": None},
+    )
+    number_metadata = await db_client.patch(
+        f"/api/parameters/{created['id']}",
+        json={"unit": "nm"},
+    )
+    assert required_null.status_code == 422
+    assert number_metadata.status_code == 422
+    assert number_metadata.json()["code"] == "number_metadata_not_allowed"
 
 
 async def test_code_normalized_and_duplicate_rejected(db_client: AsyncClient) -> None:
@@ -295,9 +524,7 @@ async def test_deactivate_is_soft_delete(db_client: AsyncClient) -> None:
     assert response.status_code == 200
     assert response.json()["is_active"] is False
     assert (await db_client.get("/api/parameters")).json() == []
-    all_parameters = await db_client.get(
-        "/api/parameters", params={"include_inactive": True}
-    )
+    all_parameters = await db_client.get("/api/parameters", params={"include_inactive": True})
     assert [row["code"] for row in all_parameters.json()] == ["overlay"]
 
 
@@ -361,9 +588,7 @@ async def test_unknown_category_rejected(db_client: AsyncClient) -> None:
             json={"code": "pitch", "display_name": "피치", "value_type": "number"},
         )
     ).json()
-    update = await db_client.patch(
-        f"/api/parameters/{parameter['id']}", json={"category_id": 777}
-    )
+    update = await db_client.patch(f"/api/parameters/{parameter['id']}", json={"category_id": 777})
     assert update.status_code == 404
 
 
@@ -388,23 +613,15 @@ async def test_csv_preview_then_apply_uses_choice_set_code(
         "mode,Mode,choice,,,,,equipment_mode,,3\n"
     )
 
-    preview = await db_client.post(
-        "/api/parameters/import/preview", json={"csv_text": csv_text}
-    )
+    preview = await db_client.post("/api/parameters/import/preview", json={"csv_text": csv_text})
     assert preview.status_code == 200, preview.text
     assert preview.json()["created_count"] == 2
     assert preview.json()["updated_count"] == 1
-    assert {row["code"] for row in (await db_client.get("/api/parameters")).json()} == {
-        "memo"
-    }
+    assert {row["code"] for row in (await db_client.get("/api/parameters")).json()} == {"memo"}
 
-    applied = await db_client.post(
-        "/api/parameters/import/apply", json={"csv_text": csv_text}
-    )
+    applied = await db_client.post("/api/parameters/import/apply", json={"csv_text": csv_text})
     assert applied.status_code == 200, applied.text
-    parameters = {
-        row["code"]: row for row in (await db_client.get("/api/parameters")).json()
-    }
+    parameters = {row["code"]: row for row in (await db_client.get("/api/parameters")).json()}
     assert parameters["pitch"]["min_value"] == "1.5"
     assert parameters["pitch"]["max_value"] == "10"
     assert parameters["mode"]["choice_set"]["code"] == "equipment_mode"
@@ -420,13 +637,34 @@ async def test_csv_import_reports_errors_without_applying(
         "9bad,Bad,text,,,,,,,0\n"
         "mode,Mode,choice,,,,,,,0\n"
     )
-    preview = await db_client.post(
-        "/api/parameters/import/preview", json={"csv_text": csv_text}
-    )
+    preview = await db_client.post("/api/parameters/import/preview", json={"csv_text": csv_text})
     assert preview.status_code == 200
     assert preview.json()["error_count"] == 2
-    applied = await db_client.post(
-        "/api/parameters/import/apply", json={"csv_text": csv_text}
-    )
+    applied = await db_client.post("/api/parameters/import/apply", json={"csv_text": csv_text})
     assert applied.status_code == 200
+    assert (await db_client.get("/api/parameters")).json() == []
+
+
+async def test_csv_preview_rejects_non_number_numeric_metadata_before_apply(
+    db_client: AsyncClient,
+) -> None:
+    csv_text = (
+        "code,display_name,value_type,category,unit,min_value,max_value,"
+        "choice_set_code,description,sort_order\n"
+        "note,Note,text,,nm,,,,,0\n"
+    )
+
+    preview = await db_client.post(
+        "/api/parameters/import/preview",
+        json={"csv_text": csv_text},
+    )
+    applied = await db_client.post(
+        "/api/parameters/import/apply",
+        json={"csv_text": csv_text},
+    )
+
+    assert preview.status_code == 200
+    assert preview.json()["error_count"] == 1
+    assert applied.status_code == 200
+    assert applied.json()["error_count"] == 1
     assert (await db_client.get("/api/parameters")).json() == []

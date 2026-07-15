@@ -21,6 +21,9 @@ const activeParameter: ParameterOut = {
   unit: 'ms',
   min_value: '0',
   max_value: '100',
+  required: false,
+  pattern: null,
+  pattern_hint: null,
   choice_set: null,
   sort_order: 0,
   is_active: true,
@@ -160,5 +163,26 @@ describe('ParameterAdminPage', () => {
     expect(html).toContain('>—</span>')
     expect(html).not.toContain('legacy-unit')
     expect(html).not.toContain('1–2')
+  })
+
+  it('shows user-facing pattern guidance without rendering the raw pattern', () => {
+    const textParameter: ParameterOut = {
+      ...activeParameter,
+      id: 5,
+      code: 'mask_id',
+      display_name: 'Mask ID',
+      value_type: 'text',
+      unit: null,
+      min_value: null,
+      max_value: null,
+      required: true,
+      pattern: '[A-Z]{2}-[0-9]{4}',
+      pattern_hint: '영문 대문자 2자리-숫자 4자리',
+    }
+    const html = renderPage('/parameters', [textParameter])
+
+    expect(html).toContain('영문 대문자 2자리-숫자 4자리')
+    expect(html).toContain('필수')
+    expect(html).not.toContain('[A-Z]{2}-[0-9]{4}')
   })
 })
