@@ -211,7 +211,7 @@ export function ValidationWorkbench({
           <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
             {filteredIssues.length > 0 ? (
               <div
-                className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2 min-[1024px]:grid-cols-3 min-[1440px]:grid-cols-4 min-[1920px]:grid-cols-5"
+                className="grid min-w-0 grid-cols-1 gap-2 min-[640px]:grid-cols-2 min-[1024px]:grid-cols-3 min-[1440px]:grid-cols-4 min-[1920px]:grid-cols-5"
               >
                 {filteredIssues.map((issue) => (
                   <ValidationIssueTile

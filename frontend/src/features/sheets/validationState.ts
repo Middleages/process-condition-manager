@@ -10,7 +10,7 @@ import {
 } from '@/shared/domain/validation'
 
 export const VALIDATION_DEFINITIONS_FAILURE =
-  '검증 정의를 불러오지 못했습니다. 다시 시도해 주세요.'
+  '검증 규칙을 불러오지 못했습니다. 관리자에게 확인을 요청해 주세요.'
 export const VALIDATION_PERSISTENCE_GUIDANCE = '저장 후 검증해 주세요.'
 export const VALIDATION_SERVER_FAILURE = '최신 상태 확인 실패 · 다시 시도'
 

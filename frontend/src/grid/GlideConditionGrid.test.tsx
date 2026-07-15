@@ -66,8 +66,13 @@ describe('composite cell status rendering priority', () => {
   })
 
   it('makes scrollToCell scroll, select, and focus through Glide only inside the adapter', () => {
+    const command = source.match(
+      /scrollToCell\(conditionId, parameterCode\)[\s\S]*?(?=\n      scrollToColumn)/,
+    )?.[0]
+    expect(command).toMatch(/scrollTo\([\s\S]*?setSelectionState\(/)
+    expect(command).not.toContain('gridRef.current?.focus()')
     expect(source).toMatch(
-      /scrollToCell\(conditionId, parameterCode\)[\s\S]*?scrollTo\([\s\S]*?setSelectionState\([\s\S]*?gridRef\.current\?\.focus\(\)/,
+      /requestedFocusRef\.current = null\s+gridRef\.current\?\.focus\(\)/,
     )
     expect(source).toContain('gridSelection={effectiveGridSelection}')
     expect(source).toContain('onGridSelectionChange={handleGridSelectionChange}')

@@ -1,0 +1,37 @@
+[
+  {
+    "code": "qa_prior_por",
+    "name": "QA prior POR",
+    "description": null,
+    "severity": "error",
+    "scope": {},
+    "spec": {
+      "schema_version": 1,
+      "type": "value_exists_in_prior_por",
+      "source_parameter_code": "qa_source",
+      "candidate_parameter_code": "qa_candidate"
+    },
+    "version": 1,
+    "is_active": true,
+    "created_at": "2026-07-15T14:58:17.807398Z",
+    "updated_at": "2026-07-15T14:58:17.807398Z"
+  },
+  {
+    "code": "qa_required_if",
+    "name": "QA required-if",
+    "description": null,
+    "severity": "error",
+    "scope": {},
+    "spec": {
+      "schema_version": 1,
+      "type": "required_if",
+      "when_parameter_code": "qa_trigger",
+      "equals": "Y",
+      "required_parameter_code": "qa_target"
+    },
+    "version": 1,
+    "is_active": true,
+    "created_at": "2026-07-15T14:58:17.807398Z",
+    "updated_at": "2026-07-15T14:58:17.807398Z"
+  }
+]

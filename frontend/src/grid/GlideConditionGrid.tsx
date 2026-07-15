@@ -588,7 +588,6 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
           })
           requestedFocusRef.current = [target.col, target.row]
           setSelectionState({ layoutAuthority, selection: selectionForCell(target.col, target.row) })
-          gridRef.current?.focus()
         }
       },
       scrollToColumn(parameterCode) {

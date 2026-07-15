@@ -1,0 +1,48 @@
+{
+  "categories": [
+    "qa_primary",
+    "qa_hidden"
+  ],
+  "choice_set_code": "qa_validation_choices",
+  "choice_set_version": 1,
+  "conditions": {
+    "l1_r1": 1,
+    "l1_r2": 2,
+    "l2_r1": 3,
+    "l2_r2": 4
+  },
+  "initial_state": "zero issues; LEGACY is stored and still active",
+  "layers": [
+    {
+      "key": "QA-LINE::QA-PROC::010::QA1",
+      "por_condition_id": 1,
+      "sort_order": 0
+    },
+    {
+      "key": "QA-LINE::QA-PROC::020::QA2",
+      "por_condition_id": 3,
+      "sort_order": 1
+    }
+  ],
+  "parameters": [
+    "qa_required",
+    "qa_range",
+    "qa_pattern",
+    "qa_trigger",
+    "qa_candidate",
+    "qa_target",
+    "qa_source",
+    "qa_choice"
+  ],
+  "project_id": 1,
+  "project_identity": {
+    "line_id": "QA-LINE",
+    "part_id": "QA-PART",
+    "process_id": "QA-PROC"
+  },
+  "rules": {
+    "qa_prior_por": 1,
+    "qa_required_if": 1
+  },
+  "stored_choice_to_deactivate": "LEGACY"
+}

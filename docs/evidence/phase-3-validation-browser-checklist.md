@@ -1,9 +1,10 @@
 # Phase 3 validation workbench browser checklist
 
-This is the executable browser checklist for Phase 3 Task 8. A checked item must have a linked
-artifact or an exact observation in the execution record. **No browser scenario was executed while
-writing Task 8**; the unchecked matrix below is intentionally not evidence. Task 9 owns the final
-full-stack run and may copy the proven results into its dated evidence report.
+This checklist originated in Phase 3 Task 8. A checked item has a machine-readable observation in
+[`phase-3-validation/run.json`](phase-3-validation/run.json), a linked screenshot/ARIA artifact, or
+both. Task 8 itself ran no browser scenario; the checked matrix below records the isolated Task 9
+Chromium execution. Two deliberately unchecked compound assertions retain their uncovered portion
+instead of treating nearby automated coverage as browser evidence.
 
 ## 1. Isolated local stack prerequisites
 
@@ -66,45 +67,45 @@ requests. Use Chromium viewports **1024x768**, **1440x900**, and **1920x1080**.
 
 ### Lifecycle and truthfulness
 
-- [ ] With a valid zero-issue sheet before any explicit action, `[data-sheet-workbench]` and
+- [x] With a valid zero-issue sheet before any explicit action, `[data-sheet-workbench]` and
   `[data-validation-workbench]` are absent and the grid consumes the unreserved height.
-- [ ] The `검증` button is keyboard discoverable outside the absent host.
-- [ ] A successful explicit zero-issue request mounts a 28–32px success strip showing `오류 0`,
+- [x] The `검증` button is keyboard discoverable outside the absent host.
+- [x] A successful explicit zero-issue request mounts a 28–32px success strip showing `오류 0`,
   `경고 0`, and `검증 완료 · 문제 없음`.
-- [ ] Definition/configuration unavailability shows the safe project-level alert, renders no green
+- [x] Definition/configuration unavailability shows the safe project-level alert, renders no green
   success state, and exposes no raw exception, SQL detail, regex source, or stack text.
-- [ ] A failed persistence attempt shows exactly `저장 후 검증해 주세요.` and preserves edits.
+- [x] A failed persistence attempt shows exactly `저장 후 검증해 주세요.` and preserves edits.
 
 ### Issue coverage and confirmation lifecycle
 
-- [ ] Standalone required/range/pattern errors show non-color `오류` labels and safe Korean guidance.
-- [ ] `required_if` anchors the required target cell and uses display names rather than fixed codes.
-- [ ] Prior-POR failure anchors the current source cell and explains both valid recovery choices.
-- [ ] A stored inactive choice shows a non-color `경고` label and does not increment the error count.
-- [ ] Immediate accepted edit updates the provisional result before persistence.
-- [ ] Edit → autosave → 500ms server confirmation changes wording to server-confirmed without losing
+- [x] Standalone required/range/pattern errors show non-color `오류` labels and safe Korean guidance.
+- [x] `required_if` anchors the required target cell and uses display names rather than fixed codes.
+- [x] Prior-POR failure anchors the current source cell and explains both valid recovery choices.
+- [x] A stored inactive choice shows a non-color `경고` label and does not increment the error count.
+- [x] Immediate accepted edit updates the provisional result before persistence.
+- [x] Edit → autosave → 500ms server confirmation changes wording to server-confirmed without losing
   the issue; correcting the value removes it and the matching confirmation remains fenced to the
   current generation.
-- [ ] Blocking or aborting the validation request retains the latest usable issues and local
+- [x] Blocking or aborting the validation request retains the latest usable issues and local
   provisional changes, shows exactly `최신 상태 확인 실패 · 다시 시도`, and retry recovers.
-- [ ] Error and warning filters toggle independently; `표시 N / 전체 M` always matches visible tiles.
+- [x] Error and warning filters toggle independently; `표시 N / 전체 M` always matches visible tiles.
 
 ### Keyboard, resize, and navigation
 
-- [ ] Keyboard only: focus the expand/collapse control and verify `aria-expanded` changes.
-- [ ] Keyboard only: toggle both severity filters and verify `aria-pressed` plus truthful counts.
-- [ ] Keyboard only: Enter and Space activate a tile once; the selected tile exposes
+- [x] Keyboard only: focus the expand/collapse control and verify `aria-expanded` changes.
+- [x] Keyboard only: toggle both severity filters and verify `aria-pressed` plus truthful counts.
+- [x] Keyboard only: Enter and Space activate a tile once; the selected tile exposes
   `aria-expanded=true` and expands the formerly truncated guidance.
-- [ ] The complete truncated guidance is present in the tile accessible name/description.
-- [ ] Focus the horizontal `role=separator`; verify `aria-orientation`, min/max/current values,
+- [x] The complete truncated guidance is present in the tile accessible name/description.
+- [x] Focus the horizontal `role=separator`; verify `aria-orientation`, min/max/current values,
   ArrowUp growth, ArrowDown shrink, deterministic step, and min/max clamp.
-- [ ] Pointer-drag the separator up/down; only the workbench issue area scrolls and the grid retains
+- [x] Pointer-drag the separator up/down; only the workbench issue area scrolls and the grid retains
   its minmax geometry.
-- [ ] Activating a target in the visible category scrolls directly and selects/focuses the exact
+- [x] Activating a target in the visible category scrolls directly and selects/focuses the exact
   condition/parameter cell.
-- [ ] Activating a hidden-category target first changes the category, then after the visible columns
+- [x] Activating a hidden-category target first changes the category, then after the visible columns
   commit scrolls/selects/focuses the exact cell; no timer race or stale-column jump occurs.
-- [ ] While paste review is open, tile navigation cannot bypass the category/paste guard and gives
+- [x] While paste review is open, tile navigation cannot bypass the category/paste guard and gives
   the apply-or-cancel guidance.
 
 ### Responsive, console, network, and overflow
@@ -112,16 +113,18 @@ requests. Use Chromium viewports **1024x768**, **1440x900**, and **1920x1080**.
 For each viewport, expand the panel with at least five issues and inspect computed
 `grid-template-columns` (not only class text):
 
-- [ ] 1024x768: 3 tile columns; collapsed tiles are 48–52px; no horizontal card/body overflow.
-- [ ] 1440x900: 4 tile columns; grid and workbench controls remain reachable.
-- [ ] 1920x1080: 5 tile columns; long selected guidance expands without horizontal scrolling.
+- [x] 1024x768: 3 tile columns; collapsed tiles are 48–52px; no horizontal card/body overflow.
+- [x] 1440x900: 4 tile columns; grid and workbench controls remain reachable.
+- [x] 1920x1080: 5 tile columns; long selected guidance expands without horizontal scrolling.
 - [ ] Validation cells retain dirty/comment markers underneath error/warning surface priority, and
-  their hover text names severity plus independent dirty/comment facts.
-- [ ] Console capture has no uncaught error or React warning during lifecycle, filter, resize,
+  their hover text names severity plus independent dirty/comment facts. *(Validation + dirty was
+  observed; no comment-bearing Phase 3 browser fixture exists.)*
+- [x] Console capture has no uncaught error or React warning during lifecycle, filter, resize,
   category reveal, failure, and retry scenarios.
 - [ ] Network capture shows no stale response adopted after a newer edit/project switch and no
-  unexpected 4xx/5xx outside the deliberately injected failure.
-- [ ] Screenshots contain no clipped primary action, covered focus ring, or viewport overflow.
+  unexpected 4xx/5xx outside the deliberately injected failure. *(A newer-edit timeline and zero
+  unexpected failures were observed; an in-flight project-switch race was not browser-exercised.)*
+- [x] Screenshots contain no clipped primary action, covered focus ring, or viewport overflow.
 
 ## 3. Suggested artifact layout
 
@@ -161,3 +164,77 @@ docker compose -p "$COMPOSE_PROJECT_NAME" down
 # Use `down -v` only after confirming COMPOSE_PROJECT_NAME is exactly pcm-phase3-validation-qa
 # and its data is disposable; never run it against the repository's default Compose project.
 ```
+
+## 5. Task 9 execution record — 2026-07-15 UTC / 2026-07-15–16 KST
+
+**Result:** passed in an isolated `pcm-phase3-validation-qa` Compose project. The final run started
+at `2026-07-15T14:58:34.568Z` (`23:58:34.568+09:00`) and completed at
+`2026-07-15T14:59:02.045Z` (`23:59:02.045+09:00`) against base source SHA
+`43a95b92986a2bb4ba2e0130e17f9c26c4379734`. The run records the dirty source paths and SHA-256
+hashes of every runtime file changed by browser-discovered fixes, so the captured result is tied to
+actual uncommitted source rather than only to the base commit.
+
+Durable evidence:
+
+- [machine-readable run and assertions](phase-3-validation/run.json)
+- [fixture identity](phase-3-validation/fixture.json), [parameter definitions](phase-3-validation/fixture-parameters.json),
+  [rules](phase-3-validation/fixture-rules.json), [Sheet](phase-3-validation/fixture-sheet.json), and
+  [mutated six-issue validation result](phase-3-validation/fixture-validation.json)
+- [browser harness](phase-3-validation/phase3_browser_qa.mjs) and
+  [fixture seeder](phase-3-validation/seed_validation_fixture.py)
+- [console capture](phase-3-validation/console.jsonl),
+  [network capture](phase-3-validation/network.jsonl), and
+  [runtime provenance](phase-3-validation/runtime.txt)
+- [zero-success ARIA](phase-3-validation/aria/zero-success-main.yaml) and
+  [issue-workbench ARIA](phase-3-validation/aria/issues-workbench-1440x900.yaml)
+- [screenshots](phase-3-validation/screenshots/) and
+  [artifact SHA-256 manifest](phase-3-validation/artifact-manifest.sha256)
+
+Exact observations supporting the checked items:
+
+- Before explicit validation both workbench hosts were absent and the grid was 723px high. Keyboard
+  Tab reached `검증` in six steps. The explicit zero result mounted a 30px strip with `오류 0`,
+  `경고 0`, and `검증 완료 · 문제 없음`.
+- A held range edit displayed a provisional issue before persistence. The PATCH request occurred at
+  epoch ms `1784127517004`, its held response at `1784127517042`, and the later correction cleared
+  provisionally at `1784127517997`; authoritative confirmation followed both durable states.
+- Four deliberately failed persistence attempts retained clipboard value `99`, showed exactly
+  `저장 후 검증해 주세요.`, and a subsequent retry persisted the edit.
+- The six-issue fixture produced five errors and one warning: `required`, `range_max`,
+  `pattern_mismatch`, `value_not_found_in_prior_por`, `required_if`, and `choice_inactive`.
+  Rendered text used display names/action guidance and contained none of the forbidden internal
+  sentinel, raw pattern, SQL, or stack content.
+- A deliberate validation 503 retained all six tiles, showed exactly
+  `최신 상태 확인 실패 · 다시 시도`, and recovered on retry. A deliberate ChoiceSet-definition
+  failure showed `검증 규칙을 불러오지 못했습니다. 관리자에게 확인을 요청해 주세요.`, with no
+  workbench and no green success state.
+- Filter states were `6/6`, `1/6`, `0/6`, `5/6`, then `6/6`; Enter and Space each toggled once.
+  The selected prior-POR tile expanded from 50px to 74px and retained the complete Korean guidance
+  in its accessible label and title.
+- The horizontal separator exposed min `180`, max `520`, current `300`; ArrowUp/ArrowDown moved by
+  24 and both clamps were reached. Pointer drag changed panel height `280→328→280` and grid height
+  `443→395→443` while the issue area remained the scroll owner.
+- Hidden-category activation selected `qa_hidden`, focused the grid canvas, and copied exact target
+  value `MISSING`; visible-category activation copied `99`. Open paste review kept the current
+  category and showed `붙여넣기를 적용 또는 취소한 뒤 이동해 주세요.`
+- Computed tile columns were exactly 3/4/5 at 1024/1440/1920. All collapsed tile heights were 50px;
+  the selected 1920 tile was 74px. Document, body, grid, and workbench had no horizontal overflow.
+- Chromium `143.0.7499.4` recorded zero unexpected console warnings/errors/page errors, zero
+  unexpected HTTP failures, and zero unexpected request failures. Seven deliberately injected 503
+  responses and their seven browser resource-error messages remain explicitly categorized in the
+  captures rather than filtered away.
+- Manual visual inspection of the zero, issue, hidden-focus, wide-selected, configuration-failure,
+  and retry screenshots found no clipped primary action, covered focus ring, or viewport overflow.
+
+Explicit browser gaps retained as unchecked:
+
+1. No comment-bearing cell fixture exists, so browser coverage proves validation + dirty marker
+   coexistence but not the future comment marker in the same cell. Unit tests cover composite state.
+2. No project switch was raced against an in-flight validation request. The run proves a newer-edit
+   timeline and zero unexpected failures; project/mount/persisted-generation fencing remains covered
+   by Vitest.
+3. Configuration unavailability used a deliberately failed ChoiceSet-options request rather than a
+   physically corrupted database JSON row. Backend tests cover corrupt active rule handling.
+
+The full automated, PostgreSQL, migration, performance, design-audit, and remaining-risk record is
+in [`phase-3-validation-verification.md`](phase-3-validation-verification.md).

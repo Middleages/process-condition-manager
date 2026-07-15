@@ -7,6 +7,7 @@ import { createAsyncQueue } from './autosave'
 import type { DirtyCell } from './editStore'
 import { reconcileSuccessfulPatch } from './persistenceReconciliation'
 import {
+  deferSheetLockAcquire,
   discardRetainedPasteSnapshot,
   persistDirtySnapshot,
   resolvePasteSnapshotAction,
@@ -19,6 +20,22 @@ import {
 const snapshot: DirtyCell[] = [
   { conditionId: '1', parameterCode: 'decimal', value: '001.5000', revision: 11 },
 ]
+
+describe('StrictMode sheet lock acquisition', () => {
+  it('skips the discarded effect and acquires exactly once for the surviving effect', async () => {
+    let firstActive = true
+    let secondActive = true
+    const acquire = vi.fn()
+
+    deferSheetLockAcquire(() => firstActive, acquire)
+    firstActive = false // StrictMode cleanup for the discarded mount
+    deferSheetLockAcquire(() => secondActive, acquire)
+    await Promise.resolve()
+
+    expect(acquire).toHaveBeenCalledOnce()
+    expect(secondActive).toBe(true)
+  })
+})
 
 describe('persistDirtySnapshot', () => {
   it('sends the exact request snapshot and reconciles the canonical response separately', async () => {

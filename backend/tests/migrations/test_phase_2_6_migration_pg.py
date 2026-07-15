@@ -18,13 +18,9 @@ from alembic.config import Config
 from sqlalchemy import event
 from sqlalchemy.engine import Connection
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
 
 from alembic import command
-from app.domain.parameters.types import ValueType
 from app.models import Base
-from app.models.choice import ChoiceSet
-from app.models.parameter import Parameter
 from tests.postgres_database import (
     TemporaryPostgresDatabase,
     _create_database,
@@ -482,33 +478,25 @@ def test_phase_2_6_owned_schema_matches_orm_metadata(
     assert parameter_fks[0]["referred_table"] == "choice_set"
 
 
-def test_choice_binding_accepts_valid_orm_rows_and_rejects_invalid_raw_row(
+def test_choice_binding_accepts_valid_rows_and_rejects_invalid_raw_row(
     migration_db: MigrationDatabase,
 ) -> None:
     migration_db.upgrade("0004")
 
-    with Session(bind=migration_db.connection) as session:
-        choice_set = session.scalar(
-            sa.select(ChoiceSet).where(ChoiceSet.code == "device_type")
-        )
-        assert choice_set is not None
-        session.add_all(
-            [
-                Parameter(
-                    code="valid_choice",
-                    display_name="Valid choice",
-                    value_type=ValueType.CHOICE,
-                    choice_set=choice_set,
-                ),
-                Parameter(
-                    code="valid_text",
-                    display_name="Valid text",
-                    value_type=ValueType.TEXT,
-                    choice_set=None,
-                ),
-            ]
-        )
-        session.commit()
+    choice_set_id = migration_db.connection.scalar(
+        sa.text("SELECT id FROM choice_set WHERE code = 'device_type'")
+    )
+    assert isinstance(choice_set_id, int)
+    migration_db.connection.execute(
+        sa.text(
+            "INSERT INTO parameter "
+            "(code, display_name, value_type, choice_set_id) VALUES "
+            "('valid_choice', 'Valid choice', 'choice', :choice_set_id), "
+            "('valid_text', 'Valid text', 'text', NULL)"
+        ),
+        {"choice_set_id": choice_set_id},
+    )
+    migration_db.connection.commit()
 
     with pytest.raises(IntegrityError):
         migration_db.connection.execute(

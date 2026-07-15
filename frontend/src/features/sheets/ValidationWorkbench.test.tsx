@@ -29,6 +29,8 @@ describe('ValidationWorkbench', () => {
     expect(html).toContain('>오류<')
     expect(html).toContain('aria-expanded="false"')
     expect(html).toContain('h-[50px]')
+    expect(html).toContain('min-[640px]:grid-cols-2')
+    expect(html).not.toContain('sm:grid-cols-2')
     expect(html).toContain('min-[1024px]:grid-cols-3')
     expect(html).toContain('min-[1440px]:grid-cols-4')
     expect(html).toContain('min-[1920px]:grid-cols-5')

@@ -71,7 +71,7 @@ describe('provisional evaluator boundary', () => {
       status: 'unavailable',
       issues: [],
       summary: null,
-      failure: '검증 정의를 불러오지 못했습니다. 다시 시도해 주세요.',
+      failure: '검증 규칙을 불러오지 못했습니다. 관리자에게 확인을 요청해 주세요.',
     })
 
     const invalid: ValidationInput = {

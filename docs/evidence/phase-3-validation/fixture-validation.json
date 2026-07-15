@@ -1,0 +1,92 @@
+{
+  "summary": {
+    "error_count": 5,
+    "warning_count": 1
+  },
+  "issues": [
+    {
+      "key": "required:1:qa_required",
+      "code": "required",
+      "rule_code": null,
+      "rule_version": null,
+      "severity": "error",
+      "condition_id": 1,
+      "layer_key": "QA-LINE::QA-PROC::010::QA1",
+      "parameter_code": "qa_required",
+      "details": {}
+    },
+    {
+      "key": "range_max:2:qa_range",
+      "code": "range_max",
+      "rule_code": null,
+      "rule_version": null,
+      "severity": "error",
+      "condition_id": 2,
+      "layer_key": "QA-LINE::QA-PROC::010::QA1",
+      "parameter_code": "qa_range",
+      "details": {
+        "max_value": "20",
+        "min_value": "10"
+      }
+    },
+    {
+      "key": "pattern_mismatch:3:qa_pattern",
+      "code": "pattern_mismatch",
+      "rule_code": null,
+      "rule_version": null,
+      "severity": "error",
+      "condition_id": 3,
+      "layer_key": "QA-LINE::QA-PROC::020::QA2",
+      "parameter_code": "qa_pattern",
+      "details": {
+        "pattern_hint": "영문 대문자 2자리-숫자 4자리"
+      }
+    },
+    {
+      "key": "value_not_found_in_prior_por:qa_prior_por:1:3:qa_source",
+      "code": "value_not_found_in_prior_por",
+      "rule_code": "qa_prior_por",
+      "rule_version": 1,
+      "severity": "error",
+      "condition_id": 3,
+      "layer_key": "QA-LINE::QA-PROC::020::QA2",
+      "parameter_code": "qa_source",
+      "details": {
+        "candidate_parameter_code": "qa_candidate",
+        "searched_layer_count": 1
+      }
+    },
+    {
+      "key": "required_if:qa_required_if:1:4:qa_target",
+      "code": "required_if",
+      "rule_code": "qa_required_if",
+      "rule_version": 1,
+      "severity": "error",
+      "condition_id": 4,
+      "layer_key": "QA-LINE::QA-PROC::020::QA2",
+      "parameter_code": "qa_target",
+      "details": {
+        "equals": "Y",
+        "required_parameter_code": "qa_target",
+        "when_parameter_code": "qa_trigger"
+      }
+    },
+    {
+      "key": "choice_inactive:1:qa_choice",
+      "code": "choice_inactive",
+      "rule_code": null,
+      "rule_version": null,
+      "severity": "warning",
+      "condition_id": 1,
+      "layer_key": "QA-LINE::QA-PROC::010::QA1",
+      "parameter_code": "qa_choice",
+      "details": {}
+    }
+  ],
+  "evaluated_at": "2026-07-15T14:58:49.177345Z",
+  "basis_hash": "sha256:c238394891c0773fbe4a5e44d70496a89106aeaf2f1090d66ec9a8be7450bcbf",
+  "rule_versions": {
+    "qa_prior_por": 1,
+    "qa_required_if": 1
+  }
+}

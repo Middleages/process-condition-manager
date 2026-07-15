@@ -130,6 +130,16 @@ export function shouldResumeAutosaveAfterReacquire(
   return dirtyCount > 0 && retainedPaste === null
 }
 
+/** StrictMode가 폐기한 effect가 네트워크 잠금을 획득하지 않도록 현재 tick 뒤에 경계를 둔다. */
+export function deferSheetLockAcquire(
+  isActive: () => boolean,
+  acquire: () => void,
+): void {
+  queueMicrotask(() => {
+    if (isActive()) acquire()
+  })
+}
+
 /** Network 성공 이전에는 canonical cache/dirty 정리 콜백을 절대 호출하지 않는 작은 경계. */
 export async function persistDirtySnapshot({
   projectId,
@@ -602,26 +612,33 @@ export function useSheetEditing(
     setPersistedGeneration(persistenceBaseline)
 
     acquireInFlightRef.current = true
-    acquireLock(projectId)
-      .then((lock) => {
-        if (cancelled || !isCurrentSession(generation)) {
-          void releaseLock(projectId, lock.lock_token) // 이미 이탈 → 즉시 해제
-          return
-        }
-        lockTokenRef.current = lock.lock_token
-        setEditingBy(null)
-        updateLockStatus('held')
-        startHeartbeat(generation)
-      })
-      .catch((error: unknown) => {
-        if (cancelled || !isCurrentSession(generation)) return
-        lockTokenRef.current = null
-        setEditingBy(getLockConflictHolder(error))
-        updateLockStatus('readonly') // 획득 실패(타인 편집 중 등) → 읽기 전용
-      })
-      .finally(() => {
-        if (isCurrentSession(generation)) acquireInFlightRef.current = false
-      })
+    // React StrictMode는 개발 중 effect를 한 번 마운트한 직후 폐기한다. 기존 profile-lock
+    // 경계와 같이 microtask까지 미루면 그 폐기된 effect는 POST /lock을 보내지 않는다.
+    deferSheetLockAcquire(
+      () => !cancelled && isCurrentSession(generation),
+      () => {
+        acquireLock(projectId)
+          .then((lock) => {
+            if (cancelled || !isCurrentSession(generation)) {
+              void releaseLock(projectId, lock.lock_token) // 이미 이탈 → 즉시 해제
+              return
+            }
+            lockTokenRef.current = lock.lock_token
+            setEditingBy(null)
+            updateLockStatus('held')
+            startHeartbeat(generation)
+          })
+          .catch((error: unknown) => {
+            if (cancelled || !isCurrentSession(generation)) return
+            lockTokenRef.current = null
+            setEditingBy(getLockConflictHolder(error))
+            updateLockStatus('readonly') // 획득 실패(타인 편집 중 등) → 읽기 전용
+          })
+          .finally(() => {
+            if (isCurrentSession(generation)) acquireInFlightRef.current = false
+          })
+      },
+    )
 
     // 비보유자는 서버가 공급한 heartbeat 주기로 조용히 재획득을 시도한다. 성공하면
     // 새로고침 없이 편집 모드로 전환하고, 실패 중에는 readonly 표시를 유지한다.

@@ -1,0 +1,241 @@
+{
+  "columns": [
+    {
+      "parameter_code": "qa_required",
+      "display_name": "필수 입력",
+      "value_type": "text",
+      "category_code": "qa_primary",
+      "unit": null,
+      "min_value": null,
+      "max_value": null,
+      "required": true,
+      "pattern": null,
+      "pattern_hint": null,
+      "description": "Task 9 fixture qa_required",
+      "choice_set_code": null,
+      "choice_set_version": null,
+      "sort_order": 0
+    },
+    {
+      "parameter_code": "qa_range",
+      "display_name": "노광량",
+      "value_type": "number",
+      "category_code": "qa_primary",
+      "unit": "mJ",
+      "min_value": "10",
+      "max_value": "20",
+      "required": false,
+      "pattern": null,
+      "pattern_hint": null,
+      "description": "Task 9 fixture qa_range",
+      "choice_set_code": null,
+      "choice_set_version": null,
+      "sort_order": 1
+    },
+    {
+      "parameter_code": "qa_pattern",
+      "display_name": "마스크 형식",
+      "value_type": "text",
+      "category_code": "qa_primary",
+      "unit": null,
+      "min_value": null,
+      "max_value": null,
+      "required": false,
+      "pattern": "[A-Z]{2}-[0-9]{4}",
+      "pattern_hint": "영문 대문자 2자리-숫자 4자리",
+      "description": "Task 9 fixture qa_pattern",
+      "choice_set_code": null,
+      "choice_set_version": null,
+      "sort_order": 2
+    },
+    {
+      "parameter_code": "qa_trigger",
+      "display_name": "사용 여부",
+      "value_type": "text",
+      "category_code": "qa_primary",
+      "unit": null,
+      "min_value": null,
+      "max_value": null,
+      "required": false,
+      "pattern": null,
+      "pattern_hint": null,
+      "description": "Task 9 fixture qa_trigger",
+      "choice_set_code": null,
+      "choice_set_version": null,
+      "sort_order": 3
+    },
+    {
+      "parameter_code": "qa_candidate",
+      "display_name": "앞선 POR 마스크",
+      "value_type": "text",
+      "category_code": "qa_primary",
+      "unit": null,
+      "min_value": null,
+      "max_value": null,
+      "required": false,
+      "pattern": null,
+      "pattern_hint": null,
+      "description": "Task 9 fixture qa_candidate",
+      "choice_set_code": null,
+      "choice_set_version": null,
+      "sort_order": 4
+    },
+    {
+      "parameter_code": "qa_target",
+      "display_name": "추가 지침",
+      "value_type": "text",
+      "category_code": "qa_hidden",
+      "unit": null,
+      "min_value": null,
+      "max_value": null,
+      "required": false,
+      "pattern": null,
+      "pattern_hint": null,
+      "description": "Task 9 fixture qa_target",
+      "choice_set_code": null,
+      "choice_set_version": null,
+      "sort_order": 5
+    },
+    {
+      "parameter_code": "qa_source",
+      "display_name": "현재 마스크",
+      "value_type": "text",
+      "category_code": "qa_hidden",
+      "unit": null,
+      "min_value": null,
+      "max_value": null,
+      "required": false,
+      "pattern": null,
+      "pattern_hint": null,
+      "description": "Task 9 fixture qa_source",
+      "choice_set_code": null,
+      "choice_set_version": null,
+      "sort_order": 6
+    },
+    {
+      "parameter_code": "qa_choice",
+      "display_name": "장비 모드",
+      "value_type": "choice",
+      "category_code": "qa_hidden",
+      "unit": null,
+      "min_value": null,
+      "max_value": null,
+      "required": false,
+      "pattern": null,
+      "pattern_hint": null,
+      "description": "Task 9 fixture qa_choice",
+      "choice_set_code": "qa_validation_choices",
+      "choice_set_version": 2,
+      "sort_order": 7
+    }
+  ],
+  "rows": [
+    {
+      "condition_id": 1,
+      "layer_key": "QA-LINE::QA-PROC::010::QA1",
+      "layer_label": "QA1 (010)",
+      "condition_label": "POR",
+      "is_por": true,
+      "layer_sort_order": 0,
+      "condition_index": 1,
+      "cells": {
+        "qa_candidate": "MASK-A",
+        "qa_choice": "LEGACY",
+        "qa_pattern": "AB-1234",
+        "qa_range": "15",
+        "qa_target": "configured",
+        "qa_trigger": "N"
+      }
+    },
+    {
+      "condition_id": 2,
+      "layer_key": "QA-LINE::QA-PROC::010::QA1",
+      "layer_label": "QA1 (010)",
+      "condition_label": "ALT",
+      "is_por": false,
+      "layer_sort_order": 0,
+      "condition_index": 2,
+      "cells": {
+        "qa_choice": "ACTIVE",
+        "qa_pattern": "AB-1234",
+        "qa_range": "99",
+        "qa_required": "ready-1-2",
+        "qa_target": "configured",
+        "qa_trigger": "N"
+      }
+    },
+    {
+      "condition_id": 3,
+      "layer_key": "QA-LINE::QA-PROC::020::QA2",
+      "layer_label": "QA2 (020)",
+      "condition_label": "POR",
+      "is_por": true,
+      "layer_sort_order": 1,
+      "condition_index": 1,
+      "cells": {
+        "qa_candidate": "MASK-B",
+        "qa_choice": "ACTIVE",
+        "qa_pattern": "bad",
+        "qa_range": "15",
+        "qa_required": "ready-2-1",
+        "qa_source": "MISSING",
+        "qa_target": "configured",
+        "qa_trigger": "N"
+      }
+    },
+    {
+      "condition_id": 4,
+      "layer_key": "QA-LINE::QA-PROC::020::QA2",
+      "layer_label": "QA2 (020)",
+      "condition_label": "ALT",
+      "is_por": false,
+      "layer_sort_order": 1,
+      "condition_index": 2,
+      "cells": {
+        "qa_choice": "ACTIVE",
+        "qa_pattern": "AB-1234",
+        "qa_range": "15",
+        "qa_required": "ready-2-2",
+        "qa_source": "MASK-A",
+        "qa_trigger": "Y"
+      }
+    }
+  ],
+  "lock": {
+    "locked_by": null,
+    "locked_at": null,
+    "expires_at": null,
+    "is_mine": false,
+    "heartbeat_seconds": 45
+  },
+  "validation_rules": [
+    {
+      "code": "qa_prior_por",
+      "name": "QA prior POR",
+      "severity": "error",
+      "version": 1,
+      "scope": {},
+      "spec": {
+        "schema_version": 1,
+        "type": "value_exists_in_prior_por",
+        "source_parameter_code": "qa_source",
+        "candidate_parameter_code": "qa_candidate"
+      }
+    },
+    {
+      "code": "qa_required_if",
+      "name": "QA required-if",
+      "severity": "error",
+      "version": 1,
+      "scope": {},
+      "spec": {
+        "schema_version": 1,
+        "type": "required_if",
+        "when_parameter_code": "qa_trigger",
+        "equals": "Y",
+        "required_parameter_code": "qa_target"
+      }
+    }
+  ],
+  "validation_basis_hash": "sha256:c238394891c0773fbe4a5e44d70496a89106aeaf2f1090d66ec9a8be7450bcbf"
+}

@@ -13,13 +13,13 @@
 
 ## 완료 기준 (Exit Criteria)
 
-- [ ] EC1. 규칙 위반 셀이 편집 즉시 표시된다 (저장 전 클라이언트 피드백 + 저장 후 서버 확정)
-- [ ] EC2. `required_if`와 모든 이전 layer POR membership 규칙이 공유 fixture 시나리오로 검증된다
-- [ ] EC3. 검증 엔진 단위 테스트가 **DB 없이** 실행된다 (domain 순수성 검증)
-- [ ] EC4. 시트 전체 검증 API가 stable issue(셀 좌표 + code + typed details)를 반환하고 UI에서 셀로 점프한다
-- [ ] EC5. 편집기 오류·경고가 내부 판정문이나 정규식을 노출하지 않고 **문제 원인 + 다음 행동**을 자연스러운 한국어로 안내한다
-- [ ] EC6. snapshot v3와 validation `basis_hash`가 결정적으로 생성되고 Phase 5가 재사용할 수 있다
-- [ ] EC7. 20,000셀·관계 규칙 50개 reference 성능 evidence가 기록된다
+- [x] EC1. 규칙 위반 셀이 편집 즉시 표시된다 (저장 전 클라이언트 피드백 + 저장 후 서버 확정)
+- [x] EC2. `required_if`와 모든 이전 layer POR membership 규칙이 공유 fixture 시나리오로 검증된다
+- [x] EC3. 검증 엔진 단위 테스트가 **DB 없이** 실행된다 (domain 순수성 검증)
+- [x] EC4. 시트 전체 검증 API가 stable issue(셀 좌표 + code + typed details)를 반환하고 UI에서 셀로 점프한다
+- [x] EC5. 편집기 오류·경고가 내부 판정문이나 정규식을 노출하지 않고 **문제 원인 + 다음 행동**을 자연스러운 한국어로 안내한다
+- [x] EC6. snapshot v3와 validation `basis_hash`가 결정적으로 생성되고 Phase 5가 재사용할 수 있다
+- [x] EC7. 20,000셀·관계 규칙 50개 reference 성능 evidence가 기록된다
 
 ## 확정 결정
 
