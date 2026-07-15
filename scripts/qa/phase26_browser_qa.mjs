@@ -105,6 +105,122 @@ export function safeArtifactName(value) {
   return safe
 }
 
+export function validateAriaSnapshot(snapshot, artifactName, requiredPatterns = []) {
+  assert.equal(typeof snapshot, 'string', `${artifactName} ARIA snapshot must be text`)
+  const normalized = snapshot.trim()
+  if (normalized.length === 0) throw new Error(`${artifactName} ARIA snapshot is blank`)
+  for (const pattern of requiredPatterns) {
+    assert(pattern instanceof RegExp, `${artifactName} ARIA requirement must be a regular expression`)
+    const stablePattern = new RegExp(pattern.source, pattern.flags.replace(/[gy]/g, ''))
+    if (!stablePattern.test(normalized)) {
+      throw new Error(`${artifactName}: 필수 접근성 의미를 찾을 수 없습니다 (${pattern})`)
+    }
+  }
+  return `${normalized}\n`
+}
+
+export function validateGlideGridDomContract(contract) {
+  assert.equal(contract?.canvases, 2, 'Glide grid must render its two canvas layers')
+  assert.equal(contract?.tables, 1, 'Glide grid must contain exactly one HTML table')
+  assert.equal(contract?.roleGrids, 1, 'Glide grid must contain exactly one role=grid owner')
+  assert.equal(contract?.roleGridIsOnlyTable, true, 'The sole role=grid owner must be the sole HTML table')
+  assert.equal(contract?.canvasOwnedTables, 1, 'The sole Glide HTML table must be canvas-owned')
+  assert.equal(contract?.outsideCanvasTables, 0, 'Glide grid must not contain a table outside its canvas')
+  assert.equal(contract?.outsideHostTables, 0, 'Sheet must not expose a parallel HTML table outside the Glide host')
+  assert.equal(contract?.outsideHostRoleGrids, 0, 'Sheet must not expose a parallel role=grid outside the Glide host')
+  assert.equal(contract?.ariaRowCount, 122, 'Seeded Glide table aria-rowcount changed')
+  assert.equal(contract?.ariaColCount, 203, 'Seeded Glide table aria-colcount changed')
+  return contract
+}
+
+export function summarizeChromiumGridAccessibility({
+  nodes,
+  canvasBackendNodeId,
+  tableBackendNodeId,
+  tableContract,
+}) {
+  assert(Array.isArray(nodes), 'Chromium accessibility nodes are missing')
+  assert(Number.isInteger(canvasBackendNodeId) && canvasBackendNodeId > 0, 'Canvas backend DOM node ID is missing')
+  assert(Number.isInteger(tableBackendNodeId) && tableBackendNodeId > 0, 'Grid backend DOM node ID is missing')
+  assert(Number.isInteger(tableContract?.ariaRowCount) && tableContract.ariaRowCount > 0, 'Grid aria-rowcount must be positive')
+  assert(Number.isInteger(tableContract?.ariaColCount) && tableContract.ariaColCount > 0, 'Grid aria-colcount must be positive')
+
+  const byId = new Map(nodes.map((node) => [node.nodeId, node]))
+  const grids = nodes.filter((node) =>
+    node.backendDOMNodeId === tableBackendNodeId &&
+    node.role?.value === 'grid' &&
+    node.ignored === false,
+  )
+  assert.equal(grids.length, 1, 'Expected exactly one non-ignored Chromium grid for the Glide table')
+  const [grid] = grids
+  const canvas = byId.get(grid.parentId)
+  assert(
+    canvas?.ignored === false &&
+    canvas.role?.value === 'Canvas' &&
+    canvas.backendDOMNodeId === canvasBackendNodeId &&
+    Array.isArray(canvas.childIds) &&
+    canvas.childIds.includes(grid.nodeId),
+    'Chromium grid must be Canvas-owned by the exact Glide canvas',
+  )
+
+  const descendsFromGrid = (node) => {
+    const seen = new Set()
+    let parentId = node.parentId
+    while (parentId !== undefined) {
+      if (parentId === grid.nodeId) return true
+      if (seen.has(parentId)) return false
+      seen.add(parentId)
+      parentId = byId.get(parentId)?.parentId
+    }
+    return false
+  }
+  const descendants = nodes.filter((node) => node.ignored === false && descendsFromGrid(node))
+  const byRole = (role) => descendants.filter((node) => node.role?.value === role)
+  const rowgroups = byRole('rowgroup')
+  const rows = byRole('row')
+  const headers = byRole('columnheader')
+  const cells = byRole('gridcell')
+  assert.equal(rowgroups.length, 2, 'Chromium grid must expose header and body rowgroups')
+  assert(rows.length >= 2, 'Chromium grid must expose a header row and at least one body row')
+  assert(headers.length >= 3, 'Chromium grid must expose at least three columnheaders')
+  assert(cells.length > 0, 'Chromium grid must expose at least one gridcell')
+  assert.deepEqual(
+    headers.slice(0, 3).map((node) => node.name?.value ?? ''),
+    ['Layer / Step', '조건', 'POR (○ 선택)'],
+    'Chromium grid identity columnheaders changed',
+  )
+  assert.equal(
+    cells.length,
+    (rows.length - 1) * headers.length,
+    'Chromium gridcell count must cover every exposed virtual body row and column',
+  )
+
+  return {
+    capture_method: 'Chrome DevTools Protocol Accessibility API',
+    grid: {
+      node_id: grid.nodeId,
+      backend_dom_node_id: grid.backendDOMNodeId,
+      ignored: grid.ignored,
+      parent_node_id: canvas.nodeId,
+      parent_backend_dom_node_id: canvas.backendDOMNodeId,
+      parent_role: canvas.role.value,
+    },
+    table: {
+      aria_row_count: tableContract.ariaRowCount,
+      aria_col_count: tableContract.ariaColCount,
+    },
+    exposed_descendant_counts: {
+      rowgroup: rowgroups.length,
+      row: rows.length,
+      columnheader: headers.length,
+      gridcell: cells.length,
+    },
+    first_column_headers: headers.slice(0, 3).map((node) => node.name?.value ?? ''),
+    visible_column_headers: headers.map((node) => node.name?.value ?? ''),
+    sample_gridcells: cells.slice(0, 12).map((node) => node.name?.value ?? ''),
+  }
+}
+
 export function capturedEditLock({ scenario, method, path: apiPath, status, body }) {
   const match = apiPath.match(/^\/api\/projects\/(\d+)\/lock$/)
   if (
@@ -742,11 +858,56 @@ class BrowserQa {
     return `${ARTIFACT_FILES.screenshotDirectory}/${filename}`
   }
 
-  async ariaSnapshot(locator, name) {
+  async ariaSnapshot(locator, name, requiredPatterns = []) {
     const snapshot = await locator.ariaSnapshot()
     const filename = `${safeArtifactName(name)}.yaml`
-    await writeFile(path.join(this.aria, filename), `${snapshot.trim()}\n`)
+    await writeFile(
+      path.join(this.aria, filename),
+      validateAriaSnapshot(snapshot, name, requiredPatterns),
+    )
     return `${ARTIFACT_FILES.ariaDirectory}/${filename}`
+  }
+
+  async chromiumGridAccessibility(page, tableContract, name) {
+    const session = await page.context().newCDPSession(page)
+    try {
+      await session.send('Accessibility.enable')
+      await session.send('DOM.enable')
+      const { root } = await session.send('DOM.getDocument', { depth: -1, pierce: true })
+      const describe = async (selector) => {
+        const { nodeId } = await session.send('DOM.querySelector', {
+          nodeId: root.nodeId,
+          selector,
+        })
+        assert.notEqual(nodeId, 0, `Chromium DOM node is missing: ${selector}`)
+        const { node } = await session.send('DOM.describeNode', { nodeId })
+        assert(Number.isInteger(node.backendNodeId), `Chromium backend DOM node is missing: ${selector}`)
+        return node
+      }
+      const canvas = await describe('[data-testid="sheet-view-grid"] canvas[data-testid="data-grid-canvas"]')
+      const table = await describe('[data-testid="sheet-view-grid"] table[role="grid"]')
+      // Capture one atomic AX tree. Combining role-filtered calls can mix two Glide
+      // virtualization frames if the viewport repaints between CDP commands.
+      const { nodes } = await session.send('Accessibility.getFullAXTree', { depth: -1 })
+      const summary = summarizeChromiumGridAccessibility({
+        nodes,
+        canvasBackendNodeId: canvas.backendNodeId,
+        tableBackendNodeId: table.backendNodeId,
+        tableContract,
+      })
+      const filename = `${safeArtifactName(name)}.json`
+      await writeFile(path.join(this.aria, filename), `${JSON.stringify(summary, null, 2)}\n`)
+      return {
+        artifact: `${ARTIFACT_FILES.ariaDirectory}/${filename}`,
+        summary,
+      }
+    } finally {
+      await Promise.allSettled([
+        session.send('Accessibility.disable'),
+        session.send('DOM.disable'),
+      ])
+      await session.detach()
+    }
   }
 
   async releaseAllLocksBestEffort() {
@@ -2452,27 +2613,40 @@ class BrowserQa {
     assert.match(selectedAnnouncement, /MODE_004 · Equipment mode 004/)
     const choiceAria = await this.ariaSnapshot(searchableChoiceRoot(page, '#sheet-choice-editor'), 'sheet-choice-expanded')
     const listboxAria = await this.ariaSnapshot(listbox, 'sheet-choice-listbox')
-    const gridAria = await this.ariaSnapshot(page.locator('[data-testid="sheet-view-grid"]'), 'sheet-grid-accessibility')
     await waitUntil(
       async () => await page.locator('[data-testid="sheet-view-grid"] table[role="grid"]').count() === 1,
       10_000,
       'accessibility semantic grid table',
     )
     const tableContract = await page.locator('[data-testid="sheet-view-grid"]').evaluate((grid) => {
-      const canvas = grid.querySelectorAll('canvas')
-      const tables = grid.querySelectorAll('table[role="grid"]')
+      const canvases = grid.querySelectorAll('canvas')
+      const tables = grid.querySelectorAll('table')
+      const roleGrids = grid.querySelectorAll('[role="grid"]')
+      const onlyTable = tables[0]
       return {
-        canvases: canvas.length,
-        semanticTables: tables.length,
-        canvasOwned: [...tables].filter((table) => table.closest('canvas') !== null).length,
-        outsideCanvas: [...tables].filter((table) => table.closest('canvas') === null).length,
-        outsideGrid: document.querySelectorAll('table[role="grid"]').length - tables.length,
+        canvases: canvases.length,
+        tables: tables.length,
+        roleGrids: roleGrids.length,
+        roleGridIsOnlyTable: roleGrids[0] === onlyTable,
+        canvasOwnedTables: [...tables].filter((table) => table.closest('canvas') !== null).length,
+        outsideCanvasTables: [...tables].filter((table) => table.closest('canvas') === null).length,
+        outsideHostTables: document.querySelectorAll('table').length - tables.length,
+        outsideHostRoleGrids: document.querySelectorAll('[role="grid"]').length - roleGrids.length,
+        ariaRowCount: Number(onlyTable?.getAttribute('aria-rowcount')),
+        ariaColCount: Number(onlyTable?.getAttribute('aria-colcount')),
       }
     })
-    assert.equal(tableContract.semanticTables, 1)
-    assert.equal(tableContract.canvasOwned, 1)
-    assert.equal(tableContract.outsideCanvas, 0)
-    assert.equal(tableContract.outsideGrid, 0)
+    validateGlideGridDomContract(tableContract)
+    const sheetMainAria = await this.ariaSnapshot(
+      page.locator('main#main-content'),
+      'sheet-main-accessibility',
+      [/- main:/, /textbox "컬럼 검색"/],
+    )
+    const chromiumGridAx = await this.chromiumGridAccessibility(
+      page,
+      tableContract,
+      'sheet-grid-chromium-ax',
+    )
 
     await input.press('ArrowDown')
     await input.press('Enter')
@@ -2499,10 +2673,11 @@ class BrowserQa {
       current_navigation: 'project',
       combobox_ownership: { controls, active_descendant: activeDescendant },
       selected_announcement: selectedAnnouncement,
-      semantic_table_contract: tableContract,
+      glide_fallback_dom_contract: tableContract,
+      chromium_grid_accessibility: chromiumGridAx.summary,
       enter_focus_return: true,
       escape_focus_return: true,
-      aria: [projectAria, choiceAria, listboxAria, gridAria],
+      aria: [projectAria, choiceAria, listboxAria, sheetMainAria, chromiumGridAx.artifact],
       screenshot,
     }
   }

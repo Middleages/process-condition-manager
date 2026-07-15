@@ -17,7 +17,10 @@ import {
   parseBrowserQaArgs,
   resetEvidenceArtifacts,
   safeArtifactName,
+  summarizeChromiumGridAccessibility,
+  validateAriaSnapshot,
   validateBackendContainerInspection,
+  validateGlideGridDomContract,
   verifyStaticResponseEvidence,
 } from './phase26_browser_qa.mjs'
 
@@ -302,4 +305,119 @@ test('viewport and artifact contracts are deterministic', () => {
   })
   assert.equal(safeArtifactName('sheet.choice / 1024×768'), 'sheet.choice-1024x768')
   assert.throws(() => safeArtifactName('../escape'), /artifact name/)
+})
+
+test('ARIA evidence rejects blank captures and proves the requested semantics', () => {
+  assert.throws(
+    () => validateAriaSnapshot(' \n', 'sheet-main-accessibility'),
+    /sheet-main-accessibility.*blank/i,
+  )
+  assert.throws(
+    () => validateAriaSnapshot('- main:\n  - heading "Sheet"', 'sheet-main-accessibility', [
+      /textbox "컬럼 검색"/,
+    ]),
+    /필수 접근성 의미/,
+  )
+  assert.equal(
+    validateAriaSnapshot(
+      '  - main:\n    - textbox "컬럼 검색"\n',
+      'sheet-main-accessibility',
+      [/- main:/, /textbox "컬럼 검색"/],
+    ),
+    '- main:\n    - textbox "컬럼 검색"\n',
+  )
+})
+
+test('Chromium grid evidence requires one exposed Canvas-owned grid with rows, headers, and cells', () => {
+  const nodes = [
+    { nodeId: 'canvas', backendDOMNodeId: 41, ignored: false, role: { value: 'Canvas' }, childIds: ['grid'] },
+    {
+      nodeId: 'grid',
+      backendDOMNodeId: 42,
+      ignored: false,
+      role: { value: 'grid' },
+      parentId: 'canvas',
+      properties: [{ name: 'multiselectable', value: { value: true } }],
+    },
+    { nodeId: 'head-group', ignored: false, role: { value: 'rowgroup' }, parentId: 'grid' },
+    { nodeId: 'head-row', ignored: false, role: { value: 'row' }, parentId: 'head-group' },
+    { nodeId: 'h1', ignored: false, role: { value: 'columnheader' }, name: { value: 'Layer / Step' }, parentId: 'head-row' },
+    { nodeId: 'h2', ignored: false, role: { value: 'columnheader' }, name: { value: '조건' }, parentId: 'head-row' },
+    { nodeId: 'h3', ignored: false, role: { value: 'columnheader' }, name: { value: 'POR (○ 선택)' }, parentId: 'head-row' },
+    { nodeId: 'body-group', ignored: false, role: { value: 'rowgroup' }, parentId: 'grid' },
+    { nodeId: 'body-row', ignored: false, role: { value: 'row' }, parentId: 'body-group' },
+    { nodeId: 'cell-1', ignored: false, role: { value: 'gridcell' }, name: { value: 'LYR00 (0000)' }, parentId: 'body-row' },
+    { nodeId: 'cell-2', ignored: false, role: { value: 'gridcell' }, name: { value: 'base' }, parentId: 'body-row' },
+    { nodeId: 'cell-3', ignored: false, role: { value: 'gridcell' }, name: { value: '●' }, parentId: 'body-row' },
+  ]
+  const summary = summarizeChromiumGridAccessibility({
+    nodes,
+    canvasBackendNodeId: 41,
+    tableBackendNodeId: 42,
+    tableContract: { ariaRowCount: 122, ariaColCount: 203 },
+  })
+  assert.equal(summary.grid.parent_role, 'Canvas')
+  assert.deepEqual(summary.exposed_descendant_counts, {
+    rowgroup: 2,
+    row: 2,
+    columnheader: 3,
+    gridcell: 3,
+  })
+  assert.deepEqual(summary.first_column_headers, ['Layer / Step', '조건', 'POR (○ 선택)'])
+  assert.deepEqual(summary.sample_gridcells, ['LYR00 (0000)', 'base', '●'])
+  assert.throws(
+    () => summarizeChromiumGridAccessibility({
+      nodes: nodes.filter(({ nodeId }) => nodeId !== 'grid'),
+      canvasBackendNodeId: 41,
+      tableBackendNodeId: 42,
+      tableContract: { ariaRowCount: 122, ariaColCount: 203 },
+    }),
+    /exactly one.*grid/i,
+  )
+  assert.throws(
+    () => summarizeChromiumGridAccessibility({
+      nodes: nodes.map((node) => node.nodeId === 'canvas' ? { ...node, role: { value: 'generic' } } : node),
+      canvasBackendNodeId: 41,
+      tableBackendNodeId: 42,
+      tableContract: { ariaRowCount: 122, ariaColCount: 203 },
+    }),
+    /Canvas-owned/,
+  )
+  assert.throws(
+    () => summarizeChromiumGridAccessibility({
+      nodes: nodes.filter(({ nodeId }) => !nodeId.startsWith('cell-')),
+      canvasBackendNodeId: 41,
+      tableBackendNodeId: 42,
+      tableContract: { ariaRowCount: 122, ariaColCount: 203 },
+    }),
+    /gridcell/,
+  )
+})
+
+test('Glide DOM contract rejects implicit table and non-table grid duplicates', () => {
+  const contract = {
+    canvases: 2,
+    tables: 1,
+    roleGrids: 1,
+    roleGridIsOnlyTable: true,
+    canvasOwnedTables: 1,
+    outsideCanvasTables: 0,
+    outsideHostTables: 0,
+    outsideHostRoleGrids: 0,
+    ariaRowCount: 122,
+    ariaColCount: 203,
+  }
+  assert.deepEqual(validateGlideGridDomContract(contract), contract)
+  assert.throws(
+    () => validateGlideGridDomContract({ ...contract, tables: 2 }),
+    /exactly one HTML table/,
+  )
+  assert.throws(
+    () => validateGlideGridDomContract({ ...contract, roleGrids: 2 }),
+    /exactly one.*role=grid/,
+  )
+  assert.throws(
+    () => validateGlideGridDomContract({ ...contract, outsideHostTables: 1 }),
+    /parallel HTML table/,
+  )
 })
