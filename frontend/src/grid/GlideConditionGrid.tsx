@@ -38,6 +38,8 @@ import '@glideapps/glide-data-grid/dist/index.css'
 import { useIsomorphicLayoutEffect } from '@/shared/lib/useIsomorphicLayoutEffect'
 
 import { choiceCellRenderer, isChoiceCell, makeChoiceCell } from './choiceCell'
+import { shouldPersistCellChange, validateSingleCellEdit } from './cellValue'
+import { decimalCellRenderer, isDecimalCell, makeDecimalCell } from './decimalCell'
 import {
   IDENTITY_COLUMN_COUNT,
   IDENTITY_COLUMNS,
@@ -45,7 +47,6 @@ import {
   columnScrollIndex,
   commitPasteCallbackRuntime,
   computeRowGroups,
-  formatNumberDisplay,
   headerTooltip,
   indexStaging,
   indexStatuses,
@@ -120,9 +121,9 @@ function overlayTheme(
 }
 
 /** Glide 편집 셀에서 정규화된 도메인 값(문자열|null)을 뽑는다. 빈 값은 null(셀 비우기). */
-function editedValue(cell: EditableGridCell): string | null {
-  if (cell.kind === GridCellKind.Number) {
-    return cell.data === undefined ? null : String(cell.data)
+function editedValue(cell: EditableGridCell): string | null | undefined {
+  if (cell.kind === GridCellKind.Custom && isDecimalCell(cell)) {
+    return cell.data.value
   }
   if (cell.kind === GridCellKind.Custom && isChoiceCell(cell)) {
     const value = cell.data.value.trim()
@@ -140,6 +141,7 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
   ConditionGridProps
 >(function GlideConditionGrid({ data, view, callbacks, pasteStaging }, ref) {
   const gridRef = useRef<DataEditorRef>(null)
+  const restoreGridFocus = useCallback(() => gridRef.current?.focus(), [])
   const readOnly = view?.readOnly ?? false
   const rows = data.rows
 
@@ -245,23 +247,34 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
       const themeOverride = overlay ? { ...base, ...overlay } : base
 
       if (column.valueType === 'number') {
-        const trimmed = raw?.trim() ?? ''
-        const numeric = trimmed !== '' && !Number.isNaN(Number(trimmed)) ? Number(trimmed) : undefined
-        return {
-          kind: GridCellKind.Number,
-          data: numeric,
-          displayData: formatNumberDisplay(raw, column.unit),
-          allowOverlay: !readOnly,
-          readonly: readOnly,
-          contentAlign: 'right',
-          themeOverride,
-          copyData: raw ?? '',
-        }
+        return makeDecimalCell(raw, column.unit ?? null, readOnly, themeOverride)
       }
       if (column.valueType === 'choice') {
-        return makeChoiceCell(raw ?? '', column.choiceOptions ?? [], readOnly, themeOverride)
+        const resource =
+          column.choiceSetCode === null
+            ? undefined
+            : data.choiceResources?.get(column.choiceSetCode)
+        // Adapter/hook 계약을 위반한 resource 누락은 raw 값만 보존하고 fail-closed한다.
+        if (resource === undefined) {
+          return {
+            kind: GridCellKind.Text,
+            data: raw ?? '',
+            displayData: raw ?? '',
+            allowOverlay: false,
+            readonly: true,
+            themeOverride,
+            copyData: raw ?? '',
+          }
+        }
+        return makeChoiceCell(
+          raw ?? '',
+          resource,
+          readOnly,
+          themeOverride,
+          restoreGridFocus,
+        )
       }
-      // text (및 아직 전용 에디터가 없는 date/boolean) → 텍스트 셀.
+      // text → 텍스트 셀.
       return {
         kind: GridCellKind.Text,
         data: raw ?? '',
@@ -272,20 +285,42 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
         copyData: raw ?? '',
       }
     },
-    [rows, visibleColumns, groupMeta, statusIndex, stagingIndex, readOnly],
+    [
+      rows,
+      visibleColumns,
+      groupMeta,
+      statusIndex,
+      stagingIndex,
+      readOnly,
+      data.choiceResources,
+      restoreGridFocus,
+    ],
   )
 
   const handleCellEdited = useCallback(
     (item: Item, newValue: EditableGridCell) => {
       const target = resolveCellTarget(item[0], item[1], visibleColumns, rows, IDENTITY_COLUMN_COUNT)
       if (target === null) return
+      const column = visibleColumns[item[0] - IDENTITY_COLUMN_COUNT]
+      const row = rows[item[1]]
+      if (column === undefined || row === undefined) return
+      const candidate = editedValue(newValue)
+      if (candidate === undefined) return
+      const resource =
+        column.choiceSetCode === null
+          ? undefined
+          : data.choiceResources?.get(column.choiceSetCode)
+      const oldValue = row.values[column.key] ?? null
+      const validation = validateSingleCellEdit(column, oldValue, candidate ?? '', resource)
+      if (!validation.ok) return
+      if (!shouldPersistCellChange(oldValue, validation.value)) return
       callbacks?.onCellEdit?.({
         conditionId: target.conditionId,
         parameterCode: target.parameterCode,
-        value: editedValue(newValue),
+        value: validation.value,
       })
     },
-    [visibleColumns, rows, callbacks],
+    [visibleColumns, rows, callbacks, data.choiceResources],
   )
 
   const handlePaste = useCallback(
@@ -313,7 +348,18 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
 
   const handleItemHovered = useCallback(
     (args: GridMouseEventArgs) => {
-      // 헤더가 아니면(셀/그룹헤더/영역 밖) 툴팁 해제. 이미 null이면 같은 참조를 반환해 리렌더 생략.
+      if (args.kind === 'cell') {
+        const cell = getCellContent(args.location)
+        if (cell.kind === GridCellKind.Custom && isChoiceCell(cell) && cell.data.tooltip !== '') {
+          setTooltip({
+            text: cell.data.tooltip,
+            x: args.bounds.x,
+            y: args.bounds.y + args.bounds.height,
+          })
+          return
+        }
+      }
+      // 헤더/선택지 셀이 아니면 툴팁 해제.
       if (args.kind !== 'header') {
         setTooltip((prev) => (prev === null ? prev : null))
         return
@@ -326,7 +372,7 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
       // Glide bounds는 뷰포트(client) 좌표 → position: fixed로 헤더 바로 아래에 그대로 배치.
       setTooltip({ text, x: args.bounds.x, y: args.bounds.y + args.bounds.height })
     },
-    [visibleColumns],
+    [visibleColumns, getCellContent],
   )
 
   // 식별 컬럼 클릭 처리(T7). Glide는 캔버스 렌더라 네이티브 컨텍스트 메뉴가 없으므로 셀 클릭을
@@ -394,7 +440,7 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
         headerHeight={34}
         width="100%"
         height="100%"
-        customRenderers={[choiceCellRenderer]}
+        customRenderers={[decimalCellRenderer, choiceCellRenderer]}
         theme={GLIDE_THEME}
       />
       {tooltip !== null ? (

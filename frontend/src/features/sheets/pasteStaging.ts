@@ -9,13 +9,50 @@
  * - 대상 열/행을 못 찾으면(현재 안 보이는 파라미터 등) 빈 스테이징 반환.
  * - 시트 끝(행/열)을 넘어가는 붙여넣기 데이터는 잘라내고 개수를 truncatedRows/Cols로 알린다.
  */
-import type { ConditionGridColumn, ConditionGridRow, PasteStagingCell } from '@/grid/types'
+import { shouldPersistCellChange, validatePasteCell } from '@/grid/cellValue'
+import type {
+  ConditionGridColumn,
+  ConditionGridRow,
+  PasteStagingCell,
+  SheetChoiceResource,
+} from '@/grid/types'
 
 /** buildPasteStaging 결과: 스테이징 셀 + 시트 경계 초과로 잘라낸 행/열 개수. */
 export interface PasteStagingResult {
   staging: PasteStagingCell[]
   truncatedRows: number
   truncatedCols: number
+}
+
+export interface PersistablePasteCell {
+  conditionId: string
+  parameterCode: string
+  value: string | null
+}
+
+/**
+ * 비동기 clipboard callback의 권한 세대. ChoiceSet version은 불변이므로 option 배열을
+ * 복제/직렬화하지 않고 exact summary/aggregate 선택 가능 상태만 세대에 포함한다.
+ */
+export function sheetChoiceAuthorizationEpoch(
+  choiceResources: ReadonlyMap<string, SheetChoiceResource>,
+): string {
+  return JSON.stringify(
+    [...choiceResources.entries()]
+      .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+      .map(([setCode, resource]) => [
+        setCode,
+        resource.targetVersion,
+        resource.summaryVersion,
+        resource.setIsActive,
+        resource.selectionReady,
+        resource.isStale,
+        resource.displayAggregate?.set_code ?? null,
+        resource.displayAggregate?.version ?? null,
+        resource.selectableAggregate?.set_code ?? null,
+        resource.selectableAggregate?.version ?? null,
+      ]),
+  )
 }
 
 /**
@@ -36,35 +73,25 @@ interface CellCheck {
   value: string | null
   valid: boolean
   message?: string
+  errorCode?: PasteStagingCell['errorCode']
 }
 
-/**
- * number 엄격 파싱: 정수/소수만 허용. 콤마·통화·퍼센트·지수 등 서식 문자열은 거부한다.
- *
- * 콤마 포함("1,234")은 이 패턴에서 걸러지고 `Number("1,234")`도 NaN이라 이중으로 안전하다.
- */
-function isStrictNumber(trimmed: string): boolean {
-  return /^-?\d+(\.\d+)?$/.test(trimmed)
-}
-
-/** 컬럼 `valueType` 기준으로 붙여넣기 값 하나를 검사·정규화한다. 빈 값은 항상 유효(셀 비우기). */
-function checkCell(raw: string, column: ConditionGridColumn): CellCheck {
-  const trimmed = raw.trim()
-  if (trimmed === '') return { value: null, valid: true }
-
-  switch (column.valueType) {
-    case 'number':
-      return isStrictNumber(trimmed)
-        ? { value: trimmed, valid: true }
-        : { value: raw, valid: false, message: '숫자 형식이 아니다' }
-    case 'choice':
-      return column.choiceOptions?.includes(trimmed) === true
-        ? { value: trimmed, valid: true }
-        : { value: raw, valid: false, message: '선택지에 없는 값이다' }
-    default:
-      // text (및 아직 전용 에디터가 없는 date/boolean) — 자유 입력, 항상 유효.
-      return { value: trimmed, valid: true }
-  }
+/** 단일 편집과 동일한 공용 validator로 붙여넣기 값을 검사한다. */
+function checkCell(
+  raw: string,
+  oldValue: string | null,
+  column: ConditionGridColumn,
+  resource: SheetChoiceResource | undefined,
+): CellCheck {
+  const result = validatePasteCell(column, oldValue, raw, resource)
+  return result.ok
+    ? { value: result.value, valid: true }
+    : {
+        value: result.rawValue,
+        valid: false,
+        message: result.message,
+        errorCode: result.code,
+      }
 }
 
 /**
@@ -80,6 +107,7 @@ export function buildPasteStaging(
   matrix: readonly (readonly string[])[],
   visibleColumns: readonly ConditionGridColumn[],
   rows: readonly ConditionGridRow[],
+  choiceResources?: ReadonlyMap<string, SheetChoiceResource>,
 ): PasteStagingResult {
   const empty: PasteStagingResult = { staging: [], truncatedRows: 0, truncatedCols: 0 }
   if (matrix.length === 0) return empty
@@ -101,7 +129,10 @@ export function buildPasteStaging(
     const matrixRow = matrix[r]
     for (let c = 0; c < mapCols; c += 1) {
       const column = visibleColumns[colStart + c]
-      const check = checkCell(matrixRow?.[c] ?? '', column)
+      const oldValue = row.values[column.key] ?? null
+      const resource =
+        column.choiceSetCode === null ? undefined : choiceResources?.get(column.choiceSetCode)
+      const check = checkCell(matrixRow?.[c] ?? '', oldValue, column, resource)
       const cell: PasteStagingCell = {
         conditionId: row.id,
         parameterCode: column.key,
@@ -109,6 +140,7 @@ export function buildPasteStaging(
         valid: check.valid,
       }
       if (check.message !== undefined) cell.message = check.message
+      if (check.errorCode !== undefined) cell.errorCode = check.errorCode
       staging.push(cell)
     }
   }
@@ -118,4 +150,66 @@ export function buildPasteStaging(
     truncatedRows: Math.max(0, matrixRows - availableRows),
     truncatedCols: Math.max(0, matrixCols - availableCols),
   }
+}
+
+/**
+ * 스테이징 이후 ChoiceSet summary/version/active 상태가 바뀔 수 있으므로 첫 revision 할당
+ * 직전에 현재 행 값과 현재 공유 resource로 같은 validator를 다시 실행한다.
+ */
+export function revalidatePasteStaging(
+  result: PasteStagingResult,
+  columns: readonly ConditionGridColumn[],
+  rows: readonly ConditionGridRow[],
+  choiceResources?: ReadonlyMap<string, SheetChoiceResource>,
+): PasteStagingResult {
+  const columnsByCode = new Map(columns.map((column) => [column.key, column] as const))
+  const rowsById = new Map(rows.map((row) => [row.id, row] as const))
+  const staging = result.staging.map((staged) => {
+    const column = columnsByCode.get(staged.parameterCode)
+    const row = rowsById.get(staged.conditionId)
+    if (column === undefined || row === undefined) {
+      return {
+        conditionId: staged.conditionId,
+        parameterCode: staged.parameterCode,
+        value: staged.value,
+        valid: false,
+        message: '대상 셀이 최신 시트에 없습니다.',
+      }
+    }
+    const resource =
+      column.choiceSetCode === null ? undefined : choiceResources?.get(column.choiceSetCode)
+    const checked = checkCell(staged.value ?? '', row.values[column.key] ?? null, column, resource)
+    const cell: PasteStagingCell = {
+      conditionId: staged.conditionId,
+      parameterCode: staged.parameterCode,
+      value: checked.value,
+      valid: checked.valid,
+    }
+    if (checked.message !== undefined) cell.message = checked.message
+    if (checked.errorCode !== undefined) cell.errorCode = checked.errorCode
+    return cell
+  })
+  return { ...result, staging }
+}
+
+/** 유효해도 현재 표시값과 같은 진짜 no-op은 mixed batch에서 제외한다. */
+export function persistablePasteCells(
+  result: PasteStagingResult,
+  rows: readonly ConditionGridRow[],
+): PersistablePasteCell[] {
+  const rowsById = new Map(rows.map((row) => [row.id, row] as const))
+  const cells: PersistablePasteCell[] = []
+  for (const staged of result.staging) {
+    if (!staged.valid) continue
+    const row = rowsById.get(staged.conditionId)
+    if (row === undefined) continue
+    const oldValue = row.values[staged.parameterCode] ?? null
+    if (!shouldPersistCellChange(oldValue, staged.value)) continue
+    cells.push({
+      conditionId: staged.conditionId,
+      parameterCode: staged.parameterCode,
+      value: staged.value,
+    })
+  }
+  return cells
 }

@@ -15,6 +15,7 @@ import { PageHeader } from '@/shared/components/PageHeader'
 import { CategoryCreateDialog } from './CategoryCreateDialog'
 import { CsvImportDialog } from './CsvImportDialog'
 import { ParameterEditorDrawer } from './ParameterEditorDrawer'
+import { ParameterSectionNav } from '../choiceSets/ParameterSectionNav'
 import { deriveParameterRegistryRoute } from './parameterAdminState'
 import {
   filterParameterRegistry,
@@ -25,7 +26,7 @@ import {
   type ParameterRegistryState,
 } from './registryState'
 
-const VALUE_TYPES: ValueType[] = ['text', 'number', 'choice', 'date', 'boolean']
+const VALUE_TYPES: ValueType[] = ['text', 'number', 'choice']
 
 export function ParameterAdminPage() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -97,6 +98,7 @@ export function ParameterAdminPage() {
 
   return (
     <section className="space-y-5">
+      <ParameterSectionNav />
       <PageHeader
         data-page-title
         tabIndex={-1}
@@ -350,9 +352,11 @@ export function ParameterRegistryTable({
 
 function parameterConstraintSummary(parameter: ParameterOut): string {
   if (parameter.value_type === 'choice') {
-    const count = parameter.options.filter((option) => option.is_active).length
-    return `${count}개 선택지${parameter.unit ? ` · ${parameter.unit}` : ''}`
+    return parameter.choice_set
+      ? `${parameter.choice_set.code} · ${parameter.choice_set.display_name}`
+      : '선택지 집합 없음'
   }
+  if (parameter.value_type !== 'number') return '—'
 
   const range =
     parameter.min_value !== null && parameter.max_value !== null

@@ -1,18 +1,4 @@
-export type ValueType = 'text' | 'number' | 'choice' | 'date' | 'boolean'
-
-export interface OptionIn {
-  value: string
-  display_name: string
-  sort_order?: number
-}
-
-export interface OptionOut {
-  id: number
-  value: string
-  display_name: string
-  sort_order: number
-  is_active: boolean
-}
+export type ValueType = 'text' | 'number' | 'choice'
 
 export interface CategoryCreate {
   code: string
@@ -42,24 +28,24 @@ export interface ParameterOut {
   value_type: ValueType
   category_id: number | null
   unit: string | null
-  min_value: number | null
-  max_value: number | null
+  min_value: string | null
+  max_value: string | null
+  choice_set: ChoiceSetSummaryOut | null
   sort_order: number
   is_active: boolean
-  options: OptionOut[]
 }
 
 export interface ParameterCreate {
   code: string
   display_name: string
   value_type: ValueType
+  choice_set_code: string | null
   description?: string | null
   category_id?: number | null
   unit?: string | null
-  min_value?: number | null
-  max_value?: number | null
+  min_value?: string | null
+  max_value?: string | null
   sort_order?: number
-  options?: OptionIn[]
 }
 
 export interface ParameterUpdate {
@@ -67,8 +53,8 @@ export interface ParameterUpdate {
   description?: string | null
   category_id?: number | null
   unit?: string | null
-  min_value?: number | null
-  max_value?: number | null
+  min_value?: string | null
+  max_value?: string | null
   sort_order?: number | null
   is_active?: boolean | null
 }
@@ -162,12 +148,124 @@ export interface BackboneReplaceIn {
   source_layer_key: string
 }
 
+export interface ChoiceValueOut {
+  code: string
+  label: string
+  is_active: boolean
+}
+
+export interface ProjectProfileOut {
+  project_id: number
+  process_name: string
+  device_type: ChoiceValueOut
+  project_category: ChoiceValueOut
+  comment: string | null
+  active_direction: ChoiceValueOut | null
+  gate_direction: ChoiceValueOut | null
+  gross_die: string | null
+  pitch_x: string | null
+  pitch_y: string | null
+  shot_x: string | null
+  shot_y: string | null
+  slit_occupancy: string | null
+  lens_occupancy: string | null
+  map_offset_x: string | null
+  map_offset_y: string | null
+  scribe_lane_x: string | null
+  scribe_lane_y: string | null
+  shot_count: string | null
+  full_shot: string | null
+  layer_total: string | null
+  euv: string | null
+  imm: string | null
+  arf: string | null
+  krf: string | null
+  iline: string | null
+  soh: string | null
+  pspi: string | null
+  metal_layer_count: string | null
+  created_at: string
+  updated_at: string
+}
+
+/**
+ * Atomic mutable boundary for the fixed Project Profile.
+ *
+ * Every property is optional because omission means "leave unchanged". Only the three required
+ * stored strings reject an explicitly supplied null; all other values may be cleared with null.
+ * Identity, resolved choice objects, provenance, and timestamps intentionally do not exist here.
+ */
+export interface ProjectProfilePatchIn {
+  process_name?: string
+  device_type_code?: string
+  project_category_code?: string
+  comment?: string | null
+  active_direction_code?: string | null
+  gate_direction_code?: string | null
+  gross_die?: string | null
+  pitch_x?: string | null
+  pitch_y?: string | null
+  shot_x?: string | null
+  shot_y?: string | null
+  slit_occupancy?: string | null
+  lens_occupancy?: string | null
+  map_offset_x?: string | null
+  map_offset_y?: string | null
+  scribe_lane_x?: string | null
+  scribe_lane_y?: string | null
+  shot_count?: string | null
+  full_shot?: string | null
+  layer_total?: string | null
+  euv?: string | null
+  imm?: string | null
+  arf?: string | null
+  krf?: string | null
+  iline?: string | null
+  soh?: string | null
+  pspi?: string | null
+  metal_layer_count?: string | null
+}
+
+/** Explicit runtime allow-list used by form diffing and contract tests. */
+export const PROJECT_PROFILE_PATCH_FIELDS = [
+  'process_name',
+  'device_type_code',
+  'project_category_code',
+  'comment',
+  'active_direction_code',
+  'gate_direction_code',
+  'gross_die',
+  'pitch_x',
+  'pitch_y',
+  'shot_x',
+  'shot_y',
+  'slit_occupancy',
+  'lens_occupancy',
+  'map_offset_x',
+  'map_offset_y',
+  'scribe_lane_x',
+  'scribe_lane_y',
+  'shot_count',
+  'full_shot',
+  'layer_total',
+  'euv',
+  'imm',
+  'arf',
+  'krf',
+  'iline',
+  'soh',
+  'pspi',
+  'metal_layer_count',
+] as const satisfies readonly (keyof ProjectProfilePatchIn)[]
+
 export interface ProjectCreate {
   line_id: string
   process_id: string
   part_id: string
   name: string
-  description?: string | null
+  device_type_code: string
+  project_category_code: string
+  comment?: string | null
   backbone_project_id?: number | null
   manual_overrides?: ManualOverrideIn[]
 }
@@ -193,8 +291,8 @@ export interface ProjectOut {
   process_id: string
   part_id: string
   name: string
-  description: string | null
   status: 'draft'
+  profile: ProjectProfileOut
   layers: ProjectLayerOut[]
 }
 
@@ -204,8 +302,11 @@ export interface ProjectSummaryOut {
   process_id: string
   part_id: string
   name: string
-  description: string | null
   status: 'draft'
+  device_type: ChoiceValueOut
+  project_category: ChoiceValueOut
+  layer_total: string | null
+  updated_at: string
   layer_count: number
   cell_count: number
 }
@@ -221,6 +322,112 @@ export interface ApiErrorBody {
   details?: Record<string, unknown>
 }
 
+// --- managed choice sets (/api/choice-sets) ---
+// Transport fields intentionally remain snake_case to match the backend schemas exactly.
+
+export interface ChoiceSetCreateIn {
+  code: string
+  display_name: string
+  description?: string | null
+}
+
+export interface ChoiceSetPatchIn {
+  expected_version: number
+  display_name?: string | null
+  description?: string | null
+  is_active?: boolean | null
+}
+
+export interface ChoiceOptionCreateIn {
+  expected_version: number
+  code: string
+  label: string
+  sort_order?: number
+  is_active?: boolean
+}
+
+export interface ChoiceOptionPatchIn {
+  expected_version: number
+  label?: string | null
+  sort_order?: number | null
+  is_active?: boolean | null
+}
+
+export interface ChoiceOptionOrderIn {
+  expected_version: number
+  ordered_codes: string[]
+}
+
+export interface ChoiceImportIn {
+  expected_version: number
+  csv_text: string
+}
+
+export interface ChoiceSetSummaryOut {
+  code: string
+  display_name: string
+  description: string | null
+  is_active: boolean
+  version: number
+  option_count: number
+  active_option_count: number
+  parameter_usage_count: number
+  profile_usage_fields: string[]
+  created_at: string
+  updated_at: string
+}
+
+export interface ChoiceOptionOut {
+  code: string
+  label: string
+  sort_order: number
+  is_active: boolean
+}
+
+export interface ChoiceOptionPageOut {
+  set_code: string
+  version: number
+  items: ChoiceOptionOut[]
+  next_cursor: string | null
+}
+
+export interface ChoiceOptionAggregate {
+  set_code: string
+  version: number
+  items: ChoiceOptionOut[]
+}
+
+export interface ChoiceOptionMutationOut {
+  choice_set: ChoiceSetSummaryOut
+  option: ChoiceOptionOut
+}
+
+export type ChoiceImportAction = 'create' | 'update' | 'error'
+
+export interface ChoiceImportRowOut {
+  line: number
+  code: string
+  action: ChoiceImportAction
+  message: string | null
+}
+
+export interface ChoiceImportPreviewOut {
+  set_code: string
+  base_version: number
+  created_count: number
+  updated_count: number
+  error_count: number
+  rows: ChoiceImportRowOut[]
+}
+
+export interface ChoiceImportApplyOut {
+  choice_set: ChoiceSetSummaryOut
+  created_count: number
+  updated_count: number
+  error_count: 0
+  rows: ChoiceImportRowOut[]
+}
+
 // --- 시트 조회 (GET /api/projects/{project_id}/sheet) ---
 // backend `features/sheets/schema.py`와 1:1 대응. 필드명은 snake_case 그대로 (camelCase 변환 레이어 없음).
 
@@ -232,8 +439,9 @@ export interface SheetColumnOut {
   category_code: string | null
   unit: string | null
   description: string | null
-  // choice 타입일 때만 채워진다 (number/text는 빈 리스트).
-  choice_options: string[]
+  // choice 타입일 때만 둘 다 채워진다. option은 SheetOut에 임베드하지 않는다.
+  choice_set_code: string | null
+  choice_set_version: number | null
   sort_order: number
 }
 

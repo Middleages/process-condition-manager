@@ -22,10 +22,10 @@ import {
 import type { ConditionGridColumn, ConditionGridRow } from './types'
 
 const columns: ConditionGridColumn[] = [
-  { key: 'exposure', headerName: '노광량', valueType: 'number', categoryCode: 'litho', unit: 'mJ' },
-  { key: 'spin_speed', headerName: 'Spin', valueType: 'number', categoryCode: 'coat', unit: 'rpm' },
-  { key: 'pr_type', headerName: 'PR', valueType: 'choice', categoryCode: 'coat', choiceOptions: ['pos', 'neg'] },
-  { key: 'memo', headerName: '메모', valueType: 'text', categoryCode: null },
+  { key: 'exposure', headerName: '노광량', valueType: 'number', categoryCode: 'litho', unit: 'mJ', choiceSetCode: null, choiceSetVersion: null },
+  { key: 'spin_speed', headerName: 'Spin', valueType: 'number', categoryCode: 'coat', unit: 'rpm', choiceSetCode: null, choiceSetVersion: null },
+  { key: 'pr_type', headerName: 'PR', valueType: 'choice', categoryCode: 'coat', choiceSetCode: 'photo_resist', choiceSetVersion: 7 },
+  { key: 'memo', headerName: '메모', valueType: 'text', categoryCode: null, choiceSetCode: null, choiceSetVersion: null },
 ]
 
 const rows: ConditionGridRow[] = [
@@ -243,8 +243,8 @@ describe('resolveColumnJump', () => {
 
   it('prefers a later visible match over an earlier hidden match', () => {
     const duplicateMatches: ConditionGridColumn[] = [
-      { key: 'spin_hidden', headerName: 'Spin hidden', valueType: 'number', categoryCode: 'litho' },
-      { key: 'spin_visible', headerName: 'Spin visible', valueType: 'number', categoryCode: 'coat' },
+      { key: 'spin_hidden', headerName: 'Spin hidden', valueType: 'number', categoryCode: 'litho', choiceSetCode: null, choiceSetVersion: null },
+      { key: 'spin_visible', headerName: 'Spin visible', valueType: 'number', categoryCode: 'coat', choiceSetCode: null, choiceSetVersion: null },
     ]
 
     expect(resolveColumnJump(duplicateMatches, 'coat', '  SPIN  ')).toEqual({
@@ -257,7 +257,7 @@ describe('resolveColumnJump', () => {
 
   it('matches trimmed keys and headers case-insensitively', () => {
     const padded: ConditionGridColumn[] = [
-      { key: '  TEMP_CODE  ', headerName: '  Bake Temperature  ', valueType: 'number', categoryCode: 'bake' },
+      { key: '  TEMP_CODE  ', headerName: '  Bake Temperature  ', valueType: 'number', categoryCode: 'bake', choiceSetCode: null, choiceSetVersion: null },
     ]
 
     expect(resolveColumnJump(padded, null, 'temperature')).toMatchObject({
@@ -349,9 +349,11 @@ describe('headerTooltip', () => {
       valueType: 'number',
       categoryCode: 'litho',
       description: '노광량 (exposure dose)',
+      choiceSetCode: null,
+      choiceSetVersion: null,
     },
-    { key: 'spin_speed', headerName: 'SPN', valueType: 'number', categoryCode: 'coat', description: '   ' },
-    { key: 'pr_type', headerName: 'PR', valueType: 'choice', categoryCode: 'coat' },
+    { key: 'spin_speed', headerName: 'SPN', valueType: 'number', categoryCode: 'coat', description: '   ', choiceSetCode: null, choiceSetVersion: null },
+    { key: 'pr_type', headerName: 'PR', valueType: 'choice', categoryCode: 'coat', choiceSetCode: 'photo_resist', choiceSetVersion: 7 },
   ]
 
   it('returns the description for a parameter header, offset by the identity count', () => {

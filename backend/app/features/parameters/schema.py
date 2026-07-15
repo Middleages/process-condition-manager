@@ -3,29 +3,10 @@
 code와 value_type은 생성 후 불변이므로 Update 스키마에서 제외한다.
 """
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 
 from app.domain.parameters.types import ValueType
-
-
-class OptionIn(BaseModel):
-    """선택지 입력."""
-
-    value: str
-    display_name: str
-    sort_order: int = 0
-
-
-class OptionOut(BaseModel):
-    """선택지 출력."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    value: str
-    display_name: str
-    sort_order: int
-    is_active: bool
+from app.features.choice_sets.schema import ChoiceSetSummaryOut
 
 
 class CategoryCreate(BaseModel):
@@ -62,13 +43,13 @@ class ParameterCreate(BaseModel):
     code: str
     display_name: str
     value_type: ValueType
+    choice_set_code: str | None = None
     description: str | None = None
     category_id: int | None = None
     unit: str | None = None
-    min_value: float | None = None
-    max_value: float | None = None
+    min_value: str | None = None
+    max_value: str | None = None
     sort_order: int = 0
-    options: list[OptionIn] = Field(default_factory=list)
 
 
 class ParameterUpdate(BaseModel):
@@ -78,8 +59,8 @@ class ParameterUpdate(BaseModel):
     description: str | None = None
     category_id: int | None = None
     unit: str | None = None
-    min_value: float | None = None
-    max_value: float | None = None
+    min_value: str | None = None
+    max_value: str | None = None
     sort_order: int | None = None
     is_active: bool | None = None
 
@@ -120,8 +101,8 @@ class ParameterOut(BaseModel):
     value_type: ValueType
     category_id: int | None
     unit: str | None
-    min_value: float | None
-    max_value: float | None
+    min_value: str | None
+    max_value: str | None
     sort_order: int
     is_active: bool
-    options: list[OptionOut] = Field(default_factory=list)
+    choice_set: ChoiceSetSummaryOut | None

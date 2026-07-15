@@ -2,6 +2,8 @@ import { lazy, Suspense } from 'react'
 import { Navigate, type RouteObject } from 'react-router-dom'
 
 import { ParameterAdminPage } from '@/features/parameters/ParameterAdminPage'
+import { ChoiceSetDetailPage } from '@/features/choiceSets/ChoiceSetDetailPage'
+import { ChoiceSetListPage } from '@/features/choiceSets/ChoiceSetListPage'
 import { ProcessExplorerPage } from '@/features/processes/ProcessExplorerPage'
 import { ProjectCreatePage } from '@/features/projects/ProjectCreatePage'
 import { ProjectDetailPage } from '@/features/projects/ProjectDetailPage'
@@ -46,6 +48,11 @@ export const appRoutes: RouteObject[] = [
           { path: 'projects/:projectId', element: <ProjectDetailPage /> },
           { path: 'processes', element: <ProcessExplorerPage /> },
           { path: 'parameters', element: <ParameterAdminPage /> },
+          { path: 'parameters/choice-sets', element: <ChoiceSetListPage /> },
+          {
+            path: 'parameters/choice-sets/:setCode',
+            element: <ChoiceSetDetailPage />,
+          },
           ...developmentRoutes,
         ],
       },

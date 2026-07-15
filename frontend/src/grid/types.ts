@@ -27,8 +27,31 @@
  * 결정 로그: plan/03-grid-evaluation.md §7, plan/README.md D-18, plan/phase-2-tasks.md T2.
  */
 import type { ForwardRefExoticComponent, RefAttributes } from 'react'
+import type { ChoiceOptionAggregate } from '@/api/types'
 
-export type CellValueType = 'text' | 'number' | 'choice' | 'date' | 'boolean'
+export type CellValueType = 'text' | 'number' | 'choice'
+
+export interface SheetChoiceResource {
+  setCode: string
+  targetVersion: number
+  summaryVersion: number | null
+  setIsActive: boolean | null
+  displayAggregate: ChoiceOptionAggregate | null
+  selectableAggregate: ChoiceOptionAggregate | null
+  selectionReady: boolean
+  isStale: boolean
+  loading: boolean
+  error: string | null
+  prepareToOpen: () => Promise<void>
+  retry: () => Promise<void>
+}
+
+export type CellValidationErrorCode =
+  | 'invalid_decimal'
+  | 'choice_resource_unavailable'
+  | 'choice_set_inactive'
+  | 'choice_option_inactive'
+  | 'choice_unknown'
 
 /** 레지스트리 파라미터 1개 = 그리드 컬럼 1개 (동적 구성). */
 export interface ConditionGridColumn {
@@ -38,7 +61,8 @@ export interface ConditionGridColumn {
   categoryCode: string | null // 카테고리 탭/필터의 근거
   unit?: string | null
   description?: string | null // 헤더 툴팁(축약 컬럼명 전체 의미)
-  choiceOptions?: readonly string[] // choice 에디터
+  choiceSetCode: string | null
+  choiceSetVersion: number | null
   pinned?: boolean // 좌측 고정(식별 컬럼)
 }
 
@@ -78,6 +102,7 @@ export interface PasteStagingCell {
   value: string | null
   valid: boolean
   message?: string
+  errorCode?: CellValidationErrorCode
 }
 
 /** 셀 상태 오버레이(검증 오류/더티/코멘트 하이라이트). 상위가 계산, 그리드가 렌더. */
@@ -92,6 +117,8 @@ export interface ConditionGridData {
   columns: readonly ConditionGridColumn[]
   rows: readonly ConditionGridRow[]
   statuses?: readonly CellStatus[]
+  /** set code별 공유 resource. 셀/column별 option 복제를 만들지 않는다. */
+  choiceResources?: ReadonlyMap<string, SheetChoiceResource>
 }
 
 export interface ConditionGridCallbacks {

@@ -1,6 +1,6 @@
 import axios, { AxiosError } from 'axios'
 
-import type { ApiErrorBody } from './types'
+import type { ApiErrorBody, ChoiceSetSummaryOut } from './types'
 
 export const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL ?? '/api',
@@ -28,14 +28,61 @@ function isApiError(error: unknown): error is AxiosError<ApiErrorBody> {
   return axios.isAxiosError<ApiErrorBody>(error)
 }
 
-/**
- * 잠금 충돌(409) 여부. 잠금 획득 실패(다른 사용자 편집 중), 하트비트/셀 저장 시
- * 토큰 무효(잠금 상실)가 모두 409 + `code: "lock_conflict"`로 온다. 상태 코드만으로도
- * 충분하지만, 코드가 실려 있으면 함께 확인한다.
- */
+/** 잠금 획득 실패나 잠금 상실의 409 `lock_conflict` 여부. */
 export function isLockConflict(error: unknown): boolean {
-  if (!isApiError(error)) return false
-  return error.response?.status === 409 || error.response?.data?.code === 'lock_conflict'
+  return (
+    isApiError(error) &&
+    error.response?.status === 409 &&
+    error.response.data?.code === 'lock_conflict'
+  )
+}
+
+export function isChoiceSetChanged(error: unknown): boolean {
+  return (
+    isApiError(error) &&
+    error.response?.status === 409 &&
+    error.response.data?.code === 'choice_set_changed'
+  )
+}
+
+export function getChoiceSetChangedDetails(error: unknown): Record<string, unknown> | null {
+  if (!isChoiceSetChanged(error) || !isApiError(error)) return null
+  const details: unknown = error.response?.data?.details
+  return details !== null && typeof details === 'object' && !Array.isArray(details)
+    ? (details as Record<string, unknown>)
+    : null
+}
+
+export function getChoiceSetChangedSummary(error: unknown): ChoiceSetSummaryOut | null {
+  const raw = getChoiceSetChangedDetails(error)?.choice_set
+  return isChoiceSetSummary(raw) ? raw : null
+}
+
+function isChoiceSetSummary(value: unknown): value is ChoiceSetSummaryOut {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
+  const summary = value as Record<string, unknown>
+  return (
+    typeof summary.code === 'string' &&
+    typeof summary.display_name === 'string' &&
+    (summary.description === null || typeof summary.description === 'string') &&
+    typeof summary.is_active === 'boolean' &&
+    isPositiveInteger(summary.version) &&
+    isNonNegativeInteger(summary.option_count) &&
+    isNonNegativeInteger(summary.active_option_count) &&
+    isNonNegativeInteger(summary.parameter_usage_count) &&
+    Array.isArray(summary.profile_usage_fields) &&
+    summary.profile_usage_fields.every((field) => typeof field === 'string') &&
+    typeof summary.created_at === 'string' &&
+    typeof summary.updated_at === 'string'
+  )
+}
+
+function isPositiveInteger(value: unknown): value is number {
+  return Number.isInteger(value) && (value as number) > 0
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return Number.isInteger(value) && (value as number) >= 0
 }
 
 /** 잠금 충돌 응답에 보유자 정보가 있으면 읽기 전용 배너에 표시한다. */

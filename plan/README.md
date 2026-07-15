@@ -22,6 +22,7 @@
 | [phase-1-tasks.md](./phase-1-tasks.md) — 프로젝트 + 백본 (그리드 PoC 병행) | 구현 완료 (2026-07-09 검토 반영, EC1~EC6 충족) |
 | [phase-2-tasks.md](./phase-2-tasks.md) — 조건표 편집기 | 구현 완료 (2026-07-13, EC1~EC6 충족) |
 | [Phase 2.5 UI/UX 설계](../docs/superpowers/specs/2026-07-13-phase-2-5-ui-ux-design.md) — 구조개편 + 디자인 시스템 | 구현 완료 (2026-07-14, [브라우저 QA 근거](../docs/superpowers/evidence/2026-07-13-phase-2-5-browser-qa.md)) |
+| [Phase 2.6 Project Profile + Managed Choice 설계](../docs/superpowers/specs/2026-07-14-phase-2-6-project-profile-managed-choice-design.md) — 고정 프로젝트 기본정보 + 공유 선택지 | 구현 완료 (2026-07-15, [브라우저 QA 근거](../docs/superpowers/evidence/2026-07-14-phase-2-6-browser-qa.md)) |
 | [phase-3-tasks.md](./phase-3-tasks.md) — 검증 엔진 | 계획 |
 | [phase-4-tasks.md](./phase-4-tasks.md) — 변경 이력 | 계획 |
 | [phase-5-tasks.md](./phase-5-tasks.md) — 승인 + Revision | 계획 |
@@ -61,8 +62,10 @@
 | D-18 | 그리드 라이브러리 | **Glide Data Grid 채택** (1순위), RevoGrid 대안 유지. 근거: 200 컬럼 성능(Canvas) + 엑셀 범위 붙여넣기 내장 + MIT/폐쇄망 적합. 그리드 어댑터(`frontend/src/grid/types.ts`) 뒤에 두어 교체 가능. 대화형 붙여넣기·성능 체감 검증은 Phase 2 편집기 착수 첫 스텝에서 확정 라이브러리로 재확인 | 2026-07-09 확정 (D-12 해소). [03-grid-evaluation.md](./03-grid-evaluation.md) §7 |
 | D-19 | API 진입점 | 백엔드 API를 **`/api` 단일 프리픽스**로 통합, URL 버저닝(v1)은 미도입 — 소비자가 동반 배포되는 자사 SPA 하나뿐이라 실익이 없다. SPA 페이지 경로(`/projects` 등)와 API 경로의 이름공간 충돌을 제거하고, dev proxy·운영 리버스 프록시 규칙을 1개로 줄인다. `/health`는 컨테이너 헬스체크용으로 루트 유지 | 2026-07-10 확정. 배경: 기능별 루트 경로가 쌓이며 vite proxy에 죽은 `/api` 항목·`/projects` 누락이 발생. [phase-2-tasks.md](./phase-2-tasks.md) P2-D5/T0에서 실행 |
 | D-20 | Phase 2.5 UI/UX | **상단 전역 내비 + 조건표 집중 모드**, Precision Teal 디자인 시스템, 프로젝트 목록/생성/상세 route 분리, 목록 중심 파라미터 관리 drawer를 채택한다. 향후 검증·이력·코멘트는 content가 있을 때만 열리는 하단 반응형 workbench가 수용한다. 백엔드/API와 Phase 2 persistence/domain/lock/autosave 정책은 변경하지 않는다 | 2026-07-13 사용자 승인. [`DESIGN.md`](../DESIGN.md), [상세 설계](../docs/superpowers/specs/2026-07-13-phase-2-5-ui-ux-design.md) |
+| D-21 | Phase 2.6 Project Profile + Managed Choice | 프로젝트 기본정보는 고정 1:1 Profile로 두고 생성 시 복사한 값도 이후 편집 가능하게 한다. 조건표 셀은 전부 수동 입력이다. 업무 선택지는 안정적 code·가변 label을 갖는 공유 ChoiceSet으로 관리하고 Draft에는 live 반영한다. 비활성 기존값은 경고와 함께 보존·승인 가능하며 신규 선택은 막고, 승인본은 향후 snapshot으로 동결한다. 실제 PARTID DB 연동은 provider 경계만 두고 이연한다 | 2026-07-14 사용자 승인. [상세 설계](../docs/superpowers/specs/2026-07-14-phase-2-6-project-profile-managed-choice-design.md) |
 
 ## 미확정 항목
 
 - **인증 구조 상세** (D-10): SSO 방식/IdP 연동 상세는 사용자가 추후 전달. Phase 0에서 인증 어댑터 경계만 먼저 확보한다.
 - **레거시 데이터 이관 여부** (D-15 비고): 기존 시스템 데이터를 초기 백본 풀로 이관하는 것은 희망 사항 (D-04 전면 리셋의 예외). Phase 1 실현 가능성 스파이크 결과는 [phase-1-tasks.md](./phase-1-tasks.md) P1-D7 참조 — 적재 스키마 확정 후 재평가 대기.
+- **Project Profile 원천 계약** (D-21): 실제 PARTID 원천 DB의 테이블·키·cardinality·필드 단위는 사용자가 추후 제공한다. Phase 2.6은 수동 입력과 provider 인터페이스까지만 구현한다.

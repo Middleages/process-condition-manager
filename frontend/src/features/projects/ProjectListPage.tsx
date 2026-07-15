@@ -1,6 +1,6 @@
 import { useInfiniteQuery } from '@tanstack/react-query'
 import { Plus, Search } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Link,
   useLocation,
@@ -10,11 +10,21 @@ import {
 
 import { getApiErrorMessage } from '@/api/client'
 import { listProjects } from '@/api/projects'
+import {
+  useChoiceSetOptions,
+  type ChoiceSetOptionsResource,
+} from '@/features/choiceSets/useChoiceSetOptions'
 import { Button } from '@/shared/components/Button'
 import { InlineAlert } from '@/shared/components/InlineAlert'
 import { PageHeader } from '@/shared/components/PageHeader'
+import { SearchableChoice } from '@/shared/components/SearchableChoice'
 
 import { ProjectTable } from './ProjectTable'
+import {
+  deriveHistoricalChoiceFilterState,
+  mergeDebouncedQuery,
+  projectListQueryKey,
+} from './projectListQuery'
 import { parseProjectListSearch, serializeProjectListSearch } from './urlState'
 
 const RETURN_FOCUS_KEY = 'pcm:project-list:return-focus'
@@ -30,31 +40,46 @@ export function ProjectListPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const routeState = parseProjectListSearch(searchParams)
   const [queryDraft, setQueryDraft] = useState(routeState.query)
+  const latestRouteStateRef = useRef(routeState)
+  latestRouteStateRef.current = routeState
+
+  const deviceTypes = useChoiceSetOptions('device_type', {
+    includeInactive: true,
+    sheetFocused: false,
+  })
+  const projectCategories = useChoiceSetOptions('project_category', {
+    includeInactive: true,
+    sheetFocused: false,
+  })
 
   useEffect(() => {
     setQueryDraft(routeState.query)
   }, [routeState.query])
 
   useEffect(() => {
-    if (queryDraft === routeState.query) return
+    if (queryDraft === latestRouteStateRef.current.query) return
 
     const timeout = window.setTimeout(() => {
       setSearchParams(
-        serializeProjectListSearch({ query: queryDraft, status: routeState.status }),
+        serializeProjectListSearch(
+          mergeDebouncedQuery(latestRouteStateRef.current, queryDraft),
+        ),
         { replace: true },
       )
     }, 250)
 
     return () => window.clearTimeout(timeout)
-  }, [queryDraft, routeState.query, routeState.status, setSearchParams])
+  }, [queryDraft, setSearchParams])
 
   const projectsQuery = useInfiniteQuery({
-    queryKey: ['projects', 'list', { query: routeState.query, status: routeState.status }],
+    queryKey: projectListQueryKey(routeState),
     initialPageParam: null as number | null,
     queryFn: ({ pageParam }) =>
       listProjects({
         query: routeState.query || undefined,
         status: routeState.status === 'all' ? undefined : routeState.status,
+        deviceTypeCode: routeState.deviceTypeCode ?? undefined,
+        projectCategoryCode: routeState.projectCategoryCode ?? undefined,
         cursor: pageParam ?? undefined,
         limit: 50,
       }),
@@ -83,6 +108,24 @@ export function ProjectListPage() {
     return () => window.cancelAnimationFrame(frame)
   }, [location.search, navigationType, projects.length, projectsQuery.isPending])
 
+  function updateDeviceTypeFilter(code: string | null) {
+    setSearchParams(
+      serializeProjectListSearch({
+        ...latestRouteStateRef.current,
+        deviceTypeCode: code,
+      }),
+    )
+  }
+
+  function updateProjectCategoryFilter(code: string | null) {
+    setSearchParams(
+      serializeProjectListSearch({
+        ...latestRouteStateRef.current,
+        projectCategoryCode: code,
+      }),
+    )
+  }
+
   return (
     <section className="space-y-5">
       <PageHeader
@@ -101,7 +144,7 @@ export function ProjectListPage() {
         }
       />
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div className="grid gap-3 lg:grid-cols-[minmax(18rem,1.4fr)_minmax(14rem,1fr)_minmax(14rem,1fr)_auto] lg:items-end">
         <label className="grid w-full max-w-xl gap-1.5 text-sm font-semibold text-ink-950">
           프로젝트 검색
           <span className="relative block">
@@ -120,7 +163,23 @@ export function ProjectListPage() {
             />
           </span>
         </label>
-        <p className="shrink-0 text-sm font-medium tabular-nums text-muted">불러온 {projects.length}개</p>
+        <ProjectChoiceFilter
+          id="project-list-device-type"
+          label="Device Type"
+          value={routeState.deviceTypeCode}
+          resource={deviceTypes}
+          onChange={updateDeviceTypeFilter}
+        />
+        <ProjectChoiceFilter
+          id="project-list-category"
+          label="Project Category"
+          value={routeState.projectCategoryCode}
+          resource={projectCategories}
+          onChange={updateProjectCategoryFilter}
+        />
+        <p className="pb-1 text-sm font-medium tabular-nums text-muted">
+          불러온 {projects.length}개
+        </p>
       </div>
 
       {projectsQuery.isPending ? (
@@ -163,6 +222,43 @@ export function ProjectListPage() {
         </div>
       ) : null}
     </section>
+  )
+}
+
+export function ProjectChoiceFilter({
+  id,
+  label,
+  value,
+  resource,
+  onChange,
+}: {
+  id: string
+  label: string
+  value: string | null
+  resource: ChoiceSetOptionsResource
+  onChange: (code: string | null) => void
+}) {
+  const state = deriveHistoricalChoiceFilterState(resource)
+  const selectedOption =
+    value === null ? undefined : resource.displayOptions.find((option) => option.code === value)
+
+  return (
+    <SearchableChoice
+      id={id}
+      label={label}
+      value={value}
+      options={resource.displayOptions}
+      loading={state.loading}
+      error={resource.error}
+      sourceActive
+      sourceInactive={selectedOption?.is_active === false}
+      selectionReady={state.selectionReady}
+      allowInactiveSelection
+      allowClear
+      onOpen={resource.prepareToOpen}
+      onRetry={resource.retryOptions}
+      onChange={onChange}
+    />
   )
 }
 

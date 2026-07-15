@@ -52,6 +52,26 @@ class PgIngestReader(IngestReader):
             for row in rows
         ]
 
+    async def get_process(self, line_id: str, process_id: str) -> ProcessInfo:
+        stmt = text(
+            "SELECT DISTINCT line_id, process_id "
+            f"FROM {self._ref} "  # noqa: S608 — 식별자 검증+따옴표
+            "WHERE line_id = :line_id AND process_id = :process_id"
+        )
+        row = (
+            await self._session.execute(
+                stmt, {"line_id": line_id, "process_id": process_id}
+            )
+        ).one_or_none()
+        if row is None:
+            raise NotFoundError(f"process를 찾을 수 없다: {line_id}/{process_id}")
+        return ProcessInfo(
+            key=process_key(row.line_id, row.process_id),
+            line_id=row.line_id,
+            process_id=row.process_id,
+            display_name=f"{row.line_id} / {row.process_id}",
+        )
+
     async def get_layers(self, line_id: str, process_id: str) -> list[LayerInfo]:
         stmt = text(
             "SELECT step_seq, layer_id, eqp_type, eqp_type_desc, area_name "

@@ -1,6 +1,6 @@
 # Phase 5 — 승인 워크플로우 + Revision (작업 계획)
 
-> 목표: Draft → Review → Approved/Rejected → Archived 상태 머신을 `domain/workflow`에 두고, **승인 시 파라미터 스냅샷 동결**(D-08 정책 a)과 Revision 체계를 완성한다. RBAC이 처음으로 실질 적용되는 Phase이므로 **SSO 인증 구조 확정이 필수 선행 조건**이다.
+> 목표: Draft → Review → Approved/Rejected → Archived 상태 머신을 `domain/workflow`에 두고, **승인 시 파라미터/ChoiceSet 스냅샷 동결**(D-08 정책 a, Phase 2.6 snapshot v2)과 Revision 체계를 완성한다. RBAC이 처음으로 실질 적용되는 Phase이므로 **SSO 인증 구조 확정이 필수 선행 조건**이다.
 
 관련 문서: [01-architecture.md](./01-architecture.md) · [02-data-model.md](./02-data-model.md) §3 · [04-roadmap.md](./04-roadmap.md) · [domain-glossary.md](./domain-glossary.md) (프로젝트 상태 / Revision)
 
@@ -8,7 +8,7 @@
 
 ## 완료 기준 (Exit Criteria)
 
-- [ ] EC1. 승인 후 레지스트리에 파라미터를 추가해도 승인본 화면이 변하지 않는다 (스냅샷 검증)
+- [ ] EC1. 승인 후 레지스트리에 파라미터를 추가하거나 Choice label을 바꿔도 승인본 시트·Project Profile 화면이 변하지 않는다 (snapshot v2 검증)
 - [ ] EC2. Revision 생성 시 새 Draft에는 새 파라미터가 나타난다 (live 복귀 검증)
 - [ ] EC3. 역할별 허용 동작이 테스트로 고정된다 (권한 매트릭스 테스트)
 - [ ] EC4. 검증 오류가 1건이라도 있으면 Review 요청이 거부된다
@@ -41,7 +41,7 @@ flowchart LR
 
 ### T1. 상태 머신 (`domain/workflow`)
 
-- 상태·전환 규칙을 순수 로직으로: Draft→Review(검증 0건 전제), Review→Approved/Rejected, Rejected→Draft, Approved→Archived(Revision 생성 시)
+- 상태·전환 규칙을 순수 로직으로: Draft→Review(검증 error 0건 전제; 이미 저장된 비활성 Choice warning은 허용), Review→Approved/Rejected, Rejected→Draft, Approved→Archived(Revision 생성 시)
 - 각 전환의 부수 규칙 선언: 승인 시 스냅샷 동결 필요, Archived는 최종 상태, 편집 가능 상태는 Draft뿐
 - FastAPI·SQLAlchemy 무의존 — 전환 가능 여부 판정과 사유를 반환하는 순수 함수/클래스
 
@@ -58,10 +58,10 @@ flowchart LR
 
 ### T3. 파라미터 스냅샷 동결 + 렌더링 (D-08 정책 a)
 
-- 승인 전환 시 `domain/parameters.snapshot()`(Phase 0 정의)으로 레지스트리 전체(정의+카테고리+선택지)를 `project.parameter_snapshot`(JSONB)에 기록 — 승인 트랜잭션에 포함
+- 승인 전환 시 Phase 2.6 snapshot v2 serializer로 레지스트리 정의·카테고리와 top-level ChoiceSet을 `project.parameter_snapshot`(JSONB)에 기록 — active parameter가 참조하는 set과 고정 Project Profile set 4개, 각 set의 active·inactive 전체 option을 포함하며 승인 트랜잭션에 기록
 - **시트 조회 API 분기**: Draft/Review → live 레지스트리, Approved/Archived → 스냅샷을 컬럼 정의로 반환 (Phase 2 T1에서 분리해 둔 "컬럼 정의 공급자"에 스냅샷 구현 추가). 프론트는 구분 없이 받은 정의로 렌더링
 - Approved/Archived 읽기 전용 렌더링: 그리드 편집 비활성, 툴바 저장/붙여넣기 숨김
-- 검증: 승인 → 레지스트리에 파라미터 추가 → 승인본 화면 불변 확인을 자동 테스트로
+- 검증: 승인 → 레지스트리에 파라미터 추가/Choice label 변경 → 승인본 시트와 Profile 화면 불변 확인을 자동 테스트로
 
 산출물: 스냅샷 동결 + 조회 분기 + EC1 자동 테스트. **EC1 충족.**
 

@@ -12,16 +12,7 @@ vi.mock('./client', () => ({
 }))
 
 import { apiClient } from './client'
-import {
-  applyParameterImport,
-  createParameter,
-  deactivateParameter,
-  getParameter,
-  listParameters,
-  previewParameterImport,
-  replaceParameterOptions,
-  updateParameter,
-} from './parameters'
+import * as parameterApi from './parameters'
 import type { ParameterCreate, ParameterOut, ParameterUpdate } from './types'
 
 function response<T>(data: T): AxiosResponse<T> {
@@ -36,11 +27,11 @@ const sampleParameter: ParameterOut = {
   value_type: 'number',
   category_id: null,
   unit: 'mJ',
-  min_value: 0,
-  max_value: 100,
+  min_value: '0',
+  max_value: '100',
+  choice_set: null,
   sort_order: 0,
   is_active: true,
-  options: [],
 }
 
 const get = vi.mocked(apiClient.get)
@@ -53,98 +44,87 @@ describe('parameters api client', () => {
     vi.clearAllMocks()
   })
 
-  it('lists active parameters by default', async () => {
-    get.mockResolvedValue(response([sampleParameter]))
+  it('lists active parameters by default and can include inactive rows', async () => {
+    get.mockResolvedValueOnce(response([sampleParameter])).mockResolvedValueOnce(response([]))
 
-    const result = await listParameters()
+    await expect(parameterApi.listParameters()).resolves.toEqual([sampleParameter])
+    await parameterApi.listParameters(true)
 
-    expect(get).toHaveBeenCalledWith('/parameters', {
+    expect(get).toHaveBeenNthCalledWith(1, '/parameters', {
       params: { include_inactive: false },
     })
-    expect(result).toEqual([sampleParameter])
-  })
-
-  it('passes include_inactive when requested', async () => {
-    get.mockResolvedValue(response([]))
-
-    await listParameters(true)
-
-    expect(get).toHaveBeenCalledWith('/parameters', {
+    expect(get).toHaveBeenNthCalledWith(2, '/parameters', {
       params: { include_inactive: true },
     })
   })
 
-  it('gets a parameter directly by id', async () => {
-    get.mockResolvedValue(response(sampleParameter))
-
-    const result = await getParameter(42)
-
-    expect(get).toHaveBeenCalledWith('/parameters/42')
-    expect(result).toEqual(sampleParameter)
-  })
-
-  it('passes an abort signal only for query-owned detail requests', async () => {
+  it('gets a parameter by id and forwards a query-owned abort signal', async () => {
     get.mockResolvedValue(response(sampleParameter))
     const controller = new AbortController()
 
-    await getParameter(42, controller.signal)
+    await expect(parameterApi.getParameter(42)).resolves.toBe(sampleParameter)
+    await parameterApi.getParameter(42, controller.signal)
 
-    expect(get).toHaveBeenCalledWith('/parameters/42', { signal: controller.signal })
+    expect(get).toHaveBeenNthCalledWith(1, '/parameters/42')
+    expect(get).toHaveBeenNthCalledWith(2, '/parameters/42', {
+      signal: controller.signal,
+    })
   })
 
-  it('posts CSV text to preview and apply endpoints', async () => {
+  it('posts CSV text to the preview and atomic apply endpoints', async () => {
     const result = { created_count: 0, updated_count: 0, error_count: 0, rows: [] }
     post.mockResolvedValue(response(result))
 
-    await previewParameterImport('code,display_name,type')
-    await applyParameterImport('code,display_name,type')
+    await parameterApi.previewParameterImport('code,choice_set_code')
+    await parameterApi.applyParameterImport('code,choice_set_code')
 
     expect(post).toHaveBeenNthCalledWith(1, '/parameters/import/preview', {
-      csv_text: 'code,display_name,type',
+      csv_text: 'code,choice_set_code',
     })
     expect(post).toHaveBeenNthCalledWith(2, '/parameters/import/apply', {
-      csv_text: 'code,display_name,type',
+      csv_text: 'code,choice_set_code',
     })
   })
 
-  it('posts a create payload to the collection endpoint', async () => {
+  it('posts the managed ChoiceSet create payload exactly once', async () => {
     post.mockResolvedValue(response(sampleParameter))
     const payload: ParameterCreate = {
-      code: 'exposure',
-      display_name: '노광량',
-      value_type: 'number',
+      code: 'mode',
+      display_name: '모드',
+      value_type: 'choice',
+      choice_set_code: 'equipment_mode',
+      min_value: null,
+      max_value: null,
     }
 
-    const result = await createParameter(payload)
+    await expect(parameterApi.createParameter(payload)).resolves.toBe(sampleParameter)
 
+    expect(post).toHaveBeenCalledTimes(1)
     expect(post).toHaveBeenCalledWith('/parameters', payload)
-    expect(result).toEqual(sampleParameter)
+    expect(put).not.toHaveBeenCalled()
   })
 
-  it('patches an update payload to the item endpoint', async () => {
+  it('patches only the mutable item payload', async () => {
     patch.mockResolvedValue(response(sampleParameter))
-    const payload: ParameterUpdate = { display_name: '수정된 이름' }
+    const payload: ParameterUpdate = { display_name: '수정된 이름', min_value: '0.1' }
 
-    await updateParameter(42, payload)
+    await parameterApi.updateParameter(42, payload)
 
     expect(patch).toHaveBeenCalledWith('/parameters/42', payload)
+    expect(put).not.toHaveBeenCalled()
   })
 
-  it('deactivates via the dedicated action endpoint (soft delete, not DELETE)', async () => {
+  it('soft-deactivates through the dedicated action endpoint', async () => {
     post.mockResolvedValue(response({ ...sampleParameter, is_active: false }))
 
-    const result = await deactivateParameter(42)
+    const result = await parameterApi.deactivateParameter(42)
 
     expect(post).toHaveBeenCalledWith('/parameters/42/deactivate')
     expect(result.is_active).toBe(false)
   })
 
-  it('replaces options via PUT on the options sub-resource', async () => {
-    put.mockResolvedValue(response(sampleParameter))
-    const options = [{ value: 'pos', display_name: 'pos', sort_order: 0 }]
-
-    await replaceParameterOptions(42, options)
-
-    expect(put).toHaveBeenCalledWith('/parameters/42/options', options)
+  it('does not expose the removed parameter options sub-resource client', () => {
+    expect('replaceParameterOptions' in parameterApi).toBe(false)
+    expect(put).not.toHaveBeenCalled()
   })
 })

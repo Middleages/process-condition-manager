@@ -23,6 +23,10 @@ describe('app routes', () => {
     expect(leafPath('/projects/7')).toBe('projects/:projectId')
     expect(leafPath('/processes')).toBe('processes')
     expect(leafPath('/parameters')).toBe('parameters')
+    expect(leafPath('/parameters/choice-sets')).toBe('parameters/choice-sets')
+    expect(leafPath('/parameters/choice-sets/equipment_mode')).toBe(
+      'parameters/choice-sets/:setCode',
+    )
     expect(leafPath('/projects/7/sheet')).toBe('projects/:projectId/sheet')
   })
 
@@ -31,6 +35,16 @@ describe('app routes', () => {
     expect(matchedShells('/projects/7/sheet')).not.toContain('normal')
 
     for (const pathname of ['/projects', '/projects/new', '/projects/7']) {
+      expect(matchedShells(pathname)).toContain('normal')
+      expect(matchedShells(pathname)).not.toContain('focus')
+    }
+  })
+
+  it('keeps choice-set list and direct detail ownership in the normal shell', () => {
+    for (const pathname of [
+      '/parameters/choice-sets',
+      '/parameters/choice-sets/equipment_mode',
+    ]) {
       expect(matchedShells(pathname)).toContain('normal')
       expect(matchedShells(pathname)).not.toContain('focus')
     }

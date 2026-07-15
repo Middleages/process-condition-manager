@@ -1,6 +1,108 @@
 import { describe, expect, it } from 'vitest'
 
-import { getApiErrorStatus, getExistingProjectId, getLockConflictHolder } from './client'
+import {
+  getApiErrorStatus,
+  getChoiceSetChangedDetails,
+  getChoiceSetChangedSummary,
+  getExistingProjectId,
+  getLockConflictHolder,
+  isChoiceSetChanged,
+  isLockConflict,
+} from './client'
+
+function makeAxiosError(status: number, data: unknown) {
+  return { isAxiosError: true, response: { status, data } }
+}
+
+describe('409 error classification', () => {
+  it('does not classify every 409 as a lock conflict', () => {
+    const changed = makeAxiosError(409, { code: 'choice_set_changed', message: 'changed' })
+    const locked = makeAxiosError(409, { code: 'lock_conflict', message: 'locked' })
+
+    expect(isLockConflict(changed)).toBe(false)
+    expect(isChoiceSetChanged(changed)).toBe(true)
+    expect(isLockConflict(locked)).toBe(true)
+  })
+
+  it('returns only object details for a choice set change', () => {
+    const details = { current_choice_set_id: 42 }
+
+    expect(
+      getChoiceSetChangedDetails(
+        makeAxiosError(409, {
+          code: 'choice_set_changed',
+          message: 'changed',
+          details,
+        }),
+      ),
+    ).toBe(details)
+    expect(
+      getChoiceSetChangedDetails(
+        makeAxiosError(409, {
+          code: 'choice_set_changed',
+          message: 'changed',
+          details: 'not-an-object',
+        }),
+      ),
+    ).toBeNull()
+  })
+
+  it('returns a structurally valid current choice-set summary', () => {
+    const choiceSet = {
+      code: 'equipment_mode',
+      display_name: 'Equipment mode',
+      description: null,
+      is_active: true,
+      version: 4,
+      option_count: 2,
+      active_option_count: 1,
+      parameter_usage_count: 3,
+      profile_usage_fields: ['foundry'],
+      created_at: '2026-07-14T00:00:00Z',
+      updated_at: '2026-07-14T00:01:00Z',
+    }
+
+    expect(
+      getChoiceSetChangedSummary(
+        makeAxiosError(409, {
+          code: 'choice_set_changed',
+          message: 'changed',
+          details: { actual_version: 4, choice_set: choiceSet },
+        }),
+      ),
+    ).toBe(choiceSet)
+  })
+
+  it.each([
+    undefined,
+    null,
+    [],
+    { code: 'equipment_mode' },
+    {
+      code: 'equipment_mode',
+      display_name: 'Equipment mode',
+      description: null,
+      is_active: true,
+      version: '4',
+      option_count: 2,
+      active_option_count: 1,
+      parameter_usage_count: 3,
+      profile_usage_fields: ['foundry'],
+      created_at: '2026-07-14T00:00:00Z',
+      updated_at: '2026-07-14T00:01:00Z',
+    },
+  ])('returns null for malformed choice-set summary %j', (choiceSet) => {
+    expect(
+      getChoiceSetChangedSummary(
+        makeAxiosError(409, {
+          code: 'choice_set_changed',
+          message: 'changed',
+          details: { actual_version: 4, choice_set: choiceSet },
+        }),
+      ),
+    ).toBeNull()
+  })
+})
 
 describe('getLockConflictHolder', () => {
   it('reads the current editor from a lock conflict response', () => {

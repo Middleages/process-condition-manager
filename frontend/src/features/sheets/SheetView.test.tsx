@@ -25,8 +25,40 @@ const project: ProjectOut = {
   process_id: 'etch',
   part_id: 'P-7',
   name: 'Etch qualification',
-  description: null,
   status: 'draft',
+  profile: {
+    project_id: 7,
+    process_name: 'Etch',
+    device_type: { code: 'FOUNDRY', label: 'Foundry', is_active: true },
+    project_category: { code: 'LOGIC', label: 'Logic', is_active: true },
+    comment: null,
+    active_direction: null,
+    gate_direction: null,
+    gross_die: null,
+    pitch_x: null,
+    pitch_y: null,
+    shot_x: null,
+    shot_y: null,
+    slit_occupancy: null,
+    lens_occupancy: null,
+    map_offset_x: null,
+    map_offset_y: null,
+    scribe_lane_x: null,
+    scribe_lane_y: null,
+    shot_count: null,
+    full_shot: null,
+    layer_total: null,
+    euv: null,
+    imm: null,
+    arf: null,
+    krf: null,
+    iline: null,
+    soh: null,
+    pspi: null,
+    metal_layer_count: null,
+    created_at: '2026-07-14T00:00:00Z',
+    updated_at: '2026-07-14T00:00:00Z',
+  },
   layers: [],
 }
 
@@ -39,7 +71,8 @@ const sheet: SheetOut = {
       category_code: 'process',
       unit: 'mTorr',
       description: null,
-      choice_options: [],
+      choice_set_code: null,
+      choice_set_version: null,
       sort_order: 1,
     },
   ],
@@ -205,6 +238,48 @@ describe('SheetView focus shell integration', () => {
     expect(sheetViewSource).toMatch(
       /const commitSaved = useCallback\([\s\S]*?\[queryClient, projectId\],\s*\)/,
     )
+  })
+
+  it('fails closed on malformed Sheet choice bindings before mounting the editing lock', () => {
+    const queryClient = client()
+    queryClient.setQueryData(['project', 7], project)
+    queryClient.setQueryData(['sheet', 7], {
+      ...sheet,
+      columns: [
+        {
+          ...sheet.columns[0],
+          value_type: 'choice',
+          choice_set_code: 'equipment_mode',
+          choice_set_version: null,
+        },
+      ],
+    })
+
+    const html = renderSheet(queryClient)
+
+    expect(html).toContain('시트 컬럼 정보가 완전하지 않습니다')
+    expect(html).not.toContain('data-sheet-editor="true"')
+    expect(html).not.toContain('data-sheet-editing-status="true"')
+    expect(sheetViewSource).toContain('sheetQuery.refetch')
+  })
+
+  it('transports one shared resource map and reconciles canonical responses against request revisions', () => {
+    expect(sheetViewSource).toContain('useSheetChoiceSets(sheet.columns)')
+    expect(sheetViewSource).toContain('choiceResources')
+    expect(sheetViewSource).toMatch(
+      /buildPasteStaging\([\s\S]*?visibleColumns,[\s\S]*?displayRows,[\s\S]*?choiceResources/,
+    )
+    expect(sheetViewSource).toContain('reconcileSuccessfulPatch(')
+    expect(sheetViewSource).toContain('commitSaved')
+    expect(sheetViewSource).not.toContain('onPersisted: commitSaved')
+    expect(sheetViewSource).toContain('sheetChoiceAuthorizationEpoch(choiceResources)')
+    expect(sheetViewSource).toContain('revalidatePasteStaging(')
+    expect(sheetViewSource).toContain('persistablePasteCells(latestPaste, current.rows)')
+    expect(sheetViewSource).toMatch(
+      /await applyPaste\(pasteIdentity,[\s\S]*?\(\) => \{[\s\S]*?revalidatePasteStaging\([\s\S]*?return validCells/,
+    )
+    expect(sheetViewSource).toContain("Symbol('sheet-paste-review')")
+    expect(sheetViewSource).toContain('abandonPaste(pasteIdentity)')
   })
 
   it('renders truthful read-only discovery controls with accessible pressed and status semantics', () => {

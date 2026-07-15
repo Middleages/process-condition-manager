@@ -70,6 +70,7 @@ class ProcessService:
 
     async def get_process_detail(self, process_key_value: str) -> ProcessDetailOut:
         line_id, process_id = self.parse_process_key(process_key_value)
+        process = await self.reader.get_process(line_id, process_id)
         layers = await self.reader.get_layers(line_id, process_id)
         area_names = sorted({layer.area_name for layer in layers if layer.area_name})
         project_count = await self._project_count(line_id, process_id)
@@ -77,7 +78,7 @@ class ProcessService:
             key=process_key_value,
             line_id=line_id,
             process_id=process_id,
-            display_name=f"{line_id} / {process_id}",
+            display_name=process.display_name,
             step_count=len(layers),
             area_names=area_names,
             has_project=project_count > 0,

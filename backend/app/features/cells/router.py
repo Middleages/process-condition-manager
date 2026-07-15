@@ -27,14 +27,14 @@ router = APIRouter(
 
 
 async def get_service(
-    session: Annotated[AsyncSession, Depends(get_app_session)],
+    session: Annotated[AsyncSession, Depends(get_app_session, scope="function")],
 ) -> AsyncIterator[CellService]:
     service = CellService(CellRepository(session))
     yield service
     await session.commit()
 
 
-ServiceDep = Annotated[CellService, Depends(get_service)]
+ServiceDep = Annotated[CellService, Depends(get_service, scope="function")]
 UserDep = Annotated[UserContext, Depends(get_current_user)]
 
 

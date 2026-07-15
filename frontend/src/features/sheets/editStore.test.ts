@@ -4,159 +4,131 @@ import type { ConditionGridRow } from '@/grid/types'
 
 import {
   applyDirtyToRows,
-  dirtyCellList,
   dirtyKey,
+  fromCellUpdateOut,
   removeSavedCells,
-  selectDirtyCount,
   setDirtyCell,
+  setDirtyCells,
   toCellStatuses,
   toCellUpdateIn,
   useEditStore,
   type DirtyCell,
-  type DirtyCellMap,
+  type PersistedCell,
 } from './editStore'
 
-const cell = (conditionId: string, parameterCode: string, value: string | null): DirtyCell => ({
-  conditionId,
-  parameterCode,
-  value,
+const persisted = (
+  value: string | null,
+  parameterCode = 'spin',
+): PersistedCell => ({ conditionId: '1', parameterCode, value })
+
+const dirty = (value: string | null, revision: number, parameterCode = 'spin'): DirtyCell => ({
+  ...persisted(value, parameterCode),
+  revision,
 })
 
-describe('setDirtyCell', () => {
-  it('registers a cell and merges same-cell edits (last write wins)', () => {
-    let map: DirtyCellMap = new Map()
-    map = setDirtyCell(map, cell('11', 'spin', '1500'))
-    map = setDirtyCell(map, cell('11', 'spin', '1600')) // 같은 셀 재편집
-    map = setDirtyCell(map, cell('11', 'pr', 'pos'))
-    expect(map.size).toBe(2)
-    expect(map.get(dirtyKey('11', 'spin'))?.value).toBe('1600')
+describe('revision reducers', () => {
+  it('stores a revisioned cell without mutating the source map', () => {
+    const source = new Map<string, DirtyCell>()
+    const cell = dirty('100', 1)
+    const next = setDirtyCell(source, cell)
+    expect(source.size).toBe(0)
+    expect(next.get(dirtyKey('1', 'spin'))).toBe(cell)
   })
 
-  it('does not mutate the input map', () => {
-    const base: DirtyCellMap = new Map()
-    const next = setDirtyCell(base, cell('1', 'a', 'x'))
-    expect(base.size).toBe(0)
-    expect(next.size).toBe(1)
-  })
-})
-
-describe('removeSavedCells', () => {
-  it('drops saved cells whose value is unchanged', () => {
-    let map: DirtyCellMap = new Map()
-    map = setDirtyCell(map, cell('11', 'spin', '1500'))
-    map = setDirtyCell(map, cell('11', 'pr', 'pos'))
-    const next = removeSavedCells(map, [cell('11', 'spin', '1500')])
-    expect(next.size).toBe(1)
-    expect(next.has(dirtyKey('11', 'pr'))).toBe(true)
+  it('merges an atomic batch and keeps its exact snapshot objects', () => {
+    const source = new Map<string, DirtyCell>()
+    const cells = [dirty('100', 1), dirty('memo', 2, 'note')]
+    const next = setDirtyCells(source, cells)
+    expect(next.get(dirtyKey('1', 'spin'))).toBe(cells[0])
+    expect(next.get(dirtyKey('1', 'note'))).toBe(cells[1])
   })
 
-  it('keeps a cell re-edited after the save snapshot (no data loss)', () => {
-    let map: DirtyCellMap = new Map()
-    map = setDirtyCell(map, cell('11', 'spin', '1500')) // 저장 요청 스냅샷 값
-    map = setDirtyCell(map, cell('11', 'spin', '1700')) // 저장 중 재편집된 최신값
-    const next = removeSavedCells(map, [cell('11', 'spin', '1500')]) // 옛 값만 저장 완료
-    expect(next.size).toBe(1)
-    expect(next.get(dirtyKey('11', 'spin'))?.value).toBe('1700') // 최신 편집 보존
-  })
-
-  it('ignores saved cells no longer present (discarded meanwhile)', () => {
-    const next = removeSavedCells(new Map(), [cell('9', 'x', 'v')])
-    expect(next.size).toBe(0)
+  it('removes only the matching request revision, never a value-equal newer edit', () => {
+    const oldRequest = dirty('A', 1)
+    const abaCurrent = dirty('A', 3)
+    const map = new Map([[dirtyKey('1', 'spin'), abaCurrent]])
+    expect(removeSavedCells(map, [oldRequest]).get(dirtyKey('1', 'spin'))).toBe(abaCurrent)
+    expect(removeSavedCells(map, [abaCurrent]).size).toBe(0)
   })
 })
 
-describe('toCellStatuses', () => {
-  it('maps every dirty cell to a dirty status', () => {
-    let map: DirtyCellMap = new Map()
-    map = setDirtyCell(map, cell('11', 'spin', '1500'))
-    map = setDirtyCell(map, cell('12', 'pr', null))
-    const statuses = toCellStatuses(map)
-    expect(statuses).toHaveLength(2)
-    expect(statuses.every((status) => status.state === 'dirty')).toBe(true)
-  })
-})
-
-describe('toCellUpdateIn', () => {
-  it('converts to the API shape with a numeric condition_id', () => {
-    expect(toCellUpdateIn(cell('11', 'spin', '1500'))).toEqual({
-      condition_id: 11,
-      parameter_code: 'spin',
-      value: '1500',
+describe('transport and display projections', () => {
+  it('converts API snake_case without inventing a client revision', () => {
+    expect(fromCellUpdateOut({ condition_id: 9, parameter_code: 'mode', value: 'AUTO' })).toEqual({
+      conditionId: '9',
+      parameterCode: 'mode',
+      value: 'AUTO',
     })
-    expect(toCellUpdateIn(cell('12', 'pr', null)).value).toBeNull()
+    expect(fromCellUpdateOut({ condition_id: 9, parameter_code: 'mode', value: 'AUTO' })).not.toHaveProperty(
+      'revision',
+    )
   })
-})
 
-describe('applyDirtyToRows', () => {
-  const rows: ConditionGridRow[] = [
-    {
-      id: '11',
-      layerKey: 'L',
-      layerLabel: 'L',
-      conditionLabel: 'C1',
-      isPor: true,
-      values: { spin: '1500', pr: 'pos' },
-    },
-    {
-      id: '12',
-      layerKey: 'L',
-      layerLabel: 'L',
-      conditionLabel: 'C2',
-      isPor: false,
-      values: { spin: '900' },
-    },
-  ]
+  it('converts a dirty snapshot to the string-preserving API shape', () => {
+    expect(toCellUpdateIn(dirty('001.5000', 42))).toEqual({
+      condition_id: 1,
+      parameter_code: 'spin',
+      value: '001.5000',
+    })
+  })
 
-  it('returns equivalent rows when there is no dirty', () => {
+  it('maps every dirty cell to a dirty status', () => {
+    expect(toCellStatuses(new Map([[dirtyKey('1', 'spin'), dirty('100', 1)] ]))).toEqual([
+      { conditionId: '1', parameterCode: 'spin', state: 'dirty' },
+    ])
+  })
+
+  it('overlays dirty values without mutating the server rows', () => {
+    const rows: ConditionGridRow[] = [
+      {
+        id: '1',
+        layerKey: 'L1',
+        layerLabel: 'L1',
+        conditionLabel: 'C1',
+        isPor: true,
+        values: { spin: '90' },
+      },
+    ]
+    const next = applyDirtyToRows(rows, new Map([[dirtyKey('1', 'spin'), dirty('100', 1)]]))
+    expect(next[0].values.spin).toBe('100')
+    expect(rows[0].values.spin).toBe('90')
     expect(applyDirtyToRows(rows, new Map())).toEqual(rows)
   })
-
-  it('overlays dirty values onto the matching row only', () => {
-    let map: DirtyCellMap = new Map()
-    map = setDirtyCell(map, cell('11', 'spin', '1600'))
-    map = setDirtyCell(map, cell('11', 'pr', null))
-    const out = applyDirtyToRows(rows, map)
-    expect(out[0].values).toEqual({ spin: '1600', pr: null })
-    expect(out[1]).toBe(rows[1]) // 더티 없는 행은 참조 그대로(불필요 리렌더 방지)
-  })
-
-  it('does not mutate the source rows', () => {
-    let map: DirtyCellMap = new Map()
-    map = setDirtyCell(map, cell('11', 'spin', '1600'))
-    applyDirtyToRows(rows, map)
-    expect(rows[0].values.spin).toBe('1500')
-  })
 })
 
-describe('useEditStore', () => {
+describe('useEditStore monotonic allocator', () => {
   beforeEach(() => {
-    useEditStore.setState({ dirtyCells: new Map() })
-  })
-
-  it('setCell registers dirty and dedupes same-cell edits', () => {
-    useEditStore.getState().setCell('11', 'spin', '1500')
-    useEditStore.getState().setCell('11', 'spin', '1600')
-    expect(selectDirtyCount(useEditStore.getState())).toBe(1)
-    expect(dirtyCellList(useEditStore.getState().dirtyCells)[0].value).toBe('1600')
-  })
-
-  it('setCells stages a paste batch and lets the latest batch value win', () => {
-    useEditStore.getState().setCell('11', 'spin', '1500')
-    useEditStore.getState().setCells([
-      cell('11', 'spin', '1700'),
-      cell('12', 'pr', 'neg'),
-    ])
-
-    expect(selectDirtyCount(useEditStore.getState())).toBe(2)
-    expect(useEditStore.getState().dirtyCells.get(dirtyKey('11', 'spin'))?.value).toBe('1700')
-  })
-
-  it('markSaved removes saved cells and clearAll empties the buffer', () => {
-    useEditStore.getState().setCell('11', 'spin', '1500')
-    useEditStore.getState().setCell('12', 'pr', 'pos')
-    useEditStore.getState().markSaved([cell('11', 'spin', '1500')])
-    expect(selectDirtyCount(useEditStore.getState())).toBe(1)
     useEditStore.getState().clearAll()
-    expect(selectDirtyCount(useEditStore.getState())).toBe(0)
+  })
+
+  it('increments every assignment, including A to B to A', () => {
+    const first = useEditStore.getState().setCell(persisted('A'))
+    const second = useEditStore.getState().setCell(persisted('B'))
+    const third = useEditStore.getState().setCell(persisted('A'))
+    expect([first.revision, second.revision, third.revision]).toEqual([
+      first.revision,
+      first.revision + 1,
+      first.revision + 2,
+    ])
+    useEditStore.getState().markSaved([first])
+    expect(useEditStore.getState().dirtyCells.get(dirtyKey('1', 'spin'))).toBe(third)
+  })
+
+  it('allocates a paste batch atomically in input order and returns the installed snapshots', () => {
+    const snapshots = useEditStore
+      .getState()
+      .setCells([persisted('1.5'), persisted('AUTO', 'mode')])
+    expect(snapshots[1].revision).toBe(snapshots[0].revision + 1)
+    expect(useEditStore.getState().dirtyCells.get(dirtyKey('1', 'spin'))).toBe(snapshots[0])
+    expect(useEditStore.getState().dirtyCells.get(dirtyKey('1', 'mode'))).toBe(snapshots[1])
+  })
+
+  it('clearAll empties the map but never resets the global revision counter', () => {
+    const beforeClear = useEditStore.getState().setCell(persisted('old'))
+    useEditStore.getState().clearAll()
+    const afterClear = useEditStore.getState().setCell(persisted('new'))
+    expect(afterClear.revision).toBeGreaterThan(beforeClear.revision)
+    useEditStore.getState().markSaved([beforeClear])
+    expect(useEditStore.getState().dirtyCells.get(dirtyKey('1', 'spin'))).toBe(afterClear)
   })
 })

@@ -13,10 +13,11 @@ import {
   canApplyCsvImport,
   csvImportReducer,
   initialCsvImportState,
+  invalidateParameterAdminQueries,
 } from './parameterAdminState'
 
 const SAMPLE =
-  'code,display_name,type,category,min,max,options\nspin_speed,Spin Speed,number,sp,0,5000,\npr_type,PR Type,choice,sp,,,"pos,neg"'
+  'code,display_name,value_type,category,unit,min_value,max_value,choice_set_code,description,sort_order\nmode,Mode,choice,photo,,,,equipment_mode,Equipment mode,10\npitch,Pitch,number,photo,nm,0.1,1000,,Pitch size,20'
 
 export interface CsvImportDialogProps {
   open: boolean
@@ -36,10 +37,7 @@ export function CsvImportDialog({ open, onClose }: CsvImportDialogProps) {
     mutationFn: (submittedCsvText: string) => applyParameterImport(submittedCsvText),
     onSuccess: async (result, submittedCsvText) => {
       dispatch({ type: 'apply-succeeded', submittedCsvText, result })
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['parameters'] }),
-        queryClient.invalidateQueries({ queryKey: ['parameter-categories'] }),
-      ])
+      await invalidateParameterAdminQueries(queryClient)
     },
   })
   const pending = previewMutation.isPending || applyMutation.isPending
@@ -84,7 +82,8 @@ export function CsvImportDialog({ open, onClose }: CsvImportDialogProps) {
     >
       <p className="mb-4 text-sm text-muted">
         code 기준으로 여러 파라미터를 만들거나 갱신합니다. 먼저 미리보기에서 신규·갱신·오류
-        행을 확인하세요. 오류 행은 적용되지 않습니다.
+        행을 확인하세요. Choice 타입은 <code>choice_set_code</code>를 사용합니다. 기존
+        <code>options</code> 열은 지원하지 않으며 CSV 요청 전체가 거부됩니다.
       </p>
 
       <label

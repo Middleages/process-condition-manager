@@ -5,22 +5,27 @@
 """
 
 from datetime import datetime
+from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     DateTime,
     Enum,
-    Float,
     ForeignKey,
     Integer,
+    Numeric,
     String,
-    UniqueConstraint,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
 from app.domain.parameters.types import ValueType
+
+if TYPE_CHECKING:
+    from app.models.choice import ChoiceSet
 
 
 class ParameterCategory(Base):
@@ -49,6 +54,13 @@ class Parameter(Base):
     """전 process 공통 파라미터(컬럼) 정의."""
 
     __tablename__ = "parameter"
+    __table_args__ = (
+        CheckConstraint(
+            "(value_type = 'choice' AND choice_set_id IS NOT NULL) OR "
+            "(value_type <> 'choice' AND choice_set_id IS NULL)",
+            name="ck_parameter_choice_set_binding",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     # code: 생성 후 불변. 셀 값·이벤트가 전부 이 값으로 파라미터를 참조한다.
@@ -56,15 +68,23 @@ class Parameter(Base):
     display_name: Mapped[str] = mapped_column(String(128))
     description: Mapped[str | None] = mapped_column(String(512), nullable=True)
     value_type: Mapped[ValueType] = mapped_column(
-        Enum(ValueType, native_enum=False, length=16)
+        Enum(
+            ValueType,
+            native_enum=False,
+            length=16,
+            values_callable=lambda members: [member.value for member in members],
+        )
     )
     category_id: Mapped[int | None] = mapped_column(
         ForeignKey("parameter_category.id"), nullable=True, index=True
     )
+    choice_set_id: Mapped[int | None] = mapped_column(
+        ForeignKey("choice_set.id"), nullable=True, index=True
+    )
     # number 타입 부가 속성 (검증 엔진이 사용)
     unit: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    min_value: Mapped[float | None] = mapped_column(Float, nullable=True)
-    max_value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    min_value: Mapped[Decimal | None] = mapped_column(Numeric(), nullable=True)
+    max_value: Mapped[Decimal | None] = mapped_column(Numeric(), nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     is_active: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default="true"
@@ -79,29 +99,6 @@ class Parameter(Base):
     category: Mapped[ParameterCategory | None] = relationship(
         back_populates="parameters"
     )
-    options: Mapped[list["ParameterOption"]] = relationship(
-        back_populates="parameter",
-        cascade="all, delete-orphan",
-        order_by="ParameterOption.sort_order",
-        lazy="selectin",  # async 안전 즉시 로딩 (직렬화 시 옵션 필요)
+    choice_set: Mapped["ChoiceSet | None"] = relationship(
+        back_populates="parameters", lazy="selectin"
     )
-
-
-class ParameterOption(Base):
-    """choice 타입 파라미터의 선택지."""
-
-    __tablename__ = "parameter_option"
-    __table_args__ = (UniqueConstraint("parameter_id", "value"),)
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    parameter_id: Mapped[int] = mapped_column(
-        ForeignKey("parameter.id", ondelete="CASCADE"), index=True
-    )
-    value: Mapped[str] = mapped_column(String(128))
-    display_name: Mapped[str] = mapped_column(String(128))
-    sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
-    is_active: Mapped[bool] = mapped_column(
-        Boolean, default=True, server_default="true"
-    )
-
-    parameter: Mapped[Parameter] = relationship(back_populates="options")

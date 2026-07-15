@@ -5,8 +5,10 @@
 ```mermaid
 erDiagram
     INGEST_PROCESS ||--o{ INGEST_LAYER_DATA : "적재 영역 (읽기 전용)"
-    PARAMETER ||--o{ PARAMETER_OPTION : "선택지 타입일 때"
+    CHOICE_SET ||--o{ CHOICE_OPTION : "관리형 선택지"
+    CHOICE_SET ||--o{ PARAMETER : "choice 타입일 때"
     PROJECT ||--o{ SHEET_LAYER : "생성 시 구조 파생"
+    PROJECT ||--|| PROJECT_PROFILE : "고정 기본정보"
     SHEET_LAYER ||--o{ LAYER_CONDITION : "다중 조건 (D-16)"
     LAYER_CONDITION ||--o{ CELL_VALUE : ""
     PROJECT ||--o{ CHANGE_EVENT : "append-only"
@@ -30,8 +32,9 @@ parameter
   display_name          -- 사용자에게 보이는 컬럼명. 변경 가능
   description           -- 헤더 툴팁 등 UI 노출용 설명
   value_type            -- number | text | choice
+  choice_set_id FK      -- choice 타입일 때 공유 ChoiceSet
   category_id   FK      -- 카테고리 (관리자 설정 가능)
-  unit, min, max        -- number 타입 부가 속성 (검증 엔진이 사용)
+  unit, min, max        -- number 타입 부가 속성; min/max는 NUMERIC, API는 canonical decimal string
   sort_order
   is_active             -- soft delete. 하드 삭제 금지
   created_at, updated_at
@@ -39,14 +42,22 @@ parameter
 parameter_category
   id, code, display_name, sort_order, is_active
 
-parameter_option        -- choice 타입의 선택지
-  id, parameter_id FK, value, display_name, sort_order, is_active
+choice_set              -- 프로젝트 필드와 파라미터가 재사용하는 선택지 집합
+  id, code UNIQUE, display_name, description, version, is_active
+
+choice_option
+  id, choice_set_id FK, code, label, sort_order, is_active
+  UNIQUE (choice_set_id, code)
 ```
 
 설계 규칙:
 
 - **`code`는 불변, `display_name`은 가변.** 셀 값과 이벤트는 전부 `code`로 파라미터를 참조한다. 컬럼명 변경이 데이터에 영향을 주지 않는다. (기존 "컬럼명이 꼬이는" 문제의 구조적 차단)
 - **하드 삭제 금지.** `is_active=false`로 비활성화만 한다. 과거 스냅샷·이력이 항상 정의를 역참조할 수 있어야 한다.
+- **Choice option code는 불변, label은 가변.** 셀과 Project Profile은 내부 ID가 아니라 option code를 저장한다. 비활성 기존값은 경고와 함께 계속 해석·승인할 수 있지만 신규 선택은 거부한다.
+- ChoiceSet 변경은 Draft에 live 반영하고, Approved/Archived는 승인 시점 snapshot의
+  active·inactive 전체 option code·label·활성 상태를 사용한다. 비활성 기존값도 승인본에서
+  label을 잃지 않는다.
 - 검증 규칙 중 파라미터 단독 규칙(range, required, pattern)은 레지스트리 속성으로 두고, cross-layer 규칙은 Phase 3에서 별도 테이블로 확장한다.
 
 ## 3. 파라미터 스냅샷 정책 (결정 D-08, 정책 a)
@@ -56,6 +67,8 @@ parameter_option        -- choice 타입의 선택지
 | Draft / Review | **live** — 항상 현재 레지스트리(`is_active=true`)를 따른다. 새 파라미터가 추가되면 즉시 빈 컬럼으로 나타난다 |
 | Approved / Archived | **frozen** — 승인 시점에 레지스트리 전체(정의+선택지)를 `parameter_snapshot`(JSONB)으로 동결. 이후 레지스트리가 어떻게 바뀌어도 당시 모습 그대로 렌더링 |
 
+- snapshot version 2는 active parameter가 참조하는 ChoiceSet과 고정 Profile ChoiceSet 4개를
+  top-level에서 code로 deduplicate하고, 각 set의 active·inactive 전체 option을 동결한다.
 - 조회 API는 프로젝트 상태에 따라 live 레지스트리 또는 스냅샷 중 하나를 컬럼 정의로 반환한다. 프론트는 구분할 필요 없이 받은 정의로 그리드를 구성한다.
 - Revision 생성(Approved → 새 Draft) 시 새 Draft는 다시 live를 따른다.
 
@@ -64,11 +77,21 @@ parameter_option        -- choice 타입의 선택지
 ```
 project
   id PK
-  process_key           -- 적재 영역의 process 식별자 (판독기 통해 해석)
+  line_id, process_id, part_id  -- 불변 identity, 조합 UNIQUE
   name, status          -- draft | review | approved | archived
   version               -- Revision 번호
   parameter_snapshot    -- JSONB, 승인 시점에만 기록 (그 전 NULL)
   created_by, approved_at, ...
+
+project_profile         -- 고정 프로젝트 기본정보(D-21), project와 1:1
+  project_id PK/FK
+  process_name, device_type_code, project_category_code, comment
+  active_direction_code, gate_direction_code
+  gross_die, pitch_x, pitch_y, shot_x, shot_y
+  slit_occupancy, lens_occupancy, map_offset_x, map_offset_y
+  scribe_lane_x, scribe_lane_y, shot_count, full_shot
+  layer_total, euv, imm, arf, krf, iline, soh, pspi, metal_layer_count
+  created_at, updated_at
 
 sheet_layer             -- 프로젝트 생성 시 적재 데이터의 layer 구성에서 파생
   id PK, project_id FK
@@ -88,10 +111,15 @@ cell_value              -- 조건표 본문: narrow(long) 테이블
   condition_id FK       -- layer_condition 참조 (행 = 조건 행, layer가 아님)
   parameter_code        -- parameter.code 참조 (FK 아님: 스냅샷 독립성)
   value_text            -- TEXT 저장(NULL 허용 = 셀 비우기), value_type에 따라 해석
+                        -- choice는 choice_option.code 저장, 모든 셀은 수동 입력
   UNIQUE (condition_id, parameter_code)
 ```
 
 > Phase 2 구현 정정: 컬럼명은 `value`가 아니라 `value_text`다. `updated_by`/`updated_at`는 두지 않는다 — 셀 단위 변경 이력은 아래 `change_event`(구조화 컬럼, P2-D7)가 전담하므로 `cell_value` 자체에 감사 컬럼을 중복 보관하지 않는다(현재 값의 "누가·언제"가 필요하면 `change_event`를 `condition_id`+`parameter_code`로 조회).
+
+> Phase 2.6 확장: 자동 연동은 Project Profile 생성 시점의 복사에만 적용한다. 조건표 셀은
+> 전부 수동 입력이며 자동/수동 출처나 override 컬럼을 추가하지 않는다. Project Profile은
+> 고정 명시적 컬럼이며 실제 PARTID 원천 DB 계약 전까지 수동 provider를 사용한다.
 
 ### 다중 조건과 POR (D-16)
 
@@ -118,7 +146,7 @@ cell_value              -- 조건표 본문: narrow(long) 테이블
 change_event
   id PK (bigserial)
   project_id FK
-  event_type            -- project_create | backbone_copy | backbone_layer_replace
+  event_type            -- project_create | project_profile_update | backbone_copy | backbone_layer_replace
                         --  | cell_update | condition_add | condition_remove | por_change
                         --  | status_change | revision_create | ...
   condition_id, parameter_code, old_value, new_value  -- 셀 이벤트(cell_update) 전용 구조화 컬럼(P2-D7)
@@ -156,6 +184,14 @@ edit_lock
 - ~~조건 값 조회 (백본 소스)~~ — **D-14로 폐기.** 백본 복사는 기존 프로젝트의 `cell_value` → 신규 프로젝트의 `cell_value` 복사이며 적재 영역과 무관하다. 원천 파라미터 매핑 테이블도 백본 용도로는 불필요하다 (Recipe XML 매핑은 별개 주제로 후속 Phase에서 다룸).
 - `stepseq`와 `layer_no`는 layer 매칭 키(D-15)이므로 판독 계약의 필수 반환 항목이다. 적재 스키마 확정 시 두 컬럼의 실재·형식을 확인한다.
 - 접근은 읽기 전용 커넥션(별도 engine, 같은 인스턴스의 타 DB 허용 — D-11)으로만 한다.
+
+### Project Profile 원천 경계 (D-21)
+
+Process 구조 판독기와 프로젝트 기본정보 판독기는 서로 다른 계약이다. Phase 2.6은
+`ProjectMetadataProvider(line_id, process_id, part_id) -> ProjectProfileSeed` 경계를 두되,
+실제 원천 DB가 확정되기 전에는 빈 seed를 반환하는 수동 provider를 사용한다. 향후 실제
+provider도 프로젝트 생성 시 한 번만 호출하며 결과를 `project_profile`에 복사한다. 이후
+원천 변경은 프로젝트에 자동 반영하지 않고, 프로젝트 잠금 아래에서 복사본을 직접 수정한다.
 
 ## 8. 백본 (D-14 · D-15)
 

@@ -3,20 +3,25 @@
 ## Source of truth
 
 - **Status:** Active
-- **Last refreshed:** 2026-07-13
+- **Last refreshed:** 2026-07-14
 - **Primary product surfaces:** 프로젝트 목록·생성·상세, Process Catalog, 조건표 편집기,
-  파라미터 레지스트리 관리
+  파라미터 레지스트리·ChoiceSet 관리
 - **Detailed Phase 2.5 specification:**
   [`docs/superpowers/specs/2026-07-13-phase-2-5-ui-ux-design.md`](./docs/superpowers/specs/2026-07-13-phase-2-5-ui-ux-design.md)
+- **Detailed Phase 2.6 specification:**
+  [`docs/superpowers/specs/2026-07-14-phase-2-6-project-profile-managed-choice-design.md`](./docs/superpowers/specs/2026-07-14-phase-2-6-project-profile-managed-choice-design.md)
 - **Evidence reviewed:**
   - `plan/05-ui-wireframe.md` — 화면 지도와 업무 흐름
   - `plan/phase-2-tasks.md` — 현재 편집기 기능·제약과 Phase 2 완료 근거
   - `plan/phase-3-tasks.md`~`plan/phase-6-tasks.md` — 향후 검증·이력·승인·출력 UI 슬롯
-  - `frontend/src/shared/layout/AppLayout.tsx` — 전역 `max-w-6xl` 제약
-  - `frontend/src/features/projects/ProjectWorkspacePage.tsx` — 생성·목록·상세 결합 상태
-  - `frontend/src/features/parameters/ParameterAdminPage.tsx` — 관리 작업 수직 적층 상태
+  - `frontend/src/app/routes.tsx` — 일반 App Shell과 조건표 Focus Shell route 경계
+  - `frontend/src/features/projects/ProjectListPage.tsx` — 검색·표 중심 목록
+  - `frontend/src/features/projects/ProjectCreateWizard.tsx` — W1 생성 흐름
+  - `frontend/src/features/projects/ProjectDetailPage.tsx` — 프로젝트 상세와 Layer 문맥
+  - `frontend/src/features/parameters/ParameterAdminPage.tsx` — M1 파라미터 레지스트리
   - `frontend/src/features/sheets/SheetView.tsx` — 조건표 편집·잠금·붙여넣기 흐름
   - 2026-07-13 사용자 승인: A2 / V1 / P1 / W1 / M1 / S1-C
+  - 2026-07-14 사용자 승인: 고정 Project Profile / 공유 ChoiceSet / searchable choice
 
 이 문서는 PCM UI/UX와 디자인 시스템의 정본이다. 구현 중 충돌이 발견되면 화면별
 임시 예외를 늘리기 전에 이 문서와 상세 스펙을 갱신한다.
@@ -36,12 +41,14 @@
   - 약 200개 parameter 조건표가 브라우저의 수평·수직 공간을 최대한 사용하게 한다.
   - 프로젝트 생성과 파라미터 관리를 한 화면에 쌓인 폼이 아니라 명확한 작업 흐름으로
     분리한다.
+  - 프로젝트 생성은 짧게 유지하고 전체 기본정보는 상세의 잠금 기반 편집으로 제공한다.
+  - 업무용 선택지는 안정적 code와 가변 label을 갖는 재사용 ChoiceSet으로 관리한다.
   - Phase 3~6의 검증·이력·코멘트·출력을 현재 작업 문맥을 해치지 않고 수용한다.
   - 공통 상태·폼·버튼·테이블·접근성 규칙을 재사용 가능한 계약으로 만든다.
 - **Non-goals:**
   - Phase 3 검증 엔진이나 사용자 문구 매퍼 구현
   - Phase 4~6의 이력·승인·출력 기능 선행 구현
-  - 백엔드/API 계약 변경
+  - 실제 PARTID 원천 DB 연동과 Project Profile 자동 재동기화
   - 모바일 조건표 편집 최적화
   - 새 UI 프레임워크나 외부 폰트 도입
 - **Success signals:**
@@ -50,15 +57,19 @@
   - 파라미터 목록이 페이지 첫 화면에 보이고 편집은 드로어에서 수행된다.
   - 조건표는 집중 모드에서 사용 가능한 viewport를 채운다.
   - 기존 생성·잠금·자동저장·붙여넣기·조건 행 동작이 회귀하지 않는다.
+  - 프로젝트 상세에서 고정 Profile 전체를 조회·편집할 수 있다.
+  - 수백 개 Choice를 code와 label로 검색하고 비활성 기존값도 식별할 수 있다.
 
 ## Personas and jobs
 
 - **Primary personas:**
   - 공정 엔지니어: 프로젝트를 찾고 조건표를 장시간 편집·검토한다.
-  - 파라미터 관리자: 레지스트리 항목·카테고리·선택지를 반복 관리한다.
+  - 파라미터 관리자: 레지스트리 항목·카테고리·공유 ChoiceSet을 반복 관리한다.
   - 검토자/승인자(향후 Phase 5): 검증 상태와 변경 근거를 확인한다.
 - **User jobs:**
   - Process 구조와 백본을 선택해 새 프로젝트를 안전하게 생성한다.
+  - 프로젝트 기본정보를 확인하고 잠금 아래에서 수정한다.
+  - 재사용 선택지의 code·label·활성 상태와 영향 범위를 관리한다.
   - 수십~수백 개 프로젝트에서 대상 조건표를 검색·필터한다.
   - 100개 미만 Layer × 약 200개 parameter를 키보드 중심으로 편집한다.
   - 오류·이력·코멘트에서 대상 셀로 이동하고 작업 문맥을 유지한다.
@@ -76,6 +87,8 @@
   - `/projects/:projectId/sheet` — 조건표 집중 모드
   - `/processes` — Process 검색과 구조 preview
   - `/parameters` — 목록 중심 레지스트리 관리와 편집 드로어
+  - `/parameters/choice-sets` — 공유 ChoiceSet 목록
+  - `/parameters/choice-sets/:setCode` — 수백 개 option을 다루는 전체 페이지 관리
 - **Content hierarchy:** 작업 제목·상태·주요 행동 → 검색/필터/도구 → 데이터 표·그리드
   → 필요할 때만 보조 패널.
 - **URL ownership:** 선택된 프로젝트와 생성 단계는 path/query로 표현한다. 목록 검색,
@@ -122,7 +135,8 @@
 - **Existing components/patterns to reuse:** Glide grid adapter, React Query status handling,
   Zustand dirty store, `.input`/button 스타일의 의미, `StatusMessage`의 역할.
 - **New/changed shared components:** AppHeader, FocusHeader, PageHeader, Button, IconButton,
-  Badge, Field, InlineAlert, Drawer, Dialog, EmptyState, Skeleton, compact table primitives.
+  Badge, Field, InlineAlert, Drawer, Dialog, EmptyState, Skeleton, compact table primitives,
+  accessible searchable combobox.
 - **Variants and states:** default, hover, focus-visible, active/selected, disabled, loading,
   success, warning, error, read-only.
 - **Token/component ownership:** semantic token은 `frontend/src/styles.css`; 범용 UI는
@@ -132,6 +146,8 @@
   - P1 검색·표 중심 프로젝트 목록
   - W1 전체 화면 단계형 프로젝트 생성
   - M1 목록 + 오른쪽 편집 드로어
+  - 고정 Project Profile definition grid + 잠금 기반 오른쪽 편집 드로어
+  - ChoiceSet 목록 + option 전체 페이지 관리
   - S1-C 반응형 오류 타일 스트림: 1024/1440/1920에서 3/4/5열, 기본 48~52px,
     한 줄 안내, 선택 시 확장
 
@@ -168,6 +184,7 @@
 - **Error:** 해당 영역에서 원인과 재시도를 제시하고 검색·폼·dirty 상태를 보존한다.
 - **Success:** 작업 위치 가까이 짧게 표시한다. 반복 toast를 피한다.
 - **Disabled:** 비활성 이유가 문맥상 드러나야 한다. destructive action은 확인한다.
+- **Inactive choice:** 저장된 code와 label을 `사용 중지됨`으로 계속 표시하되 새 선택은 막는다.
 - **Offline/slow network:** mutation 중 관련 action만 잠근다. 저장 실패 시 입력과 dirty 셀을
   보존한다. 조건표는 기존 캐시를 유지한다.
 - **Paste review:** 붙여넣기 preview가 존재하는 동안에는 적용/취소가 우선되는 단일 작업
@@ -177,7 +194,7 @@
 
 - **Tone:** 짧고 직접적이며 존중하는 자연스러운 한국어.
 - **Terminology:** Process는 구조, Project는 조건표 단위, Layer/Step은 병기, Parameter는
-  관리 맥락에서 파라미터로 표기한다.
+  관리 맥락에서 파라미터로 표기한다. Choice code는 저장 식별자, label은 사용자 표시명이다.
 - **Microcopy rules:** `문제 + 영향 + 다음 행동` 순서. 내부 error code나 stack/transport
   원문은 노출하지 않는다. 기존 사용자 이해 가능한 domain message는 유지할 수 있고 Phase 3가
   validation/editor 문구 mapper를 소유한다. 버튼은 `저장`, `프로젝트 생성`, `다시 시도`처럼
@@ -190,7 +207,8 @@
 - **Design-token constraints:** semantic token을 사용하고 화면별 raw hex 복제를 피한다.
 - **Performance constraints:** 그리드 virtualization과 Canvas 계약을 유지한다. UI wrapper가
   전체 sheet data를 복제하거나 매 render마다 변환하지 않는다.
-- **Compatibility constraints:** 폐쇄망, 새 외부 의존성 없음, 백엔드/API 변경 없음.
+- **Compatibility constraints:** 폐쇄망, 새 외부 의존성 없음. Phase 2.6 API 확장은 기존
+  프로젝트 route와 조건표 저장·잠금·붙여넣기 계약을 보존한다.
 - **Test/screenshot expectations:** typecheck, 전체 Vitest, production build, 1024/1440/1920
   브라우저 QA, 키보드·focus·aria-live 확인, 핵심 업무 flow 재검증.
 
@@ -198,5 +216,7 @@
 
 - [ ] 실제 조직 브랜드 자산이 제공되면 PCM wordmark만 교체한다. 색·정보 구조는 별도 승인
   없이는 변경하지 않는다. Owner: product. Impact: visual identity only.
-- [ ] 운영 환경의 최소 모니터 해상도를 Phase 2.5 브라우저 QA에서 기록한다. 현재 계약은
-  1024px functional / 1440px optimal이다. Owner: QA. Impact: breakpoint evidence.
+- [ ] PARTID Project Profile 원천 DB의 테이블·키·cardinality·필드 매핑을 연동 Phase 전에
+  확정한다. Owner: data integration. Impact: provider adapter only.
+- [ ] Geometry·Occupancy 필드의 단위와 범위를 실제 원천 계약 수신 후 확정한다.
+  Owner: process engineering. Impact: validation and labels only.

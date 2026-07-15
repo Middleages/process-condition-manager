@@ -13,18 +13,25 @@ from app.features.projects.repository import ProjectRepository
 from app.features.projects.schema import (
     BackboneCandidateOut,
     BackboneReplaceIn,
+    ChoiceValueOut,
     LayerOut,
     MatchPreviewIn,
     MatchPreviewOut,
     ProjectCreate,
     ProjectListOut,
     ProjectOut,
+    ProjectProfileOut,
+    ProjectProfilePatchIn,
     ProjectSummaryOut,
 )
 from app.features.projects.service import ProjectService
 from app.ingest.fixture_reader import get_ingest_reader
 from app.ingest.reader import IngestReader
 from app.models.project import Project
+from app.project_metadata import (
+    ProjectMetadataProvider,
+    get_project_metadata_provider,
+)
 
 router = APIRouter(
     prefix="/projects",
@@ -34,15 +41,18 @@ router = APIRouter(
 
 
 async def get_service(
-    session: Annotated[AsyncSession, Depends(get_app_session)],
+    session: Annotated[AsyncSession, Depends(get_app_session, scope="function")],
     reader: Annotated[IngestReader, Depends(get_ingest_reader)],
+    metadata_provider: Annotated[
+        ProjectMetadataProvider, Depends(get_project_metadata_provider)
+    ],
 ) -> AsyncIterator[ProjectService]:
-    service = ProjectService(ProjectRepository(session), reader)
+    service = ProjectService(ProjectRepository(session), reader, metadata_provider)
     yield service
     await session.commit()
 
 
-ServiceDep = Annotated[ProjectService, Depends(get_service)]
+ServiceDep = Annotated[ProjectService, Depends(get_service, scope="function")]
 UserDep = Annotated[UserContext, Depends(get_current_user)]
 
 
@@ -78,7 +88,7 @@ async def create_project(
     data: ProjectCreate, service: ServiceDep, user: UserDep
 ) -> ProjectOut:
     project = await service.create_project(data, actor=user.id)
-    return _project_out(project)
+    return _project_out(project, await service.profile_out(project.profile))
 
 
 @router.post(
@@ -94,7 +104,7 @@ async def replace_layer_backbone(
     user: UserDep,
 ) -> ProjectOut:
     project = await service.replace_layer_backbone(project_id, layer_key, data, actor=user.id)
-    return _project_out(project)
+    return _project_out(project, await service.profile_out(project.profile))
 
 
 @router.get("", response_model=ProjectListOut)
@@ -102,27 +112,45 @@ async def list_projects(
     service: ServiceDep,
     query: str | None = None,
     status: str | None = None,
+    device_type_code: str | None = None,
+    project_category_code: str | None = None,
     cursor: int | None = None,
     limit: int = 50,
 ) -> ProjectListOut:
     limit = max(1, min(limit, 200))
     summaries, next_cursor = await service.list_projects(
-        query=query, status=status, cursor=cursor, limit=limit
+        query=query,
+        status=status,
+        device_type_code=device_type_code,
+        project_category_code=project_category_code,
+        cursor=cursor,
+        limit=limit,
     )
     return ProjectListOut(
         items=[
             ProjectSummaryOut(
-                id=project.id,
-                line_id=project.line_id,
-                process_id=project.process_id,
-                part_id=project.part_id,
-                name=project.name,
-                description=project.description,
-                status=project.status.value,
-                layer_count=layer_count,
-                cell_count=cell_count,
+                id=summary.project.id,
+                line_id=summary.project.line_id,
+                process_id=summary.project.process_id,
+                part_id=summary.project.part_id,
+                name=summary.project.name,
+                status=summary.project.status.value,
+                device_type=ChoiceValueOut(
+                    code=summary.device_type.option_code,
+                    label=summary.device_type.label,
+                    is_active=summary.device_type.effective_is_active,
+                ),
+                project_category=ChoiceValueOut(
+                    code=summary.project_category.option_code,
+                    label=summary.project_category.label,
+                    is_active=summary.project_category.effective_is_active,
+                ),
+                layer_total=summary.profile.layer_total,
+                updated_at=summary.project.updated_at,
+                layer_count=summary.layer_count,
+                cell_count=summary.cell_count,
             )
-            for project, layer_count, cell_count in summaries
+            for summary in summaries
         ],
         next_cursor=next_cursor,
     )
@@ -130,18 +158,38 @@ async def list_projects(
 
 @router.get("/{project_id}", response_model=ProjectOut)
 async def get_project(project_id: int, service: ServiceDep) -> ProjectOut:
-    return _project_out(await service.get_project(project_id))
+    project = await service.get_project(project_id)
+    return _project_out(project, await service.profile_out(project.profile))
 
 
-def _project_out(project: Project) -> ProjectOut:
+@router.get("/{project_id}/profile", response_model=ProjectProfileOut)
+async def get_profile(project_id: int, service: ServiceDep) -> ProjectProfileOut:
+    return await service.get_profile_out(project_id)
+
+
+@router.patch(
+    "/{project_id}/profile",
+    response_model=ProjectProfileOut,
+    dependencies=[Depends(require_edit_lock)],
+)
+async def patch_profile(
+    project_id: int,
+    data: ProjectProfilePatchIn,
+    service: ServiceDep,
+    user: UserDep,
+) -> ProjectProfileOut:
+    return await service.patch_profile(project_id, data, actor=user.id)
+
+
+def _project_out(project: Project, profile: ProjectProfileOut) -> ProjectOut:
     return ProjectOut(
         id=project.id,
         line_id=project.line_id,
         process_id=project.process_id,
         part_id=project.part_id,
         name=project.name,
-        description=project.description,
         status=project.status.value,
+        profile=profile,
         layers=[
             LayerOut(
                 id=layer.id,

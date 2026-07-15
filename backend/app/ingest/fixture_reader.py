@@ -98,6 +98,9 @@ class FixtureIngestReader(IngestReader):
             key=lambda process: (process.sort_order, process.key),
         )
 
+    async def get_process(self, line_id: str, process_id: str) -> ProcessInfo:
+        return self._get_fixture(line_id, process_id).info
+
     async def get_layers(self, line_id: str, process_id: str) -> list[LayerInfo]:
         fixture = self._get_fixture(line_id, process_id)
         return sorted(fixture.layers, key=lambda layer: (layer.step_seq, layer.layer_id))

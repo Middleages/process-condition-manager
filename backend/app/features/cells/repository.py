@@ -57,8 +57,8 @@ class CellRepository:
     ) -> dict[str, Parameter]:
         """요청에 등장한 code 중 활성 Parameter를 code로 인덱싱해 돌려준다.
 
-        저장 시 타입 정합성 최종 검증(value_type/choice 옵션)의 데이터 공급 경로다.
-        choice 옵션은 Parameter.options(lazy="selectin")로 함께 로드된다. 전체
+        저장 시 타입 정합성 최종 검증(value_type/ChoiceSet)의 데이터 공급 경로다.
+        choice set은 Parameter.choice_set(lazy="selectin")으로 함께 로드된다. 전체
         파라미터가 많아야 ~200개라 요청에 등장한 code만(Parameter.code.in_) 좁혀
         가져온다. cell/event가 code로만 파라미터를 참조하므로(FK 아님) 미존재·비활성
         code는 결과에서 빠진다 — 호출측이 "레지스트리에 없으면 검증 생략"으로 본다.

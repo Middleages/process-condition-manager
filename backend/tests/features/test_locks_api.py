@@ -12,11 +12,19 @@
 
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from httpx import AsyncClient, Response
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.project import EditLock
+from tests.factories import seed_required_profile_choice_sets
+
+
+@pytest.fixture(autouse=True)
+async def _required_profile_choices(db_session: AsyncSession) -> None:
+    await seed_required_profile_choice_sets(db_session)
+    await db_session.commit()
 
 
 async def _create_project(
@@ -33,6 +41,8 @@ async def _create_project(
             "process_id": process_id,
             "part_id": part_id,
             "name": name,
+            "device_type_code": "DEFAULT",
+            "project_category_code": "DEFAULT",
         },
     )
     assert resp.status_code == 201, resp.text

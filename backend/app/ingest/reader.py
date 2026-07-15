@@ -48,6 +48,10 @@ class IngestReader(Protocol):
         """적재 데이터에 존재하는 process 목록을 반환한다."""
         ...
 
+    async def get_process(self, line_id: str, process_id: str) -> ProcessInfo:
+        """process의 현재 카탈로그 표시 스냅샷을 반환한다."""
+        ...
+
     async def get_layers(self, line_id: str, process_id: str) -> list[LayerInfo]:
         """process의 layer 목록을 반환한다."""
         ...

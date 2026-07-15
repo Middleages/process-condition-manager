@@ -10,6 +10,7 @@ from app.core.config import settings
 from app.core.db import app_engine, ingest_engine
 from app.core.errors import register_exception_handlers
 from app.features.cells.router import router as cells_router
+from app.features.choice_sets.router import router as choice_sets_router
 from app.features.conditions.router import router as conditions_router
 from app.features.locks.router import router as locks_router
 from app.features.parameters.router import router as parameters_router
@@ -36,6 +37,7 @@ def create_app() -> FastAPI:
 
     # 기능 라우터는 /api 아래로 통합 (SPA 페이지 경로와 이름공간 분리).
     api_router = APIRouter(prefix="/api")
+    api_router.include_router(choice_sets_router)
     api_router.include_router(parameters_router)
     api_router.include_router(processes_router)
     api_router.include_router(projects_router)

@@ -3,6 +3,8 @@ import { parsePositiveInt } from '@/shared/navigation/routeState'
 export interface ProjectListRouteState {
   query: string
   status: 'all' | 'draft'
+  deviceTypeCode: string | null
+  projectCategoryCode: string | null
 }
 
 export interface ProjectCreateRouteState {
@@ -39,6 +41,8 @@ export function parseProjectListSearch(params: URLSearchParams): ProjectListRout
   return {
     query: params.get('query') ?? '',
     status: params.get('status') === 'draft' ? 'draft' : 'all',
+    deviceTypeCode: normalizedChoiceFilter(params.get('device_type')),
+    projectCategoryCode: normalizedChoiceFilter(params.get('project_category')),
   }
 }
 
@@ -47,6 +51,12 @@ export function serializeProjectListSearch(state: ProjectListRouteState): URLSea
 
   if (state.query !== '') params.set('query', state.query)
   if (state.status !== 'all') params.set('status', state.status)
+  if (state.deviceTypeCode !== null && state.deviceTypeCode !== '') {
+    params.set('device_type', state.deviceTypeCode)
+  }
+  if (state.projectCategoryCode !== null && state.projectCategoryCode !== '') {
+    params.set('project_category', state.projectCategoryCode)
+  }
 
   return params
 }
@@ -54,4 +64,10 @@ export function serializeProjectListSearch(state: ProjectListRouteState): URLSea
 export function toProjectListHref(state: ProjectListRouteState): string {
   const search = serializeProjectListSearch(state).toString()
   return search === '' ? '/projects' : `/projects?${search}`
+}
+
+function normalizedChoiceFilter(value: string | null): string | null {
+  if (value === null) return null
+  const normalized = value.trim()
+  return normalized === '' ? null : normalized
 }

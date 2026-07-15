@@ -36,6 +36,7 @@ class ChangeEventType(StrEnum):
     """기록하는 변경 이벤트 유형."""
 
     PROJECT_CREATE = "project_create"
+    PROJECT_PROFILE_UPDATE = "project_profile_update"
     BACKBONE_COPY = "backbone_copy"
     BACKBONE_LAYER_REPLACE = "backbone_layer_replace"
     # 셀 단위 편집 (P2-T3). 구조화 컬럼(condition_id/parameter_code/old_value/
@@ -62,7 +63,6 @@ class Project(Base):
     process_id: Mapped[str] = mapped_column(String(128), index=True)
     part_id: Mapped[str] = mapped_column(String(128), index=True)
     name: Mapped[str] = mapped_column(String(256))
-    description: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     status: Mapped[ProjectStatus] = mapped_column(
         Enum(ProjectStatus, native_enum=False, length=32),
         default=ProjectStatus.DRAFT,
@@ -80,6 +80,63 @@ class Project(Base):
         cascade="all, delete-orphan",
         order_by="SheetLayer.sort_order",
     )
+    profile: Mapped["ProjectProfile"] = relationship(
+        back_populates="project",
+        cascade="all, delete-orphan",
+        uselist=False,
+        single_parent=True,
+    )
+    events: Mapped[list["ChangeEvent"]] = relationship(
+        back_populates="project",
+        cascade="all, delete-orphan",
+        order_by="ChangeEvent.id",
+    )
+
+
+class ProjectProfile(Base):
+    """Creation-time facts copied into and subsequently owned by one Project."""
+
+    __tablename__ = "project_profile"
+
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("project.id", ondelete="CASCADE"), primary_key=True
+    )
+    process_name: Mapped[str] = mapped_column(Text)
+    device_type_code: Mapped[str] = mapped_column(String(128))
+    project_category_code: Mapped[str] = mapped_column(String(128))
+    comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    active_direction_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    gate_direction_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    gross_die: Mapped[str | None] = mapped_column(Text, nullable=True)
+    pitch_x: Mapped[str | None] = mapped_column(Text, nullable=True)
+    pitch_y: Mapped[str | None] = mapped_column(Text, nullable=True)
+    shot_x: Mapped[str | None] = mapped_column(Text, nullable=True)
+    shot_y: Mapped[str | None] = mapped_column(Text, nullable=True)
+    slit_occupancy: Mapped[str | None] = mapped_column(Text, nullable=True)
+    lens_occupancy: Mapped[str | None] = mapped_column(Text, nullable=True)
+    map_offset_x: Mapped[str | None] = mapped_column(Text, nullable=True)
+    map_offset_y: Mapped[str | None] = mapped_column(Text, nullable=True)
+    scribe_lane_x: Mapped[str | None] = mapped_column(Text, nullable=True)
+    scribe_lane_y: Mapped[str | None] = mapped_column(Text, nullable=True)
+    shot_count: Mapped[str | None] = mapped_column(Text, nullable=True)
+    full_shot: Mapped[str | None] = mapped_column(Text, nullable=True)
+    layer_total: Mapped[str | None] = mapped_column(Text, nullable=True)
+    euv: Mapped[str | None] = mapped_column(Text, nullable=True)
+    imm: Mapped[str | None] = mapped_column(Text, nullable=True)
+    arf: Mapped[str | None] = mapped_column(Text, nullable=True)
+    krf: Mapped[str | None] = mapped_column(Text, nullable=True)
+    iline: Mapped[str | None] = mapped_column(Text, nullable=True)
+    soh: Mapped[str | None] = mapped_column(Text, nullable=True)
+    pspi: Mapped[str | None] = mapped_column(Text, nullable=True)
+    metal_layer_count: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    project: Mapped[Project] = relationship(back_populates="profile")
 
 
 class SheetLayer(Base):
@@ -184,6 +241,8 @@ class ChangeEvent(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+    project: Mapped[Project] = relationship(back_populates="events")
 
 
 class EditLock(Base):

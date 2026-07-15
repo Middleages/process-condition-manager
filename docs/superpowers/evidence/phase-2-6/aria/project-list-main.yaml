@@ -1,0 +1,58 @@
+- main:
+  - heading "프로젝트" [level=1]
+  - paragraph: 프로젝트를 검색하고 조건표 작업으로 이동합니다.
+  - link "새 프로젝트":
+    - /url: /projects/new
+  - text: 프로젝트 검색
+  - searchbox "프로젝트 검색"
+  - text: Device Type
+  - combobox "Device Type"
+  - status: 선택 없음
+  - text: Project Category
+  - combobox "Project Category"
+  - status: 선택 없음
+  - paragraph: 불러온 3개
+  - table:
+    - rowgroup:
+      - row "프로젝트명 LINE / Process PARTID Device Type Category 상태 Updated":
+        - columnheader "프로젝트명"
+        - columnheader "LINE / Process"
+        - columnheader "PARTID"
+        - columnheader "Device Type"
+        - columnheader "Category"
+        - columnheader "상태"
+        - columnheader "Updated"
+    - rowgroup:
+      - row "Task 15 explicit empty comment L1 / PROC_BETA QA-TASK15-EMPTY Logic Development 초안 26. 7. 15. 오후 1:59":
+        - cell "Task 15 explicit empty comment":
+          - link "Task 15 explicit empty comment":
+            - /url: /projects/3
+        - cell "L1 / PROC_BETA"
+        - cell "QA-TASK15-EMPTY"
+        - cell "Logic"
+        - cell "Development"
+        - cell "초안"
+        - cell "26. 7. 15. 오후 1:59":
+          - time: 26. 7. 15. 오후 1:59
+      - row "Task 15 untouched comment L1 / PROC_ALPHA QA-TASK15-UNTOUCHED Logic Development 초안 26. 7. 15. 오후 1:59":
+        - cell "Task 15 untouched comment":
+          - link "Task 15 untouched comment":
+            - /url: /projects/2
+        - cell "L1 / PROC_ALPHA"
+        - cell "QA-TASK15-UNTOUCHED"
+        - cell "Logic"
+        - cell "Development"
+        - cell "초안"
+        - cell "26. 7. 15. 오후 1:59":
+          - time: 26. 7. 15. 오후 1:59
+      - row "Seed large process-condition sheet L9 / PROC_SEED SEED-PART Logic Development 초안 26. 7. 15. 오후 1:59":
+        - cell "Seed large process-condition sheet":
+          - link "Seed large process-condition sheet":
+            - /url: /projects/1
+        - cell "L9 / PROC_SEED"
+        - cell "SEED-PART"
+        - cell "Logic"
+        - cell "Development"
+        - cell "초안"
+        - cell "26. 7. 15. 오후 1:59":
+          - time: 26. 7. 15. 오후 1:59

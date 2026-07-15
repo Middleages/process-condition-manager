@@ -19,4 +19,5 @@ export type {
   ConditionGridViewState,
   DirtyCell,
   PasteStagingCell,
+  SheetChoiceResource,
 } from './types'

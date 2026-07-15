@@ -4,7 +4,8 @@
 
 관련 문서: [01-architecture.md](./01-architecture.md) · [02-data-model.md](./02-data-model.md) · [04-roadmap.md](./04-roadmap.md)
 
-선행 조건: Phase 2 완료 (편집기 + 셀 상태 표시 계약).
+선행 조건: Phase 2.6 완료 (편집기 + 셀 상태 표시 계약, Project Profile,
+관리형 ChoiceSet/ChoiceOption과 검색형 choice editor).
 
 ## 완료 기준 (Exit Criteria)
 
@@ -18,7 +19,7 @@
 
 | # | 항목 | 내용 | 권고 |
 |---|------|------|------|
-| P3-D1 | 레지스트리 속성 확장 | 현 스키마의 number 부가속성(unit/min/max) 외에 `required`, `pattern` 속성 추가 필요 | 레지스트리 컬럼 추가(마이그레이션) + 관리 UI 확장. code 불변·soft delete 규칙은 그대로 |
+| P3-D1 | 레지스트리 속성 확장 | Phase 2.6 스키마의 number 부가속성(unit/min/max)과 ChoiceSet 외에 `required`, `pattern` 속성 추가 필요 | 레지스트리 컬럼 추가(마이그레이션) + 관리 UI 확장. parameter/option code 불변·soft delete 규칙은 그대로 |
 | P3-D2 | cross-layer 규칙 표현 | 규칙을 선언적 JSON(연산자 트리)으로 표현할지, 제한된 DSL 문자열로 할지 | **선언적 JSON** — 파싱 불필요, 스키마 검증 가능, UI 빌더로 확장 용이. 초기 연산자는 비교/사칙/참조(다른 layer·parameter 값) 최소 세트 |
 | P3-D3 | 검증 결과 저장 여부 | 위반 상태를 테이블에 캐시할지, 조회 시마다 계산할지 | **매번 계산** — 프로젝트당 최대 2만 셀 규모에서는 온디맨드 계산으로 충분. Review 게이트도 요청 시 전체 검증 실행. 성능 문제가 실측되면 캐시 도입 |
 | P3-D4 | cross-layer 규칙 관리 주체 | 관리자 CRUD UI를 이번 Phase에 포함할지, 초기에는 시드/API만 둘지 | Phase 3는 규칙 테이블 + API + 시드까지. 규칙 빌더 UI는 실사용 규칙이 쌓인 뒤 별도 배정 |
@@ -38,11 +39,13 @@ flowchart LR
 
 ### T1. 파라미터 단독 규칙 엔진 (`domain/validation`)
 
-- 규칙 4종: **range**(number min/max), **required**, **pattern**(정규식), **choice 일치**(선택지 외 값 거부)
-- 입력: 파라미터 정의(레지스트리 또는 스냅샷) + 셀 값(TEXT) → 출력: 위반 목록(코드화된 사유)
+- 규칙 4종: **range**(number min/max), **required**, **pattern**(정규식), **choice 해석**
+  (미등록 code는 error, 이미 저장된 비활성 code는 non-blocking warning)
+- 입력: 파라미터 정의+ChoiceSet(레지스트리 또는 snapshot version 2) + 셀 값(TEXT) → 출력: 위반 목록(코드화된 사유)
 - FastAPI·SQLAlchemy 무의존 순수 함수 — 컬럼 정의를 인자로 받으므로 live/스냅샷 어느 쪽으로도 동작 (Phase 5 대비)
 - P3-D1: 레지스트리에 `required`/`pattern` 속성 추가 마이그레이션 + 파라미터 관리 UI 폼 확장
-- number 파싱 규칙 명문화: TEXT 저장값 → 숫자 해석 실패 자체가 위반
+- Phase 2.6 canonical decimal 문자열과 `NUMERIC` min/max를 `Decimal`로 비교한다. malformed
+  저장값은 방어적으로 error지만, 정상 API 쓰기에서는 Phase 2.6 hard validation이 먼저 거부한다.
 
 산출물: 규칙 4종 + 순수 단위 테스트 (DB 무의존). **EC3의 축.**
 
@@ -59,7 +62,10 @@ flowchart LR
 ### T3. 검증 API 통합
 
 - `POST /projects/{project_id}/validate`: 시트 전체 검증 — 단독 규칙 + cross-layer 규칙 실행, 오류 목록(layer_key, parameter_code, rule, message, severity) 반환
-- 셀 저장 경로 통합: `PATCH cells` 저장 시 대상 셀 단독 규칙 검증을 함께 실행해 응답에 포함 (저장은 허용하되 위반 표시 — Draft는 오류가 있어도 저장 가능, 차단은 Phase 5 Review 게이트에서)
+- 셀 저장 경로 통합: `PATCH cells` 저장 시 대상 셀 단독 규칙 검증을 함께 실행해 응답에
+  포함한다. Phase 2.6의 숫자 문법과 신규 choice code 유효성은 hard rejection을 유지하고,
+  Phase 3의 range/required/pattern 위반은 Draft 저장을 허용하되 표시한다. 이미 저장된 비활성
+  choice는 warning으로 남아 Review gate를 막지 않는다.
 - 프론트 즉시 검증: 단독 규칙은 컬럼 정의만으로 클라이언트에서도 평가 가능 — 동일 규칙 사양을 클라에 이식하되, **서버 결과를 최종 판정**으로 삼는다
 
 산출물: 전체/셀 검증 API + 저장 경로 통합 테스트.
