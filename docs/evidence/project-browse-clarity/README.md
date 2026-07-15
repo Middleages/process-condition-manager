@@ -1,6 +1,6 @@
 # Project Browse Clarity Browser Evidence
 
-- Build commit: `1e6b2001fcc016707d4d3b842645f0b362b82a1a`
+- Build commit: `474b1a7844abc778c6fcb12f3a95102653831515`
 - Browser: Playwright 1.57 / Chromium 143.0.7499.4
 - Fixture: 8 list projects, 12 detail layers, backbone projects #41 and #44
 
@@ -13,6 +13,7 @@
 | `/projects` | 1920x1080 | 0px | 0px | 1600px | n/a |
 | `/projects/42` | 1920x1080 | 0px | n/a | 1600px | 777.3px |
 
+- Filtered list browser Back: query, search draft, both managed-choice values, and project-link focus restored.
 - Native details: closed initially; Enter opened; Space closed.
 - Profile edit trigger: dialog opened and focus returned without console or network failure.
 - Unexpected console errors: 0.

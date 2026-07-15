@@ -295,11 +295,13 @@ npm test -- \
   src/shared/components/SearchableChoice.test.tsx \
   src/features/projects/ProjectListPage.test.tsx \
   src/features/projects/ProjectTable.test.tsx \
-  src/features/projects/projectListHistory.test.ts \
-  src/features/projects/urlState.test.ts
+  src/features/projects/urlState.test.ts \
+  src/features/projects/projectListQuery.test.ts \
+  src/app/routes.test.tsx
 ```
 
-Expected: all selected suites pass; existing URL parsing, history, inactive/raw values, eight columns, truncation, focus links, and compact rows remain covered.
+Expected: all selected suites pass; existing URL parsing, query keys, route wiring, inactive/raw
+values, eight columns, truncation, focus links, and compact rows remain covered.
 
 - [ ] **Step 9: Commit the independently reviewable list slice**
 
@@ -317,7 +319,7 @@ git commit -m "Reduce project-list scanning noise without weakening filter state
 Confidence: high
 Scope-risk: narrow
 Directive: visuallyHideEmptyStatus must never unmount or de-live the selected status region.
-Tested: Focused SearchableChoice, project list/table, URL-state, and history Vitest suites."
+Tested: Focused SearchableChoice, project list/table, URL-state, query-key, and route Vitest suites."
 ```
 
 ---
@@ -689,6 +691,12 @@ const listMetrics = await page.evaluate(() => {
 ```
 
 Assert `bodyOverflow === 0` at every viewport, `tableOverflow === 0` at 1024px, and `frameWidth <= 1600` at 1920px. Save the three list screenshots at the exact paths declared in this task.
+
+At 1440×900, also open
+`/projects?query=Photo&status=draft&device_type=FOUNDRY&project_category=LOGIC`, activate
+project `42`, and invoke browser Back. Assert the complete query string and search draft return,
+both managed-choice status regions expose their selected values, and the active element has
+`data-project-id="42"`.
 
 - [ ] **Step 4: Measure disclosure, Layer fold, and interaction on the detail route**
 
