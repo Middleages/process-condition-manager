@@ -71,7 +71,7 @@ def lock_holder_details(lock: EditLock | None) -> dict[str, str | None]:
 async def require_edit_lock(
     project_id: int,
     user: Annotated[UserContext, Depends(get_current_user)],
-    session: Annotated[AsyncSession, Depends(get_app_session)],
+    session: Annotated[AsyncSession, Depends(get_app_session, scope="function")],
     x_lock_token: Annotated[str | None, Header()] = None,
 ) -> None:
     """편집 계열 API 공용 잠금 검사 의존성.

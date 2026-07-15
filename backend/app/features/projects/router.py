@@ -41,7 +41,7 @@ router = APIRouter(
 
 
 async def get_service(
-    session: Annotated[AsyncSession, Depends(get_app_session)],
+    session: Annotated[AsyncSession, Depends(get_app_session, scope="function")],
     reader: Annotated[IngestReader, Depends(get_ingest_reader)],
     metadata_provider: Annotated[
         ProjectMetadataProvider, Depends(get_project_metadata_provider)
@@ -52,7 +52,7 @@ async def get_service(
     await session.commit()
 
 
-ServiceDep = Annotated[ProjectService, Depends(get_service)]
+ServiceDep = Annotated[ProjectService, Depends(get_service, scope="function")]
 UserDep = Annotated[UserContext, Depends(get_current_user)]
 
 

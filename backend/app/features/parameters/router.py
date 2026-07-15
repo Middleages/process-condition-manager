@@ -35,15 +35,15 @@ router = APIRouter(
 
 
 async def get_service(
-    session: Annotated[AsyncSession, Depends(get_app_session)],
+    session: Annotated[AsyncSession, Depends(get_app_session, scope="function")],
 ) -> AsyncIterator[ParameterService]:
-    """요청 스코프 서비스 + 트랜잭션 커밋 경계."""
+    """응답 전에 종료되는 함수 스코프 서비스 + 트랜잭션 커밋 경계."""
     service = ParameterService(ParameterRepository(session))
     yield service
     await session.commit()
 
 
-ServiceDep = Annotated[ParameterService, Depends(get_service)]
+ServiceDep = Annotated[ParameterService, Depends(get_service, scope="function")]
 
 
 # --- Categories ---

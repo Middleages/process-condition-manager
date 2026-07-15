@@ -1,14 +1,10 @@
-from typing import get_args
-
 import pytest
-from fastapi.params import Depends
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.errors import RuleViolationError
 from app.domain.parameters.types import ValueType
 from app.features.choice_sets.repository import ChoiceSetRepository
-from app.features.choice_sets.router import ServiceDep
 from app.models.choice import ChoiceOption, ChoiceSet
 from app.models.parameter import Parameter
 
@@ -20,15 +16,6 @@ async def create_set(client: AsyncClient, code: str = "device_type") -> dict:
     )
     assert response.status_code == 201, response.text
     return response.json()
-
-
-def test_choice_service_commits_before_mutation_response_is_sent() -> None:
-    dependency = next(
-        metadata
-        for metadata in get_args(ServiceDep)[1:]
-        if isinstance(metadata, Depends)
-    )
-    assert dependency.scope == "function"
 
 
 async def create_option(

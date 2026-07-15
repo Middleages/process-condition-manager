@@ -1,9 +1,12 @@
 """T2에서 이미 구현된 경계(seam) 검증: 예외 매핑, 인증 경계, 설정, 모델 메타데이터."""
 
-from typing import Annotated
+from collections.abc import Callable
+from typing import Annotated, Any, get_args, get_type_hints
 
 import pytest
 from fastapi import Depends, FastAPI
+from fastapi.params import Depends as DependsParam
+from fastapi.routing import APIRoute
 from httpx import ASGITransport, AsyncClient
 
 from app.core.auth import (
@@ -13,6 +16,7 @@ from app.core.auth import (
     get_current_user,
 )
 from app.core.config import Settings
+from app.core.db import get_app_session
 from app.core.errors import (
     AppError,
     ConflictError,
@@ -20,6 +24,98 @@ from app.core.errors import (
     NotFoundError,
     register_exception_handlers,
 )
+from app.core.locks import require_edit_lock
+from app.features.cells import router as cells_router
+from app.features.choice_sets import router as choice_sets_router
+from app.features.conditions import router as conditions_router
+from app.features.locks import router as locks_router
+from app.features.parameters import router as parameters_router
+from app.features.projects import router as projects_router
+
+
+def _depends(annotation: Any) -> DependsParam:
+    return next(item for item in get_args(annotation) if isinstance(item, DependsParam))
+
+
+@pytest.mark.parametrize(
+    ("service_dependency", "provider", "shares_edit_session"),
+    [
+        (projects_router.ServiceDep, projects_router.get_service, True),
+        (locks_router.ServiceDep, locks_router.get_service, False),
+        (cells_router.ServiceDep, cells_router.get_service, True),
+        (conditions_router.ServiceDep, conditions_router.get_service, True),
+        (parameters_router.ServiceDep, parameters_router.get_service, False),
+        (choice_sets_router.ServiceDep, choice_sets_router.get_service, False),
+        (None, require_edit_lock, False),
+    ],
+    ids=["projects", "locks", "cells", "conditions", "parameters", "choice_sets", "edit_lock"],
+)
+def test_transactional_dependencies_finalize_before_response(
+    service_dependency: Any | None,
+    provider: Callable[..., Any],
+    shares_edit_session: bool,
+) -> None:
+    """Every transaction owner and its cached session must finalize before response send."""
+    scopes = []
+    if service_dependency is not None:
+        service = _depends(service_dependency)
+        assert service.dependency is provider
+        scopes.append(service.scope)
+
+    session = _depends(get_type_hints(provider, include_extras=True)["session"])
+    assert session.dependency is get_app_session
+    assert session.use_cache is True
+    scopes.append(session.scope)
+
+    assert scopes == ["function"] * len(scopes)
+
+    if shares_edit_session:
+        edit_session = _depends(
+            get_type_hints(require_edit_lock, include_extras=True)["session"]
+        )
+        assert (
+            edit_session.dependency,
+            edit_session.scope,
+            edit_session.use_cache,
+        ) == (session.dependency, session.scope, session.use_cache)
+
+
+def test_locked_routes_reuse_the_transaction_session() -> None:
+    """FastAPI's cache key must collapse lock validation and mutation to one session."""
+    routes = [
+        route
+        for router in (projects_router.router, cells_router.router, conditions_router.router)
+        for route in router.routes
+        if isinstance(route, APIRoute)
+        and any(dependency.call is require_edit_lock for dependency in route.dependant.dependencies)
+    ]
+    assert len(routes) == 6
+
+    for route in routes:
+        edit_lock = next(
+            dependency
+            for dependency in route.dependant.dependencies
+            if dependency.call is require_edit_lock
+        )
+        service = next(
+            dependency
+            for dependency in route.dependant.dependencies
+            if dependency.name == "service"
+        )
+        edit_session = next(
+            dependency
+            for dependency in edit_lock.dependencies
+            if dependency.call is get_app_session
+        )
+        service_session = next(
+            dependency
+            for dependency in service.dependencies
+            if dependency.call is get_app_session
+        )
+
+        assert edit_session.use_cache is service_session.use_cache is True
+        assert edit_session.cache_key == service_session.cache_key
+        assert edit_session.cache_key == (get_app_session, (), "function")
 
 
 def test_app_database_url_sync_swaps_driver() -> None:
