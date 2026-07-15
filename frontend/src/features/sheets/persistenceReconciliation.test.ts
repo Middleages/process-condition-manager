@@ -95,6 +95,8 @@ describe('reconcileSuccessfulPatch', () => {
           layer_label: 'L1',
           condition_label: 'POR',
           is_por: true,
+          layer_sort_order: 0,
+          condition_index: 1,
           cells: { decimal: '1' },
         },
       ],
@@ -105,6 +107,8 @@ describe('reconcileSuccessfulPatch', () => {
         is_mine: true,
         heartbeat_seconds: 45,
       },
+      validation_rules: [],
+      validation_basis_hash: 'sha256:test',
     }
     queryClient.setQueryData(queryKey, base)
     let resolveStale!: (sheet: SheetOut) => void

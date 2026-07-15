@@ -24,6 +24,11 @@ const sampleSheet: SheetOut = {
       value_type: 'number',
       category_code: 'litho',
       unit: 'mJ',
+      min_value: null,
+      max_value: null,
+      required: false,
+      pattern: null,
+      pattern_hint: null,
       description: '노광 에너지',
       choice_set_code: null,
       choice_set_version: null,
@@ -37,6 +42,8 @@ const sampleSheet: SheetOut = {
       layer_label: 'L1 (STEP01)',
       condition_label: 'C1',
       is_por: true,
+      layer_sort_order: 0,
+      condition_index: 1,
       cells: { exposure: '25' },
     },
   ],
@@ -47,6 +54,8 @@ const sampleSheet: SheetOut = {
     is_mine: true,
     heartbeat_seconds: 45,
   },
+  validation_rules: [],
+  validation_basis_hash: 'sha256:test',
 }
 
 const get = vi.mocked(apiClient.get)

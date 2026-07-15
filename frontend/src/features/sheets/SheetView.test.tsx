@@ -70,6 +70,11 @@ const sheet: SheetOut = {
       value_type: 'number',
       category_code: 'process',
       unit: 'mTorr',
+      min_value: null,
+      max_value: null,
+      required: false,
+      pattern: null,
+      pattern_hint: null,
       description: null,
       choice_set_code: null,
       choice_set_version: null,
@@ -83,6 +88,8 @@ const sheet: SheetOut = {
       layer_label: 'ETCH (10)',
       condition_label: 'POR',
       is_por: true,
+      layer_sort_order: 0,
+      condition_index: 1,
       cells: { ETCH_P001: '12' },
     },
   ],
@@ -93,6 +100,8 @@ const sheet: SheetOut = {
     is_mine: false,
     heartbeat_seconds: 45,
   },
+  validation_rules: [],
+  validation_basis_hash: 'sha256:test',
 }
 
 function client(): QueryClient {
