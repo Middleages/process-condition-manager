@@ -5,6 +5,7 @@ import { createMemoryRouter, RouterProvider, StaticRouter } from 'react-router-d
 import { describe, expect, it, vi } from 'vitest'
 
 import type {
+  BackboneCandidateOut,
   MatchPreviewOut,
   ProcessDetailOut,
   ProcessListOut,
@@ -71,6 +72,19 @@ const automaticPreview: MatchPreviewOut = {
   ],
 }
 
+const backboneCandidate: BackboneCandidateOut = {
+  id: 17,
+  name: 'Reference backbone',
+  line_id: directProcess.line_id,
+  process_id: directProcess.process_id,
+  part_id: 'REF-17',
+  status: 'draft',
+  layer_count: 4,
+  match_rate: 0.75,
+  matched_count: 3,
+  unmatched_count: 1,
+}
+
 const projectProfile: ProjectProfileOut = {
   project_id: 7,
   process_name: 'Source',
@@ -123,6 +137,10 @@ function renderWizard(
 
   if (seedSelectedProcess) {
     queryClient.setQueryData(['process', directProcess.key], directProcess)
+    queryClient.setQueryData(
+      ['backbone-candidates', directProcess.line_id, directProcess.process_id],
+      [backboneCandidate],
+    )
     queryClient.setQueryData(
       ['backbone-preview', previewFingerprint(directProcess.key, null, {})],
       {
@@ -292,6 +310,42 @@ describe('ProjectCreateWizard route restoration', () => {
     expect(html).toContain('현재 3/3')
     expect(html).not.toContain('>3단계<')
     expect(html).not.toContain('shadow-sm')
+  })
+
+  it('presents Process results as one scan list with a sticky selected summary', () => {
+    const html = renderWizard('/projects/new', false)
+
+    expect(html).toContain('aria-label="Process 선택 목록"')
+    expect(html).toContain('aria-label="선택한 Process 요약"')
+    expect(html).not.toContain('class="grid gap-2 md:grid-cols-2"')
+    expect(html).toMatch(
+      /<ul(?=[^>]*aria-label="Process 선택 목록")(?=[^>]*max-h-\[32rem\])(?=[^>]*overflow-y-auto)[^>]*>/,
+    )
+    expect(html).toMatch(
+      /<aside(?=[^>]*aria-label="선택한 Process 요약")(?=[^>]*xl:sticky)(?=[^>]*xl:top-5)[^>]*>/,
+    )
+  })
+
+  it('keeps the sole Process continue action inside the selected summary', () => {
+    const html = renderWizard('/projects/new', false)
+
+    const selectedSummary = html.match(
+      /<aside(?=[^>]*aria-label="선택한 Process 요약")[\s\S]*?<\/aside>/,
+    )?.[0]
+    expect(selectedSummary).toContain('백본 선택으로')
+    expect(html.match(/백본 선택으로/g)).toHaveLength(1)
+  })
+
+  it('presents backbone choices as one compact comparison list with no backbone first', () => {
+    const params = new URLSearchParams({ step: '2', process: directProcess.key })
+    const html = renderWizard(`/projects/new?${params}`, true)
+
+    expect(html).toContain('aria-label="백본 선택 목록"')
+    expect(html).toContain('백본 없이 시작')
+    expect(html.indexOf('백본 없이 시작')).toBeLessThan(html.indexOf(backboneCandidate.name))
+    expect(html).toContain('REF-17 · Layer 3/4')
+    expect(html).toContain('매칭 75% · 미매칭 1')
+    expect(html).toContain('aria-pressed="true"')
   })
 
   it('frames the full creation route with a clear title and project-list return action', () => {

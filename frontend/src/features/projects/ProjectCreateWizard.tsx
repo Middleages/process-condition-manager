@@ -784,7 +784,10 @@ function ProcessStep({
           ) : null}
 
           {processes.length > 0 ? (
-            <ul className="grid gap-2 md:grid-cols-2">
+            <ul
+              aria-label="Process 선택 목록"
+              className="max-h-[32rem] divide-y divide-border-subtle overflow-y-auto rounded-lg border border-border-subtle bg-surface"
+            >
               {processes.map((process) => {
                 const selected = process.key === selectedProcessKey
                 return (
@@ -792,10 +795,10 @@ function ProcessStep({
                     <button
                       aria-pressed={selected}
                       className={cn(
-                        'flex min-h-14 w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left transition-colors',
+                        'flex min-h-14 w-full items-center justify-between gap-3 px-3 py-2 text-left transition-colors',
                         selected
-                          ? 'border-brand-700 bg-brand-100'
-                          : 'border-border-subtle bg-surface hover:border-border-control hover:bg-canvas',
+                          ? 'bg-brand-100'
+                          : 'bg-surface hover:bg-canvas',
                       )}
                       disabled={controlsDisabled}
                       type="button"
@@ -841,7 +844,10 @@ function ProcessStep({
           ) : null}
         </div>
 
-        <aside className="rounded-lg border border-border-subtle bg-canvas p-4" aria-label="선택한 Process">
+        <aside
+          aria-label="선택한 Process 요약"
+          className="rounded-lg border border-border-subtle bg-canvas p-4 xl:sticky xl:top-5 xl:self-start"
+        >
           <h3 className="text-sm font-bold text-ink-950">선택한 Process</h3>
           {selectedProcessKey === null ? (
             <p className="mt-2 text-sm text-muted">왼쪽 검색 결과에서 Process를 선택하세요.</p>
@@ -879,14 +885,13 @@ function ProcessStep({
               ) : null}
             </div>
           ) : null}
+          <div className="mt-4 flex justify-end border-t border-border-subtle pt-4">
+            <Button disabled={controlsDisabled || !selectedProcessReady} onClick={onContinue}>
+              백본 선택으로
+              <ArrowRight aria-hidden="true" size={16} />
+            </Button>
+          </div>
         </aside>
-      </div>
-
-      <div className="flex justify-end border-t border-border-subtle pt-4">
-        <Button disabled={controlsDisabled || !selectedProcessReady} onClick={onContinue}>
-          백본 선택으로
-          <ArrowRight aria-hidden="true" size={16} />
-        </Button>
       </div>
     </div>
   )
@@ -959,26 +964,32 @@ function BackboneStep({
         </InlineAlert>
       ) : null}
 
-      <div className="grid gap-2 lg:grid-cols-2 xl:grid-cols-3">
-        <BackboneOption
-          disabled={controlsDisabled}
-          selected={selectedBackboneId === null}
-          onSelect={() => onChooseBackbone(null)}
-          title="백본 없이 시작"
-          subtitle="모든 셀을 빈 값으로 시작합니다."
-        />
-        {candidates.map((candidate) => (
+      <ul
+        aria-label="백본 선택 목록"
+        className="grid gap-px overflow-hidden rounded-lg border border-border-subtle bg-border-subtle lg:grid-cols-2"
+      >
+        <li>
           <BackboneOption
-            key={candidate.id}
             disabled={controlsDisabled}
-            selected={selectedBackboneId === candidate.id}
-            onSelect={() => onChooseBackbone(candidate.id)}
-            title={candidate.name}
-            subtitle={`${candidate.part_id} · Layer ${candidate.matched_count}/${candidate.layer_count}`}
-            meta={`매칭 ${Math.round(candidate.match_rate * 100)}% · 미매칭 ${candidate.unmatched_count}`}
+            selected={selectedBackboneId === null}
+            onSelect={() => onChooseBackbone(null)}
+            title="백본 없이 시작"
+            subtitle="모든 셀을 빈 값으로 시작합니다."
           />
+        </li>
+        {candidates.map((candidate) => (
+          <li key={candidate.id}>
+            <BackboneOption
+              disabled={controlsDisabled}
+              selected={selectedBackboneId === candidate.id}
+              onSelect={() => onChooseBackbone(candidate.id)}
+              title={candidate.name}
+              subtitle={`${candidate.part_id} · Layer ${candidate.matched_count}/${candidate.layer_count}`}
+              meta={`매칭 ${Math.round(candidate.match_rate * 100)}% · 미매칭 ${candidate.unmatched_count}`}
+            />
+          </li>
         ))}
-      </div>
+      </ul>
 
       {!candidatesIsPending && !candidatesError && candidates.length === 0 ? (
         <InlineAlert tone="info">
@@ -1400,10 +1411,10 @@ function BackboneOption({
     <button
       aria-pressed={selected}
       className={cn(
-        'flex min-h-[76px] w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left transition-colors',
+        'flex h-full min-h-[68px] w-full items-center justify-between gap-3 px-3 py-2 text-left transition-colors',
         selected
-          ? 'border-brand-700 bg-brand-100'
-          : 'border-border-subtle bg-surface hover:border-border-control hover:bg-canvas',
+          ? 'bg-brand-100'
+          : 'bg-surface hover:bg-canvas',
       )}
       disabled={disabled}
       type="button"
@@ -1413,7 +1424,7 @@ function BackboneOption({
         <span className="block truncate text-sm font-semibold text-ink-950" title={title}>
           {title}
         </span>
-        <span className="mt-0.5 block truncate text-xs text-muted" title={subtitle}>
+        <span className="mt-0.5 block text-xs text-muted" title={subtitle}>
           {subtitle}
         </span>
         {meta ? <span className="mt-1 block text-xs font-semibold text-brand-700">{meta}</span> : null}
