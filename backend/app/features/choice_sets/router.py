@@ -32,14 +32,14 @@ router = APIRouter(
 
 
 async def get_service(
-    session: Annotated[AsyncSession, Depends(get_app_session)],
+    session: Annotated[AsyncSession, Depends(get_app_session, scope="function")],
 ) -> AsyncIterator[ChoiceSetService]:
     service = ChoiceSetService(ChoiceSetRepository(session))
     yield service
     await session.commit()
 
 
-ServiceDep = Annotated[ChoiceSetService, Depends(get_service)]
+ServiceDep = Annotated[ChoiceSetService, Depends(get_service, scope="function")]
 
 
 @router.get("", response_model=list[ChoiceSetSummaryOut])
