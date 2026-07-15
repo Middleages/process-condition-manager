@@ -1,6 +1,10 @@
 # Phase 3 — 검증 엔진 (작업 계획)
 
-> 목표: 레지스트리 속성 기반의 파라미터 단독 규칙과 cross-layer 규칙을 **순수 도메인 로직**(`domain/validation`)으로 구현하고, 편집기와 연결해 오류를 즉시 보이게 한다. Phase 5의 Review 게이트(검증 오류 0건)가 이 엔진을 그대로 사용한다.
+> 목표: 레지스트리 속성 기반의 파라미터 단독 규칙과 typed relation 규칙을 **순수 도메인
+> 로직**(`domain/validation`)으로 구현하고 편집기와 연결한다. Phase 5의 Review/Approval
+> 게이트는 이 엔진과 동일한 validation basis를 사용한다.
+
+상세 승인 설계: [2026-07-15 Phase 3 Validation Engine Design](../docs/superpowers/specs/2026-07-15-phase-3-validation-engine-design.md)
 
 관련 문서: [01-architecture.md](./01-architecture.md) · [02-data-model.md](./02-data-model.md) · [04-roadmap.md](./04-roadmap.md)
 
@@ -9,83 +13,179 @@
 
 ## 완료 기준 (Exit Criteria)
 
-- [ ] EC1. 규칙 위반 셀이 편집 즉시 표시된다 (저장 전 클라이언트 피드백 + 저장 시 서버 확정)
-- [ ] EC2. cross-layer 규칙이 fixture 시나리오로 검증된다 (규칙 정의 → 위반 데이터 → 위반 검출)
-- [ ] EC3. 검증 엔진 단위 테스트가 **DB 없이** 실행된다 (domain 순수성 검증)
-- [ ] EC4. 시트 전체 검증 API가 오류 목록(셀 좌표 + 사유)을 반환하고, UI 오류 패널에서 셀로 점프할 수 있다
-- [ ] EC5. 편집기 오류·경고 문구가 내부 판정문을 그대로 노출하지 않고, **문제 원인 + 사용자가 할 다음 행동**을 자연스러운 한국어로 안내한다
+- [x] EC1. 규칙 위반 셀이 편집 즉시 표시된다 (저장 전 클라이언트 피드백 + 저장 후 서버 확정)
+- [x] EC2. `required_if`와 모든 이전 layer POR membership 규칙이 공유 fixture 시나리오로 검증된다
+- [x] EC3. 검증 엔진 단위 테스트가 **DB 없이** 실행된다 (domain 순수성 검증)
+- [x] EC4. 시트 전체 검증 API가 stable issue(셀 좌표 + code + typed details)를 반환하고 UI에서 셀로 점프한다
+- [x] EC5. 편집기 오류·경고가 내부 판정문이나 정규식을 노출하지 않고 **문제 원인 + 다음 행동**을 자연스러운 한국어로 안내한다
+- [x] EC6. snapshot v3와 validation `basis_hash`가 결정적으로 생성되고 Phase 5가 재사용할 수 있다
+- [x] EC7. 20,000셀·관계 규칙 50개 reference 성능 evidence가 기록된다
 
-## 선행 확정 필요 (결정 항목)
+## 확정 결정
 
-| # | 항목 | 내용 | 권고 |
-|---|------|------|------|
-| P3-D1 | 레지스트리 속성 확장 | Phase 2.6 스키마의 number 부가속성(unit/min/max)과 ChoiceSet 외에 `required`, `pattern` 속성 추가 필요 | 레지스트리 컬럼 추가(마이그레이션) + 관리 UI 확장. parameter/option code 불변·soft delete 규칙은 그대로 |
-| P3-D2 | cross-layer 규칙 표현 | 규칙을 선언적 JSON(연산자 트리)으로 표현할지, 제한된 DSL 문자열로 할지 | **선언적 JSON** — 파싱 불필요, 스키마 검증 가능, UI 빌더로 확장 용이. 초기 연산자는 비교/사칙/참조(다른 layer·parameter 값) 최소 세트 |
-| P3-D3 | 검증 결과 저장 여부 | 위반 상태를 테이블에 캐시할지, 조회 시마다 계산할지 | **매번 계산** — 프로젝트당 최대 2만 셀 규모에서는 온디맨드 계산으로 충분. Review 게이트도 요청 시 전체 검증 실행. 성능 문제가 실측되면 캐시 도입 |
-| P3-D4 | cross-layer 규칙 관리 주체 | 관리자 CRUD UI를 이번 Phase에 포함할지, 초기에는 시드/API만 둘지 | Phase 3는 규칙 테이블 + API + 시드까지. 규칙 빌더 UI는 실사용 규칙이 쌓인 뒤 별도 배정 |
-| P3-D5 | 검증 대상 조건 행 범위 | 다중 조건 행(D-16)의 검증 범위 | **확정**: 전 조건 행 검증 (편집 중 오류는 어느 행이든 표시). cross-layer 규칙의 layer 간 참조는 **POR 행 값 기준** |
+| # | 항목 | 결정 |
+|---|---|---|
+| P3-D1 | 레지스트리 속성 | `required`, bounded portable `pattern`, 필수 사용자 안내 `pattern_hint` 추가. min/max는 number에만 허용 |
+| P3-D2 | 관계 규칙 표현 | 범용 AST가 아닌 typed declarative JSON union: `required_if`, `value_exists_in_prior_por` |
+| P3-D3 | 결과 저장 | 저장하지 않고 매번 계산. 성능 문제는 실측 뒤 최적화 |
+| P3-D4 | 규칙 관리 | immutable code + monotonic version + expected_version API. Phase 3 UI 없음, production seed 추측 없음 |
+| P3-D5 | 조건 행 범위 | 현재 layer의 모든 조건 행 검증. cross-layer 후보는 앞선 모든 layer의 POR 행만 사용 |
+| P3-D6 | prior membership | source가 비면 skip, typed exact equality, 위반은 현재 source 셀에 anchor |
+| P3-D7 | 규칙 scope | 전역 기본 + 선택적 line/process/현재 layer 속성 필터 |
+| P3-D8 | 클라이언트 판정 | 모든 Phase 3 규칙을 TS로 즉시 mirror 평가하고 저장 성공 뒤 서버 전체 검증으로 확정 |
+| P3-D9 | pattern 방언 | 전체 문자열 일치, 256자/반복 상한 256, 16 alternatives/16 quantified atoms/branch max 1,024, overlapping adjacent quantifier 금지 |
+| P3-D10 | 승인 basis | snapshot v3에 parameter validation metadata와 적용 relation rule을 동결하고 SHA-256 `basis_hash` 제공 |
+| P3-D11 | 사용자 문구 | issue code + typed details + parameter display metadata를 프론트 mapper가 행동 지향 한국어로 변환 |
+| P3-D12 | Phase 4 handoff | 복사/교체 시점 immutable backbone snapshot과 현재 전체 조건 행/셀 diff를 Phase 4에 추가 |
 
 ## 작업 분해 (Work Breakdown)
 
-의존 관계: T1 → {T2, T3} → T4.
+의존 관계: T1 → T2 → T3 → T4, T5는 각 단계와 함께 누적한다.
 
 ```mermaid
 flowchart LR
-    T1[T1 단독 규칙 엔진<br/>domain/validation] --> T2[T2 cross-layer 규칙]
-    T1 --> T3[T3 검증 API 통합]
-    T2 --> T3
-    T3 --> T4[T4 편집기 UI 연결]
+    T1[T1 단독 규칙 + pattern<br/>domain/validation] --> T2[T2 typed relation rule<br/>table + evaluator]
+    T2 --> T3[T3 Sheet/검증 API<br/>basis + snapshot v3]
+    T3 --> T4[T4 frontend mirror<br/>grid + workbench]
+    T1 -.fixtures.-> T5[T5 parity/perf/browser evidence]
+    T2 -.fixtures.-> T5
+    T3 -.API.-> T5
+    T4 -.UX.-> T5
 ```
 
-### T1. 파라미터 단독 규칙 엔진 (`domain/validation`)
+### T1. 파라미터 단독 규칙 엔진
 
-- 규칙 4종: **range**(number min/max), **required**, **pattern**(정규식), **choice 해석**
-  (미등록 code는 error, 이미 저장된 비활성 code는 non-blocking warning)
-- 입력: 파라미터 정의+ChoiceSet(레지스트리 또는 snapshot version 2) + 셀 값(TEXT) → 출력: 위반 목록(코드화된 사유)
-- FastAPI·SQLAlchemy 무의존 순수 함수 — 컬럼 정의를 인자로 받으므로 live/스냅샷 어느 쪽으로도 동작 (Phase 5 대비)
-- P3-D1: 레지스트리에 `required`/`pattern` 속성 추가 마이그레이션 + 파라미터 관리 UI 폼 확장
-- Phase 2.6 canonical decimal 문자열과 `NUMERIC` min/max를 `Decimal`로 비교한다. malformed
-  저장값은 방어적으로 error지만, 정상 API 쓰기에서는 Phase 2.6 hard validation이 먼저 거부한다.
+- `backend/app/domain/validation/`: immutable input/output types와 순수 evaluator
+- standalone issue: `required`, `number_malformed`, `range_min`, `range_max`,
+  `pattern_mismatch`, `choice_unknown`, `choice_inactive`
+- Decimal 기반 inclusive range; null은 range/pattern skip
+- known inactive choice는 warning, unknown stored choice는 error
+- bounded portable pattern parser/validator:
+  - 전체 문자열 일치, 최대 256자
+  - literal, dot, explicit class/range, top-level `|`, `?`, `{m}`, `{m,n}`
+  - anchor, `*`, `+`, group, lookaround, backreference, inline flag, shorthand 금지
+  - alternatives/atoms/quantified atoms/max-match-length 제한 + adjacent quantified overlap 거부
+- parameter migration/API/admin form: `required`, `pattern`, `pattern_hint`
+- pattern과 hint pair 및 non-number min/max/unit 무결성
+- nullable update의 omitted/explicit-null 구분
+- parameter snapshot serializer v3 기반 추가
 
-산출물: 규칙 4종 + 순수 단위 테스트 (DB 무의존). **EC3의 축.**
+산출물: DB-free standalone engine, pattern contract, parameter schema/API/UI, shared fixture 축.
 
-### T2. Cross-layer 규칙 (테이블 + 평가기)
+### T2. Typed relation rule
 
-- `validation_rule` 테이블: id, name, description, `expression`(JSONB — P3-D2), severity(error/warning), is_active, 감사 필드 + Alembic 마이그레이션
-- 평가기(`domain/validation`): 시트 매트릭스(layer×parameter 값 맵)를 입력으로 규칙 표현식 평가 → 위반 셀 좌표 목록
-  - layer 참조 방식: layer_key 직접 참조 + 상대 참조(예: 특정 유형의 모든 layer)는 실규칙 확인 후 확장
-- 규칙 CRUD API (관리자) — UI는 P3-D4에 따라 이연
-- fixture 시나리오: 규칙 2~3종 + 위반/정상 데이터 세트
+`validation_rule`:
 
-산출물: 규칙 테이블 + 평가기 + 계약 테스트. **EC2 충족.**
+- id, immutable code, name, description, severity
+- strict `scope` JSONB, strict discriminator `spec` JSONB
+- version, is_active, created_at, updated_at
+- optimistic concurrency with `expected_version`
 
-### T3. 검증 API 통합
+Rule family:
 
-- `POST /projects/{project_id}/validate`: 시트 전체 검증 — 단독 규칙 + cross-layer 규칙 실행, 오류 목록(layer_key, parameter_code, rule, message, severity) 반환
-- 셀 저장 경로 통합: `PATCH cells` 저장 시 대상 셀 단독 규칙 검증을 함께 실행해 응답에
-  포함한다. Phase 2.6의 숫자 문법과 신규 choice code 유효성은 hard rejection을 유지하고,
-  Phase 3의 range/required/pattern 위반은 Draft 저장을 허용하되 표시한다. 이미 저장된 비활성
-  choice는 warning으로 남아 Review gate를 막지 않는다.
-- 프론트 즉시 검증: 단독 규칙은 컬럼 정의만으로 클라이언트에서도 평가 가능 — 동일 규칙 사양을 클라에 이식하되, **서버 결과를 최종 판정**으로 삼는다
+1. `required_if`: 같은 조건 행의 typed equality → target required
+2. `value_exists_in_prior_por`: 현재 모든 조건 행 source를 앞선 모든 layer POR candidate 누적 집합과 비교
 
-산출물: 전체/셀 검증 API + 저장 경로 통합 테스트.
+평가기 요구:
 
-### T4. 편집기 UI 연결
+- `(sort_order, layer_key)` 결정 순서
+- current layer 평가 후 current POR candidate 추가(자기 자신으로 만족 금지)
+- source/candidate same value type; choice는 same ChoiceSet
+- source null skip, empty candidate set + present source는 violation
+- cumulative set으로 선형 평가
+- scope는 line/process/current layer 속성에 적용
+- active rule이 참조하는 parameter deactivation 차단
+- corrupted rule은 configuration failure이며 zero-issue로 처리 금지
 
-- 오류 셀 하이라이트: Phase 2 어댑터의 셀 상태 표시 계약에 검증 결과 연결
-- 오류 목록 패널: 사유/심각도별 목록, 항목 클릭 → 해당 셀로 스크롤 점프 (컬럼 검색-점프 재사용)
-- 편집 즉시 피드백: 셀 편집 시 클라이언트 단독 규칙 평가 → 즉시 표시, 저장 응답으로 확정
-- "검증" 버튼: 전체 검증 실행 → 패널 갱신
-- **사용자 메시지 카피 패스**: 검증 code/파라미터와 화면 문구를 분리하고, 붙여넣기·저장·잠금·조건 작업을 포함한 편집기 알림을 행동 지향 문구로 통일한다. 예: `숫자 형식이 아니다` → `숫자로 입력해 주세요`, `선택지에 없는 값이다` → `목록에 있는 값으로 선택해 주세요`. 오류 패널에는 가능한 경우 허용 범위·선택지·재시도 방법을 함께 표시한다
-- 서버의 원문 message나 내부 code는 진단 근거로 유지하되 사용자 화면에 그대로 출력하지 않는다. 공통 프론트 메시지 매퍼를 두고 붙여넣기 1차 검증도 같은 문구 정책으로 이관한다
+산출물: rule CRUD API, pure relation evaluator, DB/API tests, generic dev fixture.
 
-산출물: 오류 표시 + 패널 + 점프 동작 + 편집기 사용자 메시지 정리. **EC1·EC4·EC5 충족.**
+### T3. Sheet와 검증 API 통합
+
+Sheet response:
+
+- column: min/max/required/pattern/pattern_hint
+- row: layer_sort_order/condition_index
+- applicable relation rules + `validation_basis_hash`
+
+전체 검증:
+
+- `POST /api/projects/{project_id}/validate`
+- summary, deterministic issues, evaluated_at, basis_hash, rule_versions 반환
+- raw backend message와 raw pattern은 반환하지 않음
+- 결과 저장 없음; read authorization만 적용
+
+저장 경로:
+
+- malformed number/new invalid or inactive choice는 atomic hard rejection 유지
+- required/range/pattern/relation issue는 Draft 저장 허용
+- partial issue를 CellsPatchOut에 넣지 않고 durable save 뒤 whole-project validation 실행
+
+Versioning:
+
+- canonical parameter/ChoiceSet/rule definitions에서 `basis_hash` 생성
+- snapshot v3에 적용 relation rules 포함
+- Phase 5 Review/Approval이 same service와 basis를 사용하도록 application boundary 제공
+
+산출물: migration, rule/validation repository-service-router-schema, Sheet 계약, snapshot v3, API tests.
+
+### T4. 프론트 즉시 검증과 workbench
+
+- 공용 JSON fixture를 읽는 pure TypeScript evaluator
+- display rows의 dirty edit와 accepted paste를 즉시 평가
+- 저장 성공 뒤 500ms idle debounce로 server validate; 연속 요청 coalesce
+- project/sheet/persisted generation fencing, stale response 폐기
+- basis mismatch 시 Sheet definition refetch
+- 명시적 검증은 autosave durable idle 뒤 실행; 저장 실패면 차단
+
+Grid status:
+
+- validation severity + dirty + future comment를 결합 가능한 aggregate로 변경
+- priority: paste staging > error > warning > dirty > comment
+- validation surface와 dirty/comment marker 분리
+
+Workbench:
+
+- issue 또는 첫 명시적 검증 뒤에만 content-gated mount
+- collapsed summary + authoritative/failure 상태
+- responsive tile flow, error/warning filter
+- focusable separator와 keyboard resize
+- tile 활성화 → hidden category 전환 → scroll/select/focus
+- 마지막 성공 결과를 네트워크 실패 시 보존
+
+Message mapper:
+
+- stable issue code와 typed details만 소비
+- parameter display name, bound, pattern_hint, relation parameter를 자연어로 구성
+- unknown code safe fallback; raw server message/pattern 금지
+
+산출물: API types/client, pure mirror, validation state, grid overlay, workbench, accessibility tests.
+
+### T5. Parity, performance, browser evidence
+
+- pytest/Vitest가 같은 language-neutral fixture를 읽고 normalized issue array byte parity 확인
+- DB-free domain import boundary test
+- migration PostgreSQL test
+- rule concurrency/reference/type/scope tests
+- soft-save/hard-reject 회귀 tests
+- 20,000셀/50 relation rule reference benchmark:
+  - pure target ≤ 500ms
+  - load+API target ≤ 1.5s
+- Chromium flow:
+  - immediate → autosave → authoritative → correction clear
+  - required_if / prior-POR / inactive warning
+  - explicit validation save ordering
+  - issue tile cell focus
+  - 1024/1440/1920 and keyboard accessibility
+
+산출물: automated suites + reference performance/browser evidence. EC1~EC7의 증거.
 
 ## 실행 순서 요약
 
-1. 결정 항목 P3-D1~D5 확정 (특히 표현식 형태)
-2. T1 단독 규칙 엔진 + 레지스트리 속성 확장
-3. T2 cross-layer 규칙 테이블 + 평가기
-4. T3 검증 API 통합
-5. T4 편집기 UI 연결
-6. EC1~EC5 점검 → Phase 4 착수 판단
+1. migration + parameter validation metadata + pattern grammar
+2. pure standalone domain + shared fixtures
+3. validation_rule model/API + typed relation evaluator
+4. Sheet definition/basis + whole-project API + snapshot v3
+5. frontend pure mirror + generation-safe server confirmation
+6. composite grid status + workbench + message mapper
+7. parity/performance/accessibility/browser evidence
+8. EC1~EC7 점검 및 Phase 4 immutable backbone diff handoff 확인

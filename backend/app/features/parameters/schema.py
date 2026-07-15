@@ -3,7 +3,7 @@
 code와 value_type은 생성 후 불변이므로 Update 스키마에서 제외한다.
 """
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.domain.parameters.types import ValueType
 from app.features.choice_sets.schema import ChoiceSetSummaryOut
@@ -49,6 +49,9 @@ class ParameterCreate(BaseModel):
     unit: str | None = None
     min_value: str | None = None
     max_value: str | None = None
+    required: bool = False
+    pattern: str | None = Field(default=None, max_length=256)
+    pattern_hint: str | None = Field(default=None, max_length=256)
     sort_order: int = 0
 
 
@@ -61,6 +64,9 @@ class ParameterUpdate(BaseModel):
     unit: str | None = None
     min_value: str | None = None
     max_value: str | None = None
+    required: bool | None = None
+    pattern: str | None = Field(default=None, max_length=256)
+    pattern_hint: str | None = Field(default=None, max_length=256)
     sort_order: int | None = None
     is_active: bool | None = None
 
@@ -103,6 +109,9 @@ class ParameterOut(BaseModel):
     unit: str | None
     min_value: str | None
     max_value: str | None
+    required: bool
+    pattern: str | None
+    pattern_hint: str | None
     sort_order: int
     is_active: bool
     choice_set: ChoiceSetSummaryOut | None

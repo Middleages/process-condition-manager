@@ -12,7 +12,7 @@
  *   영역을 그룹 단위 교대 배경으로 구분한다(model.computeRowGroups).
  * - 붙여넣기: `onPaste`에서 항상 false를 반환해 기본 동작을 막고 TSV를 콜백으로 올린다.
  *   실제 스테이징/적용 파이프라인은 T4가 붙인다.
- * - 셀 상태/스테이징 오버레이: 지금은 themeOverride 렌더 슬롯만 — 데이터 연결은 Phase 3/5.
+ * - 셀 상태/스테이징 오버레이: 표면 우선순위와 독립 dirty/comment marker를 합성한다.
  */
 import {
   forwardRef,
@@ -23,13 +23,16 @@ import {
   useState,
 } from 'react'
 import {
+  CompactSelection,
   DataEditor,
   GridCellKind,
   type DataEditorRef,
+  type DrawCellCallback,
   type EditableGridCell,
   type GridCell,
   type GridColumn,
   type GridMouseEventArgs,
+  type GridSelection,
   type Item,
   type Theme,
 } from '@glideapps/glide-data-grid'
@@ -59,9 +62,11 @@ import {
 } from './model'
 import type {
   CellStatus,
+  ConditionGridColumn,
   ConditionGridComponent,
   ConditionGridHandle,
   ConditionGridProps,
+  ConditionGridRow,
   PasteStagingCell,
 } from './types'
 import { GRID_COLORS } from './theme'
@@ -96,6 +101,76 @@ const GLIDE_THEME: Partial<Theme> = {
 
 const GROUP_SHADE: Partial<Theme> = { bgCell: GRID_COLORS.canvas }
 const IDENTITY_THEME: Partial<Theme> = { bgCell: GRID_COLORS.canvas }
+const EMPTY_GRID_SELECTION: GridSelection = {
+  columns: CompactSelection.empty(),
+  rows: CompactSelection.empty(),
+  current: undefined,
+}
+
+export function gridLayoutAuthority(
+  columns: readonly Pick<ConditionGridColumn, 'key'>[],
+  rows: readonly Pick<ConditionGridRow, 'id'>[],
+): string {
+  return JSON.stringify([
+    columns.map((column) => column.key),
+    rows.map((row) => row.id),
+  ])
+}
+
+export function currentGridSelectionForLayout<Selection>(
+  state: { readonly layoutAuthority: string; readonly selection: Selection },
+  currentLayoutAuthority: string,
+  emptySelection: Selection,
+): Selection {
+  return state.layoutAuthority === currentLayoutAuthority
+    ? state.selection
+    : emptySelection
+}
+
+function selectionForCell(col: number, row: number): GridSelection {
+  return {
+    columns: CompactSelection.empty(),
+    rows: CompactSelection.empty(),
+    current: {
+      cell: [col, row],
+      range: { x: col, y: row, width: 1, height: 1 },
+      rangeStack: [],
+    },
+  }
+}
+
+export type CellStatusVisualPriority = 'error' | 'warning' | 'dirty' | 'comment' | null
+
+/** Surface priority only; the composite status object keeps every independent marker fact. */
+export function cellStatusVisualPriority(status: CellStatus): CellStatusVisualPriority {
+  if (status.validation?.severity === 'error') return 'error'
+  if (status.validation?.severity === 'warning') return 'warning'
+  if (status.dirty) return 'dirty'
+  if ((status.commentCount ?? 0) > 0) return 'comment'
+  return null
+}
+
+export function cellStatusMarkerFacts(
+  status: CellStatus | undefined,
+): { dirty: boolean; comment: boolean } {
+  return {
+    dirty: status?.dirty ?? false,
+    comment: (status?.commentCount ?? 0) > 0,
+  }
+}
+
+/** Non-color hover text retains every independent status fact under the priority surface. */
+export function cellStatusTooltip(status: CellStatus | undefined): string | null {
+  if (status === undefined) return null
+  const facts: string[] = []
+  if (status.validation !== undefined) {
+    const severity = status.validation.severity === 'error' ? '오류' : '경고'
+    facts.push(`${severity} ${status.validation.count}건`, status.validation.message)
+  }
+  if (status.dirty) facts.push('저장되지 않은 변경')
+  if ((status.commentCount ?? 0) > 0) facts.push(`댓글 ${status.commentCount}개`)
+  return facts.length === 0 ? null : facts.join(' · ')
+}
 
 /** 셀 상태/스테이징 오버레이 → themeOverride. 스테이징(진행 중 붙여넣기 미리보기)이 우선. */
 function overlayTheme(
@@ -108,13 +183,17 @@ function overlayTheme(
       : { bgCell: GRID_COLORS.errorSurface, textDark: GRID_COLORS.error }
   }
   if (status !== undefined) {
-    switch (status.state) {
+    switch (cellStatusVisualPriority(status)) {
       case 'error':
         return { bgCell: GRID_COLORS.errorSurface, textDark: GRID_COLORS.error }
+      case 'warning':
+        return { bgCell: GRID_COLORS.warningSurface, textDark: GRID_COLORS.warning }
       case 'dirty':
         return { bgCell: GRID_COLORS.warningSurface, textDark: GRID_COLORS.warning }
       case 'comment':
         return { bgCell: GRID_COLORS.brandSubtle, textDark: GRID_COLORS.brand }
+      case null:
+        return undefined
     }
   }
   return undefined
@@ -141,6 +220,7 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
   ConditionGridProps
 >(function GlideConditionGrid({ data, view, callbacks, pasteStaging }, ref) {
   const gridRef = useRef<DataEditorRef>(null)
+  const requestedFocusRef = useRef<Item | null>(null)
   const restoreGridFocus = useCallback(() => gridRef.current?.focus(), [])
   const readOnly = view?.readOnly ?? false
   const rows = data.rows
@@ -154,6 +234,32 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
     () => visibleParameterColumns(data.columns, view?.activeCategory),
     [data.columns, view?.activeCategory],
   )
+  const layoutAuthority = useMemo(
+    () => gridLayoutAuthority(visibleColumns, rows),
+    [visibleColumns, rows],
+  )
+  const [selectionState, setSelectionState] = useState<{
+    layoutAuthority: string
+    selection: GridSelection
+  }>(() => ({ layoutAuthority, selection: EMPTY_GRID_SELECTION }))
+  const effectiveGridSelection = currentGridSelectionForLayout(
+    selectionState,
+    layoutAuthority,
+    EMPTY_GRID_SELECTION,
+  )
+  const handleGridSelectionChange = useCallback(
+    (selection: GridSelection) => setSelectionState({ layoutAuthority, selection }),
+    [layoutAuthority],
+  )
+
+  // A controlled raw coordinate must never survive a category/column or row-identity layout.
+  // The render already supplies EMPTY_GRID_SELECTION; this commit adopts the new authority.
+  useIsomorphicLayoutEffect(() => {
+    if (selectionState.layoutAuthority !== layoutAuthority) {
+      requestedFocusRef.current = null
+      setSelectionState({ layoutAuthority, selection: EMPTY_GRID_SELECTION })
+    }
+  }, [layoutAuthority, selectionState.layoutAuthority])
   // Glide의 클립보드 읽기가 끝날 때까지 readOnly/열/행 문맥이 유지됐는지 확인한다. 이전
   // render의 handlePaste가 남아 실행돼도 현재 ref와 generation이 다르면 좌표 해석 전에 폐기.
   const pasteCallbackGeneration = useMemo(
@@ -170,6 +276,16 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
   const groupMeta = useMemo(() => computeRowGroups(rows), [rows])
   const statusIndex = useMemo(() => indexStatuses(data.statuses), [data.statuses])
   const stagingIndex = useMemo(() => indexStaging(pasteStaging), [pasteStaging])
+
+  // Imperative navigation publishes selection first; focus again after that controlled selection
+  // commits so Glide targets the requested accessible cell rather than the previous selection.
+  useIsomorphicLayoutEffect(() => {
+    const requested = requestedFocusRef.current
+    const selected = effectiveGridSelection.current?.cell
+    if (requested === null || selected?.[0] !== requested[0] || selected[1] !== requested[1]) return
+    requestedFocusRef.current = null
+    gridRef.current?.focus()
+  }, [effectiveGridSelection])
 
   const gridColumns = useMemo<GridColumn[]>(() => {
     const identity: GridColumn[] = [
@@ -349,6 +465,31 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
   const handleItemHovered = useCallback(
     (args: GridMouseEventArgs) => {
       if (args.kind === 'cell') {
+        const target = resolveCellTarget(
+          args.location[0],
+          args.location[1],
+          visibleColumns,
+          rows,
+          IDENTITY_COLUMN_COUNT,
+        )
+        if (target !== null) {
+          const key = overlayKey(target.conditionId, target.parameterCode)
+          const staging = stagingIndex.get(key)
+          const statusText =
+            staging === undefined
+              ? cellStatusTooltip(statusIndex.get(key))
+              : staging.valid
+                ? '붙여넣기 적용 예정'
+                : `붙여넣기 확인 필요${staging.message ? ` · ${staging.message}` : ''}`
+          if (statusText !== null) {
+            setTooltip({
+              text: statusText,
+              x: args.bounds.x,
+              y: args.bounds.y + args.bounds.height,
+            })
+            return
+          }
+        }
         const cell = getCellContent(args.location)
         if (cell.kind === GridCellKind.Custom && isChoiceCell(cell) && cell.data.tooltip !== '') {
           setTooltip({
@@ -372,7 +513,46 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
       // Glide bounds는 뷰포트(client) 좌표 → position: fixed로 헤더 바로 아래에 그대로 배치.
       setTooltip({ text, x: args.bounds.x, y: args.bounds.y + args.bounds.height })
     },
-    [visibleColumns, getCellContent],
+    [visibleColumns, rows, statusIndex, stagingIndex, getCellContent],
+  )
+
+  const drawCell = useCallback<DrawCellCallback>(
+    (args, drawContent) => {
+      drawContent()
+      const target = resolveCellTarget(
+        args.col,
+        args.row,
+        visibleColumns,
+        rows,
+        IDENTITY_COLUMN_COUNT,
+      )
+      if (target === null) return
+      const key = overlayKey(target.conditionId, target.parameterCode)
+      // Paste staging owns the complete surface until apply/cancel.
+      if (stagingIndex.has(key)) return
+      const markers = cellStatusMarkerFacts(statusIndex.get(key))
+      if (!markers.dirty && !markers.comment) return
+
+      const { ctx, rect } = args
+      ctx.save()
+      if (markers.dirty) {
+        ctx.fillStyle = GRID_COLORS.warning
+        ctx.beginPath()
+        ctx.moveTo(rect.x + rect.width - 10, rect.y + rect.height)
+        ctx.lineTo(rect.x + rect.width, rect.y + rect.height - 10)
+        ctx.lineTo(rect.x + rect.width, rect.y + rect.height)
+        ctx.closePath()
+        ctx.fill()
+      }
+      if (markers.comment) {
+        ctx.fillStyle = GRID_COLORS.brand
+        ctx.beginPath()
+        ctx.arc(rect.x + rect.width - 7, rect.y + 7, 3, 0, Math.PI * 2)
+        ctx.fill()
+      }
+      ctx.restore()
+    },
+    [visibleColumns, rows, stagingIndex, statusIndex],
   )
 
   // 식별 컬럼 클릭 처리(T7). Glide는 캔버스 렌더라 네이티브 컨텍스트 메뉴가 없으므로 셀 클릭을
@@ -406,6 +586,8 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
             hAlign: 'center',
             vAlign: 'center',
           })
+          requestedFocusRef.current = [target.col, target.row]
+          setSelectionState({ layoutAuthority, selection: selectionForCell(target.col, target.row) })
         }
       },
       scrollToColumn(parameterCode) {
@@ -415,7 +597,7 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
         }
       },
     }),
-    [visibleColumns, rows],
+    [visibleColumns, rows, layoutAuthority],
   )
 
   return (
@@ -427,6 +609,9 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
         columns={gridColumns}
         rows={rows.length}
         getCellContent={getCellContent}
+        drawCell={drawCell}
+        gridSelection={effectiveGridSelection}
+        onGridSelectionChange={handleGridSelectionChange}
         onCellEdited={readOnly ? undefined : handleCellEdited}
         onCellClicked={readOnly ? undefined : handleCellClicked}
         onPaste={handlePaste}

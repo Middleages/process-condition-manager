@@ -2,7 +2,7 @@ import { create } from 'zustand'
 
 import type { CellUpdateIn } from '@/api/types'
 import { overlayKey } from '@/grid/model'
-import type { CellStatus, ConditionGridRow } from '@/grid/types'
+import type { ConditionGridRow } from '@/grid/types'
 
 /** 서버에 저장할 셀 값. 클라이언트 세대 정보는 없다. */
 export interface PersistedCell {
@@ -51,14 +51,6 @@ export function dirtyCellList(map: DirtyCellMap): DirtyCell[] {
   return [...map.values()]
 }
 
-export function toCellStatuses(map: DirtyCellMap): CellStatus[] {
-  return dirtyCellList(map).map((cell) => ({
-    conditionId: cell.conditionId,
-    parameterCode: cell.parameterCode,
-    state: 'dirty' as const,
-  }))
-}
-
 export function toCellUpdateIn(cell: PersistedCell): CellUpdateIn {
   return {
     condition_id: Number(cell.conditionId),
@@ -75,10 +67,10 @@ export function fromCellUpdateOut(cell: CellUpdateIn): PersistedCell {
   }
 }
 
-export function applyDirtyToRows(
-  rows: readonly ConditionGridRow[],
+export function applyDirtyToRows<Row extends ConditionGridRow>(
+  rows: readonly Row[],
   map: DirtyCellMap,
-): ConditionGridRow[] {
+): Row[] {
   if (map.size === 0) return [...rows]
   const byCondition = new Map<string, DirtyCell[]>()
   for (const cell of map.values()) {
@@ -99,8 +91,13 @@ interface EditState {
   dirtyCells: DirtyCellMap
   /** 지워지지 않는 store-wide monotonic allocator. */
   revision: number
+  /** accepted edit/paste display buffer generation; project/session clearing never resets it. */
+  displayGeneration: number
+  /** successful durable mutation generation; project/session clearing never resets it. */
+  persistedGeneration: number
   setCell(cell: PersistedCell): DirtyCell
   setCells(cells: readonly PersistedCell[]): DirtyCell[]
+  advancePersistedGeneration(): number
   clearAll(): void
   markSaved(cells: readonly DirtyCell[]): void
 }
@@ -108,28 +105,41 @@ interface EditState {
 export const useEditStore = create<EditState>((set) => ({
   dirtyCells: new Map(),
   revision: 0,
+  displayGeneration: 0,
+  persistedGeneration: 0,
   setCell: (cell) => {
     let allocated!: DirtyCell
     set((state) => {
       allocated = { ...cell, revision: state.revision + 1 }
       return {
         revision: allocated.revision,
+        displayGeneration: state.displayGeneration + 1,
         dirtyCells: setDirtyCell(state.dirtyCells, allocated),
       }
     })
     return allocated
   },
   setCells: (cells) => {
+    if (cells.length === 0) return []
     let allocated: DirtyCell[] = []
     set((state) => {
       let revision = state.revision
       allocated = cells.map((cell) => ({ ...cell, revision: (revision += 1) }))
       return {
         revision,
+        displayGeneration: state.displayGeneration + 1,
         dirtyCells: setDirtyCells(state.dirtyCells, allocated),
       }
     })
     return allocated
+  },
+  advancePersistedGeneration: () => {
+    let generation = 0
+    set((state) => {
+      generation = state.persistedGeneration + 1
+      return { persistedGeneration: generation }
+    })
+    return generation
   },
   // 세션 전환은 map만 비운다. 늦은 응답이 새 세대를 지우지 못하게 counter는 유지.
   clearAll: () => set({ dirtyCells: new Map() }),

@@ -35,6 +35,9 @@ const choiceParameter: ParameterOut = {
   unit: null,
   min_value: null,
   max_value: null,
+  required: false,
+  pattern: null,
+  pattern_hint: null,
   choice_set: {
     code: 'equipment_mode',
     display_name: 'Equipment mode',

@@ -9,8 +9,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.models.choice import ChoiceSet
 from app.models.parameter import Parameter, ParameterCategory
 from app.models.project import EditLock, LayerCondition, Project, SheetLayer
+from app.models.validation import ValidationRule
 
 
 class SheetRepository:
@@ -41,8 +43,20 @@ class SheetRepository:
         """
         stmt = (
             select(Parameter)
+            .options(
+                selectinload(Parameter.choice_set).selectinload(ChoiceSet.options)
+            )
             .where(Parameter.is_active.is_(True))
             .order_by(Parameter.sort_order, Parameter.code)
+        )
+        return list((await self.session.execute(stmt)).scalars().all())
+
+    async def list_active_validation_rules(self) -> list[ValidationRule]:
+        """Load active persisted rule JSON once; application projection filters scope."""
+        stmt = (
+            select(ValidationRule)
+            .where(ValidationRule.is_active.is_(True))
+            .order_by(ValidationRule.code)
         )
         return list((await self.session.execute(stmt)).scalars().all())
 

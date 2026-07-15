@@ -14,7 +14,7 @@ flowchart LR
     P2 --> P25[Phase 2.5<br/>UI/UX 구조개편]
     P25 --> P26[Phase 2.6<br/>Project Profile + Managed Choice]
     P26 --> P3[Phase 3<br/>검증 엔진]
-    P3 --> P4[Phase 4<br/>변경 이력]
+    P3 --> P4[Phase 4<br/>변경 이력 + 백본 비교]
     P4 --> P5[Phase 5<br/>승인 + Revision]
     P5 --> P6[Phase 6<br/>출력]
 ```
@@ -143,10 +143,12 @@ accessibility-tree 검증은
 
 ## Phase 3 — 검증 엔진
 
+상세 승인 설계: [2026-07-15 Phase 3 Validation Engine Design](../docs/superpowers/specs/2026-07-15-phase-3-validation-engine-design.md)
+
 **범위:**
 - 파라미터 단독 규칙: range / required / pattern / 선택지 일치 (레지스트리 속성 기반)
-- Cross-layer 규칙: 규칙 정의 테이블 + 평가기 (`domain/validation`, 순수 로직)
-- 셀 편집 시 즉시 검증 + 시트 전체 검증 API
+- Typed relation 규칙: `required_if`, 모든 이전 layer POR membership + 규칙 정의 테이블/순수 평가기
+- 셀 편집 시 프론트 즉시 mirror 검증 + 저장 뒤 서버 전체 검증 API/basis 확정
 - 오류 셀 하이라이트, 오류 목록 패널 + 셀 점프
 - 검증 code와 사용자 문구 분리 + 편집기 알림을 원인·다음 행동 중심의 자연스러운 한국어로 정리
 
@@ -155,25 +157,30 @@ accessibility-tree 검증은
 - [ ] cross-layer 규칙이 fixture 시나리오로 검증된다
 - [ ] 검증 엔진 단위 테스트가 DB 없이 실행된다 (domain 순수성 검증)
 - [ ] 편집기 오류·경고가 사용자가 무엇을 고쳐야 하는지 안내한다
+- [ ] snapshot v3와 validation basis가 Phase 5 재사용 계약으로 고정된다
 
-## Phase 4 — 변경 이력
+## Phase 4 — 변경 이력 + 백본 기준 비교
 
 **범위:**
 - `change_event` 조회: 통합 타임라인 (필터: layer / 유형 / 사용자 / 소스)
 - 셀 단위 이력 (우클릭 → 해당 셀의 변경 연대기)
 - 타임라인 항목 → 셀 점프
 - 벌크 이벤트(백본/붙여넣기) 묶음 표시
+- 프로젝트 생성·layer 교체 시점 immutable backbone baseline capture
+- baseline과 현재의 모든 조건 행·셀 일괄 diff (`added/changed/cleared/removed/unchanged`)
 
 **완료 기준:**
 - [ ] Phase 1~2에서 기록해 온 이벤트가 타임라인에 정확히 나타난다
 - [ ] 임의 셀의 값 변천사를 추적할 수 있다
+- [ ] source 프로젝트가 나중에 바뀌어도 backbone diff 기준이 변하지 않는다
+- [ ] 모든 조건 행·셀 diff를 layer/condition/cell로 drill-down할 수 있다
 
 ## Phase 5 — 승인 워크플로우 + Revision
 
 **범위:**
 - 상태 머신: Draft → Review → Approved/Rejected → Archived (`domain/workflow`)
-- Review 요청 시 검증 오류 0건 게이트
-- **승인 시 파라미터 스냅샷 동결** (D-08 정책 a) + Approved/Archived 읽기 전용 렌더링
+- Review 요청 시 검증 오류 0건 게이트 + Approval 시 validation basis 동일성 확인/필요 시 재검증
+- **승인 시 snapshot v3 동결** (parameter/ChoiceSet/relation rule + validation basis) + Approved/Archived 읽기 전용 렌더링
 - Revision: Approved → 새 Draft(버전+1, live 레지스트리), 기존 Archived 전환
 - 검토 코멘트 (프로젝트/셀 레벨)
 - RBAC 적용 (SSO 확정 구조 기반 — 이 시점까지 인증 상세 수신 필요)

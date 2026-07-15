@@ -1,4 +1,5 @@
 export type ValueType = 'text' | 'number' | 'choice'
+export type ValidationSeverity = 'error' | 'warning'
 
 export interface CategoryCreate {
   code: string
@@ -30,6 +31,9 @@ export interface ParameterOut {
   unit: string | null
   min_value: string | null
   max_value: string | null
+  required: boolean
+  pattern: string | null
+  pattern_hint: string | null
   choice_set: ChoiceSetSummaryOut | null
   sort_order: number
   is_active: boolean
@@ -45,6 +49,9 @@ export interface ParameterCreate {
   unit?: string | null
   min_value?: string | null
   max_value?: string | null
+  required?: boolean
+  pattern?: string | null
+  pattern_hint?: string | null
   sort_order?: number
 }
 
@@ -55,6 +62,9 @@ export interface ParameterUpdate {
   unit?: string | null
   min_value?: string | null
   max_value?: string | null
+  required?: boolean | null
+  pattern?: string | null
+  pattern_hint?: string | null
   sort_order?: number | null
   is_active?: boolean | null
 }
@@ -431,6 +441,44 @@ export interface ChoiceImportApplyOut {
 // --- 시트 조회 (GET /api/projects/{project_id}/sheet) ---
 // backend `features/sheets/schema.py`와 1:1 대응. 필드명은 snake_case 그대로 (camelCase 변환 레이어 없음).
 
+export interface SheetValidationLayersOut {
+  layer_ids?: string[]
+  step_seqs?: string[]
+  eqp_types?: string[]
+  area_names?: string[]
+}
+
+/** Project identity filters have already been consumed by the Sheet loader. */
+export interface SheetValidationScopeOut {
+  layers?: SheetValidationLayersOut
+}
+
+export interface RequiredIfSpecIn {
+  schema_version: 1
+  type: 'required_if'
+  when_parameter_code: string
+  equals: string
+  required_parameter_code: string
+}
+
+export interface PriorPorSpecIn {
+  schema_version: 1
+  type: 'value_exists_in_prior_por'
+  source_parameter_code: string
+  candidate_parameter_code: string
+}
+
+export type ValidationRuleSpecIn = RequiredIfSpecIn | PriorPorSpecIn
+
+export interface SheetValidationRuleOut {
+  code: string
+  name: string
+  severity: ValidationSeverity
+  version: number
+  scope: SheetValidationScopeOut
+  spec: ValidationRuleSpecIn
+}
+
 /** 그리드 컬럼 정의 한 개 (= live 파라미터 한 개). SheetColumnOut. */
 export interface SheetColumnOut {
   parameter_code: string
@@ -438,6 +486,11 @@ export interface SheetColumnOut {
   value_type: ValueType
   category_code: string | null
   unit: string | null
+  min_value: string | null
+  max_value: string | null
+  required: boolean
+  pattern: string | null
+  pattern_hint: string | null
   description: string | null
   // choice 타입일 때만 둘 다 채워진다. option은 SheetOut에 임베드하지 않는다.
   choice_set_code: string | null
@@ -453,6 +506,8 @@ export interface SheetRowOut {
   layer_label: string
   condition_label: string
   is_por: boolean
+  layer_sort_order: number
+  condition_index: number
   // parameter_code -> value_text. 값이 없는 셀은 응답에서 생략된다 (희소 표현).
   cells: Record<string, string | null>
 }
@@ -473,6 +528,37 @@ export interface SheetOut {
   columns: SheetColumnOut[]
   rows: SheetRowOut[]
   lock: SheetLockSummaryOut
+  validation_rules: SheetValidationRuleOut[]
+  validation_basis_hash: string
+}
+
+// --- whole-project validation (POST /api/projects/{project_id}/validate) ---
+
+export type ValidationIssueDetailValue = string | number | boolean | null
+
+export interface ValidationIssueOut {
+  key: string
+  code: string
+  rule_code: string | null
+  rule_version: number | null
+  severity: ValidationSeverity
+  condition_id: number
+  layer_key: string
+  parameter_code: string
+  details: Record<string, ValidationIssueDetailValue>
+}
+
+export interface ValidationSummaryOut {
+  error_count: number
+  warning_count: number
+}
+
+export interface ProjectValidationOut {
+  summary: ValidationSummaryOut
+  issues: ValidationIssueOut[]
+  evaluated_at: string
+  basis_hash: string
+  rule_versions: Record<string, number>
 }
 
 // --- 편집 잠금 (POST/DELETE /api/projects/{project_id}/lock, POST .../lock/heartbeat) ---

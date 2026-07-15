@@ -5,9 +5,12 @@
 동결된 parameter_snapshot을 쓰도록 이 함수 교체만으로 경계가 갈리도록 하기 위함이다.
 """
 
+from decimal import Decimal
+
 from app.core.config import settings
-from app.core.errors import DomainValidationError, NotFoundError
+from app.core.errors import DomainValidationError
 from app.core.locks import as_utc, is_expired, utcnow
+from app.domain.decimal_values import normalize_decimal
 from app.domain.parameters.types import ValueType
 from app.features.sheets.repository import SheetRepository
 from app.features.sheets.schema import (
@@ -15,7 +18,9 @@ from app.features.sheets.schema import (
     SheetLockSummaryOut,
     SheetOut,
     SheetRowOut,
+    SheetValidationRuleOut,
 )
+from app.features.validation.project_service import CanonicalValidationBasisLoader
 from app.models.parameter import Parameter
 from app.models.project import EditLock, Project
 
@@ -25,20 +30,33 @@ class SheetService:
 
     def __init__(self, repo: SheetRepository) -> None:
         self.repo = repo
+        self.basis_loader = CanonicalValidationBasisLoader(repo)
 
     async def get_sheet(self, project_id: int, *, user_id: str) -> SheetOut:
-        project = await self.repo.load_project_tree(project_id)
-        if project is None:
-            raise NotFoundError(f"프로젝트를 찾을 수 없다: {project_id}")
-
-        parameters = await self.repo.list_active_parameters()
-        categories = await self.repo.list_active_categories()
-        category_code_by_id = {category.id: category.code for category in categories}
-
-        columns = _build_live_columns(parameters, category_code_by_id)
-        rows = _build_rows(project)
+        basis = await self.basis_loader.load(project_id)
+        columns = _build_live_columns(
+            list(basis.parameters),
+            basis.category_code_by_id,
+        )
+        rows = _build_rows(basis.project)
         lock = _lock_summary(await self.repo.load_edit_lock(project_id), user_id=user_id)
-        return SheetOut(columns=columns, rows=rows, lock=lock)
+        return SheetOut(
+            columns=columns,
+            rows=rows,
+            lock=lock,
+            validation_rules=[
+                SheetValidationRuleOut(
+                    code=rule.definition.code,
+                    name=rule.definition.name,
+                    severity=rule.definition.severity,
+                    version=rule.definition.version,
+                    scope=rule.scope,
+                    spec=rule.spec,
+                )
+                for rule in basis.rules
+            ],
+            validation_basis_hash=basis.basis_hash,
+        )
 
 
 def _build_live_columns(
@@ -66,7 +84,26 @@ def _build_live_columns(
                     if parameter.category_id is not None
                     else None
                 ),
-                unit=parameter.unit,
+                unit=parameter.unit if parameter.value_type is ValueType.NUMBER else None,
+                min_value=(
+                    _decimal_out(parameter.min_value)
+                    if parameter.value_type is ValueType.NUMBER
+                    else None
+                ),
+                max_value=(
+                    _decimal_out(parameter.max_value)
+                    if parameter.value_type is ValueType.NUMBER
+                    else None
+                ),
+                required=parameter.required,
+                pattern=(
+                    parameter.pattern if parameter.value_type is ValueType.TEXT else None
+                ),
+                pattern_hint=(
+                    parameter.pattern_hint
+                    if parameter.value_type is ValueType.TEXT
+                    else None
+                ),
                 description=parameter.description,
                 choice_set_code=(
                     parameter.choice_set.code
@@ -84,6 +121,10 @@ def _build_live_columns(
             )
         )
     return columns
+
+
+def _decimal_out(value: Decimal | None) -> Decimal | None:
+    return None if value is None else Decimal(normalize_decimal(format(value, "f")))
 
 
 def _build_rows(project: Project) -> list[SheetRowOut]:
@@ -108,6 +149,8 @@ def _build_rows(project: Project) -> list[SheetRowOut]:
                     layer_label=layer_label,
                     condition_label=condition.label,
                     is_por=condition.is_por,
+                    layer_sort_order=layer.sort_order,
+                    condition_index=condition.condition_index,
                     cells=cells,
                 )
             )

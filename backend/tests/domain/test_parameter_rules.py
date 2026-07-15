@@ -21,9 +21,7 @@ def normalize_number_bounds(
     return function(min_value, max_value)
 
 
-def validate_choice_set_binding(
-    value_type: ValueType, choice_set_code: str | None
-) -> None:
+def validate_choice_set_binding(value_type: ValueType, choice_set_code: str | None) -> None:
     function = getattr(parameter_domain, "validate_choice_set_binding", None)
     assert function is not None, "validate_choice_set_binding must replace embedded options"
     function(value_type, choice_set_code)
@@ -96,3 +94,93 @@ class TestValidateNewParameter:
     def test_choice_without_set_rejected(self) -> None:
         with pytest.raises(RuleViolationError):
             validate_new_parameter(code="mask", value_type=ValueType.CHOICE)
+
+    def test_text_pattern_requires_a_nonblank_paired_hint(self) -> None:
+        with pytest.raises(RuleViolationError) as missing:
+            validate_new_parameter(
+                code="mask_id",
+                value_type=ValueType.TEXT,
+                pattern="[A-Z]{2}-[0-9]{4}",
+            )
+        with pytest.raises(RuleViolationError) as blank:
+            validate_new_parameter(
+                code="mask_id",
+                value_type=ValueType.TEXT,
+                pattern="[A-Z]{2}-[0-9]{4}",
+                pattern_hint="   ",
+            )
+
+        assert missing.value.code == "pattern_hint_required"
+        assert blank.value.code == "pattern_hint_required"
+
+    def test_hint_without_pattern_is_rejected(self) -> None:
+        with pytest.raises(RuleViolationError) as raised:
+            validate_new_parameter(
+                code="mask_id",
+                value_type=ValueType.TEXT,
+                pattern_hint="영문 대문자 2자리-숫자 4자리",
+            )
+
+        assert raised.value.code == "pattern_required"
+
+    def test_pattern_must_be_portable_and_text_only(self) -> None:
+        with pytest.raises(RuleViolationError) as non_portable:
+            validate_new_parameter(
+                code="mask_id",
+                value_type=ValueType.TEXT,
+                pattern="(a+)+",
+                pattern_hint="안전한 형식",
+            )
+        with pytest.raises(RuleViolationError) as non_text:
+            validate_new_parameter(
+                code="dose",
+                value_type=ValueType.NUMBER,
+                pattern="[0-9]{1,3}",
+                pattern_hint="숫자 1~3자리",
+            )
+
+        assert non_portable.value.code == "portable_pattern_invalid"
+        assert non_text.value.code == "pattern_not_allowed"
+
+    @pytest.mark.parametrize(
+        ("value_type", "metadata"),
+        [
+            (ValueType.TEXT, {"unit": "nm"}),
+            (ValueType.TEXT, {"min_value": "0"}),
+            (ValueType.CHOICE, {"max_value": "10", "choice_set_code": "mode"}),
+        ],
+    )
+    def test_numeric_metadata_is_number_only(
+        self,
+        value_type: ValueType,
+        metadata: dict[str, str],
+    ) -> None:
+        with pytest.raises(RuleViolationError) as raised:
+            validate_new_parameter(
+                code="metadata_owner",
+                value_type=value_type,
+                **metadata,
+            )
+
+        assert raised.value.code == "number_metadata_not_allowed"
+
+    def test_valid_text_pattern_and_number_metadata_are_accepted(self) -> None:
+        assert (
+            validate_new_parameter(
+                code="mask_id",
+                value_type=ValueType.TEXT,
+                pattern="[A-Z]{2}-[0-9]{4}",
+                pattern_hint="영문 대문자 2자리-숫자 4자리",
+            )
+            == "mask_id"
+        )
+        assert (
+            validate_new_parameter(
+                code="dose",
+                value_type=ValueType.NUMBER,
+                unit="mJ",
+                min_value="0",
+                max_value="100",
+            )
+            == "dose"
+        )

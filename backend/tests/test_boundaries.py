@@ -1,7 +1,9 @@
 """T2에서 이미 구현된 경계(seam) 검증: 예외 매핑, 인증 경계, 설정, 모델 메타데이터."""
 
+import ast
 from collections.abc import Callable
-from typing import Annotated, Any, get_args, get_type_hints
+from pathlib import Path
+from typing import Annotated, Any, cast, get_args, get_type_hints
 
 import pytest
 from fastapi import Depends, FastAPI
@@ -31,6 +33,33 @@ from app.features.conditions import router as conditions_router
 from app.features.locks import router as locks_router
 from app.features.parameters import router as parameters_router
 from app.features.projects import router as projects_router
+from app.features.validation import router as validation_router
+
+
+def test_validation_domain_has_no_framework_or_persistence_imports() -> None:
+    validation_dir = Path(__file__).parents[1] / "app" / "domain" / "validation"
+    forbidden_roots = {"fastapi", "pydantic", "sqlalchemy"}
+    forbidden_prefixes = ("app.models", "app.features")
+
+    violations: list[str] = []
+    for path in sorted(validation_dir.glob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            imported_modules: list[str]
+            if isinstance(node, ast.Import):
+                imported_modules = [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom) and node.module is not None:
+                imported_modules = [node.module]
+            else:
+                continue
+
+            for module in imported_modules:
+                if module.split(".", 1)[0] in forbidden_roots or module.startswith(
+                    forbidden_prefixes
+                ):
+                    violations.append(f"{path.name}:{node.lineno}: {module}")
+
+    assert violations == []
 
 
 def _depends(annotation: Any) -> DependsParam:
@@ -46,9 +75,19 @@ def _depends(annotation: Any) -> DependsParam:
         (conditions_router.ServiceDep, conditions_router.get_service, True),
         (parameters_router.ServiceDep, parameters_router.get_service, False),
         (choice_sets_router.ServiceDep, choice_sets_router.get_service, False),
+        (validation_router.ServiceDep, validation_router.get_service, False),
         (None, require_edit_lock, False),
     ],
-    ids=["projects", "locks", "cells", "conditions", "parameters", "choice_sets", "edit_lock"],
+    ids=[
+        "projects",
+        "locks",
+        "cells",
+        "conditions",
+        "parameters",
+        "choice_sets",
+        "validation-rules",
+        "edit_lock",
+    ],
 )
 def test_transactional_dependencies_finalize_before_response(
     service_dependency: Any | None,
@@ -137,6 +176,31 @@ def test_choice_models_and_parameter_relation_are_registered() -> None:
 
     assert {"choice_set", "choice_option"} <= set(Base.metadata.tables)
     assert "choice_set_id" in Base.metadata.tables["parameter"].c
+
+
+def test_validation_rule_model_is_registered_with_strict_storage_contract() -> None:
+    from sqlalchemy import JSON, Enum, Table
+    from sqlalchemy.dialects.postgresql import JSONB, dialect
+
+    from app.models import Base
+
+    table = cast(Table, Base.metadata.tables["validation_rule"])
+    assert isinstance(table.c.scope.type, JSON)
+    assert isinstance(table.c.scope.type.dialect_impl(dialect()), JSONB)
+    assert isinstance(table.c.spec.type.dialect_impl(dialect()), JSONB)
+    assert cast(Enum, table.c.severity.type).enums == ["error", "warning"]
+    assert {constraint.name for constraint in table.constraints} >= {
+        "ck_validation_rule_code_format",
+        "ck_validation_rule_severity",
+        "ck_validation_rule_version",
+    }
+    assert {index.name for index in table.indexes} == {
+        "ix_validation_rule_active_code",
+        "ix_validation_rule_code",
+    }
+    assert next(
+        index for index in table.indexes if index.name == "ix_validation_rule_code"
+    ).unique
 
 
 def test_phase_2_6_metadata_has_no_legacy_option_or_project_description() -> None:

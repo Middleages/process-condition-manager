@@ -105,12 +105,17 @@ export interface PasteStagingCell {
   errorCode?: CellValidationErrorCode
 }
 
-/** 셀 상태 오버레이(검증 오류/더티/코멘트 하이라이트). 상위가 계산, 그리드가 렌더. */
+/** 셀 상태 오버레이. 독립 사실을 합성해 검증 표시가 dirty/comment 정보를 지우지 않는다. */
 export interface CellStatus {
   conditionId: string
   parameterCode: string
-  state: 'error' | 'dirty' | 'comment'
-  message?: string
+  validation?: {
+    severity: 'error' | 'warning'
+    count: number
+    message: string
+  }
+  dirty: boolean
+  commentCount?: number
 }
 
 export interface ConditionGridData {
@@ -151,7 +156,7 @@ export interface ConditionGridViewState {
  * 일회성 명령만 노출한다. 구현체는 `useImperativeHandle`로 이 형태를 만족시킨다.
  */
 export interface ConditionGridHandle {
-  /** 특정 셀로 스크롤 점프(검증 오류 목록 → 셀 이동, Phase 3). */
+  /** 특정 셀로 스크롤하고 그 셀을 선택한 뒤 그리드 focus를 복원한다(Phase 3). */
   scrollToCell(conditionId: string, parameterCode: string): void
   /** 특정 파라미터 컬럼으로 스크롤 점프(컬럼 검색-점프, T6). */
   scrollToColumn(parameterCode: string): void

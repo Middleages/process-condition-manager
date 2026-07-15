@@ -1,0 +1,2378 @@
+{
+  "pattern_vectors": [
+    {
+      "name": "literal",
+      "covers": [
+        "allowed_literal"
+      ],
+      "source": "ABC-123",
+      "valid": true,
+      "accepted": [
+        "ABC-123"
+      ],
+      "rejected": [
+        "ABC-12",
+        "xABC-123"
+      ]
+    },
+    {
+      "name": "dot",
+      "covers": [
+        "allowed_dot",
+        "unicode"
+      ],
+      "source": "A.B",
+      "valid": true,
+      "accepted": [
+        "A0B",
+        "A가B"
+      ],
+      "rejected": [
+        "AB",
+        "A\nB"
+      ]
+    },
+    {
+      "name": "explicit class",
+      "covers": [
+        "allowed_class"
+      ],
+      "source": "[ABC]{2}",
+      "valid": true,
+      "accepted": [
+        "AA",
+        "CB"
+      ],
+      "rejected": [
+        "AD",
+        "A"
+      ]
+    },
+    {
+      "name": "explicit range",
+      "covers": [
+        "allowed_range"
+      ],
+      "source": "[A-Z]{2}",
+      "valid": true,
+      "accepted": [
+        "AZ",
+        "XY"
+      ],
+      "rejected": [
+        "Az",
+        "XYZ"
+      ]
+    },
+    {
+      "name": "top-level alternation",
+      "covers": [
+        "allowed_alternation"
+      ],
+      "source": "Y|N",
+      "valid": true,
+      "accepted": [
+        "Y",
+        "N"
+      ],
+      "rejected": [
+        "",
+        "YN"
+      ]
+    },
+    {
+      "name": "optional atom",
+      "covers": [
+        "allowed_optional"
+      ],
+      "source": "AB?",
+      "valid": true,
+      "accepted": [
+        "A",
+        "AB"
+      ],
+      "rejected": [
+        "ABB"
+      ]
+    },
+    {
+      "name": "exact repetition",
+      "covers": [
+        "allowed_exact_repetition"
+      ],
+      "source": "A{2}",
+      "valid": true,
+      "accepted": [
+        "AA"
+      ],
+      "rejected": [
+        "A",
+        "AAA"
+      ]
+    },
+    {
+      "name": "bounded repetition",
+      "covers": [
+        "allowed_bounded_repetition"
+      ],
+      "source": "A{1,3}",
+      "valid": true,
+      "accepted": [
+        "A",
+        "AAA"
+      ],
+      "rejected": [
+        "",
+        "AAAA"
+      ]
+    },
+    {
+      "name": "literal metacharacter escapes",
+      "covers": [
+        "allowed_literal_escape"
+      ],
+      "source": "\\.\\|\\?\\*\\+\\(\\)\\[\\]\\{\\}\\^\\$\\\\",
+      "valid": true,
+      "accepted": [
+        ".|?*+()[]{}^$\\"
+      ],
+      "rejected": [
+        "literal"
+      ]
+    },
+    {
+      "name": "start anchor forbidden",
+      "covers": [
+        "forbidden_anchor_start"
+      ],
+      "source": "^A",
+      "valid": false,
+      "accepted": [],
+      "rejected": []
+    },
+    {
+      "name": "end anchor forbidden",
+      "covers": [
+        "forbidden_anchor_end"
+      ],
+      "source": "A$",
+      "valid": false,
+      "accepted": [],
+      "rejected": []
+    },
+    {
+      "name": "star forbidden",
+      "covers": [
+        "forbidden_star"
+      ],
+      "source": "a*",
+      "valid": false,
+      "accepted": [],
+      "rejected": []
+    },
+    {
+      "name": "plus forbidden",
+      "covers": [
+        "forbidden_plus"
+      ],
+      "source": "a+",
+      "valid": false,
+      "accepted": [],
+      "rejected": []
+    },
+    {
+      "name": "capturing group forbidden",
+      "covers": [
+        "forbidden_capturing_group"
+      ],
+      "source": "(AB)",
+      "valid": false,
+      "accepted": [],
+      "rejected": []
+    },
+    {
+      "name": "noncapturing group forbidden",
+      "covers": [
+        "forbidden_noncapturing_group"
+      ],
+      "source": "(?:AB)",
+      "valid": false,
+      "accepted": [],
+      "rejected": []
+    },
+    {
+      "name": "lookahead forbidden",
+      "covers": [
+        "forbidden_lookahead"
+      ],
+      "source": "(?=A)A",
+      "valid": false,
+      "accepted": [],
+      "rejected": []
+    },
+    {
+      "name": "lookbehind forbidden",
+      "covers": [
+        "forbidden_lookbehind"
+      ],
+      "source": "(?<=A)B",
+      "valid": false,
+      "accepted": [],
+      "rejected": []
+    },
+    {
+      "name": "numeric backreference forbidden",
+      "covers": [
+        "forbidden_backreference"
+      ],
+      "source": "\\1",
+      "valid": false,
+      "accepted": [],
+      "rejected": []
+    },
+    {
+      "name": "named reference forbidden",
+      "covers": [
+        "forbidden_named_reference"
+      ],
+      "source": "\\k<name>",
+      "valid": false,
+      "accepted": [],
+      "rejected": []
+    },
+    {
+      "name": "inline flags forbidden",
+      "covers": [
+        "forbidden_inline_flags"
+      ],
+      "source": "(?i)abc",
+      "valid": false,
+      "accepted": [],
+      "rejected": []
+    },
+    {
+      "name": "digit shorthand forbidden",
+      "covers": [
+        "forbidden_shorthand_digit"
+      ],
+      "source": "\\d{2}",
+      "valid": false,
+      "accepted": [],
+      "rejected": []
+    },
+    {
+      "name": "word shorthand forbidden",
+      "covers": [
+        "forbidden_shorthand_word"
+      ],
+      "source": "\\w{2}",
+      "valid": false,
+      "accepted": [],
+      "rejected": []
+    },
+    {
+      "name": "space shorthand forbidden",
+      "covers": [
+        "forbidden_shorthand_space"
+      ],
+      "source": "\\s{2}",
+      "valid": false,
+      "accepted": [],
+      "rejected": []
+    },
+    {
+      "name": "unicode property shorthand forbidden",
+      "covers": [
+        "forbidden_shorthand_unicode_property"
+      ],
+      "source": "\\p{L}",
+      "valid": false,
+      "accepted": [],
+      "rejected": []
+    },
+    {
+      "name": "open repetition forbidden",
+      "covers": [
+        "forbidden_open_repetition"
+      ],
+      "source": "a{2,}",
+      "valid": false,
+      "accepted": [],
+      "rejected": []
+    },
+    {
+      "name": "descending repetition forbidden",
+      "covers": [
+        "forbidden_descending_repetition"
+      ],
+      "source": "a{3,2}",
+      "valid": false,
+      "accepted": [],
+      "rejected": []
+    },
+    {
+      "name": "out-of-range repetition forbidden",
+      "covers": [
+        "forbidden_out_of_range_repetition"
+      ],
+      "source": "a{1,257}",
+      "valid": false,
+      "accepted": [],
+      "rejected": []
+    },
+    {
+      "name": "sixteen alternatives accepted",
+      "covers": [
+        "boundary_alternatives_16"
+      ],
+      "source": "가|각|갂|갃|간|갅|갆|갇|갈|갉|갊|갋|갌|갍|갎|갏",
+      "valid": true,
+      "accepted": [
+        "갏"
+      ],
+      "rejected": [
+        "A"
+      ]
+    },
+    {
+      "name": "seventeen alternatives rejected",
+      "covers": [
+        "exceeded_alternatives_17"
+      ],
+      "source": "가|각|갂|갃|간|갅|갆|갇|갈|갉|갊|갋|갌|갍|갎|갏|감",
+      "valid": false,
+      "accepted": [],
+      "rejected": []
+    },
+    {
+      "name": "sixty-four atoms accepted",
+      "covers": [
+        "boundary_atoms_64"
+      ],
+      "source": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "valid": true,
+      "accepted": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ],
+      "rejected": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ]
+    },
+    {
+      "name": "sixty-five atoms rejected",
+      "covers": [
+        "exceeded_atoms_65"
+      ],
+      "source": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "valid": false,
+      "accepted": [],
+      "rejected": []
+    },
+    {
+      "name": "sixteen quantified atoms accepted",
+      "covers": [
+        "boundary_quantified_atoms_16"
+      ],
+      "source": "a?b?a?b?a?b?a?b?a?b?a?b?a?b?a?b?",
+      "valid": true,
+      "accepted": [
+        "abababababababab",
+        ""
+      ],
+      "rejected": [
+        "c"
+      ]
+    },
+    {
+      "name": "seventeen quantified atoms rejected",
+      "covers": [
+        "exceeded_quantified_atoms_17"
+      ],
+      "source": "a?b?a?b?a?b?a?b?a?b?a?b?a?b?a?b?c?",
+      "valid": false,
+      "accepted": [],
+      "rejected": []
+    },
+    {
+      "name": "repeat 256 accepted",
+      "covers": [
+        "boundary_repeat_256"
+      ],
+      "source": "a{256}",
+      "valid": true,
+      "accepted": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ],
+      "rejected": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ]
+    },
+    {
+      "name": "repeat 257 rejected",
+      "covers": [
+        "exceeded_repeat_257"
+      ],
+      "source": "a{257}",
+      "valid": false,
+      "accepted": [],
+      "rejected": []
+    },
+    {
+      "name": "match length 1024 accepted",
+      "covers": [
+        "boundary_match_length_1024"
+      ],
+      "source": "a{256}b{256}c{256}d{256}",
+      "valid": true,
+      "accepted": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      ],
+      "rejected": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddde"
+      ]
+    },
+    {
+      "name": "match length 1025 rejected",
+      "covers": [
+        "exceeded_match_length_1025"
+      ],
+      "source": "a{256}b{256}c{256}d{256}e",
+      "valid": false,
+      "accepted": [],
+      "rejected": []
+    },
+    {
+      "name": "adjacent quantified overlap forbidden",
+      "covers": [
+        "forbidden_adjacent_quantifier_overlap"
+      ],
+      "source": "a?a{2}",
+      "valid": false,
+      "accepted": [],
+      "rejected": []
+    },
+    {
+      "name": "final newline rejected",
+      "covers": [
+        "final_newline_rejected"
+      ],
+      "source": "ABC",
+      "valid": true,
+      "accepted": [
+        "ABC"
+      ],
+      "rejected": [
+        "ABC\n"
+      ]
+    },
+    {
+      "name": "unicode alternatives",
+      "covers": [
+        "unicode"
+      ],
+      "source": "가|나|다",
+      "valid": true,
+      "accepted": [
+        "가",
+        "나",
+        "다"
+      ],
+      "rejected": [
+        "라마"
+      ]
+    }
+  ],
+  "evaluation_vectors": [
+    {
+      "name": "standalone validation",
+      "equivalence_group": null,
+      "context": {
+        "project_id": 1,
+        "line_id": "L1",
+        "process_id": "PROC"
+      },
+      "parameters": [
+        {
+          "code": "required_text",
+          "display_name": "Required text",
+          "value_type": "text",
+          "required": true,
+          "pattern": null,
+          "pattern_hint": null,
+          "min_value": null,
+          "max_value": null,
+          "choice_set_code": null,
+          "choices": [],
+          "sort_order": 0
+        },
+        {
+          "code": "amount",
+          "display_name": "Amount",
+          "value_type": "number",
+          "required": false,
+          "pattern": null,
+          "pattern_hint": null,
+          "min_value": "0.1",
+          "max_value": "9.9",
+          "choice_set_code": null,
+          "choices": [],
+          "sort_order": 1
+        },
+        {
+          "code": "format_code",
+          "display_name": "Format code",
+          "value_type": "text",
+          "required": false,
+          "pattern": "[A-Z]{2}-[0-9]{4}",
+          "pattern_hint": "영문 대문자 2자리-숫자 4자리",
+          "min_value": null,
+          "max_value": null,
+          "choice_set_code": null,
+          "choices": [],
+          "sort_order": 2
+        },
+        {
+          "code": "mode",
+          "display_name": "Mode",
+          "value_type": "choice",
+          "required": false,
+          "pattern": null,
+          "pattern_hint": null,
+          "min_value": null,
+          "max_value": null,
+          "choice_set_code": "modes",
+          "choices": [
+            {
+              "code": "active",
+              "is_active": true
+            },
+            {
+              "code": "inactive",
+              "is_active": false
+            }
+          ],
+          "sort_order": 3
+        }
+      ],
+      "layers": [
+        {
+          "key": "standalone",
+          "layer_id": "ACT",
+          "step_seq": "010",
+          "eqp_type": "PHOTO",
+          "area_name": "PHOTO",
+          "sort_order": 0,
+          "conditions": [
+            {
+              "id": 101,
+              "label": "minimum",
+              "condition_index": 0,
+              "is_por": true,
+              "values": {
+                "required_text": null,
+                "amount": "0.100",
+                "format_code": "AB-1234",
+                "mode": "active"
+              }
+            },
+            {
+              "id": 102,
+              "label": "maximum",
+              "condition_index": 1,
+              "is_por": false,
+              "values": {
+                "required_text": "present",
+                "amount": "9.900",
+                "format_code": "bad",
+                "mode": "inactive"
+              }
+            },
+            {
+              "id": 103,
+              "label": "defensive",
+              "condition_index": 2,
+              "is_por": false,
+              "values": {
+                "required_text": "present",
+                "amount": "not-a-number",
+                "format_code": null,
+                "mode": "unknown"
+              }
+            },
+            {
+              "id": 104,
+              "label": "below",
+              "condition_index": 3,
+              "is_por": false,
+              "values": {
+                "required_text": "present",
+                "amount": "0.099999999999999999999",
+                "format_code": "ZZ-9999",
+                "mode": "active"
+              }
+            },
+            {
+              "id": 105,
+              "label": "above",
+              "condition_index": 4,
+              "is_por": false,
+              "values": {
+                "required_text": "present",
+                "amount": "9.900000000000000001",
+                "format_code": "ZZ-9999",
+                "mode": "active"
+              }
+            }
+          ]
+        }
+      ],
+      "rules": [],
+      "expected_issues": [
+        {
+          "key": "required:101:required_text",
+          "code": "required",
+          "rule_code": null,
+          "rule_version": null,
+          "severity": "error",
+          "condition_id": 101,
+          "layer_key": "standalone",
+          "parameter_code": "required_text",
+          "details": {}
+        },
+        {
+          "key": "pattern_mismatch:102:format_code",
+          "code": "pattern_mismatch",
+          "rule_code": null,
+          "rule_version": null,
+          "severity": "error",
+          "condition_id": 102,
+          "layer_key": "standalone",
+          "parameter_code": "format_code",
+          "details": {
+            "pattern_hint": "영문 대문자 2자리-숫자 4자리"
+          }
+        },
+        {
+          "key": "number_malformed:103:amount",
+          "code": "number_malformed",
+          "rule_code": null,
+          "rule_version": null,
+          "severity": "error",
+          "condition_id": 103,
+          "layer_key": "standalone",
+          "parameter_code": "amount",
+          "details": {}
+        },
+        {
+          "key": "choice_unknown:103:mode",
+          "code": "choice_unknown",
+          "rule_code": null,
+          "rule_version": null,
+          "severity": "error",
+          "condition_id": 103,
+          "layer_key": "standalone",
+          "parameter_code": "mode",
+          "details": {}
+        },
+        {
+          "key": "range_min:104:amount",
+          "code": "range_min",
+          "rule_code": null,
+          "rule_version": null,
+          "severity": "error",
+          "condition_id": 104,
+          "layer_key": "standalone",
+          "parameter_code": "amount",
+          "details": {
+            "max_value": "9.9",
+            "min_value": "0.1"
+          }
+        },
+        {
+          "key": "range_max:105:amount",
+          "code": "range_max",
+          "rule_code": null,
+          "rule_version": null,
+          "severity": "error",
+          "condition_id": 105,
+          "layer_key": "standalone",
+          "parameter_code": "amount",
+          "details": {
+            "max_value": "9.9",
+            "min_value": "0.1"
+          }
+        },
+        {
+          "key": "choice_inactive:102:mode",
+          "code": "choice_inactive",
+          "rule_code": null,
+          "rule_version": null,
+          "severity": "warning",
+          "condition_id": 102,
+          "layer_key": "standalone",
+          "parameter_code": "mode",
+          "details": {}
+        }
+      ],
+      "covers": [
+        "standalone_required_absent_present",
+        "standalone_decimal_inclusive",
+        "standalone_decimal_malformed",
+        "standalone_pattern_mismatch",
+        "standalone_choice_active_inactive_unknown"
+      ]
+    },
+    {
+      "name": "deterministic order original",
+      "equivalence_group": "mixed-order",
+      "context": {
+        "project_id": 9,
+        "line_id": "L1",
+        "process_id": "PROC"
+      },
+      "parameters": [
+        {
+          "code": "required_text",
+          "display_name": "Required text",
+          "value_type": "text",
+          "required": true,
+          "pattern": null,
+          "pattern_hint": null,
+          "min_value": null,
+          "max_value": null,
+          "choice_set_code": null,
+          "choices": [],
+          "sort_order": 0
+        },
+        {
+          "code": "source",
+          "display_name": "Source",
+          "value_type": "text",
+          "required": false,
+          "pattern": null,
+          "pattern_hint": null,
+          "min_value": null,
+          "max_value": null,
+          "choice_set_code": null,
+          "choices": [],
+          "sort_order": 1
+        },
+        {
+          "code": "candidate",
+          "display_name": "Candidate",
+          "value_type": "text",
+          "required": false,
+          "pattern": null,
+          "pattern_hint": null,
+          "min_value": null,
+          "max_value": null,
+          "choice_set_code": null,
+          "choices": [],
+          "sort_order": 2
+        },
+        {
+          "code": "mode",
+          "display_name": "Mode",
+          "value_type": "choice",
+          "required": false,
+          "pattern": null,
+          "pattern_hint": null,
+          "min_value": null,
+          "max_value": null,
+          "choice_set_code": "modes",
+          "choices": [
+            {
+              "code": "retired",
+              "is_active": false
+            }
+          ],
+          "sort_order": 3
+        }
+      ],
+      "layers": [
+        {
+          "key": "mixed",
+          "layer_id": "ACT",
+          "step_seq": "020",
+          "eqp_type": "PHOTO",
+          "area_name": "PHOTO",
+          "sort_order": 0,
+          "conditions": [
+            {
+              "id": 201,
+              "label": "POR",
+              "condition_index": 0,
+              "is_por": true,
+              "values": {
+                "required_text": null,
+                "source": "M1",
+                "candidate": "M1",
+                "mode": "retired"
+              }
+            }
+          ]
+        }
+      ],
+      "rules": [
+        {
+          "code": "prior_source",
+          "name": "Source must exist earlier",
+          "severity": "error",
+          "version": 2,
+          "scope": {
+            "line_ids": [
+              "L0",
+              "L1"
+            ],
+            "process_ids": [
+              "OTHER",
+              "PROC"
+            ],
+            "layer_ids": [
+              "ACT",
+              "GATE"
+            ],
+            "step_seqs": [
+              "010",
+              "020"
+            ],
+            "eqp_types": [
+              "ETCH",
+              "PHOTO"
+            ],
+            "area_names": [
+              "DIFF",
+              "PHOTO"
+            ]
+          },
+          "spec": {
+            "schema_version": 1,
+            "type": "value_exists_in_prior_por",
+            "source_parameter_code": "source",
+            "candidate_parameter_code": "candidate"
+          }
+        }
+      ],
+      "expected_issues": [
+        {
+          "key": "required:201:required_text",
+          "code": "required",
+          "rule_code": null,
+          "rule_version": null,
+          "severity": "error",
+          "condition_id": 201,
+          "layer_key": "mixed",
+          "parameter_code": "required_text",
+          "details": {}
+        },
+        {
+          "key": "value_not_found_in_prior_por:prior_source:2:201:source",
+          "code": "value_not_found_in_prior_por",
+          "rule_code": "prior_source",
+          "rule_version": 2,
+          "severity": "error",
+          "condition_id": 201,
+          "layer_key": "mixed",
+          "parameter_code": "source",
+          "details": {
+            "candidate_parameter_code": "candidate",
+            "searched_layer_count": 0
+          }
+        },
+        {
+          "key": "choice_inactive:201:mode",
+          "code": "choice_inactive",
+          "rule_code": null,
+          "rule_version": null,
+          "severity": "warning",
+          "condition_id": 201,
+          "layer_key": "mixed",
+          "parameter_code": "mode",
+          "details": {}
+        }
+      ],
+      "covers": [
+        "deterministic_permutation",
+        "scope_line_ids",
+        "scope_process_ids",
+        "scope_layer_ids",
+        "scope_step_seqs",
+        "scope_eqp_types",
+        "scope_area_names",
+        "scope_or_within",
+        "scope_and_across"
+      ]
+    },
+    {
+      "name": "deterministic order permuted",
+      "equivalence_group": "mixed-order",
+      "context": {
+        "project_id": 9,
+        "line_id": "L1",
+        "process_id": "PROC"
+      },
+      "parameters": [
+        {
+          "code": "mode",
+          "display_name": "Mode",
+          "value_type": "choice",
+          "required": false,
+          "pattern": null,
+          "pattern_hint": null,
+          "min_value": null,
+          "max_value": null,
+          "choice_set_code": "modes",
+          "choices": [
+            {
+              "code": "retired",
+              "is_active": false
+            }
+          ],
+          "sort_order": 3
+        },
+        {
+          "code": "candidate",
+          "display_name": "Candidate",
+          "value_type": "text",
+          "required": false,
+          "pattern": null,
+          "pattern_hint": null,
+          "min_value": null,
+          "max_value": null,
+          "choice_set_code": null,
+          "choices": [],
+          "sort_order": 2
+        },
+        {
+          "code": "source",
+          "display_name": "Source",
+          "value_type": "text",
+          "required": false,
+          "pattern": null,
+          "pattern_hint": null,
+          "min_value": null,
+          "max_value": null,
+          "choice_set_code": null,
+          "choices": [],
+          "sort_order": 1
+        },
+        {
+          "code": "required_text",
+          "display_name": "Required text",
+          "value_type": "text",
+          "required": true,
+          "pattern": null,
+          "pattern_hint": null,
+          "min_value": null,
+          "max_value": null,
+          "choice_set_code": null,
+          "choices": [],
+          "sort_order": 0
+        }
+      ],
+      "layers": [
+        {
+          "key": "mixed",
+          "layer_id": "ACT",
+          "step_seq": "020",
+          "eqp_type": "PHOTO",
+          "area_name": "PHOTO",
+          "sort_order": 0,
+          "conditions": [
+            {
+              "id": 201,
+              "label": "POR",
+              "condition_index": 0,
+              "is_por": true,
+              "values": {
+                "required_text": null,
+                "source": "M1",
+                "candidate": "M1",
+                "mode": "retired"
+              }
+            }
+          ]
+        }
+      ],
+      "rules": [
+        {
+          "code": "prior_source",
+          "name": "Source must exist earlier",
+          "severity": "error",
+          "version": 2,
+          "scope": {
+            "line_ids": [
+              "L0",
+              "L1"
+            ],
+            "process_ids": [
+              "OTHER",
+              "PROC"
+            ],
+            "layer_ids": [
+              "ACT",
+              "GATE"
+            ],
+            "step_seqs": [
+              "010",
+              "020"
+            ],
+            "eqp_types": [
+              "ETCH",
+              "PHOTO"
+            ],
+            "area_names": [
+              "DIFF",
+              "PHOTO"
+            ]
+          },
+          "spec": {
+            "schema_version": 1,
+            "type": "value_exists_in_prior_por",
+            "source_parameter_code": "source",
+            "candidate_parameter_code": "candidate"
+          }
+        }
+      ],
+      "expected_issues": [
+        {
+          "key": "required:201:required_text",
+          "code": "required",
+          "rule_code": null,
+          "rule_version": null,
+          "severity": "error",
+          "condition_id": 201,
+          "layer_key": "mixed",
+          "parameter_code": "required_text",
+          "details": {}
+        },
+        {
+          "key": "value_not_found_in_prior_por:prior_source:2:201:source",
+          "code": "value_not_found_in_prior_por",
+          "rule_code": "prior_source",
+          "rule_version": 2,
+          "severity": "error",
+          "condition_id": 201,
+          "layer_key": "mixed",
+          "parameter_code": "source",
+          "details": {
+            "candidate_parameter_code": "candidate",
+            "searched_layer_count": 0
+          }
+        },
+        {
+          "key": "choice_inactive:201:mode",
+          "code": "choice_inactive",
+          "rule_code": null,
+          "rule_version": null,
+          "severity": "warning",
+          "condition_id": 201,
+          "layer_key": "mixed",
+          "parameter_code": "mode",
+          "details": {}
+        }
+      ],
+      "covers": [
+        "deterministic_permutation"
+      ]
+    },
+    {
+      "name": "typed required-if",
+      "equivalence_group": null,
+      "context": {
+        "project_id": 2,
+        "line_id": "L1",
+        "process_id": "PROC"
+      },
+      "parameters": [
+        {
+          "code": "trigger",
+          "display_name": "Trigger",
+          "value_type": "number",
+          "required": false,
+          "pattern": null,
+          "pattern_hint": null,
+          "min_value": null,
+          "max_value": null,
+          "choice_set_code": null,
+          "choices": [],
+          "sort_order": 0
+        },
+        {
+          "code": "target",
+          "display_name": "Target",
+          "value_type": "text",
+          "required": false,
+          "pattern": null,
+          "pattern_hint": null,
+          "min_value": null,
+          "max_value": null,
+          "choice_set_code": null,
+          "choices": [],
+          "sort_order": 1
+        }
+      ],
+      "layers": [
+        {
+          "key": "required-if",
+          "layer_id": "ACT",
+          "step_seq": "030",
+          "eqp_type": null,
+          "area_name": null,
+          "sort_order": 0,
+          "conditions": [
+            {
+              "id": 301,
+              "label": "canonical true",
+              "condition_index": 0,
+              "is_por": true,
+              "values": {
+                "trigger": "1.00",
+                "target": null
+              }
+            },
+            {
+              "id": 302,
+              "label": "false",
+              "condition_index": 1,
+              "is_por": false,
+              "values": {
+                "trigger": "2",
+                "target": null
+              }
+            },
+            {
+              "id": 303,
+              "label": "absent",
+              "condition_index": 2,
+              "is_por": false,
+              "values": {
+                "trigger": null,
+                "target": null
+              }
+            },
+            {
+              "id": 304,
+              "label": "present target",
+              "condition_index": 3,
+              "is_por": false,
+              "values": {
+                "trigger": "1",
+                "target": "ok"
+              }
+            }
+          ]
+        }
+      ],
+      "rules": [
+        {
+          "code": "target_when_one",
+          "name": "Target when one",
+          "severity": "warning",
+          "version": 4,
+          "scope": {
+            "line_ids": [],
+            "process_ids": [],
+            "layer_ids": [],
+            "step_seqs": [],
+            "eqp_types": [],
+            "area_names": []
+          },
+          "spec": {
+            "schema_version": 1,
+            "type": "required_if",
+            "when_parameter_code": "trigger",
+            "equals": "1.0",
+            "required_parameter_code": "target"
+          }
+        }
+      ],
+      "expected_issues": [
+        {
+          "key": "required_if:target_when_one:4:301:target",
+          "code": "required_if",
+          "rule_code": "target_when_one",
+          "rule_version": 4,
+          "severity": "warning",
+          "condition_id": 301,
+          "layer_key": "required-if",
+          "parameter_code": "target",
+          "details": {
+            "equals": "1",
+            "required_parameter_code": "target",
+            "when_parameter_code": "trigger"
+          }
+        }
+      ],
+      "covers": []
+    },
+    {
+      "name": "strictly earlier POR membership",
+      "equivalence_group": null,
+      "context": {
+        "project_id": 3,
+        "line_id": "L1",
+        "process_id": "PROC"
+      },
+      "parameters": [
+        {
+          "code": "source",
+          "display_name": "Source",
+          "value_type": "text",
+          "required": false,
+          "pattern": null,
+          "pattern_hint": null,
+          "min_value": null,
+          "max_value": null,
+          "choice_set_code": null,
+          "choices": [],
+          "sort_order": 0
+        },
+        {
+          "code": "candidate",
+          "display_name": "Candidate",
+          "value_type": "text",
+          "required": false,
+          "pattern": null,
+          "pattern_hint": null,
+          "min_value": null,
+          "max_value": null,
+          "choice_set_code": null,
+          "choices": [],
+          "sort_order": 1
+        }
+      ],
+      "layers": [
+        {
+          "key": "layer-4",
+          "layer_id": "ACT",
+          "step_seq": "040",
+          "eqp_type": "PHOTO",
+          "area_name": "PHOTO",
+          "sort_order": 4,
+          "conditions": [
+            {
+              "id": 431,
+              "label": "later hit",
+              "condition_index": 0,
+              "is_por": false,
+              "values": {
+                "source": "C",
+                "candidate": null
+              }
+            }
+          ]
+        },
+        {
+          "key": "layer-3",
+          "layer_id": "ACT",
+          "step_seq": "030",
+          "eqp_type": "PHOTO",
+          "area_name": "PHOTO",
+          "sort_order": 3,
+          "conditions": [
+            {
+              "id": 421,
+              "label": "prior hit",
+              "condition_index": 0,
+              "is_por": false,
+              "values": {
+                "source": "B",
+                "candidate": null
+              }
+            },
+            {
+              "id": 422,
+              "label": "same-layer excluded",
+              "condition_index": 1,
+              "is_por": true,
+              "values": {
+                "source": "C",
+                "candidate": "C"
+              }
+            }
+          ]
+        },
+        {
+          "key": "layer-2",
+          "layer_id": "ACT",
+          "step_seq": "020",
+          "eqp_type": "PHOTO",
+          "area_name": "PHOTO",
+          "sort_order": 2,
+          "conditions": [
+            {
+              "id": 411,
+              "label": "earlier hit",
+              "condition_index": 0,
+              "is_por": false,
+              "values": {
+                "source": "A",
+                "candidate": null
+              }
+            },
+            {
+              "id": 412,
+              "label": "current POR miss",
+              "condition_index": 1,
+              "is_por": true,
+              "values": {
+                "source": "B",
+                "candidate": "B"
+              }
+            }
+          ]
+        },
+        {
+          "key": "layer-1",
+          "layer_id": "ACT",
+          "step_seq": "010",
+          "eqp_type": "PHOTO",
+          "area_name": "PHOTO",
+          "sort_order": 1,
+          "conditions": [
+            {
+              "id": 401,
+              "label": "POR",
+              "condition_index": 0,
+              "is_por": true,
+              "values": {
+                "source": "A",
+                "candidate": "A"
+              }
+            },
+            {
+              "id": 402,
+              "label": "non-POR candidate",
+              "condition_index": 1,
+              "is_por": false,
+              "values": {
+                "source": "IGNORED",
+                "candidate": "IGNORED"
+              }
+            },
+            {
+              "id": 403,
+              "label": "empty",
+              "condition_index": 2,
+              "is_por": false,
+              "values": {
+                "source": "",
+                "candidate": null
+              }
+            }
+          ]
+        }
+      ],
+      "rules": [
+        {
+          "code": "prior_candidate",
+          "name": "Prior candidate",
+          "severity": "error",
+          "version": 1,
+          "scope": {
+            "line_ids": [
+              "L1"
+            ],
+            "process_ids": [
+              "PROC"
+            ],
+            "layer_ids": [
+              "ACT"
+            ],
+            "step_seqs": [],
+            "eqp_types": [
+              "PHOTO"
+            ],
+            "area_names": [
+              "PHOTO"
+            ]
+          },
+          "spec": {
+            "schema_version": 1,
+            "type": "value_exists_in_prior_por",
+            "source_parameter_code": "source",
+            "candidate_parameter_code": "candidate"
+          }
+        }
+      ],
+      "expected_issues": [
+        {
+          "key": "value_not_found_in_prior_por:prior_candidate:1:401:source",
+          "code": "value_not_found_in_prior_por",
+          "rule_code": "prior_candidate",
+          "rule_version": 1,
+          "severity": "error",
+          "condition_id": 401,
+          "layer_key": "layer-1",
+          "parameter_code": "source",
+          "details": {
+            "candidate_parameter_code": "candidate",
+            "searched_layer_count": 0
+          }
+        },
+        {
+          "key": "value_not_found_in_prior_por:prior_candidate:1:402:source",
+          "code": "value_not_found_in_prior_por",
+          "rule_code": "prior_candidate",
+          "rule_version": 1,
+          "severity": "error",
+          "condition_id": 402,
+          "layer_key": "layer-1",
+          "parameter_code": "source",
+          "details": {
+            "candidate_parameter_code": "candidate",
+            "searched_layer_count": 0
+          }
+        },
+        {
+          "key": "value_not_found_in_prior_por:prior_candidate:1:412:source",
+          "code": "value_not_found_in_prior_por",
+          "rule_code": "prior_candidate",
+          "rule_version": 1,
+          "severity": "error",
+          "condition_id": 412,
+          "layer_key": "layer-2",
+          "parameter_code": "source",
+          "details": {
+            "candidate_parameter_code": "candidate",
+            "searched_layer_count": 1
+          }
+        },
+        {
+          "key": "value_not_found_in_prior_por:prior_candidate:1:422:source",
+          "code": "value_not_found_in_prior_por",
+          "rule_code": "prior_candidate",
+          "rule_version": 1,
+          "severity": "error",
+          "condition_id": 422,
+          "layer_key": "layer-3",
+          "parameter_code": "source",
+          "details": {
+            "candidate_parameter_code": "candidate",
+            "searched_layer_count": 2
+          }
+        }
+      ],
+      "covers": [
+        "prior_first_layer_failure",
+        "prior_non_por_exclusion",
+        "prior_empty_source_skip",
+        "prior_strictly_earlier"
+      ]
+    },
+    {
+      "name": "text y required-if true false absent",
+      "covers": [
+        "required_if_y_true_false_absent"
+      ],
+      "equivalence_group": null,
+      "context": {
+        "project_id": 10,
+        "line_id": "L1",
+        "process_id": "PROC"
+      },
+      "parameters": [
+        {
+          "code": "trigger",
+          "display_name": "trigger",
+          "value_type": "choice",
+          "required": false,
+          "pattern": null,
+          "pattern_hint": null,
+          "min_value": null,
+          "max_value": null,
+          "choice_set_code": "yes-no",
+          "choices": [
+            {
+              "code": "y",
+              "is_active": true
+            },
+            {
+              "code": "n",
+              "is_active": true
+            }
+          ],
+          "sort_order": 0
+        },
+        {
+          "code": "target",
+          "display_name": "target",
+          "value_type": "text",
+          "required": false,
+          "pattern": null,
+          "pattern_hint": null,
+          "min_value": null,
+          "max_value": null,
+          "choice_set_code": null,
+          "choices": [],
+          "sort_order": 1
+        }
+      ],
+      "layers": [
+        {
+          "key": "required-if-y",
+          "layer_id": "ACT",
+          "step_seq": "010",
+          "eqp_type": "PHOTO",
+          "area_name": "PHOTO",
+          "sort_order": 0,
+          "conditions": [
+            {
+              "id": 601,
+              "label": "601",
+              "condition_index": 0,
+              "is_por": true,
+              "values": {
+                "trigger": "y",
+                "target": null
+              }
+            },
+            {
+              "id": 602,
+              "label": "602",
+              "condition_index": 1,
+              "is_por": false,
+              "values": {
+                "trigger": "n",
+                "target": null
+              }
+            },
+            {
+              "id": 603,
+              "label": "603",
+              "condition_index": 2,
+              "is_por": false,
+              "values": {
+                "trigger": null,
+                "target": null
+              }
+            },
+            {
+              "id": 604,
+              "label": "604",
+              "condition_index": 3,
+              "is_por": false,
+              "values": {
+                "trigger": "y",
+                "target": "present"
+              }
+            }
+          ]
+        }
+      ],
+      "rules": [
+        {
+          "code": "target_when_y",
+          "name": "target when y",
+          "severity": "error",
+          "version": 1,
+          "scope": {
+            "line_ids": [],
+            "process_ids": [],
+            "layer_ids": [],
+            "step_seqs": [],
+            "eqp_types": [],
+            "area_names": []
+          },
+          "spec": {
+            "schema_version": 1,
+            "type": "required_if",
+            "when_parameter_code": "trigger",
+            "equals": "y",
+            "required_parameter_code": "target"
+          }
+        }
+      ],
+      "expected_issues": [
+        {
+          "key": "required_if:target_when_y:1:601:target",
+          "code": "required_if",
+          "rule_code": "target_when_y",
+          "rule_version": 1,
+          "severity": "error",
+          "condition_id": 601,
+          "layer_key": "required-if-y",
+          "parameter_code": "target",
+          "details": {
+            "equals": "y",
+            "required_parameter_code": "target",
+            "when_parameter_code": "trigger"
+          }
+        }
+      ]
+    },
+    {
+      "name": "numeric prior equality",
+      "covers": [
+        "prior_numeric_equality"
+      ],
+      "equivalence_group": null,
+      "context": {
+        "project_id": 10,
+        "line_id": "L1",
+        "process_id": "PROC"
+      },
+      "parameters": [
+        {
+          "code": "source",
+          "display_name": "source",
+          "value_type": "number",
+          "required": false,
+          "pattern": null,
+          "pattern_hint": null,
+          "min_value": null,
+          "max_value": null,
+          "choice_set_code": null,
+          "choices": [],
+          "sort_order": 0
+        },
+        {
+          "code": "candidate",
+          "display_name": "candidate",
+          "value_type": "number",
+          "required": false,
+          "pattern": null,
+          "pattern_hint": null,
+          "min_value": null,
+          "max_value": null,
+          "choice_set_code": null,
+          "choices": [],
+          "sort_order": 1
+        }
+      ],
+      "layers": [
+        {
+          "key": "numeric-earlier",
+          "layer_id": "ACT",
+          "step_seq": "010",
+          "eqp_type": "PHOTO",
+          "area_name": "PHOTO",
+          "sort_order": 0,
+          "conditions": [
+            {
+              "id": 611,
+              "label": "611",
+              "condition_index": 0,
+              "is_por": true,
+              "values": {
+                "source": null,
+                "candidate": "01.200"
+              }
+            }
+          ]
+        },
+        {
+          "key": "numeric-current",
+          "layer_id": "ACT",
+          "step_seq": "010",
+          "eqp_type": "PHOTO",
+          "area_name": "PHOTO",
+          "sort_order": 1,
+          "conditions": [
+            {
+              "id": 612,
+              "label": "612",
+              "condition_index": 0,
+              "is_por": false,
+              "values": {
+                "source": "1.2",
+                "candidate": null
+              }
+            }
+          ]
+        }
+      ],
+      "rules": [
+        {
+          "code": "numeric-prior",
+          "name": "numeric-prior",
+          "severity": "error",
+          "version": 1,
+          "scope": {
+            "line_ids": [],
+            "process_ids": [],
+            "layer_ids": [],
+            "step_seqs": [],
+            "eqp_types": [],
+            "area_names": []
+          },
+          "spec": {
+            "schema_version": 1,
+            "type": "value_exists_in_prior_por",
+            "source_parameter_code": "source",
+            "candidate_parameter_code": "candidate"
+          }
+        }
+      ],
+      "expected_issues": []
+    },
+    {
+      "name": "no POR and non-POR candidates are excluded",
+      "covers": [
+        "prior_no_por_exclusion",
+        "prior_non_por_exclusion",
+        "prior_empty_source_skip"
+      ],
+      "equivalence_group": null,
+      "context": {
+        "project_id": 10,
+        "line_id": "L1",
+        "process_id": "PROC"
+      },
+      "parameters": [
+        {
+          "code": "source",
+          "display_name": "source",
+          "value_type": "text",
+          "required": false,
+          "pattern": null,
+          "pattern_hint": null,
+          "min_value": null,
+          "max_value": null,
+          "choice_set_code": null,
+          "choices": [],
+          "sort_order": 0
+        },
+        {
+          "code": "candidate",
+          "display_name": "candidate",
+          "value_type": "text",
+          "required": false,
+          "pattern": null,
+          "pattern_hint": null,
+          "min_value": null,
+          "max_value": null,
+          "choice_set_code": null,
+          "choices": [],
+          "sort_order": 1
+        }
+      ],
+      "layers": [
+        {
+          "key": "no-por-candidate",
+          "layer_id": "ACT",
+          "step_seq": "010",
+          "eqp_type": "PHOTO",
+          "area_name": "PHOTO",
+          "sort_order": 0,
+          "conditions": [
+            {
+              "id": 621,
+              "label": "621",
+              "condition_index": 0,
+              "is_por": false,
+              "values": {
+                "source": null,
+                "candidate": "NO_POR"
+              }
+            }
+          ]
+        },
+        {
+          "key": "no-por-current",
+          "layer_id": "ACT",
+          "step_seq": "010",
+          "eqp_type": "PHOTO",
+          "area_name": "PHOTO",
+          "sort_order": 1,
+          "conditions": [
+            {
+              "id": 622,
+              "label": "622",
+              "condition_index": 0,
+              "is_por": true,
+              "values": {
+                "source": "NO_POR",
+                "candidate": "BASE"
+              }
+            }
+          ]
+        },
+        {
+          "key": "non-por-candidate",
+          "layer_id": "ACT",
+          "step_seq": "010",
+          "eqp_type": "PHOTO",
+          "area_name": "PHOTO",
+          "sort_order": 2,
+          "conditions": [
+            {
+              "id": 623,
+              "label": "623",
+              "condition_index": 0,
+              "is_por": false,
+              "values": {
+                "source": "",
+                "candidate": "NON_POR"
+              }
+            }
+          ]
+        },
+        {
+          "key": "non-por-current",
+          "layer_id": "ACT",
+          "step_seq": "010",
+          "eqp_type": "PHOTO",
+          "area_name": "PHOTO",
+          "sort_order": 3,
+          "conditions": [
+            {
+              "id": 624,
+              "label": "624",
+              "condition_index": 0,
+              "is_por": false,
+              "values": {
+                "source": "NON_POR",
+                "candidate": null
+              }
+            }
+          ]
+        }
+      ],
+      "rules": [
+        {
+          "code": "no-por-prior",
+          "name": "no-por-prior",
+          "severity": "error",
+          "version": 1,
+          "scope": {
+            "line_ids": [],
+            "process_ids": [],
+            "layer_ids": [],
+            "step_seqs": [],
+            "eqp_types": [],
+            "area_names": []
+          },
+          "spec": {
+            "schema_version": 1,
+            "type": "value_exists_in_prior_por",
+            "source_parameter_code": "source",
+            "candidate_parameter_code": "candidate"
+          }
+        }
+      ],
+      "expected_issues": [
+        {
+          "key": "value_not_found_in_prior_por:no-por-prior:1:622:source",
+          "code": "value_not_found_in_prior_por",
+          "rule_code": "no-por-prior",
+          "rule_version": 1,
+          "severity": "error",
+          "condition_id": 622,
+          "layer_key": "no-por-current",
+          "parameter_code": "source",
+          "details": {
+            "candidate_parameter_code": "candidate",
+            "searched_layer_count": 1
+          }
+        },
+        {
+          "key": "value_not_found_in_prior_por:no-por-prior:1:624:source",
+          "code": "value_not_found_in_prior_por",
+          "rule_code": "no-por-prior",
+          "rule_version": 1,
+          "severity": "error",
+          "condition_id": 624,
+          "layer_key": "non-por-current",
+          "parameter_code": "source",
+          "details": {
+            "candidate_parameter_code": "candidate",
+            "searched_layer_count": 3
+          }
+        }
+      ]
+    },
+    {
+      "name": "scope OR within and AND across matching fields",
+      "covers": [
+        "scope_line_ids",
+        "scope_process_ids",
+        "scope_layer_ids",
+        "scope_step_seqs",
+        "scope_eqp_types",
+        "scope_area_names",
+        "scope_or_within",
+        "scope_and_across"
+      ],
+      "equivalence_group": null,
+      "context": {
+        "project_id": 10,
+        "line_id": "L1",
+        "process_id": "PROC"
+      },
+      "parameters": [
+        {
+          "code": "source",
+          "display_name": "source",
+          "value_type": "text",
+          "required": false,
+          "pattern": null,
+          "pattern_hint": null,
+          "min_value": null,
+          "max_value": null,
+          "choice_set_code": null,
+          "choices": [],
+          "sort_order": 0
+        },
+        {
+          "code": "candidate",
+          "display_name": "candidate",
+          "value_type": "text",
+          "required": false,
+          "pattern": null,
+          "pattern_hint": null,
+          "min_value": null,
+          "max_value": null,
+          "choice_set_code": null,
+          "choices": [],
+          "sort_order": 1
+        }
+      ],
+      "layers": [
+        {
+          "key": "scope-match",
+          "layer_id": "ACT",
+          "step_seq": "010",
+          "eqp_type": "PHOTO",
+          "area_name": "PHOTO",
+          "sort_order": 0,
+          "conditions": [
+            {
+              "id": 631,
+              "label": "631",
+              "condition_index": 0,
+              "is_por": false,
+              "values": {
+                "source": "X",
+                "candidate": null
+              }
+            }
+          ]
+        }
+      ],
+      "rules": [
+        {
+          "code": "scope-match-rule",
+          "name": "scope-match-rule",
+          "severity": "error",
+          "version": 1,
+          "scope": {
+            "line_ids": [
+              "OTHER",
+              "L1"
+            ],
+            "process_ids": [
+              "OTHER",
+              "PROC"
+            ],
+            "layer_ids": [
+              "OTHER",
+              "ACT"
+            ],
+            "step_seqs": [
+              "999",
+              "010"
+            ],
+            "eqp_types": [
+              "ETCH",
+              "PHOTO"
+            ],
+            "area_names": [
+              "DIFF",
+              "PHOTO"
+            ]
+          },
+          "spec": {
+            "schema_version": 1,
+            "type": "value_exists_in_prior_por",
+            "source_parameter_code": "source",
+            "candidate_parameter_code": "candidate"
+          }
+        }
+      ],
+      "expected_issues": [
+        {
+          "key": "value_not_found_in_prior_por:scope-match-rule:1:631:source",
+          "code": "value_not_found_in_prior_por",
+          "rule_code": "scope-match-rule",
+          "rule_version": 1,
+          "severity": "error",
+          "condition_id": 631,
+          "layer_key": "scope-match",
+          "parameter_code": "source",
+          "details": {
+            "candidate_parameter_code": "candidate",
+            "searched_layer_count": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "every scope field excludes independently",
+      "covers": [
+        "scope_line_ids",
+        "scope_process_ids",
+        "scope_layer_ids",
+        "scope_step_seqs",
+        "scope_eqp_types",
+        "scope_area_names",
+        "scope_and_across",
+        "scope_exclusions"
+      ],
+      "equivalence_group": null,
+      "context": {
+        "project_id": 10,
+        "line_id": "L1",
+        "process_id": "PROC"
+      },
+      "parameters": [
+        {
+          "code": "source",
+          "display_name": "source",
+          "value_type": "text",
+          "required": false,
+          "pattern": null,
+          "pattern_hint": null,
+          "min_value": null,
+          "max_value": null,
+          "choice_set_code": null,
+          "choices": [],
+          "sort_order": 0
+        },
+        {
+          "code": "candidate",
+          "display_name": "candidate",
+          "value_type": "text",
+          "required": false,
+          "pattern": null,
+          "pattern_hint": null,
+          "min_value": null,
+          "max_value": null,
+          "choice_set_code": null,
+          "choices": [],
+          "sort_order": 1
+        }
+      ],
+      "layers": [
+        {
+          "key": "scope-match",
+          "layer_id": "ACT",
+          "step_seq": "010",
+          "eqp_type": "PHOTO",
+          "area_name": "PHOTO",
+          "sort_order": 0,
+          "conditions": [
+            {
+              "id": 631,
+              "label": "631",
+              "condition_index": 0,
+              "is_por": false,
+              "values": {
+                "source": "X",
+                "candidate": null
+              }
+            }
+          ]
+        }
+      ],
+      "rules": [
+        {
+          "code": "scope-wrong-line",
+          "name": "scope-wrong-line",
+          "severity": "error",
+          "version": 1,
+          "scope": {
+            "line_ids": [
+              "OTHER"
+            ],
+            "process_ids": [],
+            "layer_ids": [],
+            "step_seqs": [],
+            "eqp_types": [],
+            "area_names": []
+          },
+          "spec": {
+            "schema_version": 1,
+            "type": "value_exists_in_prior_por",
+            "source_parameter_code": "source",
+            "candidate_parameter_code": "candidate"
+          }
+        },
+        {
+          "code": "scope-wrong-process",
+          "name": "scope-wrong-process",
+          "severity": "error",
+          "version": 1,
+          "scope": {
+            "line_ids": [],
+            "process_ids": [
+              "OTHER"
+            ],
+            "layer_ids": [],
+            "step_seqs": [],
+            "eqp_types": [],
+            "area_names": []
+          },
+          "spec": {
+            "schema_version": 1,
+            "type": "value_exists_in_prior_por",
+            "source_parameter_code": "source",
+            "candidate_parameter_code": "candidate"
+          }
+        },
+        {
+          "code": "scope-wrong-layer",
+          "name": "scope-wrong-layer",
+          "severity": "error",
+          "version": 1,
+          "scope": {
+            "line_ids": [],
+            "process_ids": [],
+            "layer_ids": [
+              "OTHER"
+            ],
+            "step_seqs": [],
+            "eqp_types": [],
+            "area_names": []
+          },
+          "spec": {
+            "schema_version": 1,
+            "type": "value_exists_in_prior_por",
+            "source_parameter_code": "source",
+            "candidate_parameter_code": "candidate"
+          }
+        },
+        {
+          "code": "scope-wrong-step",
+          "name": "scope-wrong-step",
+          "severity": "error",
+          "version": 1,
+          "scope": {
+            "line_ids": [],
+            "process_ids": [],
+            "layer_ids": [],
+            "step_seqs": [
+              "999"
+            ],
+            "eqp_types": [],
+            "area_names": []
+          },
+          "spec": {
+            "schema_version": 1,
+            "type": "value_exists_in_prior_por",
+            "source_parameter_code": "source",
+            "candidate_parameter_code": "candidate"
+          }
+        },
+        {
+          "code": "scope-wrong-equipment",
+          "name": "scope-wrong-equipment",
+          "severity": "error",
+          "version": 1,
+          "scope": {
+            "line_ids": [],
+            "process_ids": [],
+            "layer_ids": [],
+            "step_seqs": [],
+            "eqp_types": [
+              "ETCH"
+            ],
+            "area_names": []
+          },
+          "spec": {
+            "schema_version": 1,
+            "type": "value_exists_in_prior_por",
+            "source_parameter_code": "source",
+            "candidate_parameter_code": "candidate"
+          }
+        },
+        {
+          "code": "scope-wrong-area",
+          "name": "scope-wrong-area",
+          "severity": "error",
+          "version": 1,
+          "scope": {
+            "line_ids": [],
+            "process_ids": [],
+            "layer_ids": [],
+            "step_seqs": [],
+            "eqp_types": [],
+            "area_names": [
+              "DIFF"
+            ]
+          },
+          "spec": {
+            "schema_version": 1,
+            "type": "value_exists_in_prior_por",
+            "source_parameter_code": "source",
+            "candidate_parameter_code": "candidate"
+          }
+        },
+        {
+          "code": "scope-and-exclusion",
+          "name": "scope-and-exclusion",
+          "severity": "error",
+          "version": 1,
+          "scope": {
+            "line_ids": [
+              "L1"
+            ],
+            "process_ids": [
+              "OTHER"
+            ],
+            "layer_ids": [],
+            "step_seqs": [],
+            "eqp_types": [],
+            "area_names": []
+          },
+          "spec": {
+            "schema_version": 1,
+            "type": "value_exists_in_prior_por",
+            "source_parameter_code": "source",
+            "candidate_parameter_code": "candidate"
+          }
+        }
+      ],
+      "expected_issues": []
+    },
+    {
+      "name": "prior type incompatibility is configuration failure",
+      "covers": [
+        "configuration_type_incompatible"
+      ],
+      "equivalence_group": null,
+      "context": {
+        "project_id": 10,
+        "line_id": "L1",
+        "process_id": "PROC"
+      },
+      "parameters": [
+        {
+          "code": "source",
+          "display_name": "source",
+          "value_type": "text",
+          "required": false,
+          "pattern": null,
+          "pattern_hint": null,
+          "min_value": null,
+          "max_value": null,
+          "choice_set_code": null,
+          "choices": [],
+          "sort_order": 0
+        },
+        {
+          "code": "candidate",
+          "display_name": "candidate",
+          "value_type": "number",
+          "required": false,
+          "pattern": null,
+          "pattern_hint": null,
+          "min_value": null,
+          "max_value": null,
+          "choice_set_code": null,
+          "choices": [],
+          "sort_order": 1
+        }
+      ],
+      "layers": [],
+      "rules": [
+        {
+          "code": "type-incompatible",
+          "name": "type-incompatible",
+          "severity": "error",
+          "version": 1,
+          "scope": {
+            "line_ids": [],
+            "process_ids": [],
+            "layer_ids": [],
+            "step_seqs": [],
+            "eqp_types": [],
+            "area_names": []
+          },
+          "spec": {
+            "schema_version": 1,
+            "type": "value_exists_in_prior_por",
+            "source_parameter_code": "source",
+            "candidate_parameter_code": "candidate"
+          }
+        }
+      ],
+      "expected_error_code": "validation_configuration_invalid"
+    },
+    {
+      "name": "prior ChoiceSet incompatibility is configuration failure",
+      "covers": [
+        "configuration_choice_set_incompatible"
+      ],
+      "equivalence_group": null,
+      "context": {
+        "project_id": 10,
+        "line_id": "L1",
+        "process_id": "PROC"
+      },
+      "parameters": [
+        {
+          "code": "source",
+          "display_name": "source",
+          "value_type": "choice",
+          "required": false,
+          "pattern": null,
+          "pattern_hint": null,
+          "min_value": null,
+          "max_value": null,
+          "choice_set_code": "source-set",
+          "choices": [
+            {
+              "code": "x",
+              "is_active": true
+            }
+          ],
+          "sort_order": 0
+        },
+        {
+          "code": "candidate",
+          "display_name": "candidate",
+          "value_type": "choice",
+          "required": false,
+          "pattern": null,
+          "pattern_hint": null,
+          "min_value": null,
+          "max_value": null,
+          "choice_set_code": "candidate-set",
+          "choices": [
+            {
+              "code": "x",
+              "is_active": true
+            }
+          ],
+          "sort_order": 1
+        }
+      ],
+      "layers": [],
+      "rules": [
+        {
+          "code": "choice-set-incompatible",
+          "name": "choice-set-incompatible",
+          "severity": "error",
+          "version": 1,
+          "scope": {
+            "line_ids": [],
+            "process_ids": [],
+            "layer_ids": [],
+            "step_seqs": [],
+            "eqp_types": [],
+            "area_names": []
+          },
+          "spec": {
+            "schema_version": 1,
+            "type": "value_exists_in_prior_por",
+            "source_parameter_code": "source",
+            "candidate_parameter_code": "candidate"
+          }
+        }
+      ],
+      "expected_error_code": "validation_configuration_invalid"
+    }
+  ]
+}

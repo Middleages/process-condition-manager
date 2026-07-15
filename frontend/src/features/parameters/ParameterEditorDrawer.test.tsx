@@ -66,6 +66,9 @@ const parameter: ParameterOut = {
   unit: null,
   min_value: null,
   max_value: null,
+  required: false,
+  pattern: null,
+  pattern_hint: null,
   choice_set: equipmentMode,
   sort_order: 0,
   is_active: true,
@@ -287,11 +290,16 @@ describe('ParameterEditorDrawer', () => {
     expect(activeHtml).not.toContain('>비활성화</')
   })
 
-  it('keeps category management create-only and omits unsupported schema fields', () => {
+  it('extends the text parameter form with required and paired pattern metadata', () => {
     const html = renderDrawer({ kind: 'new' }, null)
 
     expect(html).toContain('새 파라미터')
-    expect(html).not.toContain('required pattern')
+    expect(html).toContain('data-parameter-field="required"')
+    expect(html).toContain('data-parameter-field="pattern"')
+    expect(html).toContain('data-parameter-field="patternHint"')
+    expect(html).not.toContain('data-parameter-field="unit"')
+    expect(html).not.toContain('data-parameter-field="minValue"')
+    expect(html).not.toContain('data-parameter-field="maxValue"')
     expect(html).not.toContain('다시 활성화')
   })
 

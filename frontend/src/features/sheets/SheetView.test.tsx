@@ -5,13 +5,24 @@ import { Route, Routes, StaticRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { ProjectOut, SheetOut } from '@/api/types'
+import type { ConditionGridProps } from '@/grid'
 
 vi.mock('@/grid', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/grid')>()
   return {
     ...actual,
-    GlideConditionGrid: forwardRef(function FakeGrid() {
-      return <div data-testid="rendered-condition-grid">grid</div>
+    GlideConditionGrid: forwardRef(function FakeGrid(
+      { data }: ConditionGridProps,
+      _ref,
+    ) {
+      return (
+        <div
+          data-testid="rendered-condition-grid"
+          data-validation-statuses={JSON.stringify(data.statuses ?? [])}
+        >
+          grid
+        </div>
+      )
     }),
   }
 })
@@ -70,6 +81,11 @@ const sheet: SheetOut = {
       value_type: 'number',
       category_code: 'process',
       unit: 'mTorr',
+      min_value: null,
+      max_value: null,
+      required: false,
+      pattern: null,
+      pattern_hint: null,
       description: null,
       choice_set_code: null,
       choice_set_version: null,
@@ -83,6 +99,8 @@ const sheet: SheetOut = {
       layer_label: 'ETCH (10)',
       condition_label: 'POR',
       is_por: true,
+      layer_sort_order: 0,
+      condition_index: 1,
       cells: { ETCH_P001: '12' },
     },
   ],
@@ -93,6 +111,8 @@ const sheet: SheetOut = {
     is_mine: false,
     heartbeat_seconds: 45,
   },
+  validation_rules: [],
+  validation_basis_hash: 'sha256:test',
 }
 
 function client(): QueryClient {
@@ -209,6 +229,68 @@ describe('SheetView focus shell integration', () => {
     expect(html).toContain('data-sheet-editor="true"')
     expect(html).toContain('data-sheet-editing-status="true"')
     expect(html).toContain('data-testid="rendered-condition-grid"')
+    expect(html).toContain('data-testid="validation-configuration-alert"')
+    expect(html).toContain('bg-error-surface')
+    expect(html).not.toContain('bg-success-surface')
+  })
+
+  it('renders project definition loading neutrally and disables explicit validation', () => {
+    const queryClient = client()
+    queryClient.setQueryData(['sheet', 7], sheet)
+
+    const html = renderSheet(queryClient)
+    const validationButton = html.match(
+      /<button[^>]*data-testid="sheet-explicit-validation"[^>]*>/,
+    )?.[0]
+
+    expect(html).toContain('data-testid="validation-definitions-pending"')
+    expect(html).toContain('검증 규칙을 불러오는 중')
+    expect(html).not.toContain('data-testid="validation-configuration-alert"')
+    expect(validationButton).toBeDefined()
+    expect(validationButton).toContain('aria-busy="true"')
+    expect(validationButton).toContain('disabled=""')
+  })
+
+  it('keeps an error-free ChoiceSet load pending instead of reporting configuration failure', () => {
+    const queryClient = client()
+    queryClient.setQueryData(['project', 7], {
+      ...project,
+      layers: [
+        {
+          id: 1,
+          layer_key: 'L1::10::ETCH',
+          step_seq: '10',
+          layer_id: 'ETCH',
+          eqp_type: null,
+          eqp_type_desc: null,
+          area_name: null,
+          sort_order: 0,
+          condition_count: 1,
+          cell_count: 1,
+          source_project_id: null,
+          source_layer_key: null,
+        },
+      ],
+    })
+    queryClient.setQueryData(['sheet', 7], {
+      ...sheet,
+      columns: [
+        {
+          ...sheet.columns[0],
+          value_type: 'choice',
+          choice_set_code: 'equipment_mode',
+          choice_set_version: 1,
+        },
+      ],
+      rows: [{ ...sheet.rows[0], cells: { ETCH_P001: 'AUTO' } }],
+    })
+
+    const html = renderSheet(queryClient)
+
+    expect(html).toContain('data-testid="validation-definitions-pending"')
+    expect(html).toContain('검증 규칙을 불러오는 중')
+    expect(html).not.toContain('data-testid="validation-configuration-alert"')
+    expect(html).not.toContain('bg-success-surface')
   })
 
   it('uses project metadata for the editor header and preserves a cached sheet on refetch failure', () => {
@@ -280,6 +362,108 @@ describe('SheetView focus shell integration', () => {
     )
     expect(sheetViewSource).toContain("Symbol('sheet-paste-review')")
     expect(sheetViewSource).toContain('abandonPaste(pasteIdentity)')
+  })
+
+  it('wires the exact Task 6 definitions and committed display buffer into validation orchestration', () => {
+    expect(sheetViewSource).toContain('AdaptedConditionGridData')
+    expect(sheetViewSource).toContain('toValidationInput(')
+    expect(sheetViewSource).toContain('useSheetValidation({')
+    expect(sheetViewSource).toContain('displayRows')
+    expect(sheetViewSource).toContain('displayGeneration: editing.displayGeneration')
+    expect(sheetViewSource).toContain('persistedGeneration: editing.persistedGeneration')
+    expect(sheetViewSource).toContain('persistenceIdle: editing.persistenceIdle')
+    expect(sheetViewSource).toContain('waitForPersistence: editing.waitForPersistence')
+    expect(sheetViewSource).toContain('refetchSheet: refetchSheetForValidation')
+    expect(sheetViewSource).toContain('statuses: validation.statuses')
+    expect(sheetViewSource).not.toContain('toCellStatuses(dirtyCells)')
+    expect(sheetViewSource).toContain("queryKey: ['project', projectId]")
+  })
+
+  it('projects provisional evaluator issues into composite grid statuses on the committed render', () => {
+    const queryClient = client()
+    queryClient.setQueryData(['project', 7], {
+      ...project,
+      layers: [
+        {
+          id: 1,
+          layer_key: 'L1::10::ETCH',
+          step_seq: '10',
+          layer_id: 'ETCH',
+          eqp_type: null,
+          eqp_type_desc: null,
+          area_name: null,
+          sort_order: 0,
+          condition_count: 1,
+          cell_count: 0,
+          source_project_id: null,
+          source_layer_key: null,
+        },
+      ],
+    })
+    queryClient.setQueryData(['sheet', 7], {
+      ...sheet,
+      columns: [{ ...sheet.columns[0], required: true }],
+      rows: [{ ...sheet.rows[0], cells: {} }],
+    })
+
+    const html = renderSheet(queryClient)
+
+    expect(html).toContain('data-validation-statuses=')
+    expect(html).toContain('Pressure 값을 입력해 주세요.')
+    expect(html).toContain('&quot;dirty&quot;:false')
+  })
+
+  it('keeps the workbench host absent before issues or explicit completion while exposing 검증 outside it', () => {
+    const queryClient = client()
+    queryClient.setQueryData(['project', 7], {
+      ...project,
+      layers: [
+        {
+          id: 1,
+          layer_key: 'L1::10::ETCH',
+          step_seq: '10',
+          layer_id: 'ETCH',
+          eqp_type: null,
+          eqp_type_desc: null,
+          area_name: null,
+          sort_order: 0,
+          condition_count: 1,
+          cell_count: 1,
+          source_project_id: null,
+          source_layer_key: null,
+        },
+      ],
+    })
+    queryClient.setQueryData(['sheet', 7], sheet)
+
+    const html = renderSheet(queryClient)
+
+    expect(html).toContain('data-testid="sheet-explicit-validation"')
+    expect(html).toContain('>검증<')
+    expect(html).not.toContain('data-sheet-workbench')
+    expect(html).not.toContain('data-validation-workbench')
+  })
+
+  it('orders hidden validation navigation across a committed category change without timer races', () => {
+    const categoryChange = sheetViewSource.indexOf(
+      'setActiveCategory(navigation.categoryCode)',
+    )
+    const pendingPublication = sheetViewSource.indexOf(
+      'setPendingValidationJump(navigation.target)',
+    )
+    const committedJump = sheetViewSource.indexOf(
+      'gridRef.current?.scrollToCell(pendingValidationJump.conditionId',
+    )
+
+    expect(categoryChange).toBeGreaterThan(-1)
+    expect(pendingPublication).toBeGreaterThan(categoryChange)
+    expect(committedJump).toBeGreaterThan(-1)
+    expect(sheetViewSource).toMatch(
+      /useEffect\(\(\) => \{[\s\S]*?pendingValidationJump[\s\S]*?visibleColumns\.some\([\s\S]*?scrollToCell\(pendingValidationJump\.conditionId/,
+    )
+    expect(sheetViewSource).toContain('resolveValidationIssueNavigation(')
+    expect(sheetViewSource).toContain('visibleColumns.some(')
+    expect(sheetViewSource).not.toMatch(/setTimeout\([\s\S]*?scrollToCell/)
   })
 
   it('renders truthful read-only discovery controls with accessible pressed and status semantics', () => {

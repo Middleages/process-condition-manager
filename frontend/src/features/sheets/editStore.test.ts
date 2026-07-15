@@ -9,7 +9,6 @@ import {
   removeSavedCells,
   setDirtyCell,
   setDirtyCells,
-  toCellStatuses,
   toCellUpdateIn,
   useEditStore,
   type DirtyCell,
@@ -72,12 +71,6 @@ describe('transport and display projections', () => {
     })
   })
 
-  it('maps every dirty cell to a dirty status', () => {
-    expect(toCellStatuses(new Map([[dirtyKey('1', 'spin'), dirty('100', 1)] ]))).toEqual([
-      { conditionId: '1', parameterCode: 'spin', state: 'dirty' },
-    ])
-  })
-
   it('overlays dirty values without mutating the server rows', () => {
     const rows: ConditionGridRow[] = [
       {
@@ -102,6 +95,7 @@ describe('useEditStore monotonic allocator', () => {
   })
 
   it('increments every assignment, including A to B to A', () => {
+    const generationBefore = useEditStore.getState().displayGeneration
     const first = useEditStore.getState().setCell(persisted('A'))
     const second = useEditStore.getState().setCell(persisted('B'))
     const third = useEditStore.getState().setCell(persisted('A'))
@@ -110,25 +104,40 @@ describe('useEditStore monotonic allocator', () => {
       first.revision + 1,
       first.revision + 2,
     ])
+    expect(useEditStore.getState().displayGeneration).toBe(generationBefore + 3)
     useEditStore.getState().markSaved([first])
     expect(useEditStore.getState().dirtyCells.get(dirtyKey('1', 'spin'))).toBe(third)
   })
 
   it('allocates a paste batch atomically in input order and returns the installed snapshots', () => {
+    const generationBefore = useEditStore.getState().displayGeneration
     const snapshots = useEditStore
       .getState()
       .setCells([persisted('1.5'), persisted('AUTO', 'mode')])
     expect(snapshots[1].revision).toBe(snapshots[0].revision + 1)
     expect(useEditStore.getState().dirtyCells.get(dirtyKey('1', 'spin'))).toBe(snapshots[0])
     expect(useEditStore.getState().dirtyCells.get(dirtyKey('1', 'mode'))).toBe(snapshots[1])
+    expect(useEditStore.getState().displayGeneration).toBe(generationBefore + 1)
   })
 
   it('clearAll empties the map but never resets the global revision counter', () => {
     const beforeClear = useEditStore.getState().setCell(persisted('old'))
+    const displayBeforeClear = useEditStore.getState().displayGeneration
+    const persistedBeforeClear = useEditStore.getState().advancePersistedGeneration()
     useEditStore.getState().clearAll()
     const afterClear = useEditStore.getState().setCell(persisted('new'))
     expect(afterClear.revision).toBeGreaterThan(beforeClear.revision)
+    expect(useEditStore.getState().displayGeneration).toBeGreaterThan(displayBeforeClear)
+    expect(useEditStore.getState().persistedGeneration).toBe(persistedBeforeClear)
     useEditStore.getState().markSaved([beforeClear])
     expect(useEditStore.getState().dirtyCells.get(dirtyKey('1', 'spin'))).toBe(afterClear)
+  })
+
+  it('advances durable generations monotonically for successful mutation batches', () => {
+    const first = useEditStore.getState().advancePersistedGeneration()
+    const second = useEditStore.getState().advancePersistedGeneration()
+
+    expect(second).toBe(first + 1)
+    expect(useEditStore.getState().persistedGeneration).toBe(second)
   })
 })

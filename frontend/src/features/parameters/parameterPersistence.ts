@@ -15,9 +15,6 @@ export async function persistParameter(
   input: PersistParameterInput,
   api: ParameterPersistenceApi,
 ): Promise<ParameterOut> {
-  if (input.mode === 'edit' && input.plan.unsupportedClears.length > 0) {
-    throw new Error('Unsupported parameter clears must be restored before saving.')
-  }
   assertPlanReady(input.plan)
 
   if (input.mode === 'create') return api.create(input.plan.payload)
