@@ -290,11 +290,16 @@ describe('cellScrollTarget', () => {
 describe('overlay indexing', () => {
   it('builds a lookup keyed by condition + parameter', () => {
     const statuses = indexStatuses([
-      { conditionId: '1', parameterCode: 'exposure', state: 'error', message: 'bad' },
-      { conditionId: '2', parameterCode: 'memo', state: 'dirty' },
+      {
+        conditionId: '1',
+        parameterCode: 'exposure',
+        validation: { severity: 'error', count: 1, message: 'bad' },
+        dirty: false,
+      },
+      { conditionId: '2', parameterCode: 'memo', dirty: true },
     ])
-    expect(statuses.get(overlayKey('1', 'exposure'))?.state).toBe('error')
-    expect(statuses.get(overlayKey('2', 'memo'))?.state).toBe('dirty')
+    expect(statuses.get(overlayKey('1', 'exposure'))?.validation?.severity).toBe('error')
+    expect(statuses.get(overlayKey('2', 'memo'))?.dirty).toBe(true)
     expect(statuses.get(overlayKey('9', 'x'))).toBeUndefined()
   })
 

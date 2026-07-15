@@ -105,12 +105,17 @@ export interface PasteStagingCell {
   errorCode?: CellValidationErrorCode
 }
 
-/** 셀 상태 오버레이(검증 오류/더티/코멘트 하이라이트). 상위가 계산, 그리드가 렌더. */
+/** 셀 상태 오버레이. 독립 사실을 합성해 검증 표시가 dirty/comment 정보를 지우지 않는다. */
 export interface CellStatus {
   conditionId: string
   parameterCode: string
-  state: 'error' | 'dirty' | 'comment'
-  message?: string
+  validation?: {
+    severity: 'error' | 'warning'
+    count: number
+    message: string
+  }
+  dirty: boolean
+  commentCount?: number
 }
 
 export interface ConditionGridData {

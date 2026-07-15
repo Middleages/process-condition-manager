@@ -19,6 +19,7 @@ import type { CellUpdateOrigin, CellsPatchOut } from '@/api/types'
 import {
   createAsyncQueue,
   createAutosaveEngine,
+  type AsyncQueue,
   type AutosaveEngine,
   type SaveState,
 } from './autosave'
@@ -40,6 +41,58 @@ export interface PersistDirtySnapshotOptions {
     response: CellsPatchOut,
     requestSnapshot: readonly DirtyCell[],
   ) => void | Promise<void>
+}
+
+export interface SheetEditingPersistenceSnapshot {
+  dirtyCount: number
+  writeBusy: boolean
+  saveStatus: SaveState
+  persistedGeneration: number
+}
+
+export function isPersistenceSnapshotIdle(
+  snapshot: SheetEditingPersistenceSnapshot,
+): boolean {
+  return (
+    snapshot.dirtyCount === 0 &&
+    !snapshot.writeBusy &&
+    snapshot.saveStatus !== 'saving' &&
+    snapshot.saveStatus !== 'error'
+  )
+}
+
+/** Wait both immediate-write queue and autosave engine; any durable failure blocks validation. */
+export async function waitForPersistenceBarrier({
+  queue,
+  flushNow,
+  getSnapshot,
+  isCurrent,
+}: {
+  queue: AsyncQueue
+  flushNow: () => Promise<void>
+  getSnapshot: () => SheetEditingPersistenceSnapshot
+  isCurrent: () => boolean
+}): Promise<boolean> {
+  while (isCurrent()) {
+    await queue.whenIdle()
+    if (!isCurrent()) return false
+    const beforeFlush = getSnapshot()
+    if (isPersistenceSnapshotIdle(beforeFlush)) return true
+    // Explicit validation is not a persistence retry affordance. Preserve the existing error
+    // until the user invokes retrySave (or makes another accepted edit) instead of hiding it.
+    if (beforeFlush.saveStatus === 'error') return false
+    try {
+      await flushNow()
+    } catch {
+      return false
+    }
+    await queue.whenIdle()
+    if (!isCurrent()) return false
+    const snapshot = getSnapshot()
+    if (isPersistenceSnapshotIdle(snapshot)) return true
+    if (snapshot.saveStatus === 'error') return false
+  }
+  return false
 }
 
 export type PasteIdentity = symbol
@@ -132,6 +185,11 @@ export interface SheetEditing {
   lockStatus: LockStatus
   saveStatus: SaveState
   dirtyCount: number
+  /** accepted committed-display edits/pastes; monotonic across project/session clearing. */
+  displayGeneration: number
+  /** successful durable cell/structure/POR mutation generation. */
+  persistedGeneration: number
+  persistenceIdle: boolean
   /** 읽기 전용일 때 서버 충돌 응답이 알려 준 현재 편집자. */
   editingBy: string | null
   /** 붙여넣기 또는 구조 변경이 큐에서 대기/실행 중이라 셀 입력을 잠시 막아야 하는지. */
@@ -165,6 +223,10 @@ export interface SheetEditing {
   discard(): void
   /** 저장 실패 수동 재시도. */
   retrySave(): void
+  /** Explicit validation barrier: waits queued immediate writes and drains autosave. */
+  waitForPersistence(): Promise<boolean>
+  /** Runtime snapshot used to fence a validation response after the React render boundary. */
+  getPersistenceSnapshot(): SheetEditingPersistenceSnapshot
   /** 잠금 재획득(상실 상태에서). */
   reacquire(): void
 }
@@ -178,6 +240,10 @@ export function useSheetEditing(
   const [editingBy, setEditingBy] = useState<string | null>(options.initialEditingBy ?? null)
   const [writeBusy, setWriteBusy] = useState(false)
   const dirtyCount = useEditStore((state) => state.dirtyCells.size)
+  const displayGeneration = useEditStore((state) => state.displayGeneration)
+  const [persistedGeneration, setPersistedGeneration] = useState(
+    () => useEditStore.getState().persistedGeneration,
+  )
   const heartbeatMs = options.heartbeatMs ?? DEFAULT_HEARTBEAT_MS
 
   const lockTokenRef = useRef<string | null>(null)
@@ -186,6 +252,8 @@ export function useSheetEditing(
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const acquireInFlightRef = useRef(false)
   const sessionGenerationRef = useRef(0)
+  const sessionActiveRef = useRef(false)
+  const persistedGenerationRef = useRef(persistedGeneration)
   const immediatePendingRef = useRef(0)
   const operationQueueRef = useRef(createAsyncQueue())
   const engineRef = useRef<AutosaveEngine | null>(null)
@@ -201,6 +269,18 @@ export function useSheetEditing(
   const isCurrentSession = useCallback(
     (generation: number) => sessionGenerationRef.current === generation,
     [],
+  )
+
+  const publishDurableSuccess = useCallback(
+    (generation: number) => {
+      const persisted = useEditStore.getState().advancePersistedGeneration()
+      if (sessionActiveRef.current && isCurrentSession(generation)) {
+        persistedGenerationRef.current = persisted
+        setPersistedGeneration(persisted)
+      }
+      return persisted
+    },
+    [isCurrentSession],
   )
 
   const stopHeartbeat = useCallback(() => {
@@ -249,6 +329,7 @@ export function useSheetEditing(
       onStateChange: setSaveStatus,
       isFatal: (error) => error instanceof LockRequiredError || isLockConflict(error),
       flush: async () => {
+        const persistenceSessionGeneration = sessionGenerationRef.current
         const token = lockTokenRef.current
         if (token === null || lockStatusRef.current !== 'held') {
           throw new LockRequiredError()
@@ -279,6 +360,7 @@ export function useSheetEditing(
           if (isLockConflict(error)) handleLockLost(error)
           throw error
         }
+        publishDurableSuccess(persistenceSessionGeneration)
         saveOriginRef.current = 'manual'
         pasteSnapshotRef.current = null
       },
@@ -414,14 +496,16 @@ export function useSheetEditing(
         throw new LockRequiredError()
       }
       try {
-        return await fn(token)
+        const result = await fn(token)
+        publishDurableSuccess(generation)
+        return result
       } catch (error) {
         // 구조 변경 중 잠금 탈취(409) → 상실 처리(읽기 전용 전환) 후 그대로 던져 상위가 안내한다.
         if (isLockConflict(error) && isCurrentSession(generation)) handleLockLost(error)
         throw error
       }
     }),
-    [enqueueWrite, handleLockLost, isCurrentSession],
+    [enqueueWrite, handleLockLost, isCurrentSession, publishDurableSuccess],
   )
 
   const discard = useCallback(() => {
@@ -436,6 +520,26 @@ export function useSheetEditing(
     if (pasteSnapshotRef.current !== null) return
     engineRef.current?.retry()
   }, [])
+
+  const getPersistenceSnapshot = useCallback(
+    (): SheetEditingPersistenceSnapshot => ({
+      dirtyCount: useEditStore.getState().dirtyCells.size,
+      writeBusy: immediatePendingRef.current > 0,
+      saveStatus: engineRef.current?.getState() ?? 'idle',
+      persistedGeneration: persistedGenerationRef.current,
+    }),
+    [],
+  )
+
+  const waitForPersistence = useCallback(() => {
+    const generation = sessionGenerationRef.current
+    return waitForPersistenceBarrier({
+      queue: operationQueueRef.current,
+      flushNow: () => engineRef.current?.flushNow() ?? Promise.resolve(),
+      getSnapshot: getPersistenceSnapshot,
+      isCurrent: () => sessionActiveRef.current && isCurrentSession(generation),
+    })
+  }, [getPersistenceSnapshot, isCurrentSession])
 
   const reacquire = useCallback(() => {
     if (acquireInFlightRef.current) return
@@ -481,6 +585,7 @@ export function useSheetEditing(
     let cancelled = false
     const generation = sessionGenerationRef.current + 1
     sessionGenerationRef.current = generation
+    sessionActiveRef.current = true
     projectIdRef.current = projectId
     onPersistedRef.current = options.onPersisted
 
@@ -492,6 +597,9 @@ export function useSheetEditing(
     setEditingBy(options.initialEditingBy ?? null)
     setWriteBusy(false)
     setSaveStatus('idle')
+    const persistenceBaseline = useEditStore.getState().persistedGeneration
+    persistedGenerationRef.current = persistenceBaseline
+    setPersistedGeneration(persistenceBaseline)
 
     acquireInFlightRef.current = true
     acquireLock(projectId)
@@ -547,6 +655,7 @@ export function useSheetEditing(
 
     return () => {
       cancelled = true
+      sessionActiveRef.current = false
       if (isCurrentSession(generation)) sessionGenerationRef.current += 1
       acquireInFlightRef.current = false
       clearInterval(readonlyRetry)
@@ -603,6 +712,13 @@ export function useSheetEditing(
     lockStatus,
     saveStatus,
     dirtyCount,
+    displayGeneration,
+    persistedGeneration,
+    persistenceIdle:
+      dirtyCount === 0 &&
+      !writeBusy &&
+      saveStatus !== 'saving' &&
+      saveStatus !== 'error',
     editingBy,
     writeBusy,
     readOnly: lockStatus !== 'held',
@@ -612,6 +728,8 @@ export function useSheetEditing(
     runStructuralChange,
     discard,
     retrySave,
+    waitForPersistence,
+    getPersistenceSnapshot,
     reacquire,
   }
 }

@@ -35,6 +35,7 @@ export type SheetAdapterErrorCode =
   | 'layer_condition_count_mismatch'
   | 'choice_resource_unavailable'
   | 'choice_resource_version_mismatch'
+  | 'display_rows_mismatch'
 
 export interface AdaptedConditionGridColumn extends ConditionGridColumn {
   minValue: string | null
@@ -327,6 +328,42 @@ export function toValidationInput(
     layers: toValidationLayers(sheet.rows, project.layers),
     rules: sheet.validation_rules.map(toValidationRule),
   }
+}
+
+/**
+ * Overlay accepted edit/paste display values onto the already-adapted exact definition input.
+ * Definition, rule, choice, and layer conversion stays solely in `toValidationInput`.
+ */
+export function withValidationDisplayRows(
+  input: ValidationInput,
+  displayRows: readonly AdaptedConditionGridRow[],
+): ValidationInput {
+  const rowsById = new Map<string, AdaptedConditionGridRow>()
+  for (const row of displayRows) {
+    if (rowsById.has(row.id)) displayRowsMismatch()
+    rowsById.set(row.id, row)
+  }
+
+  let conditionCount = 0
+  const layers = input.layers.map((layer) => ({
+    ...layer,
+    conditions: layer.conditions.map((condition) => {
+      conditionCount += 1
+      const row = rowsById.get(String(condition.id))
+      if (row === undefined || row.layerKey !== layer.key) displayRowsMismatch()
+      return { ...condition, values: row.values }
+    }),
+  }))
+  if (conditionCount !== rowsById.size) displayRowsMismatch()
+
+  return { ...input, layers }
+}
+
+function displayRowsMismatch(): never {
+  throw new SheetAdapterError(
+    'display_rows_mismatch',
+    'Display rows do not match the adapted validation condition set',
+  )
 }
 
 function toValidationRule(rule: SheetValidationRuleOut): ValidationRuleDefinition {

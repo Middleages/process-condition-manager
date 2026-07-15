@@ -97,6 +97,17 @@ const GLIDE_THEME: Partial<Theme> = {
 const GROUP_SHADE: Partial<Theme> = { bgCell: GRID_COLORS.canvas }
 const IDENTITY_THEME: Partial<Theme> = { bgCell: GRID_COLORS.canvas }
 
+export type CellStatusVisualPriority = 'error' | 'warning' | 'dirty' | 'comment' | null
+
+/** Surface priority only; the composite status object keeps every independent marker fact. */
+export function cellStatusVisualPriority(status: CellStatus): CellStatusVisualPriority {
+  if (status.validation?.severity === 'error') return 'error'
+  if (status.validation?.severity === 'warning') return 'warning'
+  if (status.dirty) return 'dirty'
+  if ((status.commentCount ?? 0) > 0) return 'comment'
+  return null
+}
+
 /** 셀 상태/스테이징 오버레이 → themeOverride. 스테이징(진행 중 붙여넣기 미리보기)이 우선. */
 function overlayTheme(
   status: CellStatus | undefined,
@@ -108,13 +119,17 @@ function overlayTheme(
       : { bgCell: GRID_COLORS.errorSurface, textDark: GRID_COLORS.error }
   }
   if (status !== undefined) {
-    switch (status.state) {
+    switch (cellStatusVisualPriority(status)) {
       case 'error':
         return { bgCell: GRID_COLORS.errorSurface, textDark: GRID_COLORS.error }
+      case 'warning':
+        return { bgCell: GRID_COLORS.warningSurface, textDark: GRID_COLORS.warning }
       case 'dirty':
         return { bgCell: GRID_COLORS.warningSurface, textDark: GRID_COLORS.warning }
       case 'comment':
         return { bgCell: GRID_COLORS.brandSubtle, textDark: GRID_COLORS.brand }
+      case null:
+        return undefined
     }
   }
   return undefined

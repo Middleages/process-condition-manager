@@ -5,13 +5,21 @@ import { Route, Routes, StaticRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { ProjectOut, SheetOut } from '@/api/types'
+import type { ConditionGridProps } from '@/grid'
 
 vi.mock('@/grid', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/grid')>()
   return {
     ...actual,
-    GlideConditionGrid: forwardRef(function FakeGrid() {
-      return <div data-testid="rendered-condition-grid">grid</div>
+    GlideConditionGrid: forwardRef(function FakeGrid({ data }: ConditionGridProps) {
+      return (
+        <div
+          data-testid="rendered-condition-grid"
+          data-validation-statuses={JSON.stringify(data.statuses ?? [])}
+        >
+          grid
+        </div>
+      )
     }),
   }
 })
@@ -289,6 +297,55 @@ describe('SheetView focus shell integration', () => {
     )
     expect(sheetViewSource).toContain("Symbol('sheet-paste-review')")
     expect(sheetViewSource).toContain('abandonPaste(pasteIdentity)')
+  })
+
+  it('wires the exact Task 6 definitions and committed display buffer into validation orchestration', () => {
+    expect(sheetViewSource).toContain('AdaptedConditionGridData')
+    expect(sheetViewSource).toContain('toValidationInput(')
+    expect(sheetViewSource).toContain('useSheetValidation({')
+    expect(sheetViewSource).toContain('displayRows')
+    expect(sheetViewSource).toContain('displayGeneration: editing.displayGeneration')
+    expect(sheetViewSource).toContain('persistedGeneration: editing.persistedGeneration')
+    expect(sheetViewSource).toContain('persistenceIdle: editing.persistenceIdle')
+    expect(sheetViewSource).toContain('waitForPersistence: editing.waitForPersistence')
+    expect(sheetViewSource).toContain('refetchSheet: refetchSheetForValidation')
+    expect(sheetViewSource).toContain('statuses: validation.statuses')
+    expect(sheetViewSource).not.toContain('toCellStatuses(dirtyCells)')
+    expect(sheetViewSource).toContain("queryKey: ['project', projectId]")
+  })
+
+  it('projects provisional evaluator issues into composite grid statuses on the committed render', () => {
+    const queryClient = client()
+    queryClient.setQueryData(['project', 7], {
+      ...project,
+      layers: [
+        {
+          id: 1,
+          layer_key: 'L1::10::ETCH',
+          step_seq: '10',
+          layer_id: 'ETCH',
+          eqp_type: null,
+          eqp_type_desc: null,
+          area_name: null,
+          sort_order: 0,
+          condition_count: 1,
+          cell_count: 0,
+          source_project_id: null,
+          source_layer_key: null,
+        },
+      ],
+    })
+    queryClient.setQueryData(['sheet', 7], {
+      ...sheet,
+      columns: [{ ...sheet.columns[0], required: true }],
+      rows: [{ ...sheet.rows[0], cells: {} }],
+    })
+
+    const html = renderSheet(queryClient)
+
+    expect(html).toContain('data-validation-statuses=')
+    expect(html).toContain('Pressure 값을 입력해 주세요.')
+    expect(html).toContain('&quot;dirty&quot;:false')
   })
 
   it('renders truthful read-only discovery controls with accessible pressed and status semantics', () => {

@@ -12,6 +12,7 @@ import {
   toValidationInput,
   toValidationLayers,
   toValidationParameters,
+  withValidationDisplayRows,
 } from './sheetAdapter'
 
 const sheet: SheetOut = {
@@ -353,6 +354,37 @@ describe('Sheet validation adapter boundary', () => {
       eqp_types: ['PHOTO'],
       area_names: ['COAT'],
     })
+  })
+
+  it('overlays committed display rows without rebuilding Python-mirror definitions', () => {
+    const base = toValidationInput(
+      { id: 42, line_id: 'L1', process_id: 'PROC', layers: projectLayers },
+      sheet,
+      new Map([['photo_resist', choiceResource()]]),
+    )
+    const displayRows = toConditionGridData(sheet).rows.map((row) => ({
+      ...row,
+      values: { ...row.values, spin_speed: '2500' },
+    }))
+
+    const overlaid = withValidationDisplayRows(base, displayRows)
+
+    expect(overlaid.parameters).toBe(base.parameters)
+    expect(overlaid.rules).toBe(base.rules)
+    expect(overlaid.layers[0]?.conditions[0]?.values.spin_speed).toBe('2500')
+    expect(base.layers[0]?.conditions[0]?.values.spin_speed).toBe('1500')
+  })
+
+  it('fails closed when display rows are not the exact adapted condition set', () => {
+    const base = toValidationInput(
+      { id: 42, line_id: 'L1', process_id: 'PROC', layers: projectLayers },
+      sheet,
+      new Map([['photo_resist', choiceResource()]]),
+    )
+
+    expect(() => withValidationDisplayRows(base, [])).toThrowError(
+      expect.objectContaining<Partial<SheetAdapterError>>({ code: 'display_rows_mismatch' }),
+    )
   })
 })
 

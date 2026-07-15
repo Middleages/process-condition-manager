@@ -19,7 +19,6 @@ import { GlideConditionGrid } from '@/grid'
 import type {
   ConditionGridCallbacks,
   ConditionGridColumn,
-  ConditionGridData,
   ConditionGridHandle,
   ConditionGridRow,
 } from '@/grid'
@@ -41,7 +40,6 @@ import { parsePositiveInt } from '@/shared/navigation/routeState'
 import {
   applyDirtyToRows,
   selectDirtyCells,
-  toCellStatuses,
   useEditStore,
   type DirtyCell,
   type PersistedCell,
@@ -64,9 +62,12 @@ import {
   SheetAdapterError,
   shouldReplaceSheetWithError,
   toConditionGridData,
+  toValidationInput,
+  type AdaptedConditionGridData,
 } from './sheetAdapter'
 import { useSheetChoiceSets } from './useSheetChoiceSets'
 import { useSheetEditing, type SheetEditing } from './useSheetEditing'
+import { useSheetValidation } from './useSheetValidation'
 
 const COLUMN_SEARCH_STATUS_ID = 'sheet-column-search-status'
 
@@ -114,7 +115,7 @@ export function SheetView({ projectId }: { projectId: number }) {
   }
 
   const sheet = sheetQuery.data
-  let data: ConditionGridData
+  let data: AdaptedConditionGridData
   try {
     data = toConditionGridData(sheet)
   } catch (error) {
@@ -144,6 +145,7 @@ export function SheetView({ projectId }: { projectId: number }) {
       projectError={projectError}
       sheet={sheet}
       data={data}
+      sheetRefetch={sheetQuery.refetch}
       sheetRefetchError={sheetQuery.isError ? sheetQuery.error : null}
     />
   )
@@ -199,13 +201,15 @@ function SheetEditor({
   projectError,
   sheet,
   data,
+  sheetRefetch,
   sheetRefetchError,
 }: {
   projectId: number
   project?: ProjectOut
   projectError: unknown
   sheet: SheetOut
-  data: ConditionGridData
+  data: AdaptedConditionGridData
+  sheetRefetch: () => Promise<unknown>
   sheetRefetchError: unknown
 }) {
   const queryClient = useQueryClient()
@@ -262,14 +266,53 @@ function SheetEditor({
 
   // 서버 행 위에 더티 값을 얹어 표시(편집값 즉시 반영) + 더티 셀 상태 오버레이.
   const displayRows = useMemo(() => applyDirtyToRows(data.rows, dirtyCells), [data.rows, dirtyCells])
-  const statuses = useMemo(() => toCellStatuses(dirtyCells), [dirtyCells])
-  const gridData = useMemo(
-    () => ({ ...data, rows: displayRows, statuses, choiceResources }),
-    [data, displayRows, statuses, choiceResources],
-  )
   const choiceAuthorizationEpoch = useMemo(
     () => sheetChoiceAuthorizationEpoch(choiceResources),
     [choiceResources],
+  )
+  const validationDefinitions = useMemo(() => {
+    if (project === undefined) return null
+    try {
+      return toValidationInput(project, sheet, choiceResources)
+    } catch (error) {
+      if (error instanceof SheetAdapterError) return null
+      throw error
+    }
+  }, [project, sheet, choiceResources, choiceAuthorizationEpoch])
+  const validationDefinitionAuthority = useMemo(
+    () => Symbol('sheet-validation-definitions'),
+    [
+      project?.id,
+      project?.line_id,
+      project?.process_id,
+      project?.layers,
+      sheet.columns,
+      sheet.validation_rules,
+      sheet.validation_basis_hash,
+      choiceAuthorizationEpoch,
+    ],
+  )
+  const dirtyStatusFacts = useMemo(() => [...dirtyCells.values()], [dirtyCells])
+  const refetchSheetForValidation = useCallback(async () => {
+    await sheetRefetch()
+  }, [sheetRefetch])
+  const validation = useSheetValidation({
+    projectId,
+    definitions: validationDefinitions,
+    definitionAuthority: validationDefinitionAuthority,
+    validationBasisHash: sheet.validation_basis_hash,
+    displayRows,
+    displayGeneration: editing.displayGeneration,
+    persistedGeneration: editing.persistedGeneration,
+    persistenceIdle: editing.persistenceIdle,
+    dirtyCells: dirtyStatusFacts,
+    getPersistenceSnapshot: editing.getPersistenceSnapshot,
+    waitForPersistence: editing.waitForPersistence,
+    refetchSheet: refetchSheetForValidation,
+  })
+  const gridData = useMemo(
+    () => ({ ...data, rows: displayRows, statuses: validation.statuses, choiceResources }),
+    [data, displayRows, validation.statuses, choiceResources],
   )
 
   // 붙여넣기 대상 매핑 기준 컬럼 순서 — 그리드가 view.activeCategory로 거르는 것과 동일한
@@ -379,6 +422,9 @@ function SheetEditor({
 
   const refreshSheet = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: ['sheet', projectId] })
+    // Structural mutations also change Project layer condition_count metadata consumed by the
+    // exact validation adapter; refresh both halves before provisional evaluation resumes.
+    void queryClient.invalidateQueries({ queryKey: ['project', projectId] })
   }, [queryClient, projectId])
 
   // 구조 변경 공용 실행: 잠금 검사·더티 flush·잠금 상실 처리(runStructuralChange)를 감싸

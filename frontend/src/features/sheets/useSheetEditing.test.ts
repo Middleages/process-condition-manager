@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
+import source from './useSheetEditing.ts?raw'
 
 import type { CellsPatchOut } from '@/api/types'
 
+import { createAsyncQueue } from './autosave'
 import type { DirtyCell } from './editStore'
 import { reconcileSuccessfulPatch } from './persistenceReconciliation'
 import {
@@ -9,7 +11,9 @@ import {
   persistDirtySnapshot,
   resolvePasteSnapshotAction,
   shouldResumeAutosaveAfterReacquire,
+  waitForPersistenceBarrier,
   type RetainedPasteSnapshot,
+  type SheetEditingPersistenceSnapshot,
 } from './useSheetEditing'
 
 const snapshot: DirtyCell[] = [
@@ -136,5 +140,72 @@ describe('retained paste identity', () => {
 
     expect(markSaved).toHaveBeenCalledOnce()
     expect(markSaved).toHaveBeenCalledWith(snapshot)
+  })
+})
+
+describe('explicit validation persistence barrier', () => {
+  it('waits immediate-write queue work before flushing autosave and reporting idle', async () => {
+    const queue = createAsyncQueue()
+    let releaseWrite!: () => void
+    const write = queue.run(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseWrite = resolve
+        }),
+    )
+    const snapshot: SheetEditingPersistenceSnapshot = {
+      dirtyCount: 1,
+      writeBusy: true,
+      saveStatus: 'saving',
+      persistedGeneration: 0,
+    }
+    const flushNow = vi.fn(async () => {
+      snapshot.dirtyCount = 0
+      snapshot.writeBusy = false
+      snapshot.saveStatus = 'saved'
+      snapshot.persistedGeneration = 1
+    })
+
+    const barrier = waitForPersistenceBarrier({
+      queue,
+      flushNow,
+      getSnapshot: () => snapshot,
+      isCurrent: () => true,
+    })
+    await Promise.resolve()
+    expect(flushNow).not.toHaveBeenCalled()
+
+    releaseWrite()
+    await write
+    await expect(barrier).resolves.toBe(true)
+    expect(flushNow).toHaveBeenCalledOnce()
+  })
+
+  it('does not silently retry an already failed autosave while validation is waiting', async () => {
+    const flushNow = vi.fn(async () => undefined)
+
+    await expect(
+      waitForPersistenceBarrier({
+        queue: createAsyncQueue(),
+        flushNow,
+        getSnapshot: () => ({
+          dirtyCount: 1,
+          writeBusy: false,
+          saveStatus: 'error',
+          persistedGeneration: 0,
+        }),
+        isCurrent: () => true,
+      }),
+    ).resolves.toBe(false)
+
+    expect(flushNow).not.toHaveBeenCalled()
+  })
+
+  it('publishes durable generation success for both cell batches and structural/POR writes', () => {
+    expect(source.match(/publishDurableSuccess\(/g)?.length).toBeGreaterThanOrEqual(2)
+    expect(source).toMatch(/await persistDirtySnapshot\([\s\S]*?publishDurableSuccess/)
+    expect(source).toMatch(/const result = await fn\(token\)[\s\S]*?publishDurableSuccess\(generation\)/)
+    expect(source).toContain('operationQueueRef.current')
+    expect(source).toContain('waitForPersistenceBarrier')
   })
 })
