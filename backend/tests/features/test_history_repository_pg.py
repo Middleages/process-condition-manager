@@ -522,11 +522,24 @@ async def _seed_small_history_fixture(session: AsyncSession) -> SmallHistoryFixt
             },
             created_at=_dt(11),
         ),
+        ChangeEvent(
+            project_id=project.id,
+            event_type=ChangeEventType.POR_CHANGE,
+            actor="legacy-bot",
+            batch_id=None,
+            origin="manual",
+            layer_key=None,
+            condition_id=None,
+            parameter_code=None,
+            old_value=None,
+            new_value=None,
+            created_at=_dt(12),
+        ),
     ]
     session.add_all(events)
     await session.flush()
 
-    remove_id = events[-1].id
+    remove_id = events[-2].id
     current_ids = [event.id for event in events[1:8]]
     deleted_ids = [event.id for event in events[8:10]]
     await session.delete(deleted_condition)
@@ -958,23 +971,21 @@ async def test_sqlite_repository_groups_batches_without_payload_and_counts_membe
         detail_group = next(
             group for group in groups if group.group_key == f"batch:{fixture.batch_detail_id}"
         )
-        detail_group_any: Any = detail_group
         assert detail_group.group_kind == "batch"
         assert detail_group.matched_event_count == 2
         assert detail_group.total_event_count == 3
-        assert detail_group_any.min_event_id == 4
+        assert detail_group.min_event_id == 4
         assert detail_group.max_event_id == 5
-        assert detail_group_any.started_at == _dt(4)
-        assert detail_group_any.occurred_at == _dt(5)
-        assert set(detail_group_any.event_types) == {"cell_update"}
-        assert set(detail_group_any.actors) == {"dev-admin"}
-        assert set(detail_group_any.origins) == {"manual"}
-        assert set(detail_group_any.layer_keys) == {fixture.current_layer_key}
+        assert detail_group.started_at == _dt(4)
+        assert detail_group.occurred_at == _dt(5)
+        assert set(detail_group.event_types) == {"cell_update"}
+        assert set(detail_group.actors) == {"dev-admin"}
+        assert set(detail_group.origins) == {"manual"}
+        assert set(detail_group.layer_keys) == {fixture.current_layer_key}
         assert detail_group.representative.event_id == 5
         assert detail_group.representative.batch_id == fixture.batch_detail_id
 
-        repo_any: Any = repo
-        batch_members = await repo_any.load_batch_members(
+        batch_members = await repo.load_batch_members(
             fixture.project_id,
             fixture.batch_detail_id,
             member_filters=filtered,
@@ -1001,9 +1012,8 @@ async def test_sqlite_repository_load_batch_members_preserves_payload_and_reject
     async with sqlite_factory() as session:
         fixture = await _seed_capture_history_fixture(session)
         repo = HistoryRepository(session)
-        repo_any: Any = repo
 
-        valid_rows = await repo_any.load_batch_members(
+        valid_rows = await repo.load_batch_members(
             fixture.project_id,
             fixture.valid_batch_id,
             snapshot_max_event_id=fixture.snapshot_max_event_id,
@@ -1045,7 +1055,7 @@ async def test_sqlite_repository_load_batch_members_preserves_payload_and_reject
             ),
         )
 
-        legacy_rows = await repo_any.load_batch_members(
+        legacy_rows = await repo.load_batch_members(
             fixture.project_id,
             fixture.legacy_batch_id,
             snapshot_max_event_id=fixture.snapshot_max_event_id,
@@ -1073,7 +1083,7 @@ async def test_sqlite_repository_load_batch_members_preserves_payload_and_reject
 
         for batch_id in (fixture.bool_batch_id, fixture.wrong_batch_id, fixture.corrupt_batch_id):
             with pytest.raises(ConflictError) as excinfo:
-                await repo_any.load_batch_members(
+                await repo.load_batch_members(
                     fixture.project_id,
                     batch_id,
                     snapshot_max_event_id=fixture.snapshot_max_event_id,
@@ -1099,7 +1109,6 @@ async def test_sqlite_repository_cell_history_context_contract(
         )
         await session.commit()
         repo = HistoryRepository(session)
-        repo_any: Any = repo
 
         current_proof = await repo.prove_cell_coordinate(
             fixture.project_id, fixture.current_condition_id, fixture.current_parameter_code
@@ -1109,7 +1118,7 @@ async def test_sqlite_repository_cell_history_context_contract(
         assert current_proof.layer_key == fixture.current_layer_key
         assert current_proof.latest_event_id == 6
 
-        current_context = await repo_any.load_cell_history_context(
+        current_context = await repo.load_cell_history_context(
             fixture.project_id,
             fixture.current_condition_id,
             fixture.current_parameter_code,
@@ -1129,7 +1138,7 @@ async def test_sqlite_repository_cell_history_context_contract(
         assert deleted_proof.layer_key == fixture.deleted_layer_key
         assert deleted_proof.remove_event_id == fixture.remove_event_id
 
-        deleted_context = await repo_any.load_cell_history_context(
+        deleted_context = await repo.load_cell_history_context(
             fixture.project_id,
             fixture.deleted_condition_id,
             fixture.deleted_parameter_code,
@@ -1232,17 +1241,16 @@ async def test_postgres_repository_frozen_traversal_ignores_late_events_and_excl
         batch_group = next(
             row for row in first_page if row.group_key == f"batch:{fixture.batch_id}"
         )
-        batch_group_any: Any = batch_group
         assert batch_group.group_kind == "batch"
         assert batch_group.matched_event_count == 120
         assert batch_group.total_event_count == 120
-        assert batch_group_any.min_event_id == min(fixture.batch_event_ids)
+        assert batch_group.min_event_id == min(fixture.batch_event_ids)
         assert batch_group.max_event_id == max(fixture.batch_event_ids)
         assert batch_group.representative.event_id == max(fixture.batch_event_ids)
-        assert set(batch_group_any.event_types) == {"cell_update"}
-        assert set(batch_group_any.actors) == {"dev-admin"}
-        assert set(batch_group_any.origins) == {"paste"}
-        assert set(batch_group_any.layer_keys) == {fixture.layer_a_key}
+        assert set(batch_group.event_types) == {"cell_update"}
+        assert set(batch_group.actors) == {"dev-admin"}
+        assert set(batch_group.origins) == {"paste"}
+        assert set(batch_group.layer_keys) == {fixture.layer_a_key}
 
         last_seen = first_page[-1].max_event_id
         late_event = ChangeEvent(
