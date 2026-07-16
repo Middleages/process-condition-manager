@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
@@ -17,6 +19,7 @@ from sqlalchemy.engine import Connection
 
 from alembic import command
 from alembic.config import Config
+from alembic.runtime.migration import MigrationContext
 from tests.postgres_database import TemporaryPostgresDatabase, temporary_postgres_database
 
 _BACKEND_ROOT = Path(__file__).resolve().parents[2]
@@ -141,6 +144,52 @@ def _insert_event(
             "new_value": new_value,
         },
     )
+
+
+def _seed_bulk_project_create_events(
+    connection: Connection, *, event_count: int
+) -> tuple[int, int]:
+    source_project_id = _insert_scalar(
+        connection,
+        """
+        INSERT INTO project (line_id, process_id, part_id, name)
+        VALUES ('L1', 'PROC_SRC_BULK', 'SRC', 'Bulk source project')
+        RETURNING id
+        """,
+    )
+    target_project_id = _insert_scalar(
+        connection,
+        """
+        INSERT INTO project (line_id, process_id, part_id, name)
+        VALUES ('L1', 'PROC_TGT_BULK', 'TGT', 'Bulk target project')
+        RETURNING id
+        """,
+    )
+    connection.execute(
+        sa.text(
+            """
+            INSERT INTO change_event (project_id, event_type, actor, payload)
+            SELECT
+                :project_id,
+                'project_create',
+                'system',
+                jsonb_build_object(
+                    'batch_id',
+                    'batch-bulk-project-create',
+                    'backbone_project_id',
+                    :source_project_id
+                )
+            FROM generate_series(1, :event_count)
+            """
+        ),
+        {
+            "project_id": target_project_id,
+            "source_project_id": source_project_id,
+            "event_count": event_count,
+        },
+    )
+    connection.commit()
+    return source_project_id, target_project_id
 
 
 def _seed_history_fixture(connection: Connection) -> SeededHistoryFixture:
@@ -423,7 +472,20 @@ def _index_validity(connection: Connection) -> dict[str, bool]:
 
 def test_history_columns_backfill_repeatable_upgrade_downgrade_upgrade(
     migration_db: MigrationDatabase,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    autocommit_calls = 0
+    original_autocommit_block = MigrationContext.autocommit_block
+
+    @contextmanager
+    def _counting_autocommit_block(self):
+        nonlocal autocommit_calls
+        autocommit_calls += 1
+        with original_autocommit_block(self):
+            yield
+
+    monkeypatch.setattr(MigrationContext, "autocommit_block", _counting_autocommit_block)
+
     migration_db.upgrade("0005")
     fixture = _seed_history_fixture(migration_db.connection)
     before_counts = _table_counts(migration_db.connection)
@@ -650,6 +712,24 @@ def test_history_columns_backfill_repeatable_upgrade_downgrade_upgrade(
         row[:5] + row[6:] for row in _event_rows(migration_db.connection)
     ]
     assert before_counts == _table_counts(migration_db.connection)
+    assert autocommit_calls == 30
+
+
+def test_0007_upgrade_100k_change_events_stays_within_lock_budget(
+    migration_db: MigrationDatabase,
+) -> None:
+    migration_db.upgrade("0005")
+    _seed_bulk_project_create_events(migration_db.connection, event_count=100_000)
+    migration_db.connection.execute(sa.text("SET lock_timeout = '5s'"))
+    assert migration_db.connection.scalar(sa.text("SHOW lock_timeout")) == "5s"
+
+    started = time.perf_counter()
+    migration_db.upgrade("head")
+    elapsed = time.perf_counter() - started
+
+    assert migration_db.current_revision() == "0007"
+    assert elapsed <= 60.0
+    assert all(_index_validity(migration_db.connection).values())
 
 
 def test_0007_retry_rebuilds_mismatched_index_after_partial_interruption(
