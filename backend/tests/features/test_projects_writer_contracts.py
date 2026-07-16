@@ -3,7 +3,7 @@
 import re
 
 import pytest
-from sqlalchemy import event as sa_event
+from httpx import AsyncClient
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -34,7 +34,17 @@ class UnmatchedReader(IngestReader):
         )
 
     async def get_layers(self, line_id: str, process_id: str) -> list[LayerInfo]:
-        return []
+        return [
+            LayerInfo(
+                key=f"{line_id}::{process_id}::999::MISSING",
+                step_seq="999",
+                layer_id="MISSING",
+                eqp_type="MISSING",
+                eqp_type_desc="Intentional no-match",
+                area_name="MISSING",
+                sort_order=99,
+            )
+        ]
 
 
 async def _seed_required_choices(db_session: AsyncSession) -> None:
@@ -96,12 +106,14 @@ async def _event_count(db_session: AsyncSession) -> int:
     return int(count)
 
 
-@sa_event.listens_for(Project, "init", propagate=True)
-def _initialize_project_events(
-    target: Project, args: tuple[object, ...], kwargs: dict[str, object]
-) -> None:
-    target.events = []
-    target.layers = []
+def _contains_recursive_key(value: object, key: str) -> bool:
+    if isinstance(value, dict):
+        if key in value:
+            return True
+        return any(_contains_recursive_key(item, key) for item in value.values())
+    if isinstance(value, list):
+        return any(_contains_recursive_key(item, key) for item in value)
+    return False
 
 
 async def _seed_parameter_registry(
@@ -174,9 +186,20 @@ async def test_create_emits_per_layer_copy_events_with_shared_batch_and_captured
         if layer.source_project_id == source.id and layer.source_layer_key is not None
     ]
     copy_events = await _change_events(db_session, target.id, ChangeEventType.BACKBONE_COPY)
+    project_create = await _change_events(
+        db_session, target.id, ChangeEventType.PROJECT_CREATE
+    )
 
     assert len(copy_events) == len(matched_layers) > 0
     assert len({event.payload["batch_id"] for event in copy_events}) == 1
+    assert len(project_create) == 1
+    assert project_create[0].origin == "system"
+    assert project_create[0].source_project_id == source.id
+    assert project_create[0].source_layer_key is None
+    assert project_create[0].batch_id == copy_events[0].payload["batch_id"]
+    assert project_create[0].payload["batch_id"] == copy_events[0].payload["batch_id"]
+    assert project_create[0].payload["captured_at"] == copy_events[0].payload["captured_at"]
+    assert project_create[0].payload["backbone_project_id"] == source.id
     for layer, copy_event in zip(matched_layers, copy_events, strict=True):
         snapshot = layer.backbone_snapshot
         assert snapshot is not None
@@ -185,14 +208,17 @@ async def test_create_emits_per_layer_copy_events_with_shared_batch_and_captured
         assert snapshot["captured_at"] == copy_event.payload["captured_at"]
         assert snapshot["source"]["project_id"] == source.id
         assert snapshot["source"]["layer_key"] == layer.source_layer_key
-        assert copy_event.batch_id == copy_event.payload["batch_id"]
-        assert copy_event.layer_key == layer.layer_key
+        assert copy_event.origin == "system"
         assert copy_event.source_project_id == source.id
         assert copy_event.source_layer_key == layer.source_layer_key
+        assert copy_event.batch_id == copy_event.payload["batch_id"]
+        assert copy_event.layer_key == layer.layer_key
         assert copy_event.payload["payload_schema_version"] == 2
         assert copy_event.payload["backbone_project_id"] == source.id
         assert copy_event.payload["target_layer_key"] == layer.layer_key
         assert copy_event.payload["detail"][0]["target_condition_id"] == layer.conditions[0].id
+        assert _contains_recursive_key(snapshot, "target_condition_id") is False
+        assert _contains_recursive_key(copy_event.payload["detail"], "capture_batch_id") is False
         assert re.fullmatch(r"[0-9a-f]{32}", snapshot["capture_batch_id"])
         assert re.fullmatch(r"[0-9a-f]{32}", copy_event.payload["batch_id"])
 
