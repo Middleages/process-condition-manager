@@ -603,7 +603,12 @@ def _history_payload_fields(
     event_type_text = event_type.value if hasattr(event_type, "value") else str(event_type)
     payload_mapping = payload if isinstance(payload, Mapping) else {}
     if event_type_text in {"backbone_copy", "backbone_layer_replace"}:
-        schema_version = int(payload_mapping.get("payload_schema_version", 2))
+        schema_version = 2
+        if "payload_schema_version" in payload_mapping:
+            schema_version_value = payload_mapping["payload_schema_version"]
+            if isinstance(schema_version_value, bool) or not isinstance(schema_version_value, int):
+                raise TypeError("payload_schema_version must be an int")
+            schema_version = schema_version_value
         detail = payload_mapping.get("detail", {})
         capture = payload_mapping.get("capture", {})
         return (
