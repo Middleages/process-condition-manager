@@ -26,6 +26,7 @@ from app.models.project import (
     SheetLayer,
 )
 from tests.factories import make_project_profile
+from tests.postgres_database import temporary_postgres_database
 
 _PG_URL = os.environ.get("APP_TEST_DATABASE_URL")
 
@@ -35,16 +36,16 @@ pytestmark = pytest.mark.skipif(_PG_URL is None, reason="APP_TEST_DATABASE_URL ë
 @pytest.fixture
 async def pg_engine() -> AsyncIterator[AsyncEngine]:
     assert _PG_URL is not None
-    engine = create_async_engine(_PG_URL)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
-        await conn.run_sync(Base.metadata.create_all)
-    try:
-        yield engine
-    finally:
+    with temporary_postgres_database() as database:
+        engine = create_async_engine(database.async_url)
         async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.drop_all)
-        await engine.dispose()
+            await conn.run_sync(Base.metadata.create_all)
+        try:
+            yield engine
+        finally:
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.drop_all)
+            await engine.dispose()
 
 
 async def _seed_project(
@@ -227,67 +228,44 @@ async def test_source_capture_nowait_avoids_cross_project_deadlock(
         )
         await session.commit()
 
-    async with factory() as left_session, factory() as right_session:
-        left_repo = ProjectRepository(left_session)
-        right_repo = ProjectRepository(right_session)
+    async with factory() as left_holder_session, factory() as right_holder_session:
+        left_holder_repo = ProjectRepository(left_holder_session)
+        right_holder_repo = ProjectRepository(right_holder_session)
 
-        left_target = await left_repo.get_for_update(left.id)
-        right_target = await right_repo.get_for_update(right.id)
+        left_target = await left_holder_repo.get_for_update(left.id)
+        right_target = await right_holder_repo.get_for_update(right.id)
         assert left_target is not None
         assert right_target is not None
 
-        go = asyncio.Event()
-        attempts = 0
-        attempts_lock = asyncio.Lock()
-        allow_rollback = asyncio.Event()
+        async with factory() as left_session, factory() as right_session:
+            left_repo = ProjectRepository(left_session)
+            right_repo = ProjectRepository(right_session)
 
-        async def capture_from_left() -> str:
-            nonlocal attempts
-            await go.wait()
-            code = ""
-            try:
-                await left_repo.capture_source_project(
-                    right.id, locked_target=left_target
-                )
-            except ConflictError as exc:
-                code = exc.code
-            finally:
-                async with attempts_lock:
-                    attempts += 1
-                    if attempts == 2:
-                        allow_rollback.set()
-            await allow_rollback.wait()
-            await left_session.rollback()
-            if code != "source_project_busy":
+            go = asyncio.Event()
+
+            async def capture_from_left() -> str:
+                await go.wait()
+                try:
+                    await left_repo.capture_source_project(right.id)
+                except ConflictError as exc:
+                    await left_session.rollback()
+                    return exc.code
                 raise AssertionError("expected source_project_busy")
-            return code
 
-        async def capture_from_right() -> str:
-            nonlocal attempts
-            await go.wait()
-            code = ""
-            try:
-                await right_repo.capture_source_project(
-                    left.id, locked_target=right_target
-                )
-            except ConflictError as exc:
-                code = exc.code
-            finally:
-                async with attempts_lock:
-                    attempts += 1
-                    if attempts == 2:
-                        allow_rollback.set()
-            await allow_rollback.wait()
-            await right_session.rollback()
-            if code != "source_project_busy":
+            async def capture_from_right() -> str:
+                await go.wait()
+                try:
+                    await right_repo.capture_source_project(left.id)
+                except ConflictError as exc:
+                    await right_session.rollback()
+                    return exc.code
                 raise AssertionError("expected source_project_busy")
-            return code
 
-        left_task = asyncio.create_task(capture_from_left())
-        right_task = asyncio.create_task(capture_from_right())
-        go.set()
-        results = await asyncio.wait_for(
-            asyncio.gather(left_task, right_task), timeout=3
-        )
+            left_task = asyncio.create_task(capture_from_left())
+            right_task = asyncio.create_task(capture_from_right())
+            go.set()
+            results = await asyncio.wait_for(
+                asyncio.gather(left_task, right_task), timeout=3
+            )
 
     assert results == ["source_project_busy", "source_project_busy"]
