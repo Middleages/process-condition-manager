@@ -7,14 +7,18 @@ from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import event
+from sqlalchemy import delete, event, update
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
 import app.models  # noqa: F401 -- register every model for metadata.create_all
 from app.core.db import Base
 from app.features.history.cursor import HistoryMemberFilterScope
-from app.features.history.projection import HistoryEntryRole, project_cell_history
+from app.features.history.projection import (
+    HistoryAvailability,
+    HistoryEntryRole,
+    project_cell_history,
+)
 from app.features.history.repository import HistoryRepository
 from app.models.project import (
     CellValue,
@@ -384,7 +388,7 @@ async def test_sqlite_repository_groups_batches_without_payload_and_counts_membe
         assert detail_group.group_kind == "batch"
         assert detail_group.matched_event_count == 2
         assert detail_group.total_event_count == 3
-        assert detail_group.representative.event_id == max(fixture["batch_detail_event_ids"])
+        assert detail_group.representative.event_id == 5
         assert detail_group.representative.batch_id == fixture["batch_detail_id"]
 
         batch_members = await repo.load_batch_members(
@@ -394,7 +398,7 @@ async def test_sqlite_repository_groups_batches_without_payload_and_counts_membe
             snapshot_max_event_id=snapshot,
         )
         assert [row.event_id for row in batch_members] == sorted(
-            fixture["batch_detail_event_ids"], reverse=True
+            (5, 4), reverse=True
         )
         assert all(row.batch_id == fixture["batch_detail_id"] for row in batch_members)
 
@@ -413,6 +417,17 @@ async def test_sqlite_repository_proves_current_and_deleted_coordinates_and_read
 ) -> None:
     async with sqlite_factory() as session:
         fixture = await _seed_small_history_fixture(session)
+        await session.execute(
+            delete(CellValue).where(
+                CellValue.condition_id == fixture["current_condition_id"]
+            )
+        )
+        await session.execute(
+            update(ChangeEvent)
+            .where(ChangeEvent.id == fixture["remove_event_id"])
+            .values(condition_id=None, parameter_code=None, layer_key=None)
+        )
+        await session.commit()
         repo = HistoryRepository(session)
 
         current_proof = await repo.prove_cell_coordinate(
@@ -421,7 +436,7 @@ async def test_sqlite_repository_proves_current_and_deleted_coordinates_and_read
         assert current_proof is not None
         assert current_proof.state == "current"
         assert current_proof.layer_key == fixture["current_layer_key"]
-        assert current_proof.latest_event_id == fixture["current_event_ids"][-1]
+        assert current_proof.latest_event_id == 6
 
         deleted_proof = await repo.prove_cell_coordinate(
             fixture["project_id"], fixture["deleted_condition_id"], fixture["deleted_parameter_code"]
@@ -435,7 +450,7 @@ async def test_sqlite_repository_proves_current_and_deleted_coordinates_and_read
             fixture["project_id"], fixture["current_condition_id"], fixture["current_parameter_code"]
         )
         assert [row.event_id for row in current_rows] == list(
-            sorted(fixture["current_event_ids"], reverse=True)
+            sorted(fixture["batch_detail_event_ids"], reverse=True)
         )
         assert all(row.condition_id == fixture["current_condition_id"] for row in current_rows)
         assert all(row.parameter_code == fixture["current_parameter_code"] for row in current_rows)
@@ -446,6 +461,14 @@ async def test_sqlite_repository_proves_current_and_deleted_coordinates_and_read
         assert [row.event_id for row in deleted_rows] == list(
             sorted(fixture["deleted_event_ids"], reverse=True)
         )
+        anchor_rows = await repo.load_cell_history_anchor_rows(
+            fixture["project_id"], fixture["deleted_condition_id"], fixture["deleted_parameter_code"]
+        )
+        anchor_projection = project_cell_history(anchor_rows)
+        assert anchor_projection.initial_entry is not None
+        assert anchor_projection.initial_entry.role == HistoryEntryRole.INITIAL
+        assert anchor_projection.initial_entry.event_id == fixture["remove_event_id"]
+        assert anchor_projection.initial_state == HistoryAvailability.AVAILABLE
         projected = project_cell_history(
             [
                 *deleted_rows,

@@ -9,15 +9,14 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from sqlalchemy import String, cast, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.features.history.cursor import HistoryMemberFilterScope
 from app.features.history.projection import HistoryEntryRole, HistoryEventRow
-from app.models.project import CellValue, ChangeEvent, Project, SheetLayer, LayerCondition
+from app.models.project import ChangeEvent, LayerCondition, Project, SheetLayer
 
 HistoryGroupKind = Literal["batch", "event"]
 HistoryCoordinateState = Literal["current", "deleted"]
@@ -70,6 +69,7 @@ _EVENT_COLUMNS = (
     ChangeEvent.new_value,
     ChangeEvent.source_project_id,
     ChangeEvent.source_layer_key,
+    ChangeEvent.payload,
 )
 
 
@@ -265,8 +265,32 @@ class HistoryRepository:
         proof = await self.prove_cell_coordinate(project_id, condition_id, parameter_code)
         if proof is None:
             return ()
-        rows = await self.load_cell_history_rows(project_id, condition_id, parameter_code)
-        return rows
+        rows = list(
+            await self.load_cell_history_rows(project_id, condition_id, parameter_code)
+        )
+        baseline_row = await self._latest_condition_add_event(project_id, condition_id)
+        if baseline_row is not None:
+            rows.append(
+                _anchor_row_from_event(
+                    baseline_row,
+                    history_role=HistoryEntryRole.BASELINE,
+                    parameter_code=parameter_code,
+                    deleted=False,
+                )
+            )
+        initial_row = await self._latest_condition_remove_event(
+            project_id, condition_id, parameter_code
+        )
+        if initial_row is not None:
+            rows.append(
+                _anchor_row_from_event(
+                    initial_row,
+                    history_role=HistoryEntryRole.INITIAL,
+                    parameter_code=parameter_code,
+                    deleted=True,
+                )
+            )
+        return tuple(rows)
 
     async def _count_batch_members(
         self,
@@ -366,15 +390,12 @@ class HistoryRepository:
         stmt = (
             select(
                 SheetLayer.layer_key.label("layer_key"),
-                CellValue.id.label("cell_value_id"),
             )
-            .select_from(CellValue)
-            .join(LayerCondition, LayerCondition.id == CellValue.condition_id)
+            .select_from(LayerCondition)
             .join(SheetLayer, SheetLayer.id == LayerCondition.layer_id)
             .where(
                 SheetLayer.project_id == project_id,
                 LayerCondition.id == condition_id,
-                CellValue.parameter_code == parameter_code,
             )
             .limit(1)
         )
@@ -410,13 +431,60 @@ class HistoryRepository:
             self._event_row_stmt(project_id, snapshot_max_event_id=None)
             .where(
                 ChangeEvent.condition_id == condition_id,
-                ChangeEvent.parameter_code == parameter_code,
                 ChangeEvent.event_type == "condition_remove",
             )
             .order_by(ChangeEvent.id.desc())
             .limit(1)
         )
         rows = await self._load_event_rows(stmt)
+        if not rows:
+            stmt = (
+                self._event_row_stmt(project_id, snapshot_max_event_id=None)
+                .where(ChangeEvent.event_type == "condition_remove")
+                .order_by(ChangeEvent.id.desc())
+                .limit(200)
+            )
+            rows = tuple(
+                row
+                for row in await self._load_event_rows(stmt)
+                if row.condition_id == condition_id
+                and (
+                    row.parameter_code is None
+                    or row.parameter_code == parameter_code
+                    or (
+                        isinstance(row.detail, Mapping)
+                        and parameter_code
+                        in cast(Mapping[str, Any], row.detail).get("cells", {})
+                    )
+                )
+            )
+        return rows[0] if rows else None
+
+    async def _latest_condition_add_event(
+        self,
+        project_id: int,
+        condition_id: int,
+    ) -> HistoryEventRow | None:
+        stmt = (
+            self._event_row_stmt(project_id, snapshot_max_event_id=None)
+            .where(
+                ChangeEvent.condition_id == condition_id,
+                ChangeEvent.event_type == "condition_add",
+            )
+            .order_by(ChangeEvent.id.desc())
+            .limit(1)
+        )
+        rows = await self._load_event_rows(stmt)
+        if rows:
+            return rows[0]
+
+        stmt = (
+            self._event_row_stmt(project_id, snapshot_max_event_id=None)
+            .where(ChangeEvent.event_type == "condition_add")
+            .order_by(ChangeEvent.id.desc())
+            .limit(200)
+        )
+        rows = tuple(row for row in await self._load_event_rows(stmt) if row.condition_id == condition_id)
         return rows[0] if rows else None
 
     def _apply_member_filters(
@@ -452,6 +520,19 @@ def _event_row_from_mapping(mapping: Mapping[str, Any]) -> HistoryEventRow:
     event_type = mapping["event_type"]
     actor = mapping["actor"]
     origin = mapping["origin"]
+    payload = mapping.get("payload")
+    detail, capture, schema_version, deleted = _history_payload_fields(event_type, payload)
+    condition_id = mapping["condition_id"]
+    layer_key = mapping["layer_key"]
+    if isinstance(payload, Mapping):
+        payload_condition_id = payload.get("condition_id")
+        payload_layer_key = payload.get("layer_key")
+        if condition_id is None and isinstance(payload_condition_id, int) and not isinstance(
+            payload_condition_id, bool
+        ):
+            condition_id = payload_condition_id
+        if layer_key is None and isinstance(payload_layer_key, str):
+            layer_key = payload_layer_key
     return HistoryEventRow(
         event_id=int(mapping["id"]),
         event_type=event_type.value if hasattr(event_type, "value") else str(event_type),
@@ -459,8 +540,8 @@ def _event_row_from_mapping(mapping: Mapping[str, Any]) -> HistoryEventRow:
         created_at=mapping["created_at"],
         batch_id=mapping["batch_id"],
         origin=None if origin is None else (origin.value if hasattr(origin, "value") else str(origin)),
-        layer_key=mapping["layer_key"],
-        condition_id=mapping["condition_id"],
+        layer_key=layer_key,
+        condition_id=condition_id,
         condition_index=None,
         source_condition_id=None,
         source_condition_index=None,
@@ -470,9 +551,77 @@ def _event_row_from_mapping(mapping: Mapping[str, Any]) -> HistoryEventRow:
         new_value=mapping["new_value"],
         source_project_id=mapping["source_project_id"],
         source_layer_key=mapping["source_layer_key"],
-        schema_version=2,
+        schema_version=schema_version,
         history_role=HistoryEntryRole.CURRENT,
-        deleted=False,
-        detail={},
-        capture={},
+        deleted=deleted,
+        detail=detail,
+        capture=capture,
+    )
+
+
+def _history_payload_fields(
+    event_type: Any, payload: Any
+) -> tuple[dict[str, Any], dict[str, Any], int, bool]:
+    event_type_text = event_type.value if hasattr(event_type, "value") else str(event_type)
+    payload_mapping = payload if isinstance(payload, Mapping) else {}
+    if event_type_text in {"backbone_copy", "backbone_layer_replace"}:
+        schema_version = int(payload_mapping.get("payload_schema_version", 2))
+        detail = payload_mapping.get("detail", {})
+        capture = payload_mapping.get("capture", {})
+        return (
+            dict(detail) if isinstance(detail, Mapping) else {},
+            dict(capture) if isinstance(capture, Mapping) else {},
+            schema_version,
+            False,
+        )
+    if event_type_text == "condition_remove":
+        snapshot = payload_mapping.get("snapshot", {})
+        detail = snapshot if isinstance(snapshot, Mapping) else {}
+        return dict(detail), {}, 1, True
+    if event_type_text == "condition_add":
+        snapshot = payload_mapping.get("snapshot", {})
+        detail = snapshot if isinstance(snapshot, Mapping) else {}
+        return dict(detail), {}, 1, False
+    if event_type_text == "project_create":
+        return {}, {}, 1, False
+    return {}, {}, 2, False
+
+
+def _anchor_row_from_event(
+    event: HistoryEventRow,
+    *,
+    history_role: HistoryEntryRole,
+    parameter_code: str,
+    deleted: bool,
+) -> HistoryEventRow:
+    value = None
+    if isinstance(event.detail, Mapping):
+        cells = event.detail.get("cells")
+        if isinstance(cells, Mapping):
+            cell_value = cells.get(parameter_code)
+            if cell_value is not None:
+                value = str(cell_value)
+    return HistoryEventRow(
+        event_id=event.event_id,
+        event_type=event.event_type,
+        actor=event.actor,
+        created_at=event.created_at,
+        batch_id=event.batch_id,
+        origin=event.origin,
+        layer_key=event.layer_key,
+        condition_id=event.condition_id,
+        condition_index=None,
+        source_condition_id=event.source_condition_id,
+        source_condition_index=None,
+        parameter_code=parameter_code,
+        parameter_sort_order=None,
+        old_value=None if not deleted else value,
+        new_value=value if not deleted else None,
+        source_project_id=event.source_project_id,
+        source_layer_key=event.source_layer_key,
+        schema_version=1,
+        history_role=history_role,
+        deleted=deleted,
+        detail=event.detail,
+        capture=event.capture,
     )
