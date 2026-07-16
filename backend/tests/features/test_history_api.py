@@ -428,6 +428,47 @@ async def test_history_events_route_is_authenticated_and_payload_free(
 
 
 @pytest.mark.asyncio
+async def test_timeline_first_and_cursor_pages_use_at_most_four_sql_statements(
+    db_client: AsyncClient,
+    db_session: AsyncSession,
+    db_engine: AsyncEngine,
+) -> None:
+    project_id = await _seed_history_project(db_session)
+    # Put an unbatched group ahead of the seeded batch so both the first-page
+    # and cursor-page query shapes are exercised.
+    db_session.add(
+        ChangeEvent(
+            project_id=project_id,
+            event_type=ChangeEventType.PROJECT_PROFILE_UPDATE,
+            actor="dev-admin",
+            payload={},
+            created_at=datetime(2026, 7, 1, 0, 2, tzinfo=UTC),
+        )
+    )
+    await db_session.commit()
+
+    with _record_sql(db_engine) as first_page_statements:
+        first_page = await db_client.get(
+            f"/api/projects/{project_id}/events", params={"limit": 1}
+        )
+
+    assert first_page.status_code == 200, first_page.text
+    cursor = first_page.json()["next_cursor"]
+    assert cursor is not None
+    assert len(first_page_statements) <= 4
+
+    with _record_sql(db_engine) as cursor_page_statements:
+        cursor_page = await db_client.get(
+            f"/api/projects/{project_id}/events",
+            params={"limit": 1, "cursor": cursor},
+        )
+
+    assert cursor_page.status_code == 200, cursor_page.text
+    assert cursor_page.json()["items"][0]["batch_id"] == "batch-1"
+    assert len(cursor_page_statements) <= 4
+
+
+@pytest.mark.asyncio
 async def test_history_events_limit_above_max_is_rejected(
     db_client: AsyncClient, db_session: AsyncSession
 ) -> None:
