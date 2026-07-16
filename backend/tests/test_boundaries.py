@@ -280,14 +280,14 @@ def test_phase_4_metadata_exposes_backbone_snapshot_and_history_columns() -> Non
         change_event.c.keys()
     )
     assert cast(Enum, change_event.c.event_type.type).enums == [
-        "project_create",
-        "project_profile_update",
-        "backbone_copy",
-        "backbone_layer_replace",
-        "cell_update",
-        "condition_add",
-        "condition_remove",
-        "por_change",
+        "PROJECT_CREATE",
+        "PROJECT_PROFILE_UPDATE",
+        "BACKBONE_COPY",
+        "BACKBONE_LAYER_REPLACE",
+        "CELL_UPDATE",
+        "CONDITION_ADD",
+        "CONDITION_REMOVE",
+        "POR_CHANGE",
     ]
 
 

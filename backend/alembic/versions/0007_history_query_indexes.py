@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import re
 from collections.abc import Sequence
-from dataclasses import dataclass
 
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
@@ -25,10 +24,7 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
-@dataclass(frozen=True, slots=True)
-class IndexSpec:
-    name: str
-    index: sa.Index
+IndexSpec = tuple[str, sa.Index]
 
 
 def _require_online() -> None:
@@ -52,7 +48,7 @@ _change_event = sa.table(
 )
 
 _INDEX_SPECS = [
-    IndexSpec(
+    (
         "ix_change_event_project_id_id_desc",
         sa.Index(
             "ix_change_event_project_id_id_desc",
@@ -60,7 +56,7 @@ _INDEX_SPECS = [
             _change_event.c.id.desc(),
         ),
     ),
-    IndexSpec(
+    (
         "ix_change_event_project_type_id_desc",
         sa.Index(
             "ix_change_event_project_type_id_desc",
@@ -69,7 +65,7 @@ _INDEX_SPECS = [
             _change_event.c.id.desc(),
         ),
     ),
-    IndexSpec(
+    (
         "ix_change_event_project_cell_id_desc",
         sa.Index(
             "ix_change_event_project_cell_id_desc",
@@ -80,7 +76,7 @@ _INDEX_SPECS = [
             postgresql_where=sa.text("condition_id IS NOT NULL AND parameter_code IS NOT NULL"),
         ),
     ),
-    IndexSpec(
+    (
         "ix_change_event_project_condition_id_desc",
         sa.Index(
             "ix_change_event_project_condition_id_desc",
@@ -90,7 +86,7 @@ _INDEX_SPECS = [
             postgresql_where=sa.text("condition_id IS NOT NULL"),
         ),
     ),
-    IndexSpec(
+    (
         "ix_change_event_project_layer_id_desc",
         sa.Index(
             "ix_change_event_project_layer_id_desc",
@@ -100,7 +96,7 @@ _INDEX_SPECS = [
             postgresql_where=sa.text("layer_key IS NOT NULL"),
         ),
     ),
-    IndexSpec(
+    (
         "ix_change_event_project_actor_id_desc",
         sa.Index(
             "ix_change_event_project_actor_id_desc",
@@ -109,7 +105,7 @@ _INDEX_SPECS = [
             _change_event.c.id.desc(),
         ),
     ),
-    IndexSpec(
+    (
         "ix_change_event_project_origin_id_desc",
         sa.Index(
             "ix_change_event_project_origin_id_desc",
@@ -119,7 +115,7 @@ _INDEX_SPECS = [
             postgresql_where=sa.text("origin IS NOT NULL"),
         ),
     ),
-    IndexSpec(
+    (
         "ix_change_event_project_source_id_desc",
         sa.Index(
             "ix_change_event_project_source_id_desc",
@@ -129,7 +125,7 @@ _INDEX_SPECS = [
             postgresql_where=sa.text("source_project_id IS NOT NULL"),
         ),
     ),
-    IndexSpec(
+    (
         "ix_change_event_project_created_id_desc",
         sa.Index(
             "ix_change_event_project_created_id_desc",
@@ -138,7 +134,7 @@ _INDEX_SPECS = [
             _change_event.c.id.desc(),
         ),
     ),
-    IndexSpec(
+    (
         "ix_change_event_project_batch_id_desc",
         sa.Index(
             "ix_change_event_project_batch_id_desc",
@@ -195,28 +191,30 @@ def _create_index_concurrently(index: sa.Index) -> None:
 
 
 def _ensure_index(spec: IndexSpec) -> None:
-    valid, current_sql = _fetch_index_state(spec.name)
-    expected_sql = _expected_index_sql(spec.index)
+    name, index = spec
+    valid, current_sql = _fetch_index_state(name)
+    expected_sql = _expected_index_sql(index)
     if valid and current_sql is not None and _normalize_index_sql(current_sql) == expected_sql:
         return
 
     with op.get_context().autocommit_block():
         if current_sql is not None:
-            _drop_index_concurrently(spec.name)
-        _create_index_concurrently(spec.index)
+            _drop_index_concurrently(name)
+        _create_index_concurrently(index)
 
-    valid, current_sql = _fetch_index_state(spec.name)
+    valid, current_sql = _fetch_index_state(name)
     if not valid or current_sql is None or _normalize_index_sql(current_sql) != expected_sql:
-        raise RuntimeError(f"index preflight/postflight mismatch: {spec.name}")
+        raise RuntimeError(f"index preflight/postflight mismatch: {name}")
 
 
 def _assert_all_indexes_ready() -> None:
     for spec in _INDEX_SPECS:
-        valid, current_sql = _fetch_index_state(spec.name)
+        name, index = spec
+        valid, current_sql = _fetch_index_state(name)
         if not valid or current_sql is None:
-            raise RuntimeError(f"missing or invalid index after migration: {spec.name}")
-        if _normalize_index_sql(current_sql) != _expected_index_sql(spec.index):
-            raise RuntimeError(f"unexpected index definition after migration: {spec.name}")
+            raise RuntimeError(f"missing or invalid index after migration: {name}")
+        if _normalize_index_sql(current_sql) != _expected_index_sql(index):
+            raise RuntimeError(f"unexpected index definition after migration: {name}")
 
 
 def upgrade() -> None:
@@ -229,8 +227,9 @@ def upgrade() -> None:
 def downgrade() -> None:
     _require_online()
     for spec in reversed(_INDEX_SPECS):
-        _valid, current_sql = _fetch_index_state(spec.name)
+        name, _index = spec
+        _valid, current_sql = _fetch_index_state(name)
         if current_sql is None:
             continue
         with op.get_context().autocommit_block():
-            _drop_index_concurrently(spec.name)
+            _drop_index_concurrently(name)
