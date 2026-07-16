@@ -456,7 +456,7 @@ def _timeline_item(
     return HistoryTimelineItemOut(
         kind=group.group_kind,
         cursor_id=group.max_event_id,
-        event_types=[ChangeEventType(value) for value in group.event_types],
+        event_types=[_timeline_event_type(value) for value in group.event_types],
         actors=list(group.actors),
         origins=[_origin(value) for value in group.origins],
         started_at=group.started_at,
@@ -478,6 +478,15 @@ def _timeline_item(
             else "complete"
         ),
     )
+
+
+def _timeline_event_type(value: str) -> ChangeEventType:
+    if value in ChangeEventType.__members__:
+        return ChangeEventType[value]
+    try:
+        return ChangeEventType(value)
+    except ValueError:
+        return ChangeEventType(value.lower())
 
 
 def _detail_domain(descriptor: HistoryBatchDescriptor) -> DetailDomain:
