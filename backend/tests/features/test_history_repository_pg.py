@@ -33,11 +33,12 @@ from app.domain.backbone.snapshot import (
 )
 from app.domain.parameters.types import ValueType
 from app.features.history.cursor import HistoryMemberFilterScope
-from app.features.history.projection import HistoryEventRow
+from app.features.history.projection import HistoryEventRow, project_backbone_capture
 from app.features.history.repository import (
     HistoryRepository,
     HistoryTimelineGroupRow,
 )
+from app.models.parameter import Parameter
 from app.models.project import (
     CellValue,
     ChangeEvent,
@@ -306,6 +307,22 @@ def _baseline_snapshot(
 
 
 async def _seed_small_history_fixture(session: AsyncSession) -> SmallHistoryFixture:
+    session.add_all(
+        [
+            Parameter(
+                code="param_000",
+                display_name="Parameter 000",
+                value_type=ValueType.TEXT,
+                is_active=True,
+            ),
+            Parameter(
+                code="param_001",
+                display_name="Parameter 001",
+                value_type=ValueType.TEXT,
+                is_active=False,
+            ),
+        ]
+    )
     project = Project(
         line_id="L1",
         process_id="PROC_HISTORY",
@@ -747,6 +764,14 @@ async def _seed_deleted_proof_fixture(session: AsyncSession) -> DeletedProofFixt
 
 
 async def _seed_capture_history_fixture(session: AsyncSession) -> CaptureHistoryFixture:
+    session.add(
+        Parameter(
+            code="param_010",
+            display_name="Parameter 010",
+            value_type=ValueType.TEXT,
+            is_active=False,
+        )
+    )
     project = Project(
         line_id="L1",
         process_id="PROC_HISTORY_CAPTURE",
@@ -934,6 +959,19 @@ def test_history_repository_contract_exposes_group_and_context_interfaces() -> N
     assert hasattr(HistoryRepository, "load_cell_history_context")
     assert hasattr(history_repository_module, "HistoryCellStateRow")
     assert hasattr(history_repository_module, "HistoryCellHistoryContext")
+    assert hasattr(history_repository_module, "HistoryBatchDescriptor")
+    assert "member_filters" in inspect.signature(
+        HistoryRepository.describe_batch
+    ).parameters
+    assert "before_event_id" in inspect.signature(
+        HistoryRepository.load_cell_batch_page
+    ).parameters
+    assert "limit" in inspect.signature(
+        HistoryRepository.load_capture_batch_rows
+    ).parameters
+    assert "coordinates" in inspect.signature(
+        HistoryRepository.prove_cell_coordinates
+    ).parameters
 
 
 async def test_sqlite_repository_groups_batches_without_payload_and_counts_members(
@@ -1006,6 +1044,52 @@ async def test_sqlite_repository_groups_batches_without_payload_and_counts_membe
         assert coverage.legacy_detail_unavailable_count > 0
 
 
+async def test_sqlite_batch_descriptor_distinguishes_project_batch_and_filters_in_one_query(
+    sqlite_engine: AsyncEngine,
+    sqlite_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with sqlite_factory() as session:
+        fixture = await _seed_capture_history_fixture(session)
+        repo = HistoryRepository(session)
+        statements: list[str] = []
+
+        def _capture_sql(
+            _conn: object,
+            _cursor: object,
+            statement: str,
+            _parameters: object,
+            _context: object,
+            _executemany: bool,
+        ) -> None:
+            statements.append(statement)
+
+        event.listen(sqlite_engine.sync_engine, "before_cursor_execute", _capture_sql)
+        try:
+            descriptor = await repo.describe_batch(
+                fixture.project_id,
+                fixture.valid_batch_id,
+                member_filters=HistoryMemberFilterScope(actors=("nobody",)),
+            )
+        finally:
+            event.remove(sqlite_engine.sync_engine, "before_cursor_execute", _capture_sql)
+
+        assert len(statements) == 1
+        assert descriptor.project_exists is True
+        assert descriptor.batch_exists is True
+        assert descriptor.total_event_count == 2
+        assert descriptor.matched_event_count == 0
+        assert descriptor.cell_event_count == 0
+        assert descriptor.capture_event_count == 0
+        assert descriptor.other_event_count == 0
+
+        missing_batch = await repo.describe_batch(fixture.project_id, "missing-batch")
+        missing_project = await repo.describe_batch(999999, fixture.valid_batch_id)
+        assert missing_batch.project_exists is True
+        assert missing_batch.batch_exists is False
+        assert missing_project.project_exists is False
+        assert missing_project.batch_exists is False
+
+
 async def test_sqlite_repository_load_batch_members_preserves_payload_and_rejects_invalid_versions(
     sqlite_factory: async_sessionmaker[AsyncSession],
 ) -> None:
@@ -1029,6 +1113,7 @@ async def test_sqlite_repository_load_batch_members_preserves_payload_and_reject
                 batch_id=fixture.valid_batch_id,
                 origin="backbone",
                 layer_key=fixture.layer_key,
+                layer_sort_order=1,
                 condition_id=fixture.condition_id,
                 parameter_code=fixture.parameter_code,
                 source_project_id=fixture.project_id,
@@ -1045,6 +1130,7 @@ async def test_sqlite_repository_load_batch_members_preserves_payload_and_reject
                 batch_id=fixture.valid_batch_id,
                 origin="backbone",
                 layer_key=fixture.layer_key,
+                layer_sort_order=1,
                 condition_id=fixture.condition_id,
                 parameter_code=fixture.parameter_code,
                 source_project_id=fixture.project_id,
@@ -1071,6 +1157,7 @@ async def test_sqlite_repository_load_batch_members_preserves_payload_and_reject
                 batch_id=fixture.legacy_batch_id,
                 origin="backbone",
                 layer_key=fixture.layer_key,
+                layer_sort_order=1,
                 condition_id=fixture.condition_id,
                 parameter_code=fixture.parameter_code,
                 source_project_id=fixture.project_id,
@@ -1090,6 +1177,23 @@ async def test_sqlite_repository_load_batch_members_preserves_payload_and_reject
                     limit=1,
                 )
             assert excinfo.value.code == "invalid_event_batch"
+
+
+async def test_sqlite_capture_batch_loader_fails_closed_above_explicit_limit(
+    sqlite_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with sqlite_factory() as session:
+        fixture = await _seed_capture_history_fixture(session)
+        repo = HistoryRepository(session)
+
+        with pytest.raises(ConflictError) as excinfo:
+            await repo.load_capture_batch_rows(
+                fixture.project_id,
+                fixture.valid_batch_id,
+                limit=1,
+            )
+
+        assert excinfo.value.code == "invalid_event_batch"
 
 
 async def test_sqlite_repository_cell_history_context_contract(
@@ -1184,6 +1288,152 @@ async def test_sqlite_repository_deleted_proof_uses_payload_snapshot_beyond_late
         assert proof.deleted is True
         assert proof.layer_key == fixture.layer_key
         assert proof.remove_event_id == fixture.remove_event_id
+
+
+async def test_sqlite_bulk_coordinate_proof_is_one_query_and_project_registry_bound(
+    sqlite_engine: AsyncEngine,
+    sqlite_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with sqlite_factory() as session:
+        fixture = await _seed_small_history_fixture(session)
+        await session.execute(
+            delete(CellValue).where(CellValue.condition_id == fixture.current_condition_id)
+        )
+        session.add(
+            ChangeEvent(
+                project_id=fixture.project_id,
+                event_type=ChangeEventType.CELL_UPDATE,
+                actor="dev-admin",
+                condition_id=fixture.current_condition_id,
+                parameter_code="unknown_parameter",
+                layer_key=fixture.current_layer_key,
+                old_value=None,
+                new_value="must-not-prove-current",
+            )
+        )
+        event_only_condition_id = fixture.deleted_condition_id + 100_000
+        event_only = ChangeEvent(
+            project_id=fixture.project_id,
+            event_type=ChangeEventType.CELL_UPDATE,
+            actor="dev-admin",
+            condition_id=event_only_condition_id,
+            parameter_code="param_000",
+            layer_key=fixture.deleted_layer_key,
+            old_value=None,
+            new_value="immutable-event-evidence",
+        )
+        session.add(event_only)
+        foreign_project = Project(
+            line_id="L2",
+            process_id="PROC_FOREIGN",
+            part_id="PART_FOREIGN",
+            name="foreign-project",
+            status=ProjectStatus.DRAFT,
+            profile=make_project_profile(process_name="foreign-project"),
+        )
+        foreign_layer = SheetLayer(
+            layer_key="L2::PROC_FOREIGN::010::ACT",
+            step_seq="010",
+            layer_id="ACT",
+            sort_order=9,
+        )
+        foreign_condition = LayerCondition(label="foreign", condition_index=1, is_por=True)
+        foreign_layer.conditions.append(foreign_condition)
+        foreign_project.layers.append(foreign_layer)
+        session.add(foreign_project)
+        await session.flush()
+        await session.commit()
+
+        statements: list[str] = []
+
+        def _capture_sql(
+            _conn: object,
+            _cursor: object,
+            statement: str,
+            _parameters: object,
+            _context: object,
+            _executemany: bool,
+        ) -> None:
+            statements.append(statement)
+
+        repo = HistoryRepository(session)
+        coordinates = (
+            (fixture.current_condition_id, "param_000"),
+            (fixture.current_condition_id, "param_001"),
+            (fixture.current_condition_id, "unknown_parameter"),
+            (fixture.deleted_condition_id, "param_001"),
+            (event_only_condition_id, "param_000"),
+            (foreign_condition.id, "param_000"),
+        )
+        event.listen(sqlite_engine.sync_engine, "before_cursor_execute", _capture_sql)
+        try:
+            proofs = await repo.prove_cell_coordinates(
+                fixture.project_id, coordinates
+            )
+        finally:
+            event.remove(sqlite_engine.sync_engine, "before_cursor_execute", _capture_sql)
+
+        assert len(statements) == 1
+        assert proofs[(fixture.current_condition_id, "param_000")].state == "current"
+        assert proofs[(fixture.current_condition_id, "param_001")].state == "current"
+        assert (fixture.current_condition_id, "unknown_parameter") not in proofs
+        assert proofs[(fixture.deleted_condition_id, "param_001")].state == "deleted"
+        assert proofs[(fixture.deleted_condition_id, "param_001")].layer_key == (
+            fixture.deleted_layer_key
+        )
+        event_only_proof = proofs[(event_only_condition_id, "param_000")]
+        assert event_only_proof.state == "deleted"
+        assert event_only_proof.latest_event_id == event_only.id
+        assert event_only_proof.remove_event_id is None
+        assert event_only_proof.layer_key == fixture.deleted_layer_key
+        assert (foreign_condition.id, "param_000") not in proofs
+
+
+@pytest.mark.skipif(_PG_URL is None, reason="APP_TEST_DATABASE_URL 미설정")
+async def test_postgres_capture_descriptor_payload_sort_and_bulk_proof_use_three_queries(
+    pg_engine: AsyncEngine,
+    pg_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with pg_factory() as session:
+        fixture = await _seed_capture_history_fixture(session)
+        repo = HistoryRepository(session)
+        statements: list[str] = []
+
+        def _capture_sql(
+            _conn: object,
+            _cursor: object,
+            statement: str,
+            _parameters: object,
+            _context: object,
+            _executemany: bool,
+        ) -> None:
+            statements.append(statement)
+
+        event.listen(pg_engine.sync_engine, "before_cursor_execute", _capture_sql)
+        try:
+            descriptor = await repo.describe_batch(
+                fixture.project_id, fixture.valid_batch_id
+            )
+            rows = await repo.load_capture_batch_rows(
+                fixture.project_id, fixture.valid_batch_id
+            )
+            proofs = await repo.prove_cell_coordinates(
+                fixture.project_id,
+                ((fixture.condition_id, fixture.parameter_code),),
+            )
+        finally:
+            event.remove(pg_engine.sync_engine, "before_cursor_execute", _capture_sql)
+
+        projection = project_backbone_capture(rows)
+        assert len(statements) == 3
+        assert descriptor.project_exists is True
+        assert descriptor.batch_exists is True
+        assert descriptor.total_event_count == 2
+        assert descriptor.capture_event_count == 2
+        assert [row.layer_sort_order for row in rows] == [1, 1]
+        assert projection.availability.value == "available"
+        assert projection.items[0].target_layer_sort == 1
+        assert proofs[(fixture.condition_id, fixture.parameter_code)].state == "current"
 
 
 @pytest.mark.skipif(_PG_URL is None, reason="APP_TEST_DATABASE_URL 미설정")

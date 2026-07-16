@@ -7,13 +7,14 @@ coordinate proof. It intentionally does not expose write paths.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Literal
 from typing import cast as typing_cast
 
-from sqlalchemy import String, case, func, literal, select
+from sqlalchemy import String, and_, case, func, literal, select, true, tuple_, union_all
 from sqlalchemy import cast as sa_cast
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,10 +22,15 @@ from app.core.errors import ConflictError
 from app.domain.backbone.snapshot import parse_backbone_snapshot
 from app.features.history.cursor import HistoryMemberFilterScope
 from app.features.history.projection import HistoryEntryRole, HistoryEventRow
+from app.models.parameter import Parameter
 from app.models.project import ChangeEvent, LayerCondition, Project, SheetLayer
 
 HistoryGroupKind = Literal["batch", "event"]
 HistoryCoordinateState = Literal["current", "deleted"]
+HistoryCellCoordinateKey = tuple[int, str]
+
+CAPTURE_EVENT_ROW_LIMIT = 200
+COORDINATE_PROOF_LIMIT = 5000
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,6 +87,22 @@ class HistoryCellCoordinateProof:
         return self.state == "deleted"
 
 
+@dataclass(frozen=True, slots=True)
+class HistoryBatchDescriptor:
+    project_id: int
+    batch_id: str
+    project_exists: bool
+    batch_exists: bool
+    total_event_count: int
+    cell_event_count: int
+    capture_event_count: int
+    other_event_count: int
+
+    @property
+    def matched_event_count(self) -> int:
+        return self.cell_event_count + self.capture_event_count + self.other_event_count
+
+
 _SUMMARY_EVENT_COLUMNS = (
     ChangeEvent.id,
     ChangeEvent.event_type,
@@ -112,6 +134,126 @@ class HistoryRepository:
             select(Project.id).where(Project.id == project_id).limit(1)
         )
         return result.scalar_one_or_none() is not None
+
+    async def describe_batch(
+        self,
+        project_id: int,
+        batch_id: str,
+        *,
+        member_filters: HistoryMemberFilterScope | None = None,
+    ) -> HistoryBatchDescriptor:
+        member_match = and_(
+            ChangeEvent.id.is_not(None),
+            self._member_filter_expression(member_filters),
+        )
+        cell_match = and_(member_match, ChangeEvent.event_type == "cell_update")
+        capture_match = and_(
+            member_match,
+            ChangeEvent.event_type.in_(("backbone_copy", "backbone_layer_replace")),
+        )
+        other_match = and_(
+            member_match,
+            ChangeEvent.event_type.notin_(
+                ("cell_update", "backbone_copy", "backbone_layer_replace")
+            ),
+        )
+        stmt = (
+            select(
+                Project.id.label("project_id"),
+                func.count(ChangeEvent.id).label("total_event_count"),
+                func.coalesce(func.sum(case((cell_match, 1), else_=0)), 0).label(
+                    "cell_event_count"
+                ),
+                func.coalesce(func.sum(case((capture_match, 1), else_=0)), 0).label(
+                    "capture_event_count"
+                ),
+                func.coalesce(func.sum(case((other_match, 1), else_=0)), 0).label(
+                    "other_event_count"
+                ),
+            )
+            .select_from(Project)
+            .outerjoin(
+                ChangeEvent,
+                (ChangeEvent.project_id == Project.id)
+                & (ChangeEvent.batch_id == batch_id),
+            )
+            .where(Project.id == project_id)
+            .group_by(Project.id)
+        )
+        row = (await self.session.execute(stmt)).mappings().first()
+        if row is None:
+            return HistoryBatchDescriptor(
+                project_id=project_id,
+                batch_id=batch_id,
+                project_exists=False,
+                batch_exists=False,
+                total_event_count=0,
+                cell_event_count=0,
+                capture_event_count=0,
+                other_event_count=0,
+            )
+        total_event_count = int(row["total_event_count"])
+        return HistoryBatchDescriptor(
+            project_id=project_id,
+            batch_id=batch_id,
+            project_exists=True,
+            batch_exists=total_event_count > 0,
+            total_event_count=total_event_count,
+            cell_event_count=int(row["cell_event_count"]),
+            capture_event_count=int(row["capture_event_count"]),
+            other_event_count=int(row["other_event_count"]),
+        )
+
+    async def load_cell_batch_page(
+        self,
+        project_id: int,
+        batch_id: str,
+        *,
+        member_filters: HistoryMemberFilterScope | None = None,
+        before_event_id: int | None = None,
+        limit: int = 201,
+    ) -> tuple[HistoryEventRow, ...]:
+        stmt = self._event_row_stmt(
+            project_id,
+            snapshot_max_event_id=None,
+            with_payload=False,
+        ).where(
+            ChangeEvent.batch_id == batch_id,
+            ChangeEvent.event_type == "cell_update",
+        )
+        if before_event_id is not None:
+            stmt = stmt.where(ChangeEvent.id < before_event_id)
+        stmt = self._apply_member_filters(stmt, member_filters)
+        stmt = stmt.order_by(ChangeEvent.id.desc()).limit(limit)
+        return await self._load_event_rows(stmt)
+
+    async def load_capture_batch_rows(
+        self,
+        project_id: int,
+        batch_id: str,
+        *,
+        member_filters: HistoryMemberFilterScope | None = None,
+        limit: int = CAPTURE_EVENT_ROW_LIMIT,
+    ) -> tuple[HistoryEventRow, ...]:
+        if limit < 1 or limit > CAPTURE_EVENT_ROW_LIMIT:
+            raise ValueError("capture event row limit is out of bounds")
+        stmt = self._event_row_stmt(
+            project_id,
+            snapshot_max_event_id=None,
+            with_payload=True,
+        ).where(
+            ChangeEvent.batch_id == batch_id,
+            ChangeEvent.event_type.in_(("backbone_copy", "backbone_layer_replace")),
+        )
+        stmt = self._apply_member_filters(stmt, member_filters)
+        stmt = stmt.order_by(ChangeEvent.id.asc()).limit(limit + 1)
+        rows = await self._load_event_rows(stmt)
+        if len(rows) > limit:
+            raise ConflictError(
+                "capture event batch exceeds the safe row limit",
+                code="invalid_event_batch",
+            )
+        return rows
 
     async def snapshot_max_event_id(
         self,
@@ -348,43 +490,225 @@ class HistoryRepository:
         condition_id: int,
         parameter_code: str,
     ) -> HistoryCellCoordinateProof | None:
-        current_row = await self._current_coordinate_row(project_id, condition_id, parameter_code)
-        if current_row is not None:
-            latest_event = await self._latest_cell_event(project_id, condition_id, parameter_code)
-            return HistoryCellCoordinateProof(
-                state="current",
+        return (
+            await self.prove_cell_coordinates(
+                project_id,
+                ((condition_id, parameter_code),),
+            )
+        ).get((condition_id, parameter_code))
+
+    async def prove_cell_coordinates(
+        self,
+        project_id: int,
+        coordinates: Sequence[HistoryCellCoordinateKey],
+    ) -> dict[HistoryCellCoordinateKey, HistoryCellCoordinateProof]:
+        normalized = tuple(sorted(set(coordinates)))
+        if not normalized:
+            return {}
+        if len(normalized) > COORDINATE_PROOF_LIMIT:
+            raise ConflictError(
+                "history coordinate proof exceeds the safe limit",
+                code="invalid_event_batch",
+            )
+
+        condition_ids = tuple(sorted({condition_id for condition_id, _ in normalized}))
+        parameter_codes = tuple(sorted({parameter_code for _, parameter_code in normalized}))
+        null_event_id = sa_cast(literal(None), ChangeEvent.__table__.c.id.type)
+        null_parameter_code = sa_cast(literal(None), String)
+        null_payload_text = sa_cast(literal(None), String)
+
+        current_condition_rows = (
+            select(
+                literal("current_condition").label("evidence_kind"),
+                LayerCondition.id.label("condition_id"),
+                null_parameter_code.label("parameter_code"),
+                SheetLayer.layer_key.label("layer_key"),
+                null_event_id.label("event_id"),
+                null_payload_text.label("payload_text"),
+            )
+            .select_from(LayerCondition)
+            .join(SheetLayer, SheetLayer.id == LayerCondition.layer_id)
+            .where(
+                SheetLayer.project_id == project_id,
+                LayerCondition.id.in_(condition_ids),
+            )
+        )
+        current_coordinate_rows = (
+            select(
+                literal("current_coordinate").label("evidence_kind"),
+                LayerCondition.id.label("condition_id"),
+                Parameter.code.label("parameter_code"),
+                SheetLayer.layer_key.label("layer_key"),
+                null_event_id.label("event_id"),
+                null_payload_text.label("payload_text"),
+            )
+            .select_from(LayerCondition)
+            .join(SheetLayer, SheetLayer.id == LayerCondition.layer_id)
+            .join(Parameter, Parameter.code.in_(parameter_codes))
+            .where(
+                SheetLayer.project_id == project_id,
+                tuple_(LayerCondition.id, Parameter.code).in_(normalized),
+            )
+        )
+
+        cell_ranked = (
+            select(
+                ChangeEvent.condition_id.label("condition_id"),
+                ChangeEvent.parameter_code.label("parameter_code"),
+                ChangeEvent.layer_key.label("layer_key"),
+                ChangeEvent.id.label("event_id"),
+                func.row_number()
+                .over(
+                    partition_by=(ChangeEvent.condition_id, ChangeEvent.parameter_code),
+                    order_by=ChangeEvent.id.desc(),
+                )
+                .label("row_number"),
+            )
+            .where(
+                ChangeEvent.project_id == project_id,
+                ChangeEvent.event_type == "cell_update",
+                tuple_(ChangeEvent.condition_id, ChangeEvent.parameter_code).in_(normalized),
+            )
+            .subquery()
+        )
+        cell_event_rows = select(
+            literal("cell_event").label("evidence_kind"),
+            cell_ranked.c.condition_id,
+            cell_ranked.c.parameter_code,
+            cell_ranked.c.layer_key,
+            cell_ranked.c.event_id,
+            null_payload_text.label("payload_text"),
+        ).where(cell_ranked.c.row_number == 1)
+
+        remove_condition_id = func.coalesce(
+            ChangeEvent.condition_id,
+            ChangeEvent.payload["condition_id"].as_integer(),
+        )
+        remove_layer_key = func.coalesce(
+            ChangeEvent.layer_key,
+            ChangeEvent.payload["layer_key"].as_string(),
+        )
+        remove_ranked = (
+            select(
+                remove_condition_id.label("condition_id"),
+                remove_layer_key.label("layer_key"),
+                ChangeEvent.id.label("event_id"),
+                sa_cast(ChangeEvent.payload, String).label("payload_text"),
+                func.row_number()
+                .over(
+                    partition_by=remove_condition_id,
+                    order_by=ChangeEvent.id.desc(),
+                )
+                .label("row_number"),
+            )
+            .where(
+                ChangeEvent.project_id == project_id,
+                ChangeEvent.event_type == "condition_remove",
+                remove_condition_id.in_(condition_ids),
+            )
+            .subquery()
+        )
+        remove_event_rows = select(
+            literal("remove_event").label("evidence_kind"),
+            remove_ranked.c.condition_id,
+            null_parameter_code.label("parameter_code"),
+            remove_ranked.c.layer_key,
+            remove_ranked.c.event_id,
+            remove_ranked.c.payload_text,
+        ).where(remove_ranked.c.row_number == 1)
+
+        evidence = (
+            await self.session.execute(
+                union_all(
+                    current_condition_rows,
+                    current_coordinate_rows,
+                    cell_event_rows,
+                    remove_event_rows,
+                )
+            )
+        ).mappings()
+
+        current_layers: dict[int, str | None] = {}
+        current_coordinates: set[HistoryCellCoordinateKey] = set()
+        cell_events: dict[HistoryCellCoordinateKey, tuple[int, str | None]] = {}
+        remove_events: dict[int, tuple[int, str | None, Mapping[str, object]]] = {}
+        for row in evidence:
+            kind = str(row["evidence_kind"])
+            condition_id = int(row["condition_id"])
+            layer_value = row["layer_key"]
+            layer_key = str(layer_value) if layer_value is not None else None
+            if kind == "current_condition":
+                current_layers[condition_id] = layer_key
+                continue
+            if kind == "current_coordinate":
+                current_coordinates.add((condition_id, str(row["parameter_code"])))
+                continue
+            if kind == "cell_event":
+                cell_events[(condition_id, str(row["parameter_code"]))] = (
+                    int(row["event_id"]),
+                    layer_key,
+                )
+                continue
+            payload: Mapping[str, object] = {}
+            payload_text = row["payload_text"]
+            if isinstance(payload_text, str):
+                try:
+                    decoded = json.loads(payload_text)
+                except json.JSONDecodeError:
+                    decoded = None
+                if isinstance(decoded, Mapping):
+                    payload = typing_cast(Mapping[str, object], decoded)
+            remove_events[condition_id] = (int(row["event_id"]), layer_key, payload)
+
+        proofs: dict[HistoryCellCoordinateKey, HistoryCellCoordinateProof] = {}
+        for condition_id, parameter_code in normalized:
+            key = (condition_id, parameter_code)
+            cell_event = cell_events.get(key)
+            if condition_id in current_layers:
+                if key not in current_coordinates:
+                    continue
+                latest_event_id = cell_event[0] if cell_event is not None else None
+                proofs[key] = HistoryCellCoordinateProof(
+                    state="current",
+                    project_id=project_id,
+                    condition_id=condition_id,
+                    parameter_code=parameter_code,
+                    layer_key=current_layers[condition_id],
+                    current_event_id=latest_event_id,
+                    remove_event_id=None,
+                    latest_event_id=latest_event_id,
+                )
+                continue
+
+            remove_event = remove_events.get(condition_id)
+            remove_proves_parameter = False
+            if remove_event is not None:
+                remove_proves_parameter = _snapshot_contains_parameter(
+                    remove_event[2].get("snapshot"), parameter_code
+                )
+            if cell_event is None and not remove_proves_parameter:
+                continue
+            proofs[key] = HistoryCellCoordinateProof(
+                state="deleted",
                 project_id=project_id,
                 condition_id=condition_id,
                 parameter_code=parameter_code,
-                layer_key=current_row["layer_key"],
-                current_event_id=latest_event.event_id if latest_event is not None else None,
-                remove_event_id=None,
-                latest_event_id=latest_event.event_id if latest_event is not None else None,
+                layer_key=(
+                    remove_event[1]
+                    if remove_proves_parameter and remove_event is not None
+                    else cell_event[1]
+                    if cell_event is not None
+                    else None
+                ),
+                current_event_id=None,
+                remove_event_id=(
+                    remove_event[0]
+                    if remove_proves_parameter and remove_event is not None
+                    else None
+                ),
+                latest_event_id=cell_event[0] if cell_event is not None else None,
             )
-
-        removed_event = await self._latest_condition_remove_event(
-            project_id, condition_id, parameter_code
-        )
-        if removed_event is None:
-            return None
-        if not _snapshot_contains_parameter(removed_event.detail, parameter_code):
-            return None
-        latest_event = await self._latest_cell_event(project_id, condition_id, parameter_code)
-        layer_key = (
-            removed_event.layer_key
-            if removed_event is not None and removed_event.layer_key is not None
-            else (latest_event.layer_key if latest_event is not None else None)
-        )
-        return HistoryCellCoordinateProof(
-            state="deleted",
-            project_id=project_id,
-            condition_id=condition_id,
-            parameter_code=parameter_code,
-            layer_key=layer_key,
-            current_event_id=None,
-            remove_event_id=removed_event.event_id if removed_event is not None else None,
-            latest_event_id=latest_event.event_id if latest_event is not None else None,
-        )
+        return proofs
 
     async def _count_batch_members(
         self,
@@ -486,7 +810,16 @@ class HistoryRepository:
         with_payload: bool = False,
     ):
         columns = _DETAIL_EVENT_COLUMNS if with_payload else _SUMMARY_EVENT_COLUMNS
-        stmt = select(*columns).where(ChangeEvent.project_id == project_id)
+        stmt = select(*columns).select_from(ChangeEvent)
+        if with_payload:
+            stmt = stmt.add_columns(
+                SheetLayer.sort_order.label("layer_sort_order")
+            ).outerjoin(
+                SheetLayer,
+                (SheetLayer.project_id == ChangeEvent.project_id)
+                & (SheetLayer.layer_key == ChangeEvent.layer_key),
+            )
+        stmt = stmt.where(ChangeEvent.project_id == project_id)
         if snapshot_max_event_id is not None:
             stmt = stmt.where(ChangeEvent.id <= snapshot_max_event_id)
         return stmt
@@ -647,23 +980,32 @@ class HistoryRepository:
         stmt,
         member_filters: HistoryMemberFilterScope | None,
     ):
+        return stmt.where(self._member_filter_expression(member_filters))
+
+    @staticmethod
+    def _member_filter_expression(
+        member_filters: HistoryMemberFilterScope | None,
+    ):
         if member_filters is None:
-            return stmt
+            return true()
+        predicates = []
         if member_filters.layer_keys:
-            stmt = stmt.where(ChangeEvent.layer_key.in_(member_filters.layer_keys))
+            predicates.append(ChangeEvent.layer_key.in_(member_filters.layer_keys))
         if member_filters.event_types:
-            stmt = stmt.where(ChangeEvent.event_type.in_(member_filters.event_types))
+            predicates.append(ChangeEvent.event_type.in_(member_filters.event_types))
         if member_filters.actors:
-            stmt = stmt.where(ChangeEvent.actor.in_(member_filters.actors))
+            predicates.append(ChangeEvent.actor.in_(member_filters.actors))
         if member_filters.origins:
-            stmt = stmt.where(ChangeEvent.origin.in_(member_filters.origins))
+            predicates.append(ChangeEvent.origin.in_(member_filters.origins))
         if member_filters.source_project_ids:
-            stmt = stmt.where(ChangeEvent.source_project_id.in_(member_filters.source_project_ids))
+            predicates.append(
+                ChangeEvent.source_project_id.in_(member_filters.source_project_ids)
+            )
         if member_filters.created_from is not None:
-            stmt = stmt.where(ChangeEvent.created_at >= member_filters.created_from)
+            predicates.append(ChangeEvent.created_at >= member_filters.created_from)
         if member_filters.created_to is not None:
-            stmt = stmt.where(ChangeEvent.created_at < member_filters.created_to)
-        return stmt
+            predicates.append(ChangeEvent.created_at < member_filters.created_to)
+        return and_(*predicates) if predicates else true()
 
     @staticmethod
     def _scalar_int(result) -> int | None:
@@ -721,6 +1063,11 @@ def _event_row_from_mapping(mapping: Mapping[str, Any]) -> HistoryEventRow:
             else (origin.value if hasattr(origin, "value") else str(origin))
         ),
         layer_key=layer_key,
+        layer_sort_order=(
+            int(mapping["layer_sort_order"])
+            if mapping.get("layer_sort_order") is not None
+            else None
+        ),
         condition_id=condition_id,
         condition_index=None,
         source_condition_id=None,

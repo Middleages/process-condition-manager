@@ -38,7 +38,9 @@ from app.features.history.projection import (
     project_timeline_summary,
 )
 from app.features.history.repository import (
-    HistoryCellCoordinateProof,
+    CAPTURE_EVENT_ROW_LIMIT,
+    HistoryBatchDescriptor,
+    HistoryCellCoordinateKey,
     HistoryRepository,
     HistoryTimelineGroupRow,
 )
@@ -79,8 +81,6 @@ _SUMMARY_BY_EVENT_TYPE = {
     ChangeEventType.CONDITION_REMOVE.value: "Condition removed",
     ChangeEventType.POR_CHANGE.value: "POR changed",
 }
-_MAX_BATCH_CLASSIFICATION_ROWS = 1000
-
 DetailDomain = Literal["cell", "capture", "not_applicable"]
 
 
@@ -157,30 +157,36 @@ class HistoryService:
             else None
         )
 
-        if not await self.repo.project_exists(project_id):
-            raise NotFoundError(f"project not found: {project_id}")
-        total = await self.repo.count_batch_members(project_id, batch_id)
-        if total == 0:
-            raise NotFoundError(f"event batch not found: {batch_id}")
-        if total > _MAX_BATCH_CLASSIFICATION_ROWS:
-            raise ConflictError(
-                "event batch is too large to classify safely",
-                code="invalid_event_batch",
-            )
-
-        # Classification must observe the whole filtered batch before pagination so a
-        # mixed cell/capture batch can never look valid merely because it crossed a page.
-        rows = await self.repo.load_batch_members(
+        descriptor = await self.repo.describe_batch(
             project_id,
             batch_id,
             member_filters=scope.member_filters,
-            limit=min(_MAX_BATCH_CLASSIFICATION_ROWS, max(total, query.limit) + 1),
         )
-        domain = _detail_domain(rows)
+        if not descriptor.project_exists:
+            raise NotFoundError(f"project not found: {project_id}")
+        if not descriptor.batch_exists:
+            raise NotFoundError(f"event batch not found: {batch_id}")
+
+        # The aggregate descriptor classifies the complete filtered batch without
+        # loading payloads, so pagination can never hide a mixed detail domain.
+        domain = _detail_domain(descriptor)
         _ensure_detail_cursor_order(cursor, domain)
         if domain == "cell":
-            return await self._cell_batch_detail(scope, rows, cursor, query.limit)
+            rows = await self.repo.load_cell_batch_page(
+                project_id,
+                batch_id,
+                member_filters=scope.member_filters,
+                before_event_id=cursor.last_event_id if cursor is not None else None,
+                limit=query.limit + 1,
+            )
+            return await self._cell_batch_detail(scope, rows, query.limit)
         if domain == "capture":
+            rows = await self.repo.load_capture_batch_rows(
+                project_id,
+                batch_id,
+                member_filters=scope.member_filters,
+                limit=CAPTURE_EVENT_ROW_LIMIT,
+            )
             return await self._capture_batch_detail(scope, rows, cursor, query.limit)
         return HistoryDetailOut(
             order_kind="event_desc",
@@ -193,22 +199,13 @@ class HistoryService:
         self,
         scope: HistoryDetailScope,
         rows: tuple[HistoryEventRow, ...],
-        cursor: HistoryDetailCursor | None,
         limit: int,
     ) -> HistoryDetailOut:
-        cell_rows = tuple(row for row in rows if row.event_type in _DETAIL_EVENT_TYPES)
-        proven_rows = await self._apply_coordinate_proofs(scope.project_id, cell_rows)
-        before_event_id = cursor.last_event_id if cursor is not None else None
-        candidates = tuple(
-            row
-            for row in sorted(proven_rows, key=lambda item: item.event_id, reverse=True)
-            if before_event_id is None or row.event_id < before_event_id
-        )
-        page = candidates[:limit]
+        page = await self._apply_coordinate_proofs(scope.project_id, rows[:limit])
         projection = project_cell_detail(page)
         row_by_id = {row.event_id: row for row in page}
         next_cursor = None
-        if len(candidates) > limit and page:
+        if len(rows) > limit and page:
             next_cursor = encode_history_detail_cursor(
                 HistoryDetailCursor(
                     version=1,
@@ -275,18 +272,23 @@ class HistoryService:
     async def _apply_coordinate_proofs(
         self, project_id: int, rows: tuple[HistoryEventRow, ...]
     ) -> tuple[HistoryEventRow, ...]:
-        proofs: dict[tuple[int, str], HistoryCellCoordinateProof | None] = {}
+        coordinates: tuple[HistoryCellCoordinateKey, ...] = tuple(
+            sorted(
+                {
+                    (row.condition_id, row.parameter_code)
+                    for row in rows
+                    if row.condition_id is not None and row.parameter_code is not None
+                }
+            )
+        )
+        proofs = await self.repo.prove_cell_coordinates(project_id, coordinates)
         proven: list[HistoryEventRow] = []
         for row in rows:
             if row.condition_id is None or row.parameter_code is None:
                 proven.append(replace(row, deleted=True))
                 continue
             key = (row.condition_id, row.parameter_code)
-            if key not in proofs:
-                proofs[key] = await self.repo.prove_cell_coordinate(
-                    project_id, row.condition_id, row.parameter_code
-                )
-            proof = proofs[key]
+            proof = proofs.get(key)
             deleted = proof is None or proof.deleted
             layer_key = proof.layer_key if proof is not None else None
             proven.append(
@@ -301,27 +303,25 @@ class HistoryService:
     async def _capture_condition_states(
         self, project_id: int, items: tuple[BackboneCaptureItem, ...]
     ) -> dict[int, HistoryJumpState]:
-        states: dict[int, HistoryJumpState] = {}
-        proofs: dict[tuple[int, str], HistoryCellCoordinateProof | None] = {}
+        # Jump state is condition-scoped. Prove one deterministic representative
+        # coordinate per target rather than every flattened capture cell.
+        representatives: dict[int, HistoryCellCoordinateKey] = {}
         for item in items:
-            key = (item.target_condition_id, item.parameter_code)
-            if key not in proofs:
-                proofs[key] = await self.repo.prove_cell_coordinate(
-                    project_id, item.target_condition_id, item.parameter_code
-                )
-            proof = proofs[key]
-            item_state = (
+            representatives.setdefault(
+                item.target_condition_id,
+                (item.target_condition_id, item.parameter_code),
+            )
+        proofs = await self.repo.prove_cell_coordinates(
+            project_id, tuple(representatives.values())
+        )
+        return {
+            condition_id: (
                 HistoryJumpState.PRESENT
-                if proof is not None and not proof.deleted
+                if (proof := proofs.get(key)) is not None and not proof.deleted
                 else HistoryJumpState.DELETED
             )
-            previous = states.get(item.target_condition_id)
-            states[item.target_condition_id] = (
-                HistoryJumpState.DELETED
-                if previous is HistoryJumpState.DELETED or item_state is HistoryJumpState.DELETED
-                else HistoryJumpState.PRESENT
-            )
-        return states
+            for condition_id, key in representatives.items()
+        }
 
     async def get_cell_history(
         self, project_id: int, query: HistoryCellHistoryQueryIn
@@ -475,9 +475,9 @@ def _timeline_item(
     )
 
 
-def _detail_domain(rows: tuple[HistoryEventRow, ...]) -> DetailDomain:
-    has_cell = any(row.event_type in _DETAIL_EVENT_TYPES for row in rows)
-    has_capture = any(row.event_type in _CAPTURE_EVENT_TYPES for row in rows)
+def _detail_domain(descriptor: HistoryBatchDescriptor) -> DetailDomain:
+    has_cell = descriptor.cell_event_count > 0
+    has_capture = descriptor.capture_event_count > 0
     if has_cell and has_capture:
         raise ConflictError("event batch mixes detail domains", code="invalid_event_batch")
     if has_cell:

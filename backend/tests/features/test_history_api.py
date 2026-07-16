@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from typing import Any
 
 import pytest
 from fastapi import Request
 from httpx import AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import event
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.core.auth import get_current_user
 from app.core.errors import AppError
@@ -31,10 +34,13 @@ from app.features.history.cursor import (
 )
 from app.features.history.projection import HistoryEventRow
 from app.features.history.repository import (
+    HistoryBatchDescriptor,
+    HistoryCellCoordinateKey,
     HistoryCellCoordinateProof,
     HistoryRepository,
 )
 from app.main import app
+from app.models.parameter import Parameter
 from app.models.project import (
     CellValue,
     ChangeEvent,
@@ -164,9 +170,97 @@ def _capture_detail() -> list[dict[str, Any]]:
     ]
 
 
+@contextmanager
+def _record_sql(engine: AsyncEngine) -> Iterator[list[str]]:
+    statements: list[str] = []
+
+    def _capture_sql(
+        _conn: object,
+        _cursor: object,
+        statement: str,
+        _parameters: object,
+        _context: object,
+        _executemany: bool,
+    ) -> None:
+        statements.append(statement)
+
+    event.listen(engine.sync_engine, "before_cursor_execute", _capture_sql)
+    try:
+        yield statements
+    finally:
+        event.remove(engine.sync_engine, "before_cursor_execute", _capture_sql)
+
+
+async def _seed_valid_capture_batch(session: AsyncSession) -> tuple[int, str]:
+    session.add(
+        Parameter(
+            code="alpha",
+            display_name="Alpha",
+            value_type=ValueType.TEXT,
+            is_active=False,
+        )
+    )
+    project = Project(
+        line_id="L-CAPTURE",
+        process_id="PROC_CAPTURE",
+        part_id="PART-CAPTURE",
+        name="Capture history project",
+        profile=ProjectProfile(
+            process_name="Capture history project",
+            device_type_code="DEFAULT",
+            project_category_code="DEFAULT",
+        ),
+    )
+    layer = SheetLayer(
+        layer_key="L-CAPTURE::PROC_CAPTURE::010::ACT",
+        step_seq="010",
+        layer_id="ACT",
+        sort_order=3,
+    )
+    target_condition = LayerCondition(
+        label="Capture target",
+        condition_index=0,
+        is_por=True,
+    )
+    layer.conditions.append(target_condition)
+    project.layers.append(layer)
+    session.add(project)
+    await session.flush()
+
+    batch_id = "valid-v2-capture-batch"
+    detail = _capture_detail()
+    detail[0]["target_condition_id"] = target_condition.id
+    session.add(
+        ChangeEvent(
+            project_id=project.id,
+            event_type=ChangeEventType.BACKBONE_COPY,
+            actor="capture-operator",
+            batch_id=batch_id,
+            origin="backbone",
+            layer_key=layer.layer_key,
+            payload={
+                "payload_schema_version": 2,
+                "detail": detail,
+                "capture": _capture_snapshot(),
+            },
+            created_at=datetime(2026, 7, 1, 0, 2, tzinfo=UTC),
+        )
+    )
+    await session.commit()
+    return project.id, batch_id
+
+
 async def _seed_current_and_deleted_cells(
     session: AsyncSession,
 ) -> tuple[int, int, int]:
+    session.add(
+        Parameter(
+            code="P1",
+            display_name="P1",
+            value_type=ValueType.TEXT,
+            is_active=False,
+        )
+    )
     project = Project(
         line_id="L-CELL",
         process_id="PROC_CELL_HISTORY",
@@ -484,7 +578,11 @@ async def test_timeline_is_lazy_and_emits_one_scrubbed_summary_log(
         del args, kwargs
         raise AssertionError("timeline attempted a detail payload read")
 
-    monkeypatch.setattr(HistoryRepository, "load_batch_members", _detail_read_must_not_run)
+    monkeypatch.setattr(HistoryRepository, "describe_batch", _detail_read_must_not_run)
+    monkeypatch.setattr(HistoryRepository, "load_cell_batch_page", _detail_read_must_not_run)
+    monkeypatch.setattr(
+        HistoryRepository, "load_capture_batch_rows", _detail_read_must_not_run
+    )
     caplog.set_level(logging.INFO, logger="app.features.history.router")
 
     response = await db_client.get(
@@ -592,7 +690,7 @@ async def test_cell_batch_pages_descending_and_proves_current_and_deleted_target
         del args, kwargs
         raise AssertionError("cursor order mismatch reached coordinate proof")
 
-    monkeypatch.setattr(HistoryRepository, "prove_cell_coordinate", _proof_must_not_run)
+    monkeypatch.setattr(HistoryRepository, "prove_cell_coordinates", _proof_must_not_run)
     mismatch = await db_client.get(
         f"/api/projects/{project_id}/event-batches/current-cell-batch",
         params={"scope": current_scope_value, "cursor": capture_cursor},
@@ -610,6 +708,25 @@ async def test_cell_batch_pages_descending_and_proves_current_and_deleted_target
         },
     )
     assert cell_cursor_mismatch.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_cell_batch_detail_uses_exactly_three_sql_statements(
+    db_client: AsyncClient,
+    db_session: AsyncSession,
+    db_engine: AsyncEngine,
+) -> None:
+    project_id, _, _ = await _seed_current_and_deleted_cells(db_session)
+
+    with _record_sql(db_engine) as statements:
+        response = await db_client.get(
+            f"/api/projects/{project_id}/event-batches/current-cell-batch",
+            params={"scope": _scope(project_id, "current-cell-batch")},
+        )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["items"][0]["jump_target"]["jump_status"] == "available"
+    assert len(statements) == 3
 
 
 @pytest.mark.asyncio
@@ -725,6 +842,53 @@ async def test_batch_detail_rejects_mixed_and_corrupt_and_marks_legacy_or_irrele
 
 
 @pytest.mark.asyncio
+async def test_batch_detail_missing_project_or_batch_uses_one_sql_statement(
+    db_client: AsyncClient,
+    db_session: AsyncSession,
+    db_engine: AsyncEngine,
+) -> None:
+    project_id = await _seed_history_project(db_session)
+
+    with _record_sql(db_engine) as missing_project_statements:
+        missing_project = await db_client.get(
+            "/api/projects/999999/event-batches/missing-batch",
+            params={"scope": _scope(999999, "missing-batch")},
+        )
+    with _record_sql(db_engine) as missing_batch_statements:
+        missing_batch = await db_client.get(
+            f"/api/projects/{project_id}/event-batches/missing-batch",
+            params={"scope": _scope(project_id, "missing-batch")},
+        )
+
+    assert missing_project.status_code == 404
+    assert missing_batch.status_code == 404
+    assert len(missing_project_statements) == 1
+    assert len(missing_batch_statements) == 1
+
+
+@pytest.mark.asyncio
+async def test_valid_v2_capture_detail_uses_three_sql_statements_and_exact_layer_sort(
+    db_client: AsyncClient,
+    db_session: AsyncSession,
+    db_engine: AsyncEngine,
+) -> None:
+    project_id, batch_id = await _seed_valid_capture_batch(db_session)
+
+    with _record_sql(db_engine) as statements:
+        response = await db_client.get(
+            f"/api/projects/{project_id}/event-batches/{batch_id}",
+            params={"scope": _scope(project_id, batch_id)},
+        )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["detail_status"] == "available"
+    assert body["items"][0]["capture_tuple"]["target_layer_sort"] == 3
+    assert body["items"][0]["jump_target"]["jump_status"] == "available"
+    assert len(statements) == 3
+
+
+@pytest.mark.asyncio
 async def test_capture_detail_structurally_pages_complete_repository_rows(
     db_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -747,13 +911,24 @@ async def test_capture_detail_structurally_pages_complete_repository_rows(
     )
     calls = {"proof": 0}
 
-    async def _project_exists(self: HistoryRepository, requested_project_id: int) -> bool:
-        del self
-        return requested_project_id == project_id
-
-    async def _count(self: HistoryRepository, *args: object, **kwargs: object) -> int:
-        del self, args, kwargs
-        return 1
+    async def _describe(
+        self: HistoryRepository,
+        requested_project_id: int,
+        requested_batch_id: str,
+        **kwargs: object,
+    ) -> HistoryBatchDescriptor:
+        del self, kwargs
+        exists = requested_project_id == project_id and requested_batch_id == batch_id
+        return HistoryBatchDescriptor(
+            project_id=requested_project_id,
+            batch_id=requested_batch_id,
+            project_exists=requested_project_id == project_id,
+            batch_exists=exists,
+            total_event_count=1 if exists else 0,
+            cell_event_count=0,
+            capture_event_count=1 if exists else 0,
+            other_event_count=0,
+        )
 
     async def _load(
         self: HistoryRepository, *args: object, **kwargs: object
@@ -764,26 +939,27 @@ async def test_capture_detail_structurally_pages_complete_repository_rows(
     async def _proof(
         self: HistoryRepository,
         requested_project_id: int,
-        condition_id: int,
-        parameter_code: str,
-    ) -> HistoryCellCoordinateProof:
-        del self, parameter_code
+        coordinates: Sequence[HistoryCellCoordinateKey],
+    ) -> dict[HistoryCellCoordinateKey, HistoryCellCoordinateProof]:
+        del self
         calls["proof"] += 1
-        return HistoryCellCoordinateProof(
-            state="deleted",
-            project_id=requested_project_id,
-            condition_id=condition_id,
-            parameter_code="alpha",
-            layer_key="TARGET-L1",
-            current_event_id=None,
-            remove_event_id=99,
-            latest_event_id=10,
-        )
+        return {
+            coordinate: HistoryCellCoordinateProof(
+                state="deleted",
+                project_id=requested_project_id,
+                condition_id=coordinate[0],
+                parameter_code=coordinate[1],
+                layer_key="TARGET-L1",
+                current_event_id=None,
+                remove_event_id=99,
+                latest_event_id=10,
+            )
+            for coordinate in coordinates
+        }
 
-    monkeypatch.setattr(HistoryRepository, "project_exists", _project_exists)
-    monkeypatch.setattr(HistoryRepository, "count_batch_members", _count)
-    monkeypatch.setattr(HistoryRepository, "load_batch_members", _load)
-    monkeypatch.setattr(HistoryRepository, "prove_cell_coordinate", _proof)
+    monkeypatch.setattr(HistoryRepository, "describe_batch", _describe)
+    monkeypatch.setattr(HistoryRepository, "load_capture_batch_rows", _load)
+    monkeypatch.setattr(HistoryRepository, "prove_cell_coordinates", _proof)
 
     wrong_order = encode_history_detail_cursor(
         HistoryDetailCursor(
