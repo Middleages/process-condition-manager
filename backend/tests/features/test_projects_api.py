@@ -350,6 +350,12 @@ async def test_backbone_copy_records_event_with_counts(
             },
         )
     ).json()
+    await _seed_backbone_cells(
+        db_session,
+        backbone["id"],
+        backbone["layers"][0]["layer_key"],
+        {"spin_speed": "1200", "pr_type": "A"},
+    )
     target = await db_client.post(
         "/api/projects",
         json={

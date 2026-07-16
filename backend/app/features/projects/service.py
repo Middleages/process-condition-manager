@@ -297,6 +297,7 @@ class ProjectService:
             status=ProjectStatus.DRAFT,
             profile=ProjectProfile(process_name=process_name, **final_values),
         )
+        project_layers: list[SheetLayer] = []
         for index, layer_info in enumerate(target_layers, start=1):
             layer = _sheet_layer_from_ingest(layer_info, index)
             match = match_by_target[layer_info.key]
@@ -309,6 +310,7 @@ class ProjectService:
                 layer.source_layer_key = source_layer.layer_key
                 layer.backbone_snapshot = serialize_backbone_snapshot(captured.snapshot)
                 _apply_snapshots(captured.snapshot.conditions, layer)
+            project_layers.append(layer)
             project.layers.append(layer)
 
         profile_final = {"process_name": process_name, **final_values}
@@ -329,6 +331,7 @@ class ProjectService:
                 payload={
                     "batch_id": batch_id,
                     "captured_at": format_captured_at(captured_at),
+                    "payload_schema_version": 2,
                     "identity": {
                         "line_id": line_id,
                         "process_id": process_id,
@@ -344,7 +347,7 @@ class ProjectService:
         )
         if backbone is not None:
             for target_layer, match in zip(
-                project.layers, match_result.matches, strict=True
+                project_layers, match_result.matches, strict=True
             ):
                 if match.source_layer_key is None:
                     continue
