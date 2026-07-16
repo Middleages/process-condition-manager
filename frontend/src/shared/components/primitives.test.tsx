@@ -92,27 +92,37 @@ describe('shared primitives', () => {
     expect(html).toContain('aria-invalid="true"')
   })
 
-  it('renders badge text and a page-level heading with actions', () => {
+  it('keeps route focus on the h1 instead of the entire PageHeader surface', () => {
     const html = renderToStaticMarkup(
       <PageHeader
-        data-page-title
-        tabIndex={-1}
         eyebrow={<Badge tone="draft">초안</Badge>}
         title="프로젝트"
         description="조건표 작업을 선택하세요."
         actions={<Button>프로젝트 생성</Button>}
       />,
     )
-    expect(html).toContain('<h1')
+    const headerTag = html.match(/<header[^>]*>/)?.[0]
+    const headingTag = html.match(/<h1[^>]*>/)?.[0]
+
+    expect(headerTag).toBeDefined()
+    expect(headerTag).toContain('gap-3')
+    expect(headerTag).toContain('pb-4')
+    expect(headerTag).not.toContain('data-page-title')
+    expect(headerTag).not.toContain('tabindex')
+    expect(headerTag).not.toContain('focus:outline')
+    expect(headerTag).not.toContain('rounded-sm')
+
+    expect(headingTag).toBeDefined()
+    expect(headingTag).toContain('data-page-title="true"')
+    expect(headingTag).toContain('tabindex="-1"')
+    expect(headingTag).toContain('rounded-sm')
+    expect(headingTag).toContain('focus:outline-2')
+    expect(headingTag).toContain('focus:outline-offset-2')
+    expect(headingTag).toContain('focus:outline-brand-700')
+
     expect(html).toContain('초안')
     expect(html).toContain('프로젝트')
     expect(html).toContain('조건표 작업을 선택하세요.')
     expect(html).toContain('프로젝트 생성')
-    expect(html).toContain('data-page-title="true"')
-    expect(html).toContain('tabindex="-1"')
-    expect(html).toContain('rounded-sm')
-    expect(html).toContain('focus:outline-2')
-    expect(html).toContain('focus:outline-offset-2')
-    expect(html).toContain('focus:outline-brand-700')
   })
 })

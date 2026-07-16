@@ -14,6 +14,8 @@
   [`docs/superpowers/specs/2026-07-16-project-creation-clarity-design.md`](./docs/superpowers/specs/2026-07-16-project-creation-clarity-design.md)
 - **Project browse clarity specification:**
   [`docs/superpowers/specs/2026-07-16-project-browse-clarity-design.md`](./docs/superpowers/specs/2026-07-16-project-browse-clarity-design.md)
+- **App Shell and PageHeader clarity specification:**
+  [`docs/superpowers/specs/2026-07-16-app-shell-page-header-clarity-design.md`](./docs/superpowers/specs/2026-07-16-app-shell-page-header-clarity-design.md)
 - **Evidence reviewed:**
   - `plan/05-ui-wireframe.md` — 화면 지도와 업무 흐름
   - `plan/phase-2-tasks.md` — 현재 편집기 기능·제약과 Phase 2 완료 근거
@@ -28,6 +30,7 @@
   - 2026-07-14 사용자 승인: 고정 Project Profile / 공유 ChoiceSet / searchable choice
   - 2026-07-16 사용자 승인: A — 작업 집중형 3단계 프로젝트 생성 명료화
   - 2026-07-16 사용자 승인: A — 핵심정보 우선 프로젝트 목록·상세 명료화
+  - 2026-07-16 사용자 승인: A — 실제 주 제목에 route focus
 
 이 문서는 PCM UI/UX와 디자인 시스템의 정본이다. 구현 중 충돌이 발견되면 화면별
 임시 예외를 늘리기 전에 이 문서와 상세 스펙을 갱신한다.
@@ -153,6 +156,7 @@
   - P1-A 핵심정보 우선 탐색: 조밀한 filter 도구, 핵심 Profile 상시 노출, 고급 Profile 기본 접힘
   - W1 전체 화면 단계형 프로젝트 생성
   - W1-A 작업 집중형 생성: 얇은 진행 표시, 단계당 한 결정, 마지막 단계의 매칭 검토/필수 정보 분리
+  - H1-A route focus: 공통 PageHeader의 실제 주 제목만 focus하고 전체 header surface는 focus하지 않음
   - M1 목록 + 오른쪽 편집 드로어
   - 고정 Project Profile definition grid + 잠금 기반 오른쪽 편집 드로어
   - ChoiceSet 목록 + option 전체 페이지 관리

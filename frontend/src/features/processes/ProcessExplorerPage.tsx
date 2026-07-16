@@ -51,8 +51,6 @@ export function ProcessExplorerPage() {
   return (
     <section className="space-y-5">
       <PageHeader
-        data-page-title
-        tabIndex={-1}
         eyebrow="Process Catalog"
         title="공정 카탈로그"
         description="적재 Process 구조를 검색하고 조건표 유무를 확인한 뒤 프로젝트 작업으로 이동합니다."

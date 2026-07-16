@@ -17,8 +17,6 @@ export function ProjectCreatePage() {
             프로젝트 목록
           </Link>
         }
-        data-page-title
-        tabIndex={-1}
         eyebrow="프로젝트"
         title="새 프로젝트 만들기"
         description="Process와 백본을 차례로 확인하고 새 조건표를 만듭니다."

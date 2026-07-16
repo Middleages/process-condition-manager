@@ -544,8 +544,6 @@ export function ChoiceSetDetailRouteHeader({
         선택지 집합 목록
       </Link>
       <PageHeader
-        data-page-title
-        tabIndex={-1}
         eyebrow={
           <span className="font-mono">
             {summary ? `${summary.code} · v${summary.version}` : setCode}

@@ -30,8 +30,6 @@ export function ProjectDetailPage() {
   return (
     <section className="mx-auto w-full max-w-[1600px] space-y-5">
       <PageHeader
-        data-page-title
-        tabIndex={-1}
         eyebrow={
           projectQuery.data ? (
             <span className="inline-flex items-center gap-2">

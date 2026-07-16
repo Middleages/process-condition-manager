@@ -129,8 +129,6 @@ export function ProjectListPage() {
   return (
     <section className="mx-auto w-full max-w-[1600px] space-y-5">
       <PageHeader
-        data-page-title
-        tabIndex={-1}
         title="프로젝트"
         description="프로젝트를 검색하고 조건표 작업으로 이동합니다."
         actions={

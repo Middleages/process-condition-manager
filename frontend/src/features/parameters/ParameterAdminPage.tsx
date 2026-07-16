@@ -100,8 +100,6 @@ export function ParameterAdminPage() {
     <section className="space-y-5">
       <ParameterSectionNav />
       <PageHeader
-        data-page-title
-        tabIndex={-1}
         title="파라미터 레지스트리"
         description="파라미터를 검색하고 목록을 유지한 채 옆에서 생성·수정합니다."
         actions={

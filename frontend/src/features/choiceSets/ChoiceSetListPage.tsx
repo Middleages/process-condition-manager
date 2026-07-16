@@ -125,8 +125,6 @@ export function ChoiceSetListRouteHeader({
 }) {
   return (
     <PageHeader
-      data-page-title
-      tabIndex={-1}
       title="선택지 집합"
       description="업무용 선택지를 한 번 정의하고 파라미터와 Project Profile에서 공유합니다."
       actions={
