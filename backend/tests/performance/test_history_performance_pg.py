@@ -1125,21 +1125,50 @@ async def test_history_explain_plans_use_intended_0007_indexes() -> None:
                         ),
                         {"ix_change_event_project_created_id_desc"},
                     ),
-                    "cell": (
-                        _cell_history_statement(
-                            project_id=fixture.project_id,
-                            condition_id=fixture.current_condition_id,
-                            parameter_code=fixture.current_parameter_code,
-                            snapshot_max_event_id=fixture.snapshot_max_event_id,
-                            limit=_CELL_HISTORY_LIMIT,
-                        ),
-                        {"ix_change_event_project_cell_id_desc"},
-                    ),
-                }
-                for label, (statement, expected_indexes) in explain_cases.items():
-                    plan = await _explain_plan(session, statement)
-                    assert "Seq Scan" not in plan.node_types, label
-                    assert expected_indexes.issubset(set(plan.index_names)), (label, plan)
+                ]
+
+                for label, statement, expected_index in plan_cases:
+                    explain = (
+                        await session.execute(
+                            sa.text(
+                                _timeline_explain_sql(
+                                    str(statement.compile(compile_kwargs={"literal_binds": True}))
+                                )
+                            )
+                        )
+                    ).scalar_one()
+                    plan = (
+                        json.loads(explain)[0]["Plan"]
+                        if isinstance(explain, str)
+                        else explain[0]["Plan"]
+                    )
+                    node_types = _collect_plan_node_types(plan)
+                    index_names = _collect_plan_index_names(plan)
+                    assert "Seq Scan" not in node_types, label
+                    assert expected_index in index_names, label
+
+                cell_coordinate = (
+                    await session.execute(
+                        sa.text(
+                            _timeline_explain_sql(
+                                str(
+                                    _cell_coordinate_statement(
+                                        fixture.condition_ids[0], fixture.parameter_codes[0]
+                                    ).compile(compile_kwargs={"literal_binds": True})
+                                )
+                            )
+                        )
+                    )
+                ).scalar_one()
+                cell_plan = (
+                    json.loads(cell_coordinate)[0]["Plan"]
+                    if isinstance(cell_coordinate, str)
+                    else cell_coordinate[0]["Plan"]
+                )
+                cell_index_names = _collect_plan_index_names(cell_plan)
+                cell_node_types = _collect_plan_node_types(cell_plan)
+                assert "Seq Scan" not in cell_node_types
+                assert "uq_cell_condition_param" in cell_index_names
         finally:
             await engine.dispose()
 
