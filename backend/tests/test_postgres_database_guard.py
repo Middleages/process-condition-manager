@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 from pathlib import Path
 from typing import cast
 
@@ -21,6 +22,14 @@ def _pg_fixture_files() -> list[Path]:
     for pattern in _PG_FIXTURE_GLOBS:
         files.update(repo_root.glob(pattern))
     return sorted(files)
+
+
+def _function_source(path: Path, function_name: str) -> str:
+    tree = ast.parse(path.read_text())
+    for node in tree.body:
+        if isinstance(node, (ast.AsyncFunctionDef, ast.FunctionDef)) and node.name == function_name:
+            return ast.get_source_segment(path.read_text(), node) or ""
+    raise AssertionError(f"{path} missing {function_name} definition")
 
 
 def test_pg_fixtures_route_destructive_setup_through_temporary_postgres_database() -> None:
@@ -48,7 +57,28 @@ def test_pg_fixtures_route_destructive_setup_through_temporary_postgres_database
                 f"{path}: raw DROP DATABASE is only allowed in tests.postgres_database"
             )
 
+        if "temporary_postgres_database" in text and "async def pg_engine" in text:
+            pg_engine_source = _function_source(path, "pg_engine")
+            if "run_sync(Base.metadata.drop_all)" in pg_engine_source:
+                offenders.append(
+                    f"{path}: pg_engine fixture must not call "
+                    "Base.metadata.drop_all before helper cleanup"
+                )
+            if "await engine.dispose()" not in pg_engine_source:
+                offenders.append(f"{path}: pg_engine fixture must dispose the engine")
+
     assert not offenders, "unsafe PostgreSQL fixture patterns found:\n" + "\n".join(offenders)
+
+
+def test_sqlite_fixture_drop_all_remains_allowed_for_non_guarded_in_memory_db() -> None:
+    path = (
+        Path(__file__).resolve().parents[2]
+        / "backend/tests/features/test_projects_parameter_registry_repository.py"
+    )
+    sqlite_engine_source = _function_source(path, "sqlite_engine")
+
+    assert "run_sync(Base.metadata.drop_all)" in sqlite_engine_source
+    assert "temporary_postgres_database" not in sqlite_engine_source
 
 
 def test_guarded_database_name_pattern_accepts_only_phase26_child_databases() -> None:

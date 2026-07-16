@@ -43,8 +43,6 @@ async def pg_engine() -> AsyncIterator[AsyncEngine]:
         try:
             yield engine
         finally:
-            async with engine.begin() as conn:
-                await conn.run_sync(Base.metadata.drop_all)
             await engine.dispose()
 
 
