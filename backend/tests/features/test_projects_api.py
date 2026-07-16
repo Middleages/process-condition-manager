@@ -4,6 +4,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.project import (
     CellValue,
@@ -351,7 +352,8 @@ async def test_backbone_copy_records_event_with_counts(
             "backbone_project_id": backbone["id"],
         },
     )
-    target_id = target.json()["id"]
+    target_body = target.json()
+    target_id = target_body["id"]
 
     event = (
         await db_session.execute(
@@ -362,9 +364,93 @@ async def test_backbone_copy_records_event_with_counts(
         )
     ).scalar_one()
     assert event.event_type == ChangeEventType.BACKBONE_COPY
+    assert event.payload["captured_at"].endswith("Z")
+    assert event.payload["target_layer_key"] == target_body["layers"][0]["layer_key"]
+    assert event.payload["source_layer_key"] == backbone["layers"][0]["layer_key"]
     assert event.payload["auto_count"] == 1
     assert event.payload["unmatched_count"] == 1
     assert "batch_id" in event.payload
+    assert event.payload["detail"] == [
+        {
+            "target_condition_id": event.payload["detail"][0]["target_condition_id"],
+            "source_condition_id": event.payload["detail"][0]["source_condition_id"],
+            "label": "base",
+            "condition_index": 1,
+            "is_por": False,
+            "cell_count": 1,
+        }
+    ]
+
+    target_layer = (
+        await db_session.execute(
+            select(SheetLayer)
+            .options(selectinload(SheetLayer.conditions))
+            .where(
+                SheetLayer.project_id == target_id,
+                SheetLayer.layer_key == target_body["layers"][0]["layer_key"],
+            )
+        )
+    ).scalar_one()
+    assert target_layer.backbone_snapshot is not None
+    assert target_layer.backbone_snapshot["source"]["project_id"] == backbone["id"]
+    assert target_layer.backbone_snapshot["source"]["layer_key"] == (
+        backbone["layers"][0]["layer_key"]
+    )
+    assert target_layer.backbone_snapshot["capture_batch_id"] == event.payload["batch_id"]
+    assert target_layer.backbone_snapshot["captured_at"] == event.payload["captured_at"]
+
+
+async def test_backbone_copy_emits_one_event_per_matched_layer(
+    db_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    source = (
+        await db_client.post(
+            "/api/projects",
+            json={
+                **_CORE_PROFILE,
+                "line_id": "L1",
+                "process_id": "PROC_ALPHA",
+                "part_id": "SRC-MULTI",
+                "name": "Source multi",
+            },
+        )
+    ).json()
+
+    target = await db_client.post(
+        "/api/projects",
+        json={
+            **_CORE_PROFILE,
+            "line_id": "L1",
+            "process_id": "PROC_ALPHA",
+            "part_id": "TGT-MULTI",
+            "name": "Target multi",
+            "backbone_project_id": source["id"],
+        },
+    )
+    assert target.status_code == 201, target.text
+    target_body = target.json()
+
+    events = list(
+        (
+            await db_session.execute(
+                select(ChangeEvent)
+                .where(
+                    ChangeEvent.project_id == target.json()["id"],
+                    ChangeEvent.event_type == ChangeEventType.BACKBONE_COPY,
+                )
+                .order_by(ChangeEvent.id)
+            )
+        ).scalars()
+    )
+    assert len(events) == 3
+    assert {event.payload["batch_id"] for event in events} == {events[0].payload["batch_id"]}
+    assert {event.payload["captured_at"] for event in events} == {
+        events[0].payload["captured_at"]
+    }
+    assert [event.payload["target_layer_key"] for event in events] == [
+        layer["layer_key"] for layer in target_body["layers"]
+    ]
+    assert all(len(event.payload["detail"]) == 1 for event in events)
 
 
 async def test_create_without_backbone_records_project_create_event(

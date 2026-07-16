@@ -319,6 +319,11 @@ async def test_backbone_replace_uses_captured_source_snapshot(
 
     assert replaced.layers[1].source_project_id == source.id
     assert replaced.layers[1].source_layer_key == source_layer_key
+    assert replaced.layers[1].backbone_snapshot is not None
+    assert replaced.layers[1].backbone_snapshot["source"]["project_id"] == source.id
+    assert replaced.layers[1].backbone_snapshot["source"]["layer_key"] == source_layer_key
+    assert replaced.layers[1].backbone_snapshot["capture_batch_id"]
+    assert replaced.layers[1].backbone_snapshot["captured_at"].endswith("Z")
 
     async with pg_factory() as verify_session:
         source_value = (
@@ -348,3 +353,69 @@ async def test_backbone_replace_uses_captured_source_snapshot(
 
     assert source_value == "SOURCE_MUTATED"
     assert target_value == "SOURCE_ORIGINAL"
+
+
+async def test_backbone_create_rolls_back_when_event_flush_fails(
+    pg_factory: async_sessionmaker[AsyncSession], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await _seed_required_choices(pg_factory)
+    fixture_reader = FixtureIngestReader()
+    provider = ManualProjectMetadataProvider()
+
+    source_payload = ProjectCreate(
+        line_id="L1",
+        process_id="PROC_ALPHA",
+        part_id="SOURCE",
+        name="Source",
+        device_type_code="DEFAULT",
+        project_category_code="DEFAULT",
+    )
+    async with pg_factory() as source_session, pg_factory() as target_session:
+        source_service = ProjectService(ProjectRepository(source_session), fixture_reader, provider)
+        target_service = ProjectService(ProjectRepository(target_session), fixture_reader, provider)
+
+        source = await _create_project(source_service, source_payload, actor="seed-user")
+        target_payload = ProjectCreate(
+            line_id="L1",
+            process_id="PROC_BETA",
+            part_id="TARGET",
+            name="Target",
+            device_type_code="DEFAULT",
+            project_category_code="DEFAULT",
+            backbone_project_id=source.id,
+        )
+
+        original_flush = AsyncSession.flush
+        flush_count = 0
+
+        async def fail_on_second_target_flush(self: AsyncSession, *args, **kwargs):
+            nonlocal flush_count
+            if self is target_session:
+                flush_count += 1
+                if flush_count == 2:
+                    raise RuntimeError("event flush failed")
+            return await original_flush(self, *args, **kwargs)
+
+        monkeypatch.setattr(AsyncSession, "flush", fail_on_second_target_flush)
+
+        with pytest.raises(RuntimeError, match="event flush failed"):
+            await target_service.create_project(target_payload, actor="seed-user")
+        await target_session.rollback()
+
+    async with pg_factory() as verify_session:
+        project_rows = await verify_session.scalar(
+            select(func.count(Project.id)).where(
+                Project.line_id == "L1",
+                Project.process_id == "PROC_BETA",
+                Project.part_id == "TARGET",
+            )
+        )
+        event_rows = await verify_session.scalar(
+            select(func.count(ChangeEvent.id)).join(Project).where(
+                Project.line_id == "L1",
+                Project.process_id == "PROC_BETA",
+                Project.part_id == "TARGET",
+            )
+        )
+        assert project_rows == 0
+        assert event_rows == 0
