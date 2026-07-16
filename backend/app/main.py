@@ -13,6 +13,7 @@ from app.core.maintenance import Phase4WriterHealthOut, get_phase4_writer_health
 from app.features.cells.router import router as cells_router
 from app.features.choice_sets.router import router as choice_sets_router
 from app.features.conditions.router import router as conditions_router
+from app.features.history.router import router as history_router
 from app.features.locks.router import router as locks_router
 from app.features.parameters.router import router as parameters_router
 from app.features.processes.router import router as processes_router
@@ -53,6 +54,7 @@ def create_app() -> FastAPI:
     api_router.include_router(locks_router)
     api_router.include_router(cells_router)
     api_router.include_router(conditions_router)
+    api_router.include_router(history_router)
     api_router.include_router(validation_router)
     app.include_router(api_router)
 
