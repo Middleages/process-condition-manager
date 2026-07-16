@@ -158,6 +158,10 @@ class SheetLayer(Base):
     sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     source_project_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     source_layer_key: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    backbone_snapshot: Mapped[dict | None] = mapped_column(
+        _JSON_PAYLOAD,
+        nullable=True,
+    )
 
     project: Mapped[Project] = relationship(back_populates="layers")
     conditions: Mapped[list["LayerCondition"]] = relationship(
@@ -238,6 +242,11 @@ class ChangeEvent(Base):
     parameter_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     old_value: Mapped[str | None] = mapped_column(Text, nullable=True)
     new_value: Mapped[str | None] = mapped_column(Text, nullable=True)
+    layer_key: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    batch_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    origin: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    source_project_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    source_layer_key: Mapped[str | None] = mapped_column(String(256), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
