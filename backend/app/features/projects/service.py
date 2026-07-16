@@ -21,7 +21,6 @@ from app.domain.backbone import (
     format_captured_at,
     match_layers,
     new_capture_batch_id,
-    parse_backbone_snapshot,
     serialize_backbone_snapshot,
 )
 from app.domain.choices.rules import ResolvedChoice, normalize_choice_code
@@ -331,10 +330,16 @@ class ProjectService:
         self.repo.add(project)
         await self._flush_or_conflict()
 
-        project.events.append(
+        self.repo.session.add(
             ChangeEvent(
+                project_id=project.id,
                 event_type=ChangeEventType.PROJECT_CREATE,
                 actor=actor,
+                batch_id=batch_id,
+                origin="system",
+                source_project_id=backbone.id if backbone is not None else None,
+                source_layer_key=None,
+                layer_key=None,
                 payload={
                     "batch_id": batch_id,
                     "captured_at": format_captured_at(captured_at),
@@ -359,10 +364,18 @@ class ProjectService:
                     continue
                 captured = captured_layers[match.source_layer_key]
                 source_snapshot = captured.snapshot
-                project.events.append(
+                self.repo.session.add(
                     ChangeEvent(
+                        project_id=project.id,
                         event_type=ChangeEventType.BACKBONE_COPY,
                         actor=actor,
+                        batch_id=batch_id,
+                        origin="backbone",
+                        layer_key=target_layer.layer_key,
+                        source_project_id=backbone.id,
+                        source_layer_key=source_snapshot.source.layer_key
+                        if source_snapshot.source is not None
+                        else None,
                         payload=_backbone_copy_payload(
                             batch_id=batch_id,
                             captured_at=captured_at,
@@ -462,6 +475,11 @@ class ProjectService:
                 project=project,
                 event_type=ChangeEventType.PROJECT_PROFILE_UPDATE,
                 actor=actor,
+                origin="manual",
+                layer_key=None,
+                batch_id=None,
+                source_project_id=None,
+                source_layer_key=None,
                 payload={"changes": changes},
             )
         )
@@ -561,14 +579,21 @@ class ProjectService:
                 project_id=project.id,
                 event_type=ChangeEventType.BACKBONE_LAYER_REPLACE,
                 actor=actor,
+                batch_id=batch_id,
+                origin="backbone",
+                layer_key=layer_key,
+                source_project_id=source_project.id,
+                source_layer_key=source_layer.layer_key,
                 payload={
                     "batch_id": batch_id,
                     "captured_at": format_captured_at(captured_at),
+                    "payload_schema_version": 2,
                     "target_layer_key": layer_key,
                     "source_project_id": source_project.id,
                     "source_layer_key": source_layer.layer_key,
                     "before": before,
                     "after": after,
+                    "capture": serialize_backbone_snapshot(captured.snapshot),
                     "detail": _layer_copy_detail(target_layer, snapshots),
                 },
             )
@@ -617,34 +642,19 @@ class ProjectService:
         columns_by_code: dict[str, BackboneSnapshotColumn] | None = None,
     ) -> _CapturedLayer:
         columns_by_code = columns_by_code or {}
-        if source_layer.backbone_snapshot is not None:
-            stored_snapshot = parse_backbone_snapshot(source_layer.backbone_snapshot)
-            stored_columns_by_code = {
-                column.parameter_code: column for column in stored_snapshot.columns
-            }
-        else:
-            stored_snapshot = None
-            stored_columns_by_code = {}
-
         current_codes = {
             cell.parameter_code
             for condition in source_layer.conditions
             for cell in condition.cell_values
             if cell.value_text is not None
         }
-        merged_columns: dict[str, BackboneSnapshotColumn] = dict(stored_columns_by_code)
-        for code in sorted(current_codes):
-            if code in columns_by_code:
-                merged_columns[code] = columns_by_code[code]
-                continue
-            if code in stored_columns_by_code:
-                continue
-            raise DomainValidationError(f"백본 컬럼 메타데이터를 찾을 수 없다: {code}")
-
-        if stored_snapshot is not None:
-            for column in stored_snapshot.columns:
-                if column.parameter_code not in merged_columns:
-                    merged_columns[column.parameter_code] = column
+        missing_codes = sorted(current_codes - set(columns_by_code))
+        if missing_codes:
+            raise ConflictError(
+                "백본 컬럼 메타데이터를 찾을 수 없다",
+                code="unresolved_parameter_metadata",
+                details={"parameter_codes": missing_codes},
+            )
 
         snapshot = BackboneSnapshot(
             capture_batch_id=batch_id,
@@ -656,7 +666,9 @@ class ProjectService:
                 step_seq=source_layer.step_seq,
                 layer_id=source_layer.layer_id,
             ),
-            columns=tuple(merged_columns.values()),
+            columns=tuple(
+                sorted(columns_by_code.values(), key=_snapshot_column_sort_key)
+            ),
             conditions=tuple(
                 BackboneSnapshotCondition(
                     source_condition_id=condition.id,
@@ -680,12 +692,13 @@ class ProjectService:
     async def _load_parameter_columns(
         self, parameter_codes: set[str]
     ) -> dict[str, BackboneSnapshotColumn]:
-        if not parameter_codes:
-            return {}
         result = await self.repo.session.execute(
             select(Parameter, ParameterCategory.code)
             .outerjoin(ParameterCategory, Parameter.category_id == ParameterCategory.id)
-            .where(Parameter.code.in_(sorted(parameter_codes)))
+            .where(
+                Parameter.is_active.is_(True)
+                | Parameter.code.in_(sorted(parameter_codes))
+            )
         )
         columns: dict[str, BackboneSnapshotColumn] = {}
         for parameter, category_code in result.all():
@@ -696,6 +709,13 @@ class ProjectService:
                 category_code=category_code,
                 sort_order=parameter.sort_order,
                 active_at_capture=parameter.is_active,
+            )
+        missing_codes = sorted(parameter_codes - set(columns))
+        if missing_codes:
+            raise ConflictError(
+                "백본 컬럼 메타데이터를 찾을 수 없다",
+                code="unresolved_parameter_metadata",
+                details={"parameter_codes": missing_codes},
             )
         return columns
 
@@ -888,6 +908,10 @@ def _sheet_layer_from_ingest(layer: LayerInfo, index: int) -> SheetLayer:
     )
 
 
+def _snapshot_column_sort_key(column: BackboneSnapshotColumn) -> tuple[int, str]:
+    return column.sort_order, column.parameter_code
+
+
 def _snapshot_conditions(source_layer: SheetLayer) -> list[_ConditionSnapshot]:
     return [
         _ConditionSnapshot(
@@ -942,9 +966,11 @@ def _backbone_copy_payload(
     if source is None:
         raise DomainValidationError("백본 snapshot의 source가 없다")
     return {
+        "payload_schema_version": 2,
         "batch_id": batch_id,
         "captured_at": format_captured_at(captured_at),
         "backbone_project_id": backbone_project_id,
+        "capture": serialize_backbone_snapshot(source_snapshot),
         "target_layer_key": target_layer.layer_key,
         "source_layer_key": source.layer_key,
         "auto_count": auto_count,

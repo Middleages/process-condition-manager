@@ -36,7 +36,10 @@ from app.models.project import (
     SheetLayer,
 )
 from app.project_metadata.manual import ManualProjectMetadataProvider
-from tests.factories import seed_required_profile_choice_sets
+from tests.factories import (
+    seed_backbone_capture_parameters,
+    seed_required_profile_choice_sets,
+)
 
 _PG_URL = os.environ.get("APP_TEST_DATABASE_URL")
 
@@ -68,6 +71,7 @@ def pg_factory(pg_engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
 async def _seed_required_choices(factory: async_sessionmaker[AsyncSession]) -> None:
     async with factory() as session:
         await seed_required_profile_choice_sets(session)
+        await seed_backbone_capture_parameters(session)
         await session.commit()
 
 
