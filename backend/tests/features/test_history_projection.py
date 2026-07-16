@@ -10,6 +10,14 @@ from typing import Any
 import pytest
 
 from app.core.errors import ConflictError
+from app.domain.backbone import (
+    BackboneSnapshot,
+    BackboneSnapshotCell,
+    BackboneSnapshotColumn,
+    BackboneSnapshotCondition,
+    BackboneSnapshotSource,
+    serialize_backbone_snapshot,
+)
 from app.features.history.projection import (
     BackboneCaptureProjection,
     HistoryAvailability,
@@ -69,6 +77,79 @@ def _row(
     return HistoryEventRow(**base)
 
 
+def _capture_snapshot() -> dict[str, Any]:
+    snapshot = BackboneSnapshot(
+        capture_batch_id="0123456789abcdef0123456789abcdef",
+        captured_at=_dt(1),
+        source=BackboneSnapshotSource(
+            project_id=301,
+            sheet_layer_id=401,
+            layer_key="SRC-L1",
+            step_seq="STEP-1",
+            layer_id="LID-1",
+        ),
+        columns=(
+            BackboneSnapshotColumn(
+                parameter_code="beta",
+                value_type="text",
+                display_name="Beta",
+                category_code=None,
+                sort_order=1,
+                active_at_capture=True,
+            ),
+            BackboneSnapshotColumn(
+                parameter_code="alpha",
+                value_type="text",
+                display_name="Alpha",
+                category_code=None,
+                sort_order=0,
+                active_at_capture=True,
+            ),
+        ),
+        conditions=(
+            BackboneSnapshotCondition(
+                source_condition_id=7,
+                label="C7",
+                condition_index=2,
+                is_por=False,
+                cells=(
+                    BackboneSnapshotCell(parameter_code="alpha", value="a7"),
+                    BackboneSnapshotCell(parameter_code="beta", value="b7"),
+                ),
+            ),
+            BackboneSnapshotCondition(
+                source_condition_id=3,
+                label="C3",
+                condition_index=1,
+                is_por=True,
+                cells=(BackboneSnapshotCell(parameter_code="alpha", value="a3"),),
+            ),
+        ),
+    )
+    return serialize_backbone_snapshot(snapshot)
+
+
+def _capture_detail() -> list[dict[str, Any]]:
+    return [
+        {
+            "target_condition_id": 502,
+            "source_condition_id": 7,
+            "label": "C7",
+            "condition_index": 2,
+            "is_por": False,
+            "cell_count": 2,
+        },
+        {
+            "target_condition_id": 501,
+            "source_condition_id": 3,
+            "label": "C3",
+            "condition_index": 1,
+            "is_por": True,
+            "cell_count": 1,
+        },
+    ]
+
+
 def test_history_event_row_is_frozen_and_wraps_mappings() -> None:
     detail = {"nested": {"value": 1}}
     capture = {"nested": {"value": 2}}
@@ -115,6 +196,17 @@ def test_timeline_summary_orders_newest_first_and_sanitizes_payload() -> None:
     assert "raw" not in json.dumps(asdict(projection), ensure_ascii=False)
 
 
+@pytest.mark.parametrize("event_type", ["condition_add", "condition_remove", "por_change"])
+def test_timeline_summary_preserves_non_expandable_event_types(event_type: str) -> None:
+    projection = project_timeline_summary([_row(1, event_type, schema_version=2)])
+
+    assert [item.event_type for item in projection.items] == [event_type]
+    assert projection.metadata.cell_items == 0
+    assert projection.metadata.capture_items == 0
+    assert projection.items[0].detail_applicability == HistoryAvailability.NO_APPLICABLE
+    assert projection.items[0].legacy_coverage == HistoryAvailability.NO_APPLICABLE
+
+
 def test_cell_detail_projects_descending_ids_and_legacy_unavailable() -> None:
     rows = [
         _row(11, "cell_update", schema_version=1, deleted=True),
@@ -134,40 +226,35 @@ def test_cell_detail_projects_descending_ids_and_legacy_unavailable() -> None:
     assert "should not leak" not in json.dumps(asdict(projection), ensure_ascii=False)
 
 
-def test_backbone_capture_flattens_and_uses_event_id_as_final_sort_key() -> None:
+def test_backbone_capture_flattens_real_v2_payload_and_sorts_by_structure() -> None:
     rows = [
         _row(
             20,
             "backbone_copy",
             schema_version=2,
             layer_sort_order=1,
-            layer_key="L1",
-            source_condition_index=2,
-            source_condition_id=7,
-            parameter_sort_order=3,
-            parameter_code="beta",
+            layer_key="T-L1",
+            capture=_capture_snapshot(),
+            detail=_capture_detail(),
         ),
         _row(
             10,
             "backbone_copy",
             schema_version=2,
             layer_sort_order=1,
-            layer_key="L1",
-            source_condition_index=2,
-            source_condition_id=7,
-            parameter_sort_order=3,
-            parameter_code="beta",
+            layer_key="T-L1",
+            capture=_capture_snapshot(),
+            detail=_capture_detail(),
         ),
         _row(
             5,
             "backbone_layer_replace",
             schema_version=2,
             layer_sort_order=0,
-            layer_key="L0",
-            source_condition_index=1,
-            source_condition_id=3,
-            parameter_sort_order=0,
-            parameter_code="alpha",
+            layer_key="T-L0",
+            capture=_capture_snapshot(),
+            detail=_capture_detail(),
+            deleted=True,
         ),
     ]
 
@@ -179,34 +266,75 @@ def test_backbone_capture_flattens_and_uses_event_id_as_final_sort_key() -> None
         (
             item.target_layer_sort,
             item.layer_key,
+            item.target_condition_id,
             item.source_condition_index,
             item.source_condition_id,
             item.parameter_sort,
             item.parameter_code,
+            item.value,
+            item.jump_state,
             item.event_id,
         )
         for item in projection.items
     ] == [
-        (0, "L0", 1, 3, 0, "alpha", 5),
-        (1, "L1", 2, 7, 3, "beta", 10),
-        (1, "L1", 2, 7, 3, "beta", 20),
+        (0, "T-L0", 501, 1, 3, 0, "alpha", "a3", HistoryJumpState.DELETED, 5),
+        (0, "T-L0", 502, 2, 7, 0, "alpha", "a7", HistoryJumpState.DELETED, 5),
+        (0, "T-L0", 502, 2, 7, 1, "beta", "b7", HistoryJumpState.DELETED, 5),
+        (1, "T-L1", 501, 1, 3, 0, "alpha", "a3", HistoryJumpState.PRESENT, 10),
+        (1, "T-L1", 501, 1, 3, 0, "alpha", "a3", HistoryJumpState.PRESENT, 20),
+        (1, "T-L1", 502, 2, 7, 0, "alpha", "a7", HistoryJumpState.PRESENT, 10),
+        (1, "T-L1", 502, 2, 7, 0, "alpha", "a7", HistoryJumpState.PRESENT, 20),
+        (1, "T-L1", 502, 2, 7, 1, "beta", "b7", HistoryJumpState.PRESENT, 10),
+        (1, "T-L1", 502, 2, 7, 1, "beta", "b7", HistoryJumpState.PRESENT, 20),
     ]
     assert "raw" not in json.dumps(asdict(projection), ensure_ascii=False)
 
 
-def test_backbone_capture_v1_batches_are_legacy_unavailable() -> None:
-    projection = project_backbone_capture(
+def test_backbone_capture_v1_or_missing_detail_is_legacy_unavailable() -> None:
+    v1_projection = project_backbone_capture(
         [
             _row(
                 1,
                 "backbone_copy",
                 schema_version=1,
                 layer_sort_order=0,
-                layer_key="L0",
-                source_condition_index=0,
-                source_condition_id=1,
-                parameter_sort_order=0,
-                parameter_code="alpha",
+                layer_key="T-L0",
+                capture=_capture_snapshot(),
+                detail=_capture_detail(),
+            )
+        ]
+    )
+    missing_detail_projection = project_backbone_capture(
+        [
+            _row(
+                2,
+                "backbone_copy",
+                schema_version=2,
+                layer_sort_order=0,
+                layer_key="T-L0",
+                capture=_capture_snapshot(),
+                detail=[],
+            )
+        ]
+    )
+
+    assert v1_projection.availability == HistoryAvailability.LEGACY_UNAVAILABLE
+    assert v1_projection.items == ()
+    assert missing_detail_projection.availability == HistoryAvailability.LEGACY_UNAVAILABLE
+    assert missing_detail_projection.items == ()
+
+
+def test_backbone_capture_corrupt_snapshot_is_legacy_unavailable() -> None:
+    projection = project_backbone_capture(
+        [
+            _row(
+                3,
+                "backbone_copy",
+                schema_version=2,
+                layer_sort_order=0,
+                layer_key="T-L0",
+                capture={"schema_version": 1},
+                detail=_capture_detail(),
             )
         ]
     )
@@ -284,6 +412,20 @@ def test_cell_history_without_initial_marks_state_unavailable() -> None:
     assert projection.initial_state_unavailable is True
 
 
+def test_cell_history_explicit_legacy_initial_state_uses_legacy_unavailable() -> None:
+    projection = project_cell_history(
+        [
+            _row(4, "cell_update", history_role=HistoryEntryRole.CURRENT),
+            _row(3, "cell_update", history_role=HistoryEntryRole.BASELINE),
+        ],
+        initial_state_unavailable=True,
+    )
+
+    assert projection.initial_entry is None
+    assert projection.initial_state == HistoryAvailability.LEGACY_UNAVAILABLE
+    assert projection.initial_state_unavailable is True
+
+
 @pytest.mark.parametrize(
     ("row", "expected_state"),
     [
@@ -305,13 +447,11 @@ def test_projection_serialization_stays_under_256_kib() -> None:
             "backbone_copy",
             schema_version=2,
             layer_sort_order=idx % 7,
-            layer_key=f"L{idx % 7}",
-            source_condition_index=idx % 5,
-            source_condition_id=1000 + idx % 13,
-            parameter_sort_order=idx % 9,
-            parameter_code=f"param_{idx % 11}",
+            layer_key=f"T-L{idx % 7}",
+            capture=_capture_snapshot(),
+            detail=_capture_detail(),
         )
-        for idx in range(1, 513)
+        for idx in range(1, 129)
     ]
 
     projection = project_backbone_capture(rows)
