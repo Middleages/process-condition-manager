@@ -9,7 +9,7 @@ import json
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any, Literal, NoReturn, cast
+from typing import Any, Literal, NoReturn, Sequence, cast
 
 from app.domain.errors import RuleViolationError
 from app.models.project import ChangeEventType
@@ -550,7 +550,7 @@ def _member_filters_from_payload(
                 payload["origins"],
                 field_name="origins",
                 max_length=32,
-                error_code=error_code,
+                error_code="invalid_scope",
             )
         ),
         source_project_ids=_normalize_sorted_unique_int_tuple(
