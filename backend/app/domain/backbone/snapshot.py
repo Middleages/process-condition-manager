@@ -9,7 +9,7 @@ import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, NoReturn
 
 from app.domain.decimal_values import normalize_decimal
 from app.domain.errors import RuleViolationError
@@ -28,19 +28,19 @@ _CAPTURED_AT_RE = re.compile(
 )
 
 
-def _raise(code: str, message: str) -> None:
+def _raise(code: str, message: str) -> NoReturn:
     raise RuleViolationError(message, code=code)
 
 
-def _invalid(message: str) -> None:
+def _invalid(message: str) -> NoReturn:
     _raise(INVALID_BACKBONE_SNAPSHOT, message)
 
 
-def _baseline_unavailable(message: str = "backbone snapshot is unavailable") -> None:
+def _baseline_unavailable(message: str = "backbone snapshot is unavailable") -> NoReturn:
     _raise(BASELINE_UNAVAILABLE, message)
 
 
-def _unresolved_metadata(message: str) -> None:
+def _unresolved_metadata(message: str) -> NoReturn:
     _raise(UNRESOLVED_PARAMETER_METADATA, message)
 
 
@@ -56,6 +56,7 @@ def normalize_capture_batch_id(value: Any) -> str:
 
 
 def normalize_captured_at(value: Any) -> datetime:
+    dt: datetime
     if isinstance(value, datetime):
         dt = value
     elif isinstance(value, str):
@@ -64,6 +65,7 @@ def normalize_captured_at(value: Any) -> datetime:
         dt = datetime.fromisoformat(value[:-1] + "+00:00")
     else:
         _invalid("captured_at must be a datetime or canonical UTC Z string")
+        raise AssertionError("unreachable")
 
     if dt.tzinfo is None or dt.utcoffset() != timedelta(0):
         _invalid("captured_at must be UTC")
@@ -73,16 +75,10 @@ def normalize_captured_at(value: Any) -> datetime:
 def format_captured_at(value: datetime) -> str:
     if value.tzinfo is None or value.utcoffset() != timedelta(0):
         _invalid("captured_at must be UTC")
-    iso = value.astimezone(UTC).isoformat(timespec="microseconds").replace(
+    return value.astimezone(UTC).isoformat(timespec="microseconds").replace(
         "+00:00",
         "Z",
     )
-    if iso.endswith(".000000Z"):
-        return iso[:-8] + "Z"
-    if "." in iso:
-        head, tail = iso[:-1].split(".", 1)
-        return f"{head}.{tail.rstrip('0')}Z"
-    return iso
 
 
 @dataclass(frozen=True, slots=True)
@@ -232,7 +228,7 @@ class BackboneSnapshot:
             if not isinstance(condition, BackboneSnapshotCondition):
                 _invalid("conditions must contain BackboneSnapshotCondition values")
         object.__setattr__(self, "columns", columns)
-        object.__setattr__(self, "conditions", conditions)
+        object.__setattr__(self, "conditions", _canonicalize_conditions(columns, conditions))
         _validate_snapshot_graph(self)
 
 
@@ -242,11 +238,10 @@ def parse_backbone_snapshot(raw: Any) -> BackboneSnapshot:
         _baseline_unavailable()
     if isinstance(raw, BackboneSnapshot):
         return raw
-    if not isinstance(raw, Mapping):
-        _invalid("snapshot must be a mapping")
+    mapping = _require_mapping(raw, "snapshot")
 
     _require_exact_keys(
-        raw,
+        mapping,
         {
             "schema_version",
             "capture_batch_id",
@@ -257,14 +252,14 @@ def parse_backbone_snapshot(raw: Any) -> BackboneSnapshot:
         },
         "snapshot",
     )
-    source = _parse_source(raw["source"])
-    columns = _parse_columns(raw["columns"])
+    source = _parse_source(mapping["source"])
+    columns = _parse_columns(mapping["columns"])
     column_by_code = {column.parameter_code: column for column in columns}
-    conditions = _parse_conditions(raw["conditions"], column_by_code)
+    conditions = _parse_conditions(mapping["conditions"], column_by_code)
     return BackboneSnapshot(
-        schema_version=raw["schema_version"],
-        capture_batch_id=raw["capture_batch_id"],
-        captured_at=raw["captured_at"],
+        schema_version=mapping["schema_version"],
+        capture_batch_id=mapping["capture_batch_id"],
+        captured_at=mapping["captured_at"],
         source=source,
         columns=columns,
         conditions=conditions,
@@ -275,12 +270,21 @@ def serialize_backbone_snapshot(
     snapshot: BackboneSnapshot | Mapping[str, Any] | None,
 ) -> dict[str, Any]:
     parsed = parse_backbone_snapshot(snapshot)
+    captured_at = parsed.captured_at
+    if not isinstance(captured_at, datetime):
+        _invalid("captured_at must be a datetime")
+    source = parsed.source
+    if not isinstance(source, BackboneSnapshotSource):
+        _invalid("source must be BackboneSnapshotSource")
     return {
         "schema_version": parsed.schema_version,
         "capture_batch_id": parsed.capture_batch_id,
-        "captured_at": format_captured_at(parsed.captured_at),
-        "source": _source_out(parsed.source),
-        "columns": [_column_out(column) for column in sorted(parsed.columns, key=_column_sort_key)],
+        "captured_at": format_captured_at(captured_at),
+        "source": _source_out(source),
+        "columns": [
+            _column_out(column)
+            for column in sorted(parsed.columns, key=_column_sort_key)
+        ],
         "conditions": [
             _condition_out(condition)
             for condition in sorted(parsed.conditions, key=_condition_sort_key)
@@ -303,38 +307,48 @@ def backbone_snapshot_hash(snapshot_like: BackboneSnapshot | Mapping[str, Any] |
 
 
 def _parse_source(raw: Any) -> BackboneSnapshotSource:
-    if not isinstance(raw, Mapping):
-        _invalid("source must be a mapping")
+    mapping = _require_mapping(raw, "source")
     _require_exact_keys(
-        raw,
+        mapping,
         {"project_id", "sheet_layer_id", "layer_key", "step_seq", "layer_id"},
         "source",
     )
     return BackboneSnapshotSource(
-        project_id=raw["project_id"],
-        sheet_layer_id=raw["sheet_layer_id"],
-        layer_key=raw["layer_key"],
-        step_seq=raw["step_seq"],
-        layer_id=raw["layer_id"],
+        project_id=mapping["project_id"],
+        sheet_layer_id=mapping["sheet_layer_id"],
+        layer_key=mapping["layer_key"],
+        step_seq=mapping["step_seq"],
+        layer_id=mapping["layer_id"],
     )
 
 
 def _parse_columns(raw: Any) -> tuple[BackboneSnapshotColumn, ...]:
     items = _require_sequence(raw, "columns")
-    parsed = [
-        BackboneSnapshotColumn(
-            parameter_code=item["parameter_code"],
-            value_type=item["value_type"],
-            display_name=item["display_name"],
-            category_code=item["category_code"],
-            sort_order=item["sort_order"],
-            active_at_capture=item["active_at_capture"],
+    parsed: list[BackboneSnapshotColumn] = []
+    for item in items:
+        mapping = _require_mapping(item, "column")
+        _require_exact_keys(
+            mapping,
+            {
+                "parameter_code",
+                "value_type",
+                "display_name",
+                "category_code",
+                "sort_order",
+                "active_at_capture",
+            },
+            "column",
         )
-        for item in (
-            _require_mapping(item, "column")
-            for item in items
+        parsed.append(
+            BackboneSnapshotColumn(
+                parameter_code=mapping["parameter_code"],
+                value_type=mapping["value_type"],
+                display_name=mapping["display_name"],
+                category_code=mapping["category_code"],
+                sort_order=mapping["sort_order"],
+                active_at_capture=mapping["active_at_capture"],
+            )
         )
-    ]
     _validate_unique(parsed, lambda item: item.parameter_code, "duplicate parameter_code")
     return tuple(sorted(parsed, key=_column_sort_key))
 
@@ -356,13 +370,14 @@ def _parse_conditions(
         cells: list[BackboneSnapshotCell] = []
         for parameter_code in sorted(cells_raw):
             if parameter_code not in column_by_code:
-                _unresolved_metadata(f"unknown parameter_code in snapshot cell: {parameter_code}")
+                _invalid(f"unknown parameter_code in snapshot cell: {parameter_code}")
             column = column_by_code[parameter_code]
+            value_type = _coerce_value_type(column.value_type)
             cells.append(
                 BackboneSnapshotCell(
                     parameter_code=parameter_code,
                     value=_canonical_cell_value(
-                        column.value_type,
+                        value_type,
                         cells_raw[parameter_code],
                         parameter_code,
                     ),
@@ -413,9 +428,10 @@ def _source_out(source: BackboneSnapshotSource) -> dict[str, Any]:
 
 
 def _column_out(column: BackboneSnapshotColumn) -> dict[str, Any]:
+    value_type = _coerce_value_type(column.value_type)
     return {
         "parameter_code": column.parameter_code,
-        "value_type": column.value_type.value,
+        "value_type": value_type.value,
         "display_name": column.display_name,
         "category_code": column.category_code,
         "sort_order": column.sort_order,
@@ -532,6 +548,37 @@ def _column_sort_key(column: BackboneSnapshotColumn) -> tuple[int, str]:
 
 def _condition_sort_key(condition: BackboneSnapshotCondition) -> tuple[int, int]:
     return condition.condition_index, condition.source_condition_id
+
+
+def _canonicalize_conditions(
+    columns: tuple[BackboneSnapshotColumn, ...],
+    conditions: tuple[BackboneSnapshotCondition, ...],
+) -> tuple[BackboneSnapshotCondition, ...]:
+    column_by_code = {column.parameter_code: column for column in columns}
+    canonical_conditions: list[BackboneSnapshotCondition] = []
+    for condition in conditions:
+        canonical_cells: list[BackboneSnapshotCell] = []
+        for cell in condition.cells:
+            if cell.parameter_code not in column_by_code:
+                _invalid(f"cell references missing column: {cell.parameter_code}")
+            column = column_by_code[cell.parameter_code]
+            value_type = _coerce_value_type(column.value_type)
+            canonical_cells.append(
+                BackboneSnapshotCell(
+                    parameter_code=cell.parameter_code,
+                    value=_canonical_cell_value(value_type, cell.value, cell.parameter_code),
+                )
+            )
+        canonical_conditions.append(
+            BackboneSnapshotCondition(
+                source_condition_id=condition.source_condition_id,
+                label=condition.label,
+                condition_index=condition.condition_index,
+                is_por=condition.is_por,
+                cells=tuple(canonical_cells),
+            )
+        )
+    return tuple(canonical_conditions)
 
 
 __all__ = [
