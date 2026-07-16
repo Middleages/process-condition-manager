@@ -14,6 +14,7 @@ import asyncio
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Any, Literal
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -29,7 +30,7 @@ import app.models  # noqa: F401 -- register models for metadata.create_all
 from app.core.auth import UserContext, get_current_user
 from app.core.db import Base, get_app_session
 from app.features.cells.repository import CellRepository
-from app.features.cells.schema import CellUpdateIn, CellsPatchIn
+from app.features.cells.schema import CellsPatchIn, CellUpdateIn
 from app.features.cells.service import CellService
 from app.features.conditions.repository import ConditionRepository
 from app.features.conditions.schema import ConditionCreateIn
@@ -168,7 +169,7 @@ async def _seed_lock(
     return lock.lock_token
 
 
-async def _cell_events(session: AsyncSession, project_id: int) -> list[dict[str, object]]:
+async def _cell_events(session: AsyncSession, project_id: int) -> list[dict[str, Any]]:
     session.expire_all()
     rows = await session.execute(
         select(
@@ -176,6 +177,7 @@ async def _cell_events(session: AsyncSession, project_id: int) -> list[dict[str,
             ChangeEvent.project_id,
             ChangeEvent.event_type,
             ChangeEvent.condition_id,
+            ChangeEvent.parameter_code,
             ChangeEvent.layer_key,
             ChangeEvent.origin,
             ChangeEvent.source_project_id,
@@ -195,7 +197,7 @@ async def _cell_events(session: AsyncSession, project_id: int) -> list[dict[str,
 
 async def _condition_events(
     session: AsyncSession, project_id: int, event_type: ChangeEventType
-) -> list[dict[str, object]]:
+) -> list[dict[str, Any]]:
     session.expire_all()
     rows = await session.execute(
         select(
@@ -220,9 +222,7 @@ async def _condition_events(
     return [dict(row) for row in rows.mappings().all()]
 
 
-async def _condition_cells(
-    session: AsyncSession, condition_id: int
-) -> dict[str, str | None]:
+async def _condition_cells(session: AsyncSession, condition_id: int) -> dict[str, str | None]:
     session.expire_all()
     rows = await session.execute(
         select(CellValue.parameter_code, CellValue.value_text).where(
@@ -232,23 +232,27 @@ async def _condition_cells(
     return {code: value for code, value in rows.all()}
 
 
-async def _condition_row(session: AsyncSession, condition_id: int) -> dict[str, object] | None:
+async def _condition_row(session: AsyncSession, condition_id: int) -> dict[str, Any] | None:
     session.expire_all()
     row = (
-        await session.execute(
-            select(
-                LayerCondition.id,
-                LayerCondition.source_condition_id,
-                LayerCondition.is_por,
-            ).where(LayerCondition.id == condition_id)
+        (
+            await session.execute(
+                select(
+                    LayerCondition.id,
+                    LayerCondition.source_condition_id,
+                    LayerCondition.is_por,
+                ).where(LayerCondition.id == condition_id)
+            )
         )
-    ).mappings().one_or_none()
+        .mappings()
+        .one_or_none()
+    )
     return dict(row) if row is not None else None
 
 
 @pytest.mark.parametrize("origin", ["manual", "paste"])
 async def test_cell_batches_record_exact_provenance_and_shared_batch(
-    pg_factory: async_sessionmaker[AsyncSession], origin: str
+    pg_factory: async_sessionmaker[AsyncSession], origin: Literal["manual", "paste"]
 ) -> None:
     async with pg_factory() as setup_session:
         project_id, _, source_id, removable_id, _ = await _seed_project_graph(setup_session)
@@ -305,11 +309,15 @@ async def test_condition_writers_record_exact_envelope_and_snapshots(
         await session.commit()
 
     async with pg_factory() as verify_session:
-        add_event = (await _condition_events(verify_session, project_id, ChangeEventType.CONDITION_ADD))[-1]
+        add_event = (
+            await _condition_events(verify_session, project_id, ChangeEventType.CONDITION_ADD)
+        )[-1]
         remove_event = (
             await _condition_events(verify_session, project_id, ChangeEventType.CONDITION_REMOVE)
         )[-1]
-        por_event = (await _condition_events(verify_session, project_id, ChangeEventType.POR_CHANGE))[-1]
+        por_event = (
+            await _condition_events(verify_session, project_id, ChangeEventType.POR_CHANGE)
+        )[-1]
         assert added.layer_key == layer_key
         assert por.layer_key == layer_key
 
@@ -364,13 +372,13 @@ async def test_writer_flush_failure_rolls_back_all_mutations(
         )
 
     if kind == "cells":
-        original_flush = CellRepository.flush
+        original_cell_flush = CellRepository.flush
 
-        async def failing_flush(self: CellRepository) -> None:
-            await original_flush(self)
+        async def failing_cell_flush(self: CellRepository) -> None:
+            await original_cell_flush(self)
             raise RuntimeError("boom after cell flush")
 
-        monkeypatch.setattr(CellRepository, "flush", failing_flush)
+        monkeypatch.setattr(CellRepository, "flush", failing_cell_flush)
         async with pg_factory() as session:
             with pytest.raises(RuntimeError, match="boom after cell flush"):
                 await _cell_service(session).patch_cells(
@@ -394,17 +402,17 @@ async def test_writer_flush_failure_rolls_back_all_mutations(
                 )
             await session.rollback()
     else:
-        original_flush = ConditionRepository.flush
+        original_condition_flush = ConditionRepository.flush
         call_count = 0
 
-        async def failing_flush(self: ConditionRepository) -> None:
+        async def failing_condition_flush(self: ConditionRepository) -> None:
             nonlocal call_count
             call_count += 1
-            await original_flush(self)
+            await original_condition_flush(self)
             if call_count == 2:
                 raise RuntimeError("boom after condition flush")
 
-        monkeypatch.setattr(ConditionRepository, "flush", failing_flush)
+        monkeypatch.setattr(ConditionRepository, "flush", failing_condition_flush)
         async with pg_factory() as session:
             service = _condition_service(session)
             with pytest.raises(RuntimeError, match="boom after condition flush"):
@@ -417,29 +425,29 @@ async def test_writer_flush_failure_rolls_back_all_mutations(
             await session.rollback()
 
     async with pg_factory() as verify_session:
-        project = (
-            await verify_session.execute(
-                select(Project).where(Project.id == project_id)
-            )
+        project_id_row = (
+            await verify_session.execute(select(Project.id).where(Project.id == project_id))
         ).scalar_one()
         source = await _condition_row(verify_session, source_id)
         removable = await _condition_row(verify_session, removable_id)
         por_target = await _condition_row(verify_session, por_target_id)
         source_cells = await _condition_cells(verify_session, source_id)
         cell_events = await _cell_events(verify_session, project_id)
-        add_events = await _condition_events(verify_session, project_id, ChangeEventType.CONDITION_ADD)
+        add_events = await _condition_events(
+            verify_session, project_id, ChangeEventType.CONDITION_ADD
+        )
         remove_events = await _condition_events(
             verify_session, project_id, ChangeEventType.CONDITION_REMOVE
         )
         por_events = await _condition_events(verify_session, project_id, ChangeEventType.POR_CHANGE)
-        assert project.id == project_id
-        assert source is not None and source.source_condition_id is None
+        assert project_id_row == project_id
+        assert source is not None and source["source_condition_id"] is None
         assert source_cells == {
             "memo": "seed",
             "spin_speed": "1000",
         }
         assert removable is not None
-        assert por_target is not None and por_target.is_por is False
+        assert por_target is not None and por_target["is_por"] is False
         assert cell_events == []
         assert add_events == []
         assert remove_events == []
@@ -508,7 +516,9 @@ async def test_concurrent_edits_are_serialized_by_project_lock(
     async with pg_factory() as verify_session:
         duplicate_cells = await _condition_cells(verify_session, duplicate_id)
         source_cells = await _condition_cells(verify_session, source_id)
-        add_events = await _condition_events(verify_session, project_id, ChangeEventType.CONDITION_ADD)
+        add_events = await _condition_events(
+            verify_session, project_id, ChangeEventType.CONDITION_ADD
+        )
 
     assert source_cells["spin_speed"] == "1200"
     assert duplicate_cells["spin_speed"] == "1200"
