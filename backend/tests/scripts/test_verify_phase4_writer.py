@@ -399,7 +399,55 @@ async def test_rollback_smoke_reuses_populated_canary_postgres(
     assert first["checks"]["project_counts_restored_after_rollback"] is True
 
 
-async def test_rollback_smoke_fails_when_canonical_choice_set_is_inactive(
+async def test_rollback_smoke_fails_when_canonical_choice_set_has_no_active_option(
+    monkeypatch, sqlite_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    async def _compatible_revision() -> str | None:
+        return "0006"
+
+    monkeypatch.setattr(maintenance, "read_app_revision", _compatible_revision)
+    monkeypatch.setattr(maintenance.settings, "project_mutations_enabled", False)
+
+    async with sqlite_factory() as session:
+        device_type = ChoiceSet(code="device_type", display_name="device_type")
+        device_type.options.extend(
+            [
+                ChoiceOption(code="LOGIC", label="Logic", is_active=False, sort_order=10),
+            ]
+        )
+        project_category = ChoiceSet(code="project_category", display_name="project_category")
+        project_category.options.extend(
+            [
+                ChoiceOption(
+                    code="DEVELOPMENT",
+                    label="Development",
+                    is_active=True,
+                    sort_order=10,
+                ),
+            ]
+        )
+        session.add_all([device_type, project_category])
+        await session.commit()
+
+    baseline_counts = await _truth_counts(sqlite_factory)
+
+    with pytest.raises(RuntimeError, match="canonical ChoiceSet has no active option: device_type"):
+        await verify_phase4_writer.build_smoke_report(rollback=True, session_factory=sqlite_factory)
+
+    assert await _truth_counts(sqlite_factory) == baseline_counts
+
+    async with sqlite_factory() as session:
+        row = await session.scalar(
+            select(ChoiceSet)
+            .options(selectinload(ChoiceSet.options))
+            .where(ChoiceSet.code == "device_type")
+        )
+        assert row is not None
+        assert row.is_active is True
+        assert [option.code for option in row.options] == ["LOGIC"]
+
+
+async def test_rollback_smoke_fails_when_canonical_choice_set_is_inactive_and_preserves_data(
     monkeypatch, sqlite_factory: async_sessionmaker[AsyncSession]
 ) -> None:
     async def _compatible_revision() -> str | None:
@@ -445,40 +493,6 @@ async def test_rollback_smoke_fails_when_canonical_choice_set_is_inactive(
         assert row is not None
         assert row.is_active is False
         assert [option.code for option in row.options] == ["LOGIC"]
-
-
-async def test_rollback_smoke_fails_when_canonical_choice_set_is_inactive(
-    monkeypatch, sqlite_factory: async_sessionmaker[AsyncSession]
-) -> None:
-    async def _compatible_revision() -> str | None:
-        return "0006"
-
-    monkeypatch.setattr(maintenance, "read_app_revision", _compatible_revision)
-    monkeypatch.setattr(maintenance.settings, "project_mutations_enabled", False)
-
-    async with sqlite_factory() as session:
-        device_type = ChoiceSet(code="device_type", display_name="device_type", is_active=False)
-        device_type.options.extend(
-            [
-                ChoiceOption(code="LOGIC", label="Logic", is_active=True, sort_order=10),
-            ]
-        )
-        project_category = ChoiceSet(code="project_category", display_name="project_category")
-        project_category.options.extend(
-            [
-                ChoiceOption(
-                    code="DEVELOPMENT",
-                    label="Development",
-                    is_active=True,
-                    sort_order=10,
-                ),
-            ]
-        )
-        session.add_all([device_type, project_category])
-        await session.commit()
-
-    with pytest.raises(RuntimeError, match="canonical ChoiceSet is inactive"):
-        await verify_phase4_writer.build_smoke_report(rollback=True, session_factory=sqlite_factory)
 
 
 def test_main_prints_json_and_returns_zero_when_compatible(

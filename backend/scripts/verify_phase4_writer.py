@@ -132,9 +132,6 @@ async def _seed_or_reuse_profile_choice_set(
     if not choice_set.is_active:
         raise RuntimeError(f"canonical ChoiceSet is inactive: {code}")
 
-    if not choice_set.is_active:
-        raise RuntimeError(f"canonical ChoiceSet is inactive: {code}")
-
     active_options = sorted(
         (option for option in choice_set.options if option.is_active),
         key=lambda option: (option.sort_order, option.code),
@@ -363,7 +360,6 @@ async def _run_rollback_smoke(
         )
         cell_service = CellService(CellRepository(session))
         condition_service = ConditionService(ConditionRepository(session))
-        transaction = await session.begin()
 
         try:
             seed = await _seed_source_project(session)
