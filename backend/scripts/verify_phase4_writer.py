@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker  # noqa: E40
 
 import app.models  # noqa: F401,E402 -- register every table with Base.metadata
 from app.core.db import AppSessionLocal  # noqa: E402
+from app.core.config import settings  # noqa: E402
 from app.core.maintenance import get_phase4_writer_health  # noqa: E402
 from app.domain.parameters.types import ValueType  # noqa: E402
 from app.features.cells.repository import CellRepository  # noqa: E402
@@ -167,79 +168,77 @@ async def _events(
     return list(rows.scalars().all())
 
 
-async def _seed_source_project(session_factory: async_sessionmaker[AsyncSession]) -> _SmokeSeed:
-    async with session_factory() as session:
-        await _seed_profile_choice_sets(session)
-        await _seed_backbone_capture_parameters(session)
+async def _seed_source_project(session: AsyncSession) -> _SmokeSeed:
+    await _seed_profile_choice_sets(session)
+    await _seed_backbone_capture_parameters(session)
 
-        service = ProjectService(
-            ProjectRepository(session),
-            FixtureIngestReader(),
-            ManualProjectMetadataProvider(),
-        )
-        source = await service.create_project(
-            ProjectCreate(
-                line_id="L1",
-                process_id="PROC_ALPHA",
-                part_id="SOURCE",
-                name="Phase 4 smoke source",
-                device_type_code="DEFAULT",
-                project_category_code="DEFAULT",
-            ),
-            actor="phase4-smoke-seed",
-        )
+    service = ProjectService(
+        ProjectRepository(session),
+        FixtureIngestReader(),
+        ManualProjectMetadataProvider(),
+    )
+    source = await service.create_project(
+        ProjectCreate(
+            line_id="L1",
+            process_id="PROC_ALPHA",
+            part_id="SOURCE",
+            name="Phase 4 smoke source",
+            device_type_code="DEFAULT",
+            project_category_code="DEFAULT",
+        ),
+        actor="phase4-smoke-seed",
+    )
 
-        cell_service = CellService(CellRepository(session))
-        first_layer = source.layers[0]
-        second_layer = source.layers[1]
-        await cell_service.patch_cells(
-            source.id,
-            CellsPatchIn(
-                origin="manual",
-                cells=[
-                    CellUpdateIn(
-                        condition_id=first_layer.conditions[0].id,
-                        parameter_code="spin_speed",
-                        value="900",
-                    ),
-                    CellUpdateIn(
-                        condition_id=first_layer.conditions[0].id,
-                        parameter_code="pr_type",
-                        value="A",
-                    ),
-                ],
-            ),
-            actor="phase4-smoke-seed",
-        )
-        await cell_service.patch_cells(
-            source.id,
-            CellsPatchIn(
-                origin="manual",
-                cells=[
-                    CellUpdateIn(
-                        condition_id=second_layer.conditions[0].id,
-                        parameter_code="spin_speed",
-                        value="1200",
-                    ),
-                    CellUpdateIn(
-                        condition_id=second_layer.conditions[0].id,
-                        parameter_code="pr_type",
-                        value="B",
-                    ),
-                ],
-            ),
-            actor="phase4-smoke-seed",
-        )
-        await session.commit()
+    cell_service = CellService(CellRepository(session))
+    first_layer = source.layers[0]
+    second_layer = source.layers[1]
+    await cell_service.patch_cells(
+        source.id,
+        CellsPatchIn(
+            origin="manual",
+            cells=[
+                CellUpdateIn(
+                    condition_id=first_layer.conditions[0].id,
+                    parameter_code="spin_speed",
+                    value="900",
+                ),
+                CellUpdateIn(
+                    condition_id=first_layer.conditions[0].id,
+                    parameter_code="pr_type",
+                    value="A",
+                ),
+            ],
+        ),
+        actor="phase4-smoke-seed",
+    )
+    await cell_service.patch_cells(
+        source.id,
+        CellsPatchIn(
+            origin="manual",
+            cells=[
+                CellUpdateIn(
+                    condition_id=second_layer.conditions[0].id,
+                    parameter_code="spin_speed",
+                    value="1200",
+                ),
+                CellUpdateIn(
+                    condition_id=second_layer.conditions[0].id,
+                    parameter_code="pr_type",
+                    value="B",
+                ),
+            ],
+        ),
+        actor="phase4-smoke-seed",
+    )
 
-        return _SmokeSeed(
-            source_project_id=source.id,
-            source_layer_keys=tuple(layer.layer_key for layer in source.layers),
-            source_condition_ids=(
-                first_layer.conditions[0].id,
-                second_layer.conditions[0].id,
-            ),
-        )
+    return _SmokeSeed(
+        source_project_id=source.id,
+        source_layer_keys=tuple(layer.layer_key for layer in source.layers),
+        source_condition_ids=(
+            first_layer.conditions[0].id,
+            second_layer.conditions[0].id,
+        ),
+    )
 
 
 async def _run_rollback_smoke(
@@ -247,10 +246,12 @@ async def _run_rollback_smoke(
     *,
     health: Any,
 ) -> dict[str, Any]:
-    seed = await _seed_source_project(session_factory)
-
     async with session_factory() as session:
-        baseline = await _truth_counts(session)
+        pre_counts = await _truth_counts(session)
+
+    seed: _SmokeSeed | None = None
+    smoke_counts: dict[str, int] | None = None
+    event_counts: dict[str, int] | None = None
 
     async with session_factory() as session:
         service = ProjectService(
@@ -261,134 +262,155 @@ async def _run_rollback_smoke(
         cell_service = CellService(CellRepository(session))
         condition_service = ConditionService(ConditionRepository(session))
 
-        target = await service.create_project(
-            ProjectCreate(
-                line_id="L1",
-                process_id="PROC_BETA",
-                part_id="TARGET",
-                name="Phase 4 smoke target",
-                device_type_code="DEFAULT",
-                project_category_code="DEFAULT",
-                backbone_project_id=seed.source_project_id,
-            ),
-            actor="phase4-smoke",
-        )
+        try:
+            seed = await _seed_source_project(session)
 
-        matched_layers = [layer for layer in target.layers if layer.source_layer_key is not None]
-        assert matched_layers, "expected at least one backbone copy layer"
+            target = await service.create_project(
+                ProjectCreate(
+                    line_id="L1",
+                    process_id="PROC_BETA",
+                    part_id="TARGET",
+                    name="Phase 4 smoke target",
+                    device_type_code="DEFAULT",
+                    project_category_code="DEFAULT",
+                    backbone_project_id=seed.source_project_id,
+                ),
+                actor="phase4-smoke",
+            )
 
-        copy_events = await _events(session, target.id, ChangeEventType.BACKBONE_COPY)
-        assert len(copy_events) == len(matched_layers)
-        capture_by_layer = {layer.layer_key: layer.backbone_snapshot for layer in matched_layers}
-        for event in copy_events:
-            assert event.layer_key is not None
-            assert event.payload["capture"] == capture_by_layer[event.layer_key]
+            matched_layers = [
+                layer for layer in target.layers if layer.source_layer_key is not None
+            ]
+            assert matched_layers, "expected at least one backbone copy layer"
 
-        target_copy_layer = next(
-            layer for layer in matched_layers if layer.layer_key == "L1::PROC_BETA::001::CLN"
-        )
-        base_condition = target_copy_layer.conditions[0]
+            copy_events = await _events(session, target.id, ChangeEventType.BACKBONE_COPY)
+            assert len(copy_events) == len(matched_layers)
+            capture_by_layer = {
+                layer.layer_key: layer.backbone_snapshot for layer in matched_layers
+            }
+            for event in copy_events:
+                assert event.layer_key is not None
+                assert event.payload["capture"] == capture_by_layer[event.layer_key]
 
-        manual_patch = await cell_service.patch_cells(
-            target.id,
-            CellsPatchIn(
-                origin="manual",
-                cells=[
-                    CellUpdateIn(
-                        condition_id=base_condition.id,
-                        parameter_code="spin_speed",
-                        value="905",
-                    )
-                ],
-            ),
-            actor="phase4-smoke",
-        )
-        paste_patch = await cell_service.patch_cells(
-            target.id,
-            CellsPatchIn(
-                origin="paste",
-                cells=[
-                    CellUpdateIn(
-                        condition_id=base_condition.id,
-                        parameter_code="pr_type",
-                        value="B",
-                    )
-                ],
-            ),
-            actor="phase4-smoke",
-        )
+            target_copy_layer = next(
+                layer
+                for layer in matched_layers
+                if layer.layer_key == "L1::PROC_BETA::001::CLN"
+            )
+            base_condition = target_copy_layer.conditions[0]
 
-        duplicate = await condition_service.add_condition(
-            target.id,
-            target_copy_layer.layer_key,
-            ConditionCreateIn(source_condition_id=base_condition.id),
-            actor="phase4-smoke",
-        )
-        await condition_service.set_por(target.id, duplicate.id, actor="phase4-smoke")
-        await condition_service.delete_condition(target.id, base_condition.id, actor="phase4-smoke")
-        await service.patch_profile(
-            target.id,
-            ProjectProfilePatchIn(comment="rollback-smoke"),
-            actor="phase4-smoke",
-        )
+            manual_patch = await cell_service.patch_cells(
+                target.id,
+                CellsPatchIn(
+                    origin="manual",
+                    cells=[
+                        CellUpdateIn(
+                            condition_id=base_condition.id,
+                            parameter_code="spin_speed",
+                            value="905",
+                        )
+                    ],
+                ),
+                actor="phase4-smoke",
+            )
+            paste_patch = await cell_service.patch_cells(
+                target.id,
+                CellsPatchIn(
+                    origin="paste",
+                    cells=[
+                        CellUpdateIn(
+                            condition_id=base_condition.id,
+                            parameter_code="pr_type",
+                            value="B",
+                        )
+                    ],
+                ),
+                actor="phase4-smoke",
+            )
 
-        replace_layer = next(
-            layer for layer in target.layers if layer.layer_key == "L1::PROC_BETA::015::WELL"
-        )
-        replace_source_layer_key = seed.source_layer_keys[1]
-        replaced = await service.replace_layer_backbone(
-            target.id,
-            replace_layer.layer_key,
-            BackboneReplaceIn(
-                source_project_id=seed.source_project_id,
-                source_layer_key=replace_source_layer_key,
-            ),
-            actor="phase4-smoke",
-        )
+            duplicate = await condition_service.add_condition(
+                target.id,
+                target_copy_layer.layer_key,
+                ConditionCreateIn(source_condition_id=base_condition.id),
+                actor="phase4-smoke",
+            )
+            await condition_service.set_por(target.id, duplicate.id, actor="phase4-smoke")
+            await condition_service.delete_condition(
+                target.id, base_condition.id, actor="phase4-smoke"
+            )
+            await service.patch_profile(
+                target.id,
+                ProjectProfilePatchIn(comment="rollback-smoke"),
+                actor="phase4-smoke",
+            )
 
-        smoke_counts = await _truth_counts(session)
-        event_counts = await _event_counts(session, target.id)
-        replace_events = await _events(session, target.id, ChangeEventType.BACKBONE_LAYER_REPLACE)
-        profile_events = await _events(session, target.id, ChangeEventType.PROJECT_PROFILE_UPDATE)
-        cell_events = await _events(session, target.id, ChangeEventType.CELL_UPDATE)
-        add_events = await _events(session, target.id, ChangeEventType.CONDITION_ADD)
-        remove_events = await _events(session, target.id, ChangeEventType.CONDITION_REMOVE)
-        por_events = await _events(session, target.id, ChangeEventType.POR_CHANGE)
+            replace_layer = next(
+                layer
+                for layer in target.layers
+                if layer.layer_key == "L1::PROC_BETA::015::WELL"
+            )
+            replace_source_layer_key = seed.source_layer_keys[1]
+            replaced = await service.replace_layer_backbone(
+                target.id,
+                replace_layer.layer_key,
+                BackboneReplaceIn(
+                    source_project_id=seed.source_project_id,
+                    source_layer_key=replace_source_layer_key,
+                ),
+                actor="phase4-smoke",
+            )
 
-        assert manual_patch.batch_id
-        assert paste_patch.batch_id
-        assert len(cell_events) == 2
-        assert {event.origin for event in cell_events} == {"manual", "paste"}
-        for event in cell_events:
-            assert event.batch_id in {manual_patch.batch_id, paste_patch.batch_id}
-            assert event.layer_key == target_copy_layer.layer_key
-            assert event.condition_id == base_condition.id
-        assert len(add_events) == len(remove_events) == len(por_events) == 1
-        assert add_events[0].payload["source_condition_id"] == base_condition.id
-        assert add_events[0].payload["snapshot"]["label"] == duplicate.label
-        assert remove_events[0].payload["snapshot"]["label"] == base_condition.label
-        assert por_events[0].payload["new_por_condition_id"] == duplicate.id
-        assert profile_events[0].origin == "manual"
-        assert profile_events[0].batch_id is None
-        assert profile_events[0].layer_key is None
-        assert profile_events[0].source_project_id is None
-        assert profile_events[0].source_layer_key is None
+            smoke_counts = await _truth_counts(session)
+            event_counts = await _event_counts(session, target.id)
+            replace_events = await _events(
+                session, target.id, ChangeEventType.BACKBONE_LAYER_REPLACE
+            )
+            profile_events = await _events(
+                session, target.id, ChangeEventType.PROJECT_PROFILE_UPDATE
+            )
+            cell_events = await _events(session, target.id, ChangeEventType.CELL_UPDATE)
+            add_events = await _events(session, target.id, ChangeEventType.CONDITION_ADD)
+            remove_events = await _events(session, target.id, ChangeEventType.CONDITION_REMOVE)
+            por_events = await _events(session, target.id, ChangeEventType.POR_CHANGE)
 
-        replace_event = replace_events[0]
-        replaced_layer = next(
-            layer for layer in replaced.layers if layer.layer_key == replace_layer.layer_key
-        )
-        assert replace_event.payload["capture"] == replaced_layer.backbone_snapshot
-        assert replace_event.payload["before"]["condition_count"] == 1
-        assert replaced_layer.backbone_snapshot is not None
-        assert replace_event.payload["after"]["condition_count"] == len(
-            replaced_layer.backbone_snapshot["conditions"]
-        )
+            assert manual_patch.batch_id
+            assert paste_patch.batch_id
+            assert len(cell_events) == 2
+            assert {event.origin for event in cell_events} == {"manual", "paste"}
+            for event in cell_events:
+                assert event.batch_id in {manual_patch.batch_id, paste_patch.batch_id}
+                assert event.layer_key == target_copy_layer.layer_key
+                assert event.condition_id == base_condition.id
+            assert len(add_events) == len(remove_events) == len(por_events) == 1
+            assert add_events[0].payload["source_condition_id"] == base_condition.id
+            assert add_events[0].payload["snapshot"]["label"] == duplicate.label
+            assert remove_events[0].payload["snapshot"]["label"] == base_condition.label
+            assert por_events[0].payload["new_por_condition_id"] == duplicate.id
+            assert profile_events[0].origin == "manual"
+            assert profile_events[0].batch_id is None
+            assert profile_events[0].layer_key is None
+            assert profile_events[0].source_project_id is None
+            assert profile_events[0].source_layer_key is None
 
-        await session.rollback()
+            replace_event = replace_events[0]
+            replaced_layer = next(
+                layer for layer in replaced.layers if layer.layer_key == replace_layer.layer_key
+            )
+            assert replace_event.payload["capture"] == replaced_layer.backbone_snapshot
+            assert replace_event.payload["before"]["condition_count"] == 1
+            assert replaced_layer.backbone_snapshot is not None
+            assert replace_event.payload["after"]["condition_count"] == len(
+                replaced_layer.backbone_snapshot["conditions"]
+            )
+        finally:
+            await session.rollback()
 
     async with session_factory() as session:
-        after_rollback = await _truth_counts(session)
+        post_counts = await _truth_counts(session)
+
+    assert seed is not None
+    assert smoke_counts is not None
+    assert event_counts is not None
 
     return {
         "status": "PASS",
@@ -398,16 +420,17 @@ async def _run_rollback_smoke(
             "source_project_id": seed.source_project_id,
             "source_layer_keys": list(seed.source_layer_keys),
         },
-        "baseline_counts": baseline,
+        "pre_counts": pre_counts,
         "smoke_counts": smoke_counts,
-        "after_rollback_counts": after_rollback,
+        "post_counts": post_counts,
         "target_event_counts": event_counts,
         "checks": {
             "gate_disabled": True,
             "backbone_copy_envelope_parity": True,
             "backbone_replace_envelope_parity": True,
-            "row_counts_restored_after_rollback": baseline == after_rollback,
-            "project_counts_restored_after_rollback": baseline == after_rollback,
+            "row_counts_changed_during_smoke": smoke_counts != pre_counts,
+            "row_counts_restored_after_rollback": pre_counts == post_counts,
+            "project_counts_restored_after_rollback": pre_counts == post_counts,
         },
     }
 
@@ -416,15 +439,16 @@ async def build_smoke_report(
     *, rollback: bool, session_factory: async_sessionmaker[AsyncSession] | None = None
 ) -> dict[str, Any]:
     """Build the writer-health attestation used by canary/rollback checks."""
-    health = await get_phase4_writer_health()
-    if rollback and health.project_mutations_enabled:
-        raise RuntimeError("rollback-only smoke requires PROJECT_MUTATIONS_ENABLED=false")
     if rollback:
+        if settings.project_mutations_enabled:
+            raise RuntimeError("rollback-only smoke requires PROJECT_MUTATIONS_ENABLED=false")
+        health = await get_phase4_writer_health()
         factory = session_factory or _session_factory()
         report = await _run_rollback_smoke(factory, health=health)
         report["health"] = health.model_dump()
         report["checks"]["gate_disabled"] = health.project_mutations_enabled is False
         return report
+    health = await get_phase4_writer_health()
     return {
         "status": "PASS",
         "mode": "rollback" if rollback else "health",
