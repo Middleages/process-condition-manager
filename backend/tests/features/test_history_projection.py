@@ -191,9 +191,14 @@ def test_timeline_summary_orders_newest_first_and_sanitizes_payload() -> None:
         HistoryJumpState.PRESENT,
     ]
     assert projection.items[0].detail_applicability == HistoryAvailability.LEGACY_UNAVAILABLE
-    assert projection.items[1].detail_applicability == HistoryAvailability.NO_APPLICABLE
+    assert projection.items[1].detail_applicability == HistoryAvailability.NOT_APPLICABLE
     assert projection.items[2].legacy_coverage == HistoryAvailability.AVAILABLE
     assert "raw" not in json.dumps(asdict(projection), ensure_ascii=False)
+
+
+def test_history_availability_uses_not_applicable_member_only() -> None:
+    assert HistoryAvailability.NOT_APPLICABLE.value == "not_applicable"
+    assert not hasattr(HistoryAvailability, "NO_APPLICABLE")
 
 
 @pytest.mark.parametrize(
@@ -206,8 +211,8 @@ def test_timeline_summary_preserves_non_expandable_event_types(event_type: str) 
     assert [item.event_type for item in projection.items] == [event_type]
     assert projection.metadata.cell_items == 0
     assert projection.metadata.capture_items == 0
-    assert projection.items[0].detail_applicability == HistoryAvailability.NO_APPLICABLE
-    assert projection.items[0].legacy_coverage == HistoryAvailability.NO_APPLICABLE
+    assert projection.items[0].detail_applicability == HistoryAvailability.NOT_APPLICABLE
+    assert projection.items[0].legacy_coverage == HistoryAvailability.NOT_APPLICABLE
 
 
 def test_cell_detail_projects_descending_ids_and_legacy_unavailable() -> None:
@@ -305,10 +310,30 @@ def test_backbone_capture_v1_is_legacy_unavailable() -> None:
     assert v1_projection.items == ()
 
 
+def test_backbone_capture_absent_legacy_detail_is_legacy_unavailable() -> None:
+    projection = project_backbone_capture(
+        [
+            _row(
+                2,
+                "backbone_copy",
+                schema_version=2,
+                layer_sort_order=0,
+                layer_key="T-L0",
+                capture=_capture_snapshot(),
+                detail=None,
+            )
+        ]
+    )
+
+    assert projection.availability == HistoryAvailability.LEGACY_UNAVAILABLE
+    assert projection.items == ()
+
+
 @pytest.mark.parametrize(
-    ("row_kwargs", "detail"),
+    ("row_kwargs", "detail", "capture"),
     [
-        ({"layer_sort_order": 0}, []),
+        ({"layer_sort_order": -1}, _capture_detail(), _capture_snapshot()),
+        ({"layer_sort_order": 0}, [], _capture_snapshot()),
         (
             {"layer_sort_order": 0},
             [
@@ -321,11 +346,13 @@ def test_backbone_capture_v1_is_legacy_unavailable() -> None:
                     "cell_count": 2,
                 },
             ],
+            _capture_snapshot(),
         ),
+        ({"layer_sort_order": 0}, _capture_detail(), {"schema_version": 1}),
     ],
 )
 def test_backbone_capture_invalid_v2_payload_fails_closed(
-    row_kwargs: dict[str, Any], detail: list[dict[str, Any]]
+    row_kwargs: dict[str, Any], detail: list[dict[str, Any]], capture: dict[str, Any]
 ) -> None:
     with pytest.raises(ConflictError) as raised:
         project_backbone_capture(
@@ -335,7 +362,7 @@ def test_backbone_capture_invalid_v2_payload_fails_closed(
                     "backbone_copy",
                     schema_version=2,
                     layer_key="T-L0",
-                    capture={"schema_version": 1},
+                    capture=capture,
                     detail=detail,
                     **row_kwargs,
                 )
@@ -373,7 +400,7 @@ def test_backbone_capture_rejects_mixed_cell_and_capture_rows() -> None:
 
 def test_backbone_capture_without_applicable_rows_is_noop() -> None:
     projection = project_backbone_capture([])
-    assert projection.availability == HistoryAvailability.NO_APPLICABLE
+    assert projection.availability == HistoryAvailability.NOT_APPLICABLE
     assert projection.items == ()
 
 
@@ -410,7 +437,7 @@ def test_cell_history_without_initial_marks_state_unavailable() -> None:
     )
 
     assert projection.initial_entry is None
-    assert projection.initial_state == HistoryAvailability.NO_APPLICABLE
+    assert projection.initial_state == HistoryAvailability.NOT_APPLICABLE
     assert projection.initial_state_unavailable is True
 
 
