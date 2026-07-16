@@ -960,76 +960,111 @@ def test_0006_malformed_scalar_backfill_leaves_unsupported_values_null(
 
     migration_db.upgrade("head")
 
-    rows = {row[0]: row for row in _event_rows(migration_db.connection)}
+    rows = {
+        row[0]: row
+        for row in migration_db.connection.execute(
+            sa.text(
+                """
+                SELECT id, event_type, condition_id, layer_key, batch_id, origin,
+                       source_project_id, source_layer_key, payload
+                FROM change_event
+                ORDER BY id
+                """
+            )
+        ).all()
+    }
 
-    assert rows[malformed_fixture["project_create_missing_backbone_id"]][2:] == (
+    project_create_missing = rows[malformed_fixture["project_create_missing_backbone_id"]]
+    assert project_create_missing[2:8] == (
         None,
         None,
         None,
         "system",
         None,
         None,
-        {"batch_id": "batch-" + ("x" * 59)},
     )
-    assert rows[malformed_fixture["project_create_null_backbone_id"]][2:] == (
+    assert project_create_missing[8] == {"batch_id": "batch-" + ("x" * 59)}
+
+    project_create_null = rows[malformed_fixture["project_create_null_backbone_id"]]
+    assert project_create_null[2:8] == (
         None,
         None,
         "batch-null",
         "system",
         None,
         None,
-        {"batch_id": "batch-null", "backbone_project_id": None},
     )
-    assert rows[malformed_fixture["backbone_copy_object_backbone_id"]][2:] == (
+    assert project_create_null[8] == {
+        "batch_id": "batch-null",
+        "backbone_project_id": None,
+    }
+
+    backbone_copy_object = rows[malformed_fixture["backbone_copy_object_backbone_id"]]
+    assert backbone_copy_object[2:8] == (
         None,
         None,
         "batch-object",
         "backbone",
         None,
         None,
-        {"batch_id": "batch-object", "backbone_project_id": {"bad": True}},
     )
-    assert rows[malformed_fixture["backbone_layer_replace_string_backbone_id"]][2:] == (
+    assert backbone_copy_object[8] == {
+        "batch_id": "batch-object",
+        "backbone_project_id": {"bad": True},
+    }
+
+    backbone_layer_replace = rows[malformed_fixture["backbone_layer_replace_string_backbone_id"]]
+    assert backbone_layer_replace[2:8] == (
         None,
         None,
         "batch-layer",
         "backbone",
         None,
         None,
-        {
-            "batch_id": "batch-layer",
-            "target_layer_key": "L" * 257,
-            "source_project_id": "7",
-            "source_layer_key": "L" * 257,
-        },
     )
-    assert rows[malformed_fixture["condition_add_array_condition_id"]][2:] == (
+    assert backbone_layer_replace[8] == {
+        "batch_id": "batch-layer",
+        "target_layer_key": "L" * 257,
+        "source_project_id": "7",
+        "source_layer_key": "L" * 257,
+    }
+
+    condition_add_array = rows[malformed_fixture["condition_add_array_condition_id"]]
+    assert condition_add_array[2:8] == (
         None,
         None,
         None,
         "manual",
         None,
         None,
-        {"layer_key": "L" * 257, "condition_id": [1, 2, 3]},
     )
-    assert rows[malformed_fixture["condition_remove_zero_condition_id"]][2:] == (
+    assert condition_add_array[8] == {"layer_key": "L" * 257, "condition_id": [1, 2, 3]}
+
+    condition_remove_zero = rows[malformed_fixture["condition_remove_zero_condition_id"]]
+    assert condition_remove_zero[2:8] == (
         None,
         None,
         None,
         "manual",
         None,
         None,
-        {"layer_key": {"bad": True}, "condition_id": 0},
     )
-    assert rows[malformed_fixture["por_change_fractional_condition_id"]][2:] == (
+    assert condition_remove_zero[8] == {"layer_key": {"bad": True}, "condition_id": 0}
+
+    por_change_fractional = rows[malformed_fixture["por_change_fractional_condition_id"]]
+    assert por_change_fractional[2:8] == (
         None,
         "layer-ok",
         None,
         "manual",
         None,
         None,
-        {"layer_key": "layer-ok", "new_por_condition_id": 1.5},
     )
+    assert por_change_fractional[8] == {
+        "layer_key": "layer-ok",
+        "new_por_condition_id": 1.5,
+    }
+
     scientific_row = rows[malformed_fixture["por_change_scientific_condition_id"]]
     assert scientific_row[2:8] == (
         None,
@@ -1041,12 +1076,17 @@ def test_0006_malformed_scalar_backfill_leaves_unsupported_values_null(
     )
     assert scientific_row[8]["layer_key"] == "layer-ok"
     assert scientific_row[8]["new_por_condition_id"] is not None
-    assert rows[malformed_fixture["por_change_overflow_condition_id"]][2:] == (
+
+    por_change_overflow = rows[malformed_fixture["por_change_overflow_condition_id"]]
+    assert por_change_overflow[2:8] == (
         None,
         "layer-ok",
         None,
         "manual",
         None,
         None,
-        {"layer_key": "layer-ok", "new_por_condition_id": 2147483648},
     )
+    assert por_change_overflow[8] == {
+        "layer_key": "layer-ok",
+        "new_por_condition_id": 2147483648,
+    }
