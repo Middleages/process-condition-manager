@@ -423,6 +423,40 @@ async def test_rollback_smoke_fails_when_canonical_choice_set_has_no_active_opti
         await verify_phase4_writer.build_smoke_report(rollback=True, session_factory=sqlite_factory)
 
 
+async def test_rollback_smoke_fails_when_canonical_choice_set_is_inactive(
+    monkeypatch, sqlite_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    async def _compatible_revision() -> str | None:
+        return "0006"
+
+    monkeypatch.setattr(maintenance, "read_app_revision", _compatible_revision)
+    monkeypatch.setattr(maintenance.settings, "project_mutations_enabled", False)
+
+    async with sqlite_factory() as session:
+        device_type = ChoiceSet(code="device_type", display_name="device_type", is_active=False)
+        device_type.options.extend(
+            [
+                ChoiceOption(code="LOGIC", label="Logic", is_active=True, sort_order=10),
+            ]
+        )
+        project_category = ChoiceSet(code="project_category", display_name="project_category")
+        project_category.options.extend(
+            [
+                ChoiceOption(
+                    code="DEVELOPMENT",
+                    label="Development",
+                    is_active=True,
+                    sort_order=10,
+                ),
+            ]
+        )
+        session.add_all([device_type, project_category])
+        await session.commit()
+
+    with pytest.raises(RuntimeError, match="canonical ChoiceSet is inactive"):
+        await verify_phase4_writer.build_smoke_report(rollback=True, session_factory=sqlite_factory)
+
+
 def test_main_prints_json_and_returns_zero_when_compatible(
     monkeypatch, capsys, sqlite_factory: async_sessionmaker[AsyncSession]
 ) -> None:
