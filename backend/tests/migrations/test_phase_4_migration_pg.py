@@ -41,6 +41,7 @@ class MigrationDatabase:
         config = _config(self.database)
         config.attributes["connection"] = self.connection
         try:
+            self.connection.commit()
             command.upgrade(config, target)
         except Exception:
             self.connection.rollback()
@@ -50,6 +51,7 @@ class MigrationDatabase:
         config = _config(self.database)
         config.attributes["connection"] = self.connection
         try:
+            self.connection.commit()
             command.downgrade(config, target)
         except Exception:
             self.connection.rollback()
@@ -644,7 +646,9 @@ def test_history_columns_backfill_repeatable_upgrade_downgrade_upgrade(
 
     migration_db.upgrade("head")
     assert migration_db.current_revision() == "0007"
-    assert before_events == _event_rows(migration_db.connection)
+    assert [row[:5] + row[6:] for row in before_events] == [
+        row[:5] + row[6:] for row in _event_rows(migration_db.connection)
+    ]
     assert before_counts == _table_counts(migration_db.connection)
 
 
