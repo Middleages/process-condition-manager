@@ -38,6 +38,8 @@ HistoryCellCoordinateKey = tuple[int, str]
 
 CAPTURE_EVENT_ROW_LIMIT = 200
 COORDINATE_PROOF_LIMIT = 5000
+SQL_INTEGER_MIN = -2_147_483_648
+SQL_INTEGER_MAX = 2_147_483_647
 
 
 @dataclass(frozen=True, slots=True)
@@ -892,12 +894,52 @@ class HistoryRepository:
         if snapshot_max_event_id is not None:
             candidate_predicates.append(candidate_event.id <= snapshot_max_event_id)
 
-        unbatched_predicates = [
-            *candidate_predicates,
-            candidate_event.batch_id.is_(None),
-        ]
-        if before_group_max_id is not None:
-            unbatched_predicates.append(candidate_event.id < before_group_max_id)
+        if member_filters is None or member_filters == HistoryMemberFilterScope():
+            # Expressing the tenant and frozen-id bounds as one lexicographic
+            # range across the complete SQL Integer domain is equivalent to
+            # ``project_id = ... AND id <= ...`` while letting PostgreSQL stream
+            # the unbatched candidates from the matching Phase 4 composite index.
+            project_event_key = tuple_(
+                candidate_event.project_id,
+                candidate_event.id,
+            )
+            unbatched_predicates = [
+                project_event_key
+                >= tuple_(literal(project_id), literal(SQL_INTEGER_MIN)),
+                candidate_event.batch_id.is_(None),
+            ]
+            upper_event_id = (
+                SQL_INTEGER_MAX
+                if snapshot_max_event_id is None
+                else snapshot_max_event_id
+            )
+            unbatched_predicates.append(
+                project_event_key
+                <= tuple_(
+                    literal(project_id),
+                    literal(upper_event_id),
+                )
+            )
+            if before_group_max_id is not None:
+                unbatched_predicates.append(
+                    project_event_key
+                    < tuple_(
+                        literal(project_id),
+                        literal(before_group_max_id),
+                    )
+                )
+            unbatched_order = (
+                candidate_event.project_id.asc(),
+                candidate_event.id.desc(),
+            )
+        else:
+            unbatched_predicates = [
+                *candidate_predicates,
+                candidate_event.batch_id.is_(None),
+            ]
+            if before_group_max_id is not None:
+                unbatched_predicates.append(candidate_event.id < before_group_max_id)
+            unbatched_order = (candidate_event.id.desc(),)
         unbatched_candidates = (
             select(
                 (literal("event:") + sa_cast(candidate_event.id, String)).label(
@@ -907,7 +949,7 @@ class HistoryRepository:
                 candidate_event.id.label("max_event_id"),
             )
             .where(*unbatched_predicates)
-            .order_by(candidate_event.id.desc())
+            .order_by(*unbatched_order)
             .limit(limit)
         )
 
