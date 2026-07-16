@@ -212,7 +212,12 @@ async def test_create_project_race_rolls_back_the_loser(
     assert conflict.code == "conflict"
 
     async with pg_factory() as verify_session:
-        assert await _project_count(verify_session, **race_identity) == 1
+        assert await _project_count(
+            verify_session,
+            line_id=race_identity[0],
+            process_id=race_identity[1],
+            part_id=race_identity[2],
+        ) == 1
         project_id = await verify_session.scalar(
             select(Project.id).where(
                 Project.line_id == race_identity[0],
