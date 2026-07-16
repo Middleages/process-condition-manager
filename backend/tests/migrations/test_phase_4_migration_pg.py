@@ -146,6 +146,58 @@ def _insert_event(
     )
 
 
+def _insert_event_raw_payload(
+    connection: Connection,
+    *,
+    project_id: int,
+    event_type: str,
+    actor: str,
+    payload: str,
+    condition_id: int | None = None,
+    parameter_code: str | None = None,
+    old_value: str | None = None,
+    new_value: str | None = None,
+) -> int:
+    return _insert_scalar(
+        connection,
+        """
+        INSERT INTO change_event
+            (
+                project_id,
+                event_type,
+                actor,
+                payload,
+                condition_id,
+                parameter_code,
+                old_value,
+                new_value
+            )
+        VALUES
+            (
+                :project_id,
+                :event_type,
+                :actor,
+                CAST(:payload AS jsonb),
+                :condition_id,
+                :parameter_code,
+                :old_value,
+                :new_value
+            )
+        RETURNING id
+        """,
+        {
+            "project_id": project_id,
+            "event_type": event_type,
+            "actor": actor,
+            "payload": payload,
+            "condition_id": condition_id,
+            "parameter_code": parameter_code,
+            "old_value": old_value,
+            "new_value": new_value,
+        },
+    )
+
+
 def _seed_bulk_project_create_events(
     connection: Connection, *, event_count: int
 ) -> tuple[int, int]:
@@ -407,6 +459,101 @@ def _seed_history_fixture(connection: Connection) -> SeededHistoryFixture:
         remove_condition_id=remove_condition_id,
         event_ids=event_ids,
     )
+
+
+def _seed_malformed_scalar_fixture(connection: Connection) -> dict[str, int]:
+    project_id = _insert_scalar(
+        connection,
+        """
+        INSERT INTO project (line_id, process_id, part_id, name)
+        VALUES ('L1', 'PROC_BAD', 'BAD', 'Malformed scalar project')
+        RETURNING id
+        """,
+    )
+
+    overlong_batch_id = "batch-" + ("x" * 59)
+    overlong_layer_key = "L" * 257
+
+    event_ids = {
+        "project_create_missing_backbone_id": _insert_event_raw_payload(
+            connection,
+            project_id=project_id,
+            event_type="project_create",
+            actor="system",
+            payload=json.dumps({"batch_id": overlong_batch_id}),
+        ),
+        "project_create_null_backbone_id": _insert_event_raw_payload(
+            connection,
+            project_id=project_id,
+            event_type="project_create",
+            actor="system",
+            payload=json.dumps({"batch_id": "batch-null", "backbone_project_id": None}),
+        ),
+        "backbone_copy_object_backbone_id": _insert_event_raw_payload(
+            connection,
+            project_id=project_id,
+            event_type="backbone_copy",
+            actor="system",
+            payload=json.dumps(
+                {"batch_id": "batch-object", "backbone_project_id": {"bad": True}}
+            ),
+        ),
+        "backbone_layer_replace_string_backbone_id": _insert_event_raw_payload(
+            connection,
+            project_id=project_id,
+            event_type="backbone_layer_replace",
+            actor="system",
+            payload=json.dumps(
+                {
+                    "batch_id": "batch-layer",
+                    "target_layer_key": overlong_layer_key,
+                    "source_project_id": "7",
+                    "source_layer_key": overlong_layer_key,
+                }
+            ),
+        ),
+        "condition_add_array_condition_id": _insert_event_raw_payload(
+            connection,
+            project_id=project_id,
+            event_type="condition_add",
+            actor="system",
+            payload=json.dumps(
+                {"layer_key": overlong_layer_key, "condition_id": [1, 2, 3]}
+            ),
+        ),
+        "condition_remove_zero_condition_id": _insert_event_raw_payload(
+            connection,
+            project_id=project_id,
+            event_type="condition_remove",
+            actor="system",
+            payload=json.dumps({"layer_key": {"bad": True}, "condition_id": 0}),
+        ),
+        "por_change_fractional_condition_id": _insert_event_raw_payload(
+            connection,
+            project_id=project_id,
+            event_type="por_change",
+            actor="system",
+            payload=json.dumps({"layer_key": "layer-ok", "new_por_condition_id": 1.5}),
+        ),
+        "por_change_scientific_condition_id": _insert_event_raw_payload(
+            connection,
+            project_id=project_id,
+            event_type="por_change",
+            actor="system",
+            payload='{"layer_key":"layer-ok","new_por_condition_id":1e-3}',
+        ),
+        "por_change_overflow_condition_id": _insert_event_raw_payload(
+            connection,
+            project_id=project_id,
+            event_type="por_change",
+            actor="system",
+            payload=json.dumps(
+                {"layer_key": "layer-ok", "new_por_condition_id": 2_147_483_648}
+            ),
+        ),
+    }
+    connection.commit()
+    return event_ids
 
 
 def _table_counts(connection: Connection) -> dict[str, int]:
@@ -803,3 +950,103 @@ def test_0007_retry_rebuilds_mismatched_index_after_partial_interruption(
         "ix_change_event_project_created_id_desc",
         "ix_change_event_project_batch_id_desc",
     }.isdisjoint(remaining_indexes)
+
+
+def test_0006_malformed_scalar_backfill_leaves_unsupported_values_null(
+    migration_db: MigrationDatabase,
+) -> None:
+    migration_db.upgrade("0005")
+    malformed_fixture = _seed_malformed_scalar_fixture(migration_db.connection)
+
+    migration_db.upgrade("head")
+
+    rows = {row[0]: row for row in _event_rows(migration_db.connection)}
+
+    assert rows[malformed_fixture["project_create_missing_backbone_id"]][2:] == (
+        None,
+        None,
+        None,
+        "system",
+        None,
+        None,
+        {"batch_id": "batch-" + ("x" * 59)},
+    )
+    assert rows[malformed_fixture["project_create_null_backbone_id"]][2:] == (
+        None,
+        None,
+        "batch-null",
+        "system",
+        None,
+        None,
+        {"batch_id": "batch-null", "backbone_project_id": None},
+    )
+    assert rows[malformed_fixture["backbone_copy_object_backbone_id"]][2:] == (
+        None,
+        None,
+        "batch-object",
+        "backbone",
+        None,
+        None,
+        {"batch_id": "batch-object", "backbone_project_id": {"bad": True}},
+    )
+    assert rows[malformed_fixture["backbone_layer_replace_string_backbone_id"]][2:] == (
+        None,
+        None,
+        "batch-layer",
+        "backbone",
+        None,
+        None,
+        {
+            "batch_id": "batch-layer",
+            "target_layer_key": "L" * 257,
+            "source_project_id": "7",
+            "source_layer_key": "L" * 257,
+        },
+    )
+    assert rows[malformed_fixture["condition_add_array_condition_id"]][2:] == (
+        None,
+        None,
+        None,
+        "manual",
+        None,
+        None,
+        {"layer_key": "L" * 257, "condition_id": [1, 2, 3]},
+    )
+    assert rows[malformed_fixture["condition_remove_zero_condition_id"]][2:] == (
+        None,
+        None,
+        None,
+        "manual",
+        None,
+        None,
+        {"layer_key": {"bad": True}, "condition_id": 0},
+    )
+    assert rows[malformed_fixture["por_change_fractional_condition_id"]][2:] == (
+        None,
+        "layer-ok",
+        None,
+        "manual",
+        None,
+        None,
+        {"layer_key": "layer-ok", "new_por_condition_id": 1.5},
+    )
+    scientific_row = rows[malformed_fixture["por_change_scientific_condition_id"]]
+    assert scientific_row[2:8] == (
+        None,
+        "layer-ok",
+        None,
+        "manual",
+        None,
+        None,
+    )
+    assert scientific_row[8]["layer_key"] == "layer-ok"
+    assert scientific_row[8]["new_por_condition_id"] is not None
+    assert rows[malformed_fixture["por_change_overflow_condition_id"]][2:] == (
+        None,
+        "layer-ok",
+        None,
+        "manual",
+        None,
+        None,
+        {"layer_key": "layer-ok", "new_por_condition_id": 2147483648},
+    )
