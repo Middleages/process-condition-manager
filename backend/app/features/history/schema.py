@@ -1,13 +1,21 @@
-"""Strict public JSON contracts for history read surfaces."""
-
 # pyright: reportMissingImports=false
+"""Strict public JSON contracts for history read surfaces."""
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
+
+from app.models.project import ChangeEventType
 
 HistoryOrigin = Literal["manual", "paste", "backbone", "system"]
 HistoryDetailStatus = Literal["available", "not_applicable", "legacy_unavailable"]
@@ -40,6 +48,51 @@ class _StrictModel(BaseModel):
 class HistoryTimelineQueryIn(_StrictModel):
     cursor: OpaqueTokenText | None = None
     limit: int = Field(default=50, ge=1, le=100)
+    created_from: datetime | None = None
+    created_to: datetime | None = None
+    layer_key: LayerKeyText | None = None
+    event_type: list[ChangeEventType] = Field(default_factory=list)
+    actor: ActorText | None = None
+    origin: list[HistoryOrigin] = Field(default_factory=list)
+    source_project_id: int | None = Field(default=None, ge=1)
+
+    @field_validator("created_from", "created_to", mode="before")
+    @classmethod
+    def _normalize_query_datetime(cls, value: object) -> object:
+        if value is None or isinstance(value, datetime):
+            return value
+        if isinstance(value, str):
+            parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+            return parsed.astimezone(UTC) if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
+        raise ValueError("datetime filters must be ISO datetime strings")
+
+    @field_validator("event_type", mode="before")
+    @classmethod
+    def _normalize_event_type(cls, value: object) -> list[ChangeEventType]:
+        if value is None:
+            return []
+        if isinstance(value, (str, ChangeEventType)):
+            return [ChangeEventType(value)]
+        return [ChangeEventType(item) for item in value]  # type: ignore[arg-type]
+
+    @field_validator("origin", mode="before")
+    @classmethod
+    def _normalize_origin(cls, value: object) -> list[HistoryOrigin]:
+        if value is None:
+            return []
+        if isinstance(value, str):
+            return [value]  # type: ignore[list-item]
+        return list(value)  # type: ignore[arg-type]
+
+    @model_validator(mode="after")
+    def _validate_time_range(self) -> "HistoryTimelineQueryIn":
+        if (
+            self.created_from is not None
+            and self.created_to is not None
+            and self.created_from >= self.created_to
+        ):
+            raise ValueError("created_from must be earlier than created_to")
+        return self
 
 
 class HistoryDetailQueryIn(_StrictModel):
@@ -75,7 +128,7 @@ class HistoryDetailScopeTokenOut(_StrictModel):
 class HistoryTimelineItemOut(_StrictModel):
     kind: Literal["event", "batch"]
     cursor_id: int = Field(ge=0)
-    event_types: list[str] = Field(default_factory=list)
+    event_types: list[ChangeEventType] = Field(default_factory=list)
     actors: list[ActorText] = Field(default_factory=list)
     origins: list[HistoryOrigin] = Field(default_factory=list)
     started_at: datetime
@@ -98,6 +151,13 @@ class HistoryTimelineOut(_StrictModel):
     next_cursor: OpaqueTokenText | None = None
 
 
+class HistoryDomainCoordinateOut(_StrictModel):
+    layer_key: LayerKeyText
+    condition_id: int | None = Field(default=None, ge=1)
+    parameter_code: ParameterCodeText | None = None
+    cell_ref: str | None = None
+
+
 class HistoryDetailCaptureTupleOut(_StrictModel):
     target_layer_sort: int = Field(ge=0)
     target_layer_key: LayerKeyText
@@ -106,6 +166,8 @@ class HistoryDetailCaptureTupleOut(_StrictModel):
     parameter_sort: int = Field(ge=0)
     parameter_code: ParameterCodeText
     event_id: int | None = Field(default=None, ge=1)
+    domain_coordinate: HistoryDomainCoordinateOut | None = None
+    copied_baseline_value: ChoiceCodeText | None = None
 
 
 class HistoryStateEntryOut(_StrictModel):
@@ -118,12 +180,14 @@ class HistoryDetailItemOut(_StrictModel):
     order_kind: HistoryOrderKind
     old_code: ChoiceCodeText | None = None
     new_code: ChoiceCodeText | None = None
+    baseline_value: ChoiceCodeText | None = None
     choice_label: ChoiceLabelText | None = None
     actor: ActorText | None = None
     origin: HistoryOrigin
     created_at: datetime
     layer_key: LayerKeyText | None = None
     jump_target: HistoryJumpTargetOut | None = None
+    domain_coordinate: HistoryDomainCoordinateOut | None = None
     capture_tuple: HistoryDetailCaptureTupleOut | None = None
     metadata_status: HistoryMetadataStatus = "complete"
 
@@ -146,14 +210,14 @@ class HistoryCellHistoryItemOut(_StrictModel):
     created_at: datetime
     layer_key: LayerKeyText | None = None
     jump_status: HistoryJumpStatus = "available"
-    baseline_entry: HistoryStateEntryOut | None = None
-    initial_entry: HistoryStateEntryOut | None = None
-    initial_state_unavailable: bool = False
     metadata_status: HistoryMetadataStatus = "complete"
 
 
 class HistoryCellHistoryOut(_StrictModel):
     items: list[HistoryCellHistoryItemOut] = Field(default_factory=list)
+    baseline_entry: HistoryStateEntryOut | None = None
+    initial_entry: HistoryStateEntryOut | None = None
+    initial_state_unavailable: bool = False
     next_cursor: OpaqueTokenText | None = None
 
 
@@ -172,6 +236,7 @@ __all__ = [
     "HistoryDetailQueryIn",
     "HistoryDetailScopeTokenOut",
     "HistoryDetailStatus",
+    "HistoryDomainCoordinateOut",
     "HistoryJumpStatus",
     "HistoryJumpTargetOut",
     "HistoryMetadataStatus",

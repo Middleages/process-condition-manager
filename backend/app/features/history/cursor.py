@@ -7,7 +7,7 @@ import binascii
 import json
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any, Literal, Sequence, cast
+from typing import Any, Literal, NoReturn, Sequence, cast
 
 from app.domain.errors import RuleViolationError
 
@@ -18,11 +18,11 @@ HistoryOrigin = Literal["manual", "paste", "backbone", "system"]
 HistoryOrderKind = Literal["event_desc", "capture_asc"]
 
 
-def _raise_invalid_cursor(message: str) -> None:
+def _raise_invalid_cursor(message: str) -> NoReturn:
     raise RuleViolationError(message, code="invalid_cursor")
 
 
-def _raise_invalid_scope(message: str) -> None:
+def _raise_invalid_scope(message: str) -> NoReturn:
     raise RuleViolationError(message, code="invalid_scope")
 
 
@@ -170,6 +170,7 @@ def _format_datetime(value: datetime | str | None) -> str | None:
         return None
     if isinstance(value, str):
         value = _normalize_datetime(value, field_name="datetime", error_code="invalid_scope")
+    assert value is not None
     if value.tzinfo is None:
         value = value.replace(tzinfo=UTC)
     return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
@@ -233,8 +234,8 @@ class HistoryMemberFilterScope:
         created_to = _normalize_datetime(
             self.created_to, field_name="created_to", error_code="invalid_scope"
         )
-        if created_from is not None and created_to is not None and created_from > created_to:
-            _raise_invalid_scope("created_from must be earlier than or equal to created_to")
+        if created_from is not None and created_to is not None and created_from >= created_to:
+            _raise_invalid_scope("created_from must be earlier than created_to")
         object.__setattr__(self, "created_from", created_from)
         object.__setattr__(self, "created_to", created_to)
 
@@ -515,11 +516,17 @@ def _member_filters_from_payload(payload: dict[str, Any]) -> HistoryMemberFilter
         actors=_normalize_sorted_unique_text_tuple(
             payload["actors"], field_name="actors", max_length=128, error_code="invalid_scope"
         ),
-        origins=cast(
-            tuple[HistoryOrigin, ...],
-            _normalize_sorted_unique_text_tuple(
-                payload["origins"], field_name="origins", max_length=32, error_code="invalid_scope"
-            ),
+        origins=tuple(
+            cast(
+                HistoryOrigin,
+                origin,
+            )
+            for origin in _normalize_sorted_unique_text_tuple(
+                payload["origins"],
+                field_name="origins",
+                max_length=32,
+                error_code="invalid_scope",
+            )
         ),
         source_project_ids=_normalize_sorted_unique_int_tuple(
             payload["source_project_ids"],

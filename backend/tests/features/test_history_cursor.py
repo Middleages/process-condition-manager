@@ -1,9 +1,8 @@
+# pyright: reportMissingImports=false
 from __future__ import annotations
 
-# pyright: reportMissingImports=false
-
 from datetime import UTC, datetime
-from typing import cast
+from typing import Any, cast
 
 import pytest
 
@@ -262,7 +261,6 @@ def test_scope_dataclasses_reject_invalid_values(bad_scope_kwargs: dict[str, obj
 
 def test_member_filter_scope_rejects_unsupported_origin_values() -> None:
     with pytest.raises(RuleViolationError) as exc_info:
-        HistoryMemberFilterScope(
-            origins=cast(tuple[HistoryOrigin, ...], ("unsupported",))
-        )
+        bad_origins: Any = ("unsupported",)
+        HistoryMemberFilterScope(origins=bad_origins)
     assert exc_info.value.code == "invalid_scope"
