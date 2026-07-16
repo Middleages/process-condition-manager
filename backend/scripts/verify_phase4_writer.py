@@ -6,6 +6,7 @@ import argparse
 import asyncio
 import json
 import sys
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -17,6 +18,7 @@ if __package__ in {None, ""}:
 
 from sqlalchemy import func, select  # noqa: E402
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker  # noqa: E402
+from sqlalchemy.orm import selectinload  # noqa: E402
 
 import app.models  # noqa: F401,E402 -- register every table with Base.metadata
 from app.core.config import settings  # noqa: E402
@@ -52,7 +54,12 @@ from app.project_metadata.manual import ManualProjectMetadataProvider  # noqa: E
 
 _PROFILE_CHOICE_SET_CODES = ("device_type", "project_category")
 _DEFAULT_PROFILE_OPTIONS = (("DEFAULT", "Default", True),)
-_BACKBONE_PARAMETER_CATEGORY = ("photo", "PHOTO")
+_CAPTURE_CATEGORY_PREFIX = "photo"
+_CAPTURE_CHOICE_SET_PREFIX = "equipment_mode"
+_CAPTURE_NUMBER_PARAMETER_PREFIX = "spin_speed"
+_CAPTURE_CHOICE_PARAMETER_PREFIX = "pr_type"
+_CAPTURE_NUMBER_VALUE = "900"
+_CAPTURE_CHOICE_VALUE = "PRIMARY"
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,6 +67,30 @@ class _SmokeSeed:
     source_project_id: int
     source_layer_keys: tuple[str, ...]
     source_condition_ids: tuple[int, ...]
+    source_part_id: str
+    target_part_id: str
+    device_type_code: str
+    project_category_code: str
+    capture_category_code: str
+    capture_choice_set_code: str
+    number_parameter_code: str
+    choice_parameter_code: str
+    number_value: str
+    choice_value: str
+
+
+@dataclass(frozen=True, slots=True)
+class _BackboneCaptureSeed:
+    capture_category_code: str
+    capture_choice_set_code: str
+    number_parameter_code: str
+    choice_parameter_code: str
+    number_value: str
+    choice_value: str
+
+
+def _smoke_suffix() -> str:
+    return uuid.uuid4().hex[:8]
 
 
 def _session_factory() -> async_sessionmaker[AsyncSession]:
@@ -83,32 +114,65 @@ async def _seed_choice_set(
     return choice_set
 
 
-async def _seed_profile_choice_sets(session: AsyncSession) -> None:
-    for code in _PROFILE_CHOICE_SET_CODES:
+async def _seed_or_reuse_profile_choice_set(
+    session: AsyncSession,
+    *,
+    code: str,
+) -> str:
+    row = await session.execute(
+        select(ChoiceSet)
+        .options(selectinload(ChoiceSet.options))
+        .where(ChoiceSet.code == code)
+    )
+    choice_set = row.scalar_one_or_none()
+    if choice_set is None:
         await _seed_choice_set(session, code=code, options=_DEFAULT_PROFILE_OPTIONS)
+        return "DEFAULT"
+
+    active_options = sorted(
+        (option for option in choice_set.options if option.is_active),
+        key=lambda option: (option.sort_order, option.code),
+    )
+    if not active_options:
+        raise RuntimeError(f"canonical ChoiceSet has no active option: {code}")
+    return active_options[0].code
 
 
-async def _seed_backbone_capture_parameters(session: AsyncSession) -> None:
+async def _seed_profile_choice_sets(session: AsyncSession) -> tuple[str, str]:
+    device_type_code = await _seed_or_reuse_profile_choice_set(
+        session, code=_PROFILE_CHOICE_SET_CODES[0]
+    )
+    project_category_code = await _seed_or_reuse_profile_choice_set(
+        session, code=_PROFILE_CHOICE_SET_CODES[1]
+    )
+    return device_type_code, project_category_code
+
+
+async def _seed_backbone_capture_parameters(
+    session: AsyncSession, *, suffix: str
+) -> _BackboneCaptureSeed:
+    capture_category_code = f"{_CAPTURE_CATEGORY_PREFIX}_{suffix}"
+    capture_choice_set_code = f"{_CAPTURE_CHOICE_SET_PREFIX}_{suffix}"
+    number_parameter_code = f"{_CAPTURE_NUMBER_PARAMETER_PREFIX}_{suffix}"
+    choice_parameter_code = f"{_CAPTURE_CHOICE_PARAMETER_PREFIX}_{suffix}"
+
     category = ParameterCategory(
-        code=_BACKBONE_PARAMETER_CATEGORY[0], display_name=_BACKBONE_PARAMETER_CATEGORY[1]
+        code=capture_category_code,
+        display_name=capture_category_code.upper(),
     )
     session.add(category)
     await session.flush()
 
     choice_set = await _seed_choice_set(
         session,
-        code="equipment_mode",
-        options=(
-            ("A", "A", True),
-            ("B", "B", True),
-            ("LEGACY", "Legacy", False),
-        ),
+        code=capture_choice_set_code,
+        options=(("PRIMARY", "Primary", True), ("LEGACY", "Legacy", False)),
     )
     session.add_all(
         [
             Parameter(
-                code="spin_speed",
-                display_name="Spin Speed",
+                code=number_parameter_code,
+                display_name=number_parameter_code.upper(),
                 value_type=ValueType.NUMBER,
                 category_id=category.id,
                 unit="rpm",
@@ -118,8 +182,8 @@ async def _seed_backbone_capture_parameters(session: AsyncSession) -> None:
                 sort_order=1,
             ),
             Parameter(
-                code="pr_type",
-                display_name="PR Type",
+                code=choice_parameter_code,
+                display_name=choice_parameter_code.upper(),
                 value_type=ValueType.CHOICE,
                 category_id=category.id,
                 choice_set=choice_set,
@@ -128,6 +192,14 @@ async def _seed_backbone_capture_parameters(session: AsyncSession) -> None:
         ]
     )
     await session.flush()
+    return _BackboneCaptureSeed(
+        capture_category_code=capture_category_code,
+        capture_choice_set_code=capture_choice_set_code,
+        number_parameter_code=number_parameter_code,
+        choice_parameter_code=choice_parameter_code,
+        number_value=_CAPTURE_NUMBER_VALUE,
+        choice_value=_CAPTURE_CHOICE_VALUE,
+    )
 
 
 async def _truth_counts(session: AsyncSession) -> dict[str, int]:
@@ -136,6 +208,10 @@ async def _truth_counts(session: AsyncSession) -> dict[str, int]:
         return int(value or 0)
 
     return {
+        "choice_sets": await _count(ChoiceSet),
+        "choice_options": await _count(ChoiceOption),
+        "parameter_categories": await _count(ParameterCategory),
+        "parameters": await _count(Parameter),
         "projects": await _count(Project),
         "profiles": await _count(ProjectProfile),
         "layers": await _count(SheetLayer),
@@ -169,8 +245,11 @@ async def _events(
 
 
 async def _seed_source_project(session: AsyncSession) -> _SmokeSeed:
-    await _seed_profile_choice_sets(session)
-    await _seed_backbone_capture_parameters(session)
+    device_type_code, project_category_code = await _seed_profile_choice_sets(session)
+    suffix = _smoke_suffix()
+    capture_seed = await _seed_backbone_capture_parameters(session, suffix=suffix)
+    source_part_id = f"source-{suffix}"
+    target_part_id = f"target-{suffix}"
 
     service = ProjectService(
         ProjectRepository(session),
@@ -181,10 +260,10 @@ async def _seed_source_project(session: AsyncSession) -> _SmokeSeed:
         ProjectCreate(
             line_id="L1",
             process_id="PROC_ALPHA",
-            part_id="SOURCE",
-            name="Phase 4 smoke source",
-            device_type_code="DEFAULT",
-            project_category_code="DEFAULT",
+            part_id=source_part_id,
+            name=f"Phase 4 smoke source {suffix}",
+            device_type_code=device_type_code,
+            project_category_code=project_category_code,
         ),
         actor="phase4-smoke-seed",
     )
@@ -199,13 +278,13 @@ async def _seed_source_project(session: AsyncSession) -> _SmokeSeed:
             cells=[
                 CellUpdateIn(
                     condition_id=first_layer.conditions[0].id,
-                    parameter_code="spin_speed",
-                    value="900",
+                    parameter_code=capture_seed.number_parameter_code,
+                    value=capture_seed.number_value,
                 ),
                 CellUpdateIn(
                     condition_id=first_layer.conditions[0].id,
-                    parameter_code="pr_type",
-                    value="A",
+                    parameter_code=capture_seed.choice_parameter_code,
+                    value=capture_seed.choice_value,
                 ),
             ],
         ),
@@ -218,13 +297,13 @@ async def _seed_source_project(session: AsyncSession) -> _SmokeSeed:
             cells=[
                 CellUpdateIn(
                     condition_id=second_layer.conditions[0].id,
-                    parameter_code="spin_speed",
-                    value="1200",
+                    parameter_code=capture_seed.number_parameter_code,
+                    value=str(int(capture_seed.number_value) + 300),
                 ),
                 CellUpdateIn(
                     condition_id=second_layer.conditions[0].id,
-                    parameter_code="pr_type",
-                    value="B",
+                    parameter_code=capture_seed.choice_parameter_code,
+                    value=capture_seed.choice_value,
                 ),
             ],
         ),
@@ -238,6 +317,16 @@ async def _seed_source_project(session: AsyncSession) -> _SmokeSeed:
             first_layer.conditions[0].id,
             second_layer.conditions[0].id,
         ),
+        source_part_id=source_part_id,
+        target_part_id=target_part_id,
+        device_type_code=device_type_code,
+        project_category_code=project_category_code,
+        capture_category_code=capture_seed.capture_category_code,
+        capture_choice_set_code=capture_seed.capture_choice_set_code,
+        number_parameter_code=capture_seed.number_parameter_code,
+        choice_parameter_code=capture_seed.choice_parameter_code,
+        number_value=capture_seed.number_value,
+        choice_value=capture_seed.choice_value,
     )
 
 
@@ -269,10 +358,10 @@ async def _run_rollback_smoke(
                 ProjectCreate(
                     line_id="L1",
                     process_id="PROC_BETA",
-                    part_id="TARGET",
-                    name="Phase 4 smoke target",
-                    device_type_code="DEFAULT",
-                    project_category_code="DEFAULT",
+                    part_id=seed.target_part_id,
+                    name=f"Phase 4 smoke target {seed.target_part_id}",
+                    device_type_code=seed.device_type_code,
+                    project_category_code=seed.project_category_code,
                     backbone_project_id=seed.source_project_id,
                 ),
                 actor="phase4-smoke",
@@ -306,8 +395,8 @@ async def _run_rollback_smoke(
                     cells=[
                         CellUpdateIn(
                             condition_id=base_condition.id,
-                            parameter_code="spin_speed",
-                            value="905",
+                            parameter_code=seed.number_parameter_code,
+                            value=str(int(seed.number_value) + 5),
                         )
                     ],
                 ),
@@ -320,8 +409,8 @@ async def _run_rollback_smoke(
                     cells=[
                         CellUpdateIn(
                             condition_id=base_condition.id,
-                            parameter_code="pr_type",
-                            value="B",
+                            parameter_code=seed.choice_parameter_code,
+                            value=seed.choice_value,
                         )
                     ],
                 ),
@@ -419,6 +508,16 @@ async def _run_rollback_smoke(
         "seed": {
             "source_project_id": seed.source_project_id,
             "source_layer_keys": list(seed.source_layer_keys),
+            "source_part_id": seed.source_part_id,
+            "target_part_id": seed.target_part_id,
+            "device_type_code": seed.device_type_code,
+            "project_category_code": seed.project_category_code,
+            "capture_category_code": seed.capture_category_code,
+            "capture_choice_set_code": seed.capture_choice_set_code,
+            "number_parameter_code": seed.number_parameter_code,
+            "choice_parameter_code": seed.choice_parameter_code,
+            "number_value": seed.number_value,
+            "choice_value": seed.choice_value,
         },
         "pre_counts": pre_counts,
         "smoke_counts": smoke_counts,
