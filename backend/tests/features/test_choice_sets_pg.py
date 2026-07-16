@@ -24,6 +24,7 @@ from app.features.choice_sets.schema import (
 )
 from app.features.choice_sets.service import ChoiceSetService
 from app.models.choice import ChoiceOption, ChoiceSet
+from tests.postgres_database import temporary_postgres_database
 
 _PG_URL = os.environ.get("APP_TEST_DATABASE_URL")
 
@@ -33,16 +34,14 @@ pytestmark = pytest.mark.skipif(_PG_URL is None, reason="APP_TEST_DATABASE_URL ë
 @pytest.fixture
 async def pg_engine() -> AsyncIterator[AsyncEngine]:
     assert _PG_URL is not None
-    engine = create_async_engine(_PG_URL)
-    async with engine.begin() as connection:
-        await connection.run_sync(Base.metadata.drop_all)
-        await connection.run_sync(Base.metadata.create_all)
-    try:
-        yield engine
-    finally:
+    with temporary_postgres_database() as database:
+        engine = create_async_engine(database.async_url)
         async with engine.begin() as connection:
-            await connection.run_sync(Base.metadata.drop_all)
-        await engine.dispose()
+            await connection.run_sync(Base.metadata.create_all)
+        try:
+            yield engine
+        finally:
+            await engine.dispose()
 
 
 async def _seed_set(
