@@ -17,7 +17,7 @@ from contextlib import asynccontextmanager
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -37,19 +37,16 @@ from app.features.conditions.service import ConditionService
 from app.features.locks.repository import EditLockRepository
 from app.features.locks.service import LockService
 from app.main import app
-from app.models.parameter import Parameter, ParameterCategory
 from app.models.project import (
     CellValue,
     ChangeEvent,
     ChangeEventType,
-    EditLock,
     LayerCondition,
     Project,
     ProjectProfile,
     ProjectStatus,
     SheetLayer,
 )
-from tests.factories import make_project_profile
 from tests.postgres_database import temporary_postgres_database
 
 _PG_URL = os.environ.get("APP_TEST_DATABASE_URL")
@@ -120,19 +117,6 @@ def _condition_service(session: AsyncSession) -> ConditionService:
 
 def _lock_service(session: AsyncSession) -> LockService:
     return LockService(EditLockRepository(session))
-
-
-async def _seed_required_parameter(session: AsyncSession, *, code: str) -> None:
-    category = ParameterCategory(code=f"cat_{code}", display_name=code)
-    session.add(
-        Parameter(
-            code=code,
-            display_name=code,
-            value_type="text",
-            category=category,
-        )
-    )
-    await session.flush()
 
 
 async def _seed_project_graph(
@@ -298,49 +282,48 @@ async def test_condition_writers_record_exact_envelope_and_snapshots(
             await _condition_events(verify_session, project_id, ChangeEventType.CONDITION_REMOVE)
         )[-1]
         por_event = (await _condition_events(verify_session, project_id, ChangeEventType.POR_CHANGE))[-1]
+        assert added.layer_key == layer_key
+        assert por.layer_key == layer_key
 
-    assert added.layer_key == layer_key
-    assert por.layer_key == layer_key
+        assert add_event.condition_id == added.id
+        assert add_event.layer_key == layer_key
+        assert add_event.origin == "manual"
+        assert add_event.source_project_id is None
+        assert add_event.source_layer_key is None
+        assert add_event.payload == {
+            "layer_key": layer_key,
+            "condition_id": added.id,
+            "source_condition_id": source_id,
+            "snapshot": {
+                "label": "C4",
+                "is_por": False,
+                "condition_index": 4,
+                "cells": {"memo": "seed", "spin_speed": "1000"},
+            },
+        }
 
-    assert add_event.condition_id == added.id
-    assert add_event.layer_key == layer_key
-    assert add_event.origin == "manual"
-    assert add_event.source_project_id is None
-    assert add_event.source_layer_key is None
-    assert add_event.payload == {
-        "layer_key": layer_key,
-        "condition_id": added.id,
-        "source_condition_id": source_id,
-        "snapshot": {
-            "label": "C4",
+        assert remove_event.condition_id == removable_id
+        assert remove_event.layer_key == layer_key
+        assert remove_event.origin == "manual"
+        assert remove_event.source_project_id is None
+        assert remove_event.source_layer_key is None
+        assert remove_event.payload["snapshot"] == {
+            "label": "C2",
             "is_por": False,
-            "condition_index": 4,
-            "cells": {"memo": "seed", "spin_speed": "1000"},
-        },
-    }
+            "condition_index": 2,
+            "cells": {},
+        }
 
-    assert remove_event.condition_id == removable_id
-    assert remove_event.layer_key == layer_key
-    assert remove_event.origin == "manual"
-    assert remove_event.source_project_id is None
-    assert remove_event.source_layer_key is None
-    assert remove_event.payload["snapshot"] == {
-        "label": "C2",
-        "is_por": False,
-        "condition_index": 2,
-        "cells": {},
-    }
-
-    assert por_event.condition_id == por_target_id
-    assert por_event.layer_key == layer_key
-    assert por_event.origin == "manual"
-    assert por_event.source_project_id is None
-    assert por_event.source_layer_key is None
-    assert por_event.payload == {
-        "layer_key": layer_key,
-        "old_por_condition_id": source_id,
-        "new_por_condition_id": por_target_id,
-    }
+        assert por_event.condition_id == por_target_id
+        assert por_event.layer_key == layer_key
+        assert por_event.origin == "manual"
+        assert por_event.source_project_id is None
+        assert por_event.source_layer_key is None
+        assert por_event.payload == {
+            "layer_key": layer_key,
+            "old_por_condition_id": source_id,
+            "new_por_condition_id": por_target_id,
+        }
 
 
 @pytest.mark.parametrize("kind", ["cells", "conditions"])
@@ -414,25 +397,25 @@ async def test_writer_flush_failure_rolls_back_all_mutations(
         source = await _condition_row(verify_session, source_id)
         removable = await _condition_row(verify_session, removable_id)
         por_target = await _condition_row(verify_session, por_target_id)
+        source_cells = await _condition_cells(verify_session, source_id)
         cell_events = await _cell_events(verify_session, project_id)
         add_events = await _condition_events(verify_session, project_id, ChangeEventType.CONDITION_ADD)
         remove_events = await _condition_events(
             verify_session, project_id, ChangeEventType.CONDITION_REMOVE
         )
         por_events = await _condition_events(verify_session, project_id, ChangeEventType.POR_CHANGE)
-
-    assert project.id == project_id
-    assert source is not None and source.source_condition_id is None
-    assert await _condition_cells(verify_session, source_id) == {
-        "memo": "seed",
-        "spin_speed": "1000",
-    }
-    assert removable is not None and removable is not None
-    assert por_target is not None and por_target.is_por is False
-    assert cell_events == []
-    assert add_events == []
-    assert remove_events == []
-    assert por_events == []
+        assert project.id == project_id
+        assert source is not None and source.source_condition_id is None
+        assert source_cells == {
+            "memo": "seed",
+            "spin_speed": "1000",
+        }
+        assert removable is not None
+        assert por_target is not None and por_target.is_por is False
+        assert cell_events == []
+        assert add_events == []
+        assert remove_events == []
+        assert por_events == []
 
 
 async def test_concurrent_edits_are_serialized_by_project_lock(
