@@ -3,7 +3,6 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 import pytest
-from pydantic import ValidationError
 
 from app.domain.errors import RuleViolationError
 from app.features.history.cursor import (
@@ -207,10 +206,16 @@ def test_cursor_dataclasses_reject_bad_versions_and_types(bad_cursor_kwargs: dic
 @pytest.mark.parametrize(
     "bad_scope_kwargs",
     [
-        {"project_id": 1, "member_filters": HistoryMemberFilterScope(origins=("unsupported",))},
+        {"project_id": 1, "member_filters": {"origins": ("unsupported",)}},
         {"project_id": 1, "member_filters": "not-a-filter"},
     ],
 )
 def test_scope_dataclasses_reject_invalid_values(bad_scope_kwargs: dict[str, object]) -> None:
     with pytest.raises(RuleViolationError):
         HistoryTimelineScope(**bad_scope_kwargs)  # type: ignore[arg-type]
+
+
+def test_member_filter_scope_rejects_unsupported_origin_values() -> None:
+    with pytest.raises(RuleViolationError) as exc_info:
+        HistoryMemberFilterScope(origins=("unsupported",))
+    assert exc_info.value.code == "invalid_scope"
