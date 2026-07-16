@@ -3,18 +3,20 @@
 import re
 
 import pytest
+from sqlalchemy import event as sa_event
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import ConflictError
+from app.domain.parameters.types import ValueType
 from app.features.projects.repository import ProjectRepository
 from app.features.projects.schema import BackboneReplaceIn, ProjectCreate
 from app.features.projects.service import ProjectService
 from app.ingest.fixture_reader import FixtureIngestReader
 from app.ingest.reader import IngestReader, LayerInfo, ProcessInfo, process_key
-from app.models.project import ChangeEvent, ChangeEventType, Project
+from app.models.project import CellValue, ChangeEvent, ChangeEventType, Project
 from app.project_metadata.manual import ManualProjectMetadataProvider
-from tests.factories import seed_required_profile_choice_sets
+from tests.factories import seed_parameter, seed_required_profile_choice_sets
 
 
 class UnmatchedReader(IngestReader):
@@ -32,17 +34,7 @@ class UnmatchedReader(IngestReader):
         )
 
     async def get_layers(self, line_id: str, process_id: str) -> list[LayerInfo]:
-        return [
-            LayerInfo(
-                key=f"{line_id}::{process_id}::999::MISSING",
-                step_seq="999",
-                layer_id="MISSING",
-                eqp_type="MISSING",
-                eqp_type_desc="Intentional no-match",
-                area_name="MISSING",
-                sort_order=99,
-            )
-        ]
+        return []
 
 
 async def _seed_required_choices(db_session: AsyncSession) -> None:
@@ -102,6 +94,26 @@ async def _event_count(db_session: AsyncSession) -> int:
     count = await db_session.scalar(select(func.count(ChangeEvent.id)))
     assert count is not None
     return int(count)
+
+
+@sa_event.listens_for(Project, "init", propagate=True)
+def _initialize_project_events(
+    target: Project, args: tuple[object, ...], kwargs: dict[str, object]
+) -> None:
+    target.events = []
+
+
+async def _seed_parameter_registry(
+    db_session: AsyncSession,
+    *,
+    include_legacy: bool = False,
+) -> None:
+    await seed_parameter(db_session, code="spin_speed", value_type=ValueType.NUMBER)
+    await seed_parameter(db_session, code="pr_type", value_type=ValueType.TEXT)
+    if include_legacy:
+        legacy = await seed_parameter(db_session, code="legacy_speed", value_type=ValueType.TEXT)
+        legacy.is_active = False
+    await db_session.commit()
 
 
 async def test_create_captures_source_before_graph_use(
@@ -164,16 +176,24 @@ async def test_create_emits_per_layer_copy_events_with_shared_batch_and_captured
 
     assert len(copy_events) == len(matched_layers) > 0
     assert len({event.payload["batch_id"] for event in copy_events}) == 1
-    for layer, event in zip(matched_layers, copy_events, strict=True):
+    for layer, copy_event in zip(matched_layers, copy_events, strict=True):
         snapshot = layer.backbone_snapshot
         assert snapshot is not None
         assert snapshot["schema_version"] == 1
-        assert snapshot["capture_batch_id"] == event.payload["batch_id"]
-        assert snapshot["captured_at"] == event.payload["captured_at"]
+        assert snapshot["capture_batch_id"] == copy_event.payload["batch_id"]
+        assert snapshot["captured_at"] == copy_event.payload["captured_at"]
         assert snapshot["source"]["project_id"] == source.id
         assert snapshot["source"]["layer_key"] == layer.source_layer_key
+        assert copy_event.batch_id == copy_event.payload["batch_id"]
+        assert copy_event.layer_key == layer.layer_key
+        assert copy_event.source_project_id == source.id
+        assert copy_event.source_layer_key == layer.source_layer_key
+        assert copy_event.payload["payload_schema_version"] == 2
+        assert copy_event.payload["backbone_project_id"] == source.id
+        assert copy_event.payload["target_layer_key"] == layer.layer_key
+        assert copy_event.payload["detail"][0]["target_condition_id"] == layer.conditions[0].id
         assert re.fullmatch(r"[0-9a-f]{32}", snapshot["capture_batch_id"])
-        assert re.fullmatch(r"[0-9a-f]{32}", event.payload["batch_id"])
+        assert re.fullmatch(r"[0-9a-f]{32}", copy_event.payload["batch_id"])
 
 
 async def test_create_leaves_no_copy_events_for_unmatched_layers(
@@ -270,8 +290,115 @@ async def test_replace_resets_target_baseline_and_records_structured_event(
     assert snapshot["captured_at"] == event.payload["captured_at"]
     assert snapshot["source"]["project_id"] == source_b.id
     assert snapshot["source"]["layer_key"] == source_b.layers[0].layer_key
-    assert event.payload["source"]["project_id"] == source_b.id
-    assert event.payload["source"]["layer_key"] == source_b.layers[0].layer_key
-    assert event.payload["target"]["project_id"] == target.id
-    assert event.payload["target"]["layer_key"] == target_layer.layer_key
+    assert event.batch_id == event.payload["batch_id"]
+    assert event.layer_key == target_layer.layer_key
+    assert event.source_project_id == source_b.id
+    assert event.source_layer_key == source_b.layers[0].layer_key
+    assert event.payload["payload_schema_version"] == 2
+    assert event.payload["target_layer_key"] == target_layer.layer_key
+    assert event.payload["detail"][0]["target_condition_id"] == replaced_layer.conditions[0].id
     assert re.fullmatch(r"[0-9a-f]{32}", event.payload["batch_id"])
+
+
+async def test_create_records_manual_profile_envelope_and_payload_contract(
+    db_session: AsyncSession,
+) -> None:
+    await _seed_required_choices(db_session)
+    service = _service(db_session)
+
+    project = await _create_project(service, process_id="PROC_ALPHA", part_id="MANUAL")
+    events = await _change_events(db_session, project.id, ChangeEventType.PROJECT_CREATE)
+    assert len(events) == 1
+    event = events[0]
+
+    assert event.payload["metadata_provider"] == "manual"
+    assert event.payload["profile_seed"]["comment"] is None
+    assert event.payload["profile_seed"]["device_type_code"] is None
+    assert event.payload["profile_final"]["process_name"] == "L1 / PROC_ALPHA"
+    assert event.payload["profile_final"]["device_type_code"] == "DEFAULT"
+    assert event.payload["profile_final"]["project_category_code"] == "DEFAULT"
+    assert event.payload["profile_final"]["map_offset_x"] is None
+    assert event.payload["profile_final"]["map_offset_y"] is None
+    assert event.batch_id == event.payload["batch_id"]
+    assert event.source_project_id is None
+    assert event.source_layer_key is None
+    assert event.payload["payload_schema_version"] == 2
+    assert re.fullmatch(r"[0-9a-f]{32}", event.payload["batch_id"])
+
+
+async def test_capture_parameter_registry_returns_active_rows_without_stored_codes(
+    db_session: AsyncSession,
+) -> None:
+    await _seed_parameter_registry(db_session)
+
+    captured = await ProjectRepository(db_session).capture_parameter_registry()
+
+    assert [parameter.parameter_code for parameter in captured.parameters] == [
+        "pr_type",
+        "spin_speed",
+    ]
+    assert [parameter.active_at_capture for parameter in captured.parameters] == [True, True]
+    assert captured.unresolved_codes == ()
+
+
+async def test_capture_parameter_registry_retains_inactive_stored_codes(
+    db_session: AsyncSession,
+) -> None:
+    await _seed_parameter_registry(db_session, include_legacy=True)
+
+    captured = await ProjectRepository(db_session).capture_parameter_registry(
+        {"legacy_speed"}
+    )
+
+    assert [parameter.parameter_code for parameter in captured.parameters] == [
+        "legacy_speed",
+        "pr_type",
+        "spin_speed",
+    ]
+    assert [parameter.active_at_capture for parameter in captured.parameters] == [
+        False,
+        True,
+        True,
+    ]
+    assert captured.unresolved_codes == ()
+
+
+async def test_replace_rejects_unresolved_parameter_metadata_with_conflict(
+    db_session: AsyncSession,
+) -> None:
+    await _seed_required_choices(db_session)
+    await _seed_parameter_registry(db_session, include_legacy=True)
+    captured = await ProjectRepository(db_session).capture_parameter_registry(
+        {"legacy_speed", "missing_speed"}
+    )
+    assert [parameter.parameter_code for parameter in captured.parameters] == [
+        "legacy_speed",
+        "pr_type",
+        "spin_speed",
+    ]
+    assert captured.unresolved_codes == ("missing_speed",)
+    service = _service(db_session)
+
+    source = await _create_project(service, process_id="PROC_ALPHA", part_id="SRC")
+    source_condition = source.layers[0].conditions[0]
+    source_condition.cell_values.extend(
+        [
+            CellValue(parameter_code="aaa_missing_speed", value_text="17"),
+            CellValue(parameter_code="legacy_speed", value_text="42"),
+        ]
+    )
+    await db_session.commit()
+
+    target = await _create_project(service, process_id="PROC_BETA", part_id="TGT")
+    target_layer = target.layers[0].layer_key
+
+    with pytest.raises(ConflictError, match="unresolved_parameter_metadata"):
+        await service.replace_layer_backbone(
+            target.id,
+            target_layer,
+            BackboneReplaceIn(
+                source_project_id=source.id,
+                source_layer_key=source.layers[0].layer_key,
+            ),
+            actor="worker-2",
+        )
