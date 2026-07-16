@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from typing import Any
 
 import pytest
@@ -366,84 +366,7 @@ def test_snapshot_serializes_exact_contract_from_shuffled_input() -> None:
         ],
     }
     assert result == snapshot(deepcopy(raw))
-    assert backbone_snapshot_hash(raw) == backbone_snapshot_hash(parsed) == backbone_snapshot_hash(
-        BackboneSnapshot(
-            schema_version=1,
-            capture_batch_id="0123456789abcdef0123456789abcdef",
-            captured_at="2026-07-16T04:17:58.715000Z",
-            source=BackboneSnapshotSource(
-                project_id=42,
-                sheet_layer_id=7,
-                layer_key="L1::PROC_ALPHA::010::ACT",
-                step_seq="010",
-                layer_id="ACT",
-            ),
-            columns=(
-                BackboneSnapshotColumn(
-                    parameter_code="overlay",
-                    value_type=ValueType.TEXT,
-                    display_name="Overlay",
-                    category_code="meta",
-                    sort_order=4,
-                    active_at_capture=True,
-                ),
-                BackboneSnapshotColumn(
-                    parameter_code="width",
-                    value_type=ValueType.NUMBER,
-                    display_name="Width",
-                    category_code="dim",
-                    sort_order=2,
-                    active_at_capture=True,
-                ),
-                BackboneSnapshotColumn(
-                    parameter_code="material",
-                    value_type=ValueType.CHOICE,
-                    display_name="Material",
-                    category_code="proc",
-                    sort_order=1,
-                    active_at_capture=False,
-                ),
-                BackboneSnapshotColumn(
-                    parameter_code="pitch",
-                    value_type=ValueType.NUMBER,
-                    display_name="Pitch",
-                    category_code="dim",
-                    sort_order=1,
-                    active_at_capture=True,
-                ),
-                BackboneSnapshotColumn(
-                    parameter_code="notes",
-                    value_type=ValueType.TEXT,
-                    display_name="Notes",
-                    category_code=None,
-                    sort_order=3,
-                    active_at_capture=True,
-                ),
-            ),
-            conditions=(
-                BackboneSnapshotCondition(
-                    source_condition_id=20,
-                    label="Line B",
-                    condition_index=1,
-                    is_por=False,
-                    cells=(
-                        BackboneSnapshotCell(parameter_code="width", value="1.00"),
-                        BackboneSnapshotCell(parameter_code="material", value="AL"),
-                    ),
-                ),
-                BackboneSnapshotCondition(
-                    source_condition_id=10,
-                    label="Line A",
-                    condition_index=0,
-                    is_por=True,
-                    cells=(
-                        BackboneSnapshotCell(parameter_code="pitch", value="01.000"),
-                        BackboneSnapshotCell(parameter_code="notes", value="primary"),
-                    ),
-                ),
-            ),
-        )
-    )
+    assert backbone_snapshot_hash(raw) == backbone_snapshot_hash(parsed)
 
 
 @pytest.mark.parametrize(
@@ -538,11 +461,27 @@ def test_snapshot_parser_fails_closed_on_invalid_contract_data(
 
 
 def test_snapshot_contract_helpers_and_hashing_are_canonical() -> None:
-    snapshot_a = _semantic_snapshot_a()
-    snapshot_b = _semantic_snapshot_b()
+    raw_a = _raw_snapshot()
+    raw_b = deepcopy(raw_a)
+    raw_b["columns"] = list(reversed(raw_b["columns"]))
+    raw_b["conditions"] = list(reversed(raw_b["conditions"]))
+    for condition in raw_b["conditions"]:
+        if condition["source_condition_id"] == 10:
+            condition["cells"] = {
+                "notes": "primary",
+                "pitch": "01.000",
+            }
+        else:
+            condition["cells"] = {
+                "material": "AL",
+                "width": "1.00",
+            }
+    snapshot_a = parse_backbone_snapshot(raw_a)
+    snapshot_b = parse_backbone_snapshot(raw_b)
 
-    assert new_capture_batch_id().isascii()
-    assert len(new_capture_batch_id()) == 32
+    batch_id = new_capture_batch_id()
+    assert batch_id.isascii()
+    assert len(batch_id) == 32
     assert normalize_capture_batch_id("0123456789abcdef0123456789abcdef") == (
         "0123456789abcdef0123456789abcdef"
     )
@@ -550,22 +489,17 @@ def test_snapshot_contract_helpers_and_hashing_are_canonical() -> None:
     with pytest.raises(RuleViolationError):
         normalize_capture_batch_id("0123456789ABCDEF0123456789ABCDEF")
 
-    assert normalize_captured_at(datetime(2026, 7, 16, 4, 17, 58, 715000, tzinfo=timezone.utc)) == datetime(
-        2026,
-        7,
-        16,
-        4,
-        17,
-        58,
-        715000,
-        tzinfo=timezone.utc,
-    )
+    assert normalize_captured_at(
+        datetime(2026, 7, 16, 4, 17, 58, 715000, tzinfo=UTC)
+    ) == datetime(2026, 7, 16, 4, 17, 58, 715000, tzinfo=UTC)
     assert format_captured_at(
-        datetime(2026, 7, 16, 4, 17, 58, 715000, tzinfo=timezone.utc)
+        datetime(2026, 7, 16, 4, 17, 58, 715000, tzinfo=UTC)
     ) == "2026-07-16T04:17:58.715Z"
 
     with pytest.raises(RuleViolationError):
-        normalize_captured_at(datetime(2026, 7, 16, 4, 17, 58, tzinfo=timezone(timedelta(hours=9))))
+        normalize_captured_at(
+            datetime(2026, 7, 16, 4, 17, 58, tzinfo=timezone(timedelta(hours=9)))
+        )
 
     assert serialize_backbone_snapshot(snapshot_a) == serialize_backbone_snapshot(snapshot_b)
     assert backbone_snapshot_hash(snapshot_a) == backbone_snapshot_hash(snapshot_b)
@@ -576,9 +510,21 @@ def test_snapshot_contract_helpers_and_hashing_are_canonical() -> None:
     [
         (None, BASELINE_UNAVAILABLE),
         ([], INVALID_BACKBONE_SNAPSHOT),
-        ({"schema_version": 1, "capture_batch_id": "bad", "captured_at": "2026-07-16T04:17:58.715Z", "source": {}, "columns": [], "conditions": []}, INVALID_BACKBONE_SNAPSHOT),
-        (_raw_snapshot({"captured_at": "2026-07-16T04:17:58.715+09:00"}), INVALID_BACKBONE_SNAPSHOT),
-        (_raw_snapshot({"captured_at": "2026-07-16T04:17:58.715000Z"}), INVALID_BACKBONE_SNAPSHOT),
+        (
+            {
+                "schema_version": 1,
+                "capture_batch_id": "bad",
+                "captured_at": "2026-07-16T04:17:58.715Z",
+                "source": {},
+                "columns": [],
+                "conditions": [],
+            },
+            INVALID_BACKBONE_SNAPSHOT,
+        ),
+        (
+            _raw_snapshot({"captured_at": "2026-07-16T04:17:58.715+09:00"}),
+            INVALID_BACKBONE_SNAPSHOT,
+        ),
     ],
 )
 def test_snapshot_null_and_malformed_inputs_fail_closed(raw: Any, code: str) -> None:

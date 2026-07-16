@@ -6,9 +6,10 @@ import hashlib
 import json
 import re
 import uuid
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
-from typing import Any, Mapping, Sequence
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from app.domain.decimal_values import normalize_decimal
 from app.domain.errors import RuleViolationError
@@ -66,13 +67,13 @@ def normalize_captured_at(value: Any) -> datetime:
 
     if dt.tzinfo is None or dt.utcoffset() != timedelta(0):
         _invalid("captured_at must be UTC")
-    return dt.astimezone(timezone.utc)
+    return dt.astimezone(UTC)
 
 
 def format_captured_at(value: datetime) -> str:
     if value.tzinfo is None or value.utcoffset() != timedelta(0):
         _invalid("captured_at must be UTC")
-    iso = value.astimezone(timezone.utc).isoformat(timespec="microseconds").replace(
+    iso = value.astimezone(UTC).isoformat(timespec="microseconds").replace(
         "+00:00",
         "Z",
     )
@@ -114,13 +115,33 @@ class BackboneSnapshotColumn:
     active_at_capture: bool
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "parameter_code", _require_text(self.parameter_code, "parameter_code"))
+        object.__setattr__(
+            self,
+            "parameter_code",
+            _require_text(self.parameter_code, "parameter_code"),
+        )
         object.__setattr__(self, "value_type", _coerce_value_type(self.value_type))
-        object.__setattr__(self, "display_name", _require_text(self.display_name, "display_name"))
+        object.__setattr__(
+            self,
+            "display_name",
+            _require_text(self.display_name, "display_name"),
+        )
         if self.category_code is not None:
-            object.__setattr__(self, "category_code", _require_text(self.category_code, "category_code"))
-        object.__setattr__(self, "sort_order", _require_non_negative_int(self.sort_order, "sort_order"))
-        object.__setattr__(self, "active_at_capture", _require_bool(self.active_at_capture, "active_at_capture"))
+            object.__setattr__(
+                self,
+                "category_code",
+                _require_text(self.category_code, "category_code"),
+            )
+        object.__setattr__(
+            self,
+            "sort_order",
+            _require_non_negative_int(self.sort_order, "sort_order"),
+        )
+        object.__setattr__(
+            self,
+            "active_at_capture",
+            _require_bool(self.active_at_capture, "active_at_capture"),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,8 +150,16 @@ class BackboneSnapshotCell:
     value: str
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "parameter_code", _require_text(self.parameter_code, "parameter_code"))
-        object.__setattr__(self, "value", _require_text(self.value, "value", allow_empty=True))
+        object.__setattr__(
+            self,
+            "parameter_code",
+            _require_text(self.parameter_code, "parameter_code"),
+        )
+        object.__setattr__(
+            self,
+            "value",
+            _require_text(self.value, "value", allow_empty=True),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -163,7 +192,8 @@ class BackboneSnapshotCondition:
         for cell in sorted(cells, key=lambda item: item.parameter_code):
             if cell.parameter_code in seen_codes:
                 _invalid(
-                    f"duplicate parameter_code in condition {self.source_condition_id}: {cell.parameter_code}"
+                    "duplicate parameter_code in condition "
+                    f"{self.source_condition_id}: {cell.parameter_code}"
                 )
             seen_codes.add(cell.parameter_code)
             canonical_cells.append(cell)
@@ -174,14 +204,22 @@ class BackboneSnapshotCondition:
 class BackboneSnapshot:
     schema_version: int = SNAPSHOT_VERSION
     capture_batch_id: str = field(default_factory=new_capture_batch_id)
-    captured_at: datetime | str = field(default_factory=lambda: datetime.now(timezone.utc))
+    captured_at: datetime | str = field(default_factory=lambda: datetime.now(UTC))
     source: BackboneSnapshotSource | None = None
     columns: tuple[BackboneSnapshotColumn, ...] = ()
     conditions: tuple[BackboneSnapshotCondition, ...] = ()
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "schema_version", _require_exact_schema_version(self.schema_version))
-        object.__setattr__(self, "capture_batch_id", normalize_capture_batch_id(self.capture_batch_id))
+        object.__setattr__(
+            self,
+            "schema_version",
+            _require_exact_schema_version(self.schema_version),
+        )
+        object.__setattr__(
+            self,
+            "capture_batch_id",
+            normalize_capture_batch_id(self.capture_batch_id),
+        )
         object.__setattr__(self, "captured_at", normalize_captured_at(self.captured_at))
         if not isinstance(self.source, BackboneSnapshotSource):
             _invalid("source must be BackboneSnapshotSource")
@@ -209,7 +247,14 @@ def parse_backbone_snapshot(raw: Any) -> BackboneSnapshot:
 
     _require_exact_keys(
         raw,
-        {"schema_version", "capture_batch_id", "captured_at", "source", "columns", "conditions"},
+        {
+            "schema_version",
+            "capture_batch_id",
+            "captured_at",
+            "source",
+            "columns",
+            "conditions",
+        },
         "snapshot",
     )
     source = _parse_source(raw["source"])
@@ -260,7 +305,11 @@ def backbone_snapshot_hash(snapshot_like: BackboneSnapshot | Mapping[str, Any] |
 def _parse_source(raw: Any) -> BackboneSnapshotSource:
     if not isinstance(raw, Mapping):
         _invalid("source must be a mapping")
-    _require_exact_keys(raw, {"project_id", "sheet_layer_id", "layer_key", "step_seq", "layer_id"}, "source")
+    _require_exact_keys(
+        raw,
+        {"project_id", "sheet_layer_id", "layer_key", "step_seq", "layer_id"},
+        "source",
+    )
     return BackboneSnapshotSource(
         project_id=raw["project_id"],
         sheet_layer_id=raw["sheet_layer_id"],
@@ -298,7 +347,11 @@ def _parse_conditions(
     parsed: list[BackboneSnapshotCondition] = []
     for item in items:
         mapping = _require_mapping(item, "condition")
-        _require_exact_keys(mapping, {"source_condition_id", "label", "condition_index", "is_por", "cells"}, "condition")
+        _require_exact_keys(
+            mapping,
+            {"source_condition_id", "label", "condition_index", "is_por", "cells"},
+            "condition",
+        )
         cells_raw = _require_mapping(mapping["cells"], "cells")
         cells: list[BackboneSnapshotCell] = []
         for parameter_code in sorted(cells_raw):
@@ -308,7 +361,11 @@ def _parse_conditions(
             cells.append(
                 BackboneSnapshotCell(
                     parameter_code=parameter_code,
-                    value=_canonical_cell_value(column.value_type, cells_raw[parameter_code], parameter_code),
+                    value=_canonical_cell_value(
+                        column.value_type,
+                        cells_raw[parameter_code],
+                        parameter_code,
+                    ),
                 )
             )
         parsed.append(
