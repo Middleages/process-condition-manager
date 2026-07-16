@@ -8,6 +8,7 @@ before timing the planned API surface.
 
 from __future__ import annotations
 
+import json
 import os
 import uuid
 from dataclasses import dataclass
@@ -86,33 +87,36 @@ async def _seed_layers_and_conditions(
     session: AsyncSession, *, project_id: int
 ) -> tuple[tuple[str, ...], tuple[int, ...]]:
     layer_keys: list[str] = []
-    condition_ids: list[int] = []
-    project = await session.get(Project, project_id)
-    assert project is not None
+    layers: list[SheetLayer] = []
     for index in range(1, _LAYER_COUNT + 1):
         layer_key = f"L1::HISTORY_PERF::{index:03d}::ACT"
-        layer = SheetLayer(
-            project_id=project_id,
-            layer_key=layer_key,
-            step_seq=f"{index:03d}",
-            layer_id="ACT",
-            sort_order=index,
-        )
-        layer.conditions.append(
-            LayerCondition(
-                label="base",
-                condition_index=1,
-                is_por=True,
+        layers.append(
+            SheetLayer(
+                project_id=project_id,
+                layer_key=layer_key,
+                step_seq=f"{index:03d}",
+                layer_id="ACT",
+                sort_order=index,
             )
         )
-        project.layers.append(layer)
         layer_keys.append(layer_key)
 
+    session.add_all(layers)
     await session.flush()
-    for layer in project.layers:
-        assert layer.conditions
-        condition_ids.append(layer.conditions[0].id)
-    return tuple(layer_keys), tuple(condition_ids)
+
+    conditions = [
+        LayerCondition(
+            layer_id=layer.id,
+            label="base",
+            condition_index=1,
+            is_por=True,
+        )
+        for layer in layers
+    ]
+    session.add_all(conditions)
+    await session.flush()
+
+    return tuple(layer_keys), tuple(condition.id for condition in conditions)
 
 
 async def _seed_parameters(session: AsyncSession) -> tuple[str, ...]:
@@ -289,6 +293,31 @@ def _timeline_page_statement(
     )
 
 
+def _timeline_explain_sql() -> str:
+    return (
+        "EXPLAIN (FORMAT JSON) "
+        "SELECT id, event_type, actor, created_at, condition_id, parameter_code "
+        "FROM change_event "
+        "WHERE project_id = :project_id AND id <= :snapshot_max_event_id "
+        "ORDER BY id DESC "
+        "LIMIT 50"
+    )
+
+
+def _collect_plan_nodes(plan: object) -> list[str]:
+    nodes: list[str] = []
+    if isinstance(plan, dict):
+        node_type = plan.get("Node Type")
+        if isinstance(node_type, str):
+            nodes.append(node_type)
+        for child in plan.get("Plans", []) or []:
+            nodes.extend(_collect_plan_nodes(child))
+    elif isinstance(plan, list):
+        for child in plan:
+            nodes.extend(_collect_plan_nodes(child))
+    return nodes
+
+
 async def _seed_history_fixture(session: AsyncSession) -> HistoryPerformanceFixture:
     project_id = await _seed_project(session)
     layer_keys, condition_ids = await _seed_layers_and_conditions(
@@ -321,7 +350,7 @@ async def _scalar_count(session: AsyncSession, statement: sa.sql.Select[tuple[in
 async def test_history_fixture_builder_seeds_expected_counts() -> None:
     assert _PG_URL is not None
     with temporary_postgres_database() as database:
-        engine = await _build_engine(database.async_url)
+        engine = _build_engine(database.async_url)
         try:
             await _prepare_schema(engine)
             factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
@@ -395,3 +424,37 @@ async def test_history_timeline_preview_query_uses_explicit_columns_only() -> No
     assert "change_event.payload" not in statements[-1].lower()
     assert "order by change_event.id desc" in statements[-1].lower()
     assert "limit" in statements[-1].lower()
+
+
+@pytest.mark.asyncio
+async def test_history_timeline_preview_query_has_no_full_project_seq_scan() -> None:
+    assert _PG_URL is not None
+    with temporary_postgres_database() as database:
+        engine = _build_engine(database.async_url)
+        try:
+            await _prepare_schema(engine)
+            factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+            async with factory() as session:
+                fixture = await _seed_history_fixture(session)
+                await session.commit()
+
+            async with factory() as session:
+                explain = (
+                    await session.execute(
+                        sa.text(_timeline_explain_sql()),
+                        {
+                            "project_id": fixture.project_id,
+                            "snapshot_max_event_id": max(fixture.event_ids),
+                        },
+                    )
+                ).scalar_one()
+        finally:
+            await engine.dispose()
+
+    explain_plan = (
+        json.loads(explain)[0]["Plan"]
+        if isinstance(explain, str)
+        else explain[0]["Plan"]
+    )
+    node_types = _collect_plan_nodes(explain_plan)
+    assert "Seq Scan" not in node_types
