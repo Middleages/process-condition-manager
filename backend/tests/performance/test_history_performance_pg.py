@@ -45,16 +45,52 @@ _CELL_VALUE_COUNT: Final[int] = _LAYER_COUNT * _PARAMETER_COUNT
 _EVENT_COUNT: Final[int] = 100_000
 _EVENT_BATCH_SIZE: Final[int] = 5_000
 _HISTORY_INDEX_DDLS: Final[tuple[str, ...]] = (
-    "CREATE INDEX IF NOT EXISTS ix_change_event_project_id_id_desc ON change_event (project_id, id DESC)",
-    "CREATE INDEX IF NOT EXISTS ix_change_event_project_type_id_desc ON change_event (project_id, event_type, id DESC)",
-    "CREATE INDEX IF NOT EXISTS ix_change_event_project_cell_id_desc ON change_event (project_id, condition_id, parameter_code, id DESC) WHERE condition_id IS NOT NULL AND parameter_code IS NOT NULL",
-    "CREATE INDEX IF NOT EXISTS ix_change_event_project_condition_id_desc ON change_event (project_id, condition_id, id DESC) WHERE condition_id IS NOT NULL",
-    "CREATE INDEX IF NOT EXISTS ix_change_event_project_layer_id_desc ON change_event (project_id, layer_key, id DESC) WHERE layer_key IS NOT NULL",
-    "CREATE INDEX IF NOT EXISTS ix_change_event_project_actor_id_desc ON change_event (project_id, actor, id DESC)",
-    "CREATE INDEX IF NOT EXISTS ix_change_event_project_origin_id_desc ON change_event (project_id, origin, id DESC) WHERE origin IS NOT NULL",
-    "CREATE INDEX IF NOT EXISTS ix_change_event_project_source_id_desc ON change_event (project_id, source_project_id, id DESC) WHERE source_project_id IS NOT NULL",
-    "CREATE INDEX IF NOT EXISTS ix_change_event_project_created_id_desc ON change_event (project_id, created_at DESC, id DESC)",
-    "CREATE INDEX IF NOT EXISTS ix_change_event_project_batch_id_desc ON change_event (project_id, batch_id, id DESC) WHERE batch_id IS NOT NULL",
+    (
+        "CREATE INDEX IF NOT EXISTS ix_change_event_project_id_id_desc "
+        "ON change_event (project_id, id DESC)"
+    ),
+    (
+        "CREATE INDEX IF NOT EXISTS ix_change_event_project_type_id_desc "
+        "ON change_event (project_id, event_type, id DESC)"
+    ),
+    (
+        "CREATE INDEX IF NOT EXISTS ix_change_event_project_cell_id_desc "
+        "ON change_event (project_id, condition_id, parameter_code, id DESC) "
+        "WHERE condition_id IS NOT NULL AND parameter_code IS NOT NULL"
+    ),
+    (
+        "CREATE INDEX IF NOT EXISTS ix_change_event_project_condition_id_desc "
+        "ON change_event (project_id, condition_id, id DESC) "
+        "WHERE condition_id IS NOT NULL"
+    ),
+    (
+        "CREATE INDEX IF NOT EXISTS ix_change_event_project_layer_id_desc "
+        "ON change_event (project_id, layer_key, id DESC) "
+        "WHERE layer_key IS NOT NULL"
+    ),
+    (
+        "CREATE INDEX IF NOT EXISTS ix_change_event_project_actor_id_desc "
+        "ON change_event (project_id, actor, id DESC)"
+    ),
+    (
+        "CREATE INDEX IF NOT EXISTS ix_change_event_project_origin_id_desc "
+        "ON change_event (project_id, origin, id DESC) "
+        "WHERE origin IS NOT NULL"
+    ),
+    (
+        "CREATE INDEX IF NOT EXISTS ix_change_event_project_source_id_desc "
+        "ON change_event (project_id, source_project_id, id DESC) "
+        "WHERE source_project_id IS NOT NULL"
+    ),
+    (
+        "CREATE INDEX IF NOT EXISTS ix_change_event_project_created_id_desc "
+        "ON change_event (project_id, created_at DESC, id DESC)"
+    ),
+    (
+        "CREATE INDEX IF NOT EXISTS ix_change_event_project_batch_id_desc "
+        "ON change_event (project_id, batch_id, id DESC) "
+        "WHERE batch_id IS NOT NULL"
+    ),
 )
 
 
