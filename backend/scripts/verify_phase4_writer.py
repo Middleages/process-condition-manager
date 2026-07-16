@@ -129,6 +129,8 @@ async def _seed_or_reuse_profile_choice_set(
     if choice_set is None:
         await _seed_choice_set(session, code=code, options=_DEFAULT_PROFILE_OPTIONS)
         return "DEFAULT"
+    if not choice_set.is_active:
+        raise RuntimeError(f"canonical ChoiceSet is inactive: {code}")
 
     if not choice_set.is_active:
         raise RuntimeError(f"canonical ChoiceSet is inactive: {code}")
@@ -353,6 +355,7 @@ async def _run_rollback_smoke(
     event_counts: dict[str, int] | None = None
 
     async with session_factory() as session:
+        transaction = await session.begin()
         service = ProjectService(
             ProjectRepository(session),
             FixtureIngestReader(),
@@ -500,7 +503,6 @@ async def _run_rollback_smoke(
             )
         finally:
             await transaction.rollback()
-            await session.rollback()
 
     async with session_factory() as session:
         post_counts = await _truth_counts(session)
