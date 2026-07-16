@@ -60,6 +60,7 @@ _CAPTURE_NUMBER_PARAMETER_PREFIX = "spin_speed"
 _CAPTURE_CHOICE_PARAMETER_PREFIX = "pr_type"
 _CAPTURE_NUMBER_VALUE = "900"
 _CAPTURE_CHOICE_VALUE = "PRIMARY"
+_CAPTURE_SECONDARY_CHOICE_VALUE = "SECONDARY"
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,6 +78,7 @@ class _SmokeSeed:
     choice_parameter_code: str
     number_value: str
     choice_value: str
+    secondary_choice_value: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,6 +89,7 @@ class _BackboneCaptureSeed:
     choice_parameter_code: str
     number_value: str
     choice_value: str
+    secondary_choice_value: str
 
 
 def _smoke_suffix() -> str:
@@ -120,9 +123,7 @@ async def _seed_or_reuse_profile_choice_set(
     code: str,
 ) -> str:
     row = await session.execute(
-        select(ChoiceSet)
-        .options(selectinload(ChoiceSet.options))
-        .where(ChoiceSet.code == code)
+        select(ChoiceSet).options(selectinload(ChoiceSet.options)).where(ChoiceSet.code == code)
     )
     choice_set = row.scalar_one_or_none()
     if choice_set is None:
@@ -166,7 +167,11 @@ async def _seed_backbone_capture_parameters(
     choice_set = await _seed_choice_set(
         session,
         code=capture_choice_set_code,
-        options=(("PRIMARY", "Primary", True), ("LEGACY", "Legacy", False)),
+        options=(
+            ("PRIMARY", "Primary", True),
+            ("SECONDARY", "Secondary", True),
+            ("LEGACY", "Legacy", False),
+        ),
     )
     session.add_all(
         [
@@ -199,6 +204,7 @@ async def _seed_backbone_capture_parameters(
         choice_parameter_code=choice_parameter_code,
         number_value=_CAPTURE_NUMBER_VALUE,
         choice_value=_CAPTURE_CHOICE_VALUE,
+        secondary_choice_value=_CAPTURE_SECONDARY_CHOICE_VALUE,
     )
 
 
@@ -303,7 +309,7 @@ async def _seed_source_project(session: AsyncSession) -> _SmokeSeed:
                 CellUpdateIn(
                     condition_id=second_layer.conditions[0].id,
                     parameter_code=capture_seed.choice_parameter_code,
-                    value=capture_seed.choice_value,
+                    value=capture_seed.secondary_choice_value,
                 ),
             ],
         ),
@@ -327,6 +333,7 @@ async def _seed_source_project(session: AsyncSession) -> _SmokeSeed:
         choice_parameter_code=capture_seed.choice_parameter_code,
         number_value=capture_seed.number_value,
         choice_value=capture_seed.choice_value,
+        secondary_choice_value=capture_seed.secondary_choice_value,
     )
 
 
@@ -382,9 +389,7 @@ async def _run_rollback_smoke(
                 assert event.payload["capture"] == capture_by_layer[event.layer_key]
 
             target_copy_layer = next(
-                layer
-                for layer in matched_layers
-                if layer.layer_key == "L1::PROC_BETA::001::CLN"
+                layer for layer in matched_layers if layer.layer_key == "L1::PROC_BETA::001::CLN"
             )
             base_condition = target_copy_layer.conditions[0]
 
@@ -410,7 +415,7 @@ async def _run_rollback_smoke(
                         CellUpdateIn(
                             condition_id=base_condition.id,
                             parameter_code=seed.choice_parameter_code,
-                            value=seed.choice_value,
+                            value=seed.secondary_choice_value,
                         )
                     ],
                 ),
@@ -434,9 +439,7 @@ async def _run_rollback_smoke(
             )
 
             replace_layer = next(
-                layer
-                for layer in target.layers
-                if layer.layer_key == "L1::PROC_BETA::015::WELL"
+                layer for layer in target.layers if layer.layer_key == "L1::PROC_BETA::015::WELL"
             )
             replace_source_layer_key = seed.source_layer_keys[1]
             replaced = await service.replace_layer_backbone(
@@ -518,6 +521,7 @@ async def _run_rollback_smoke(
             "choice_parameter_code": seed.choice_parameter_code,
             "number_value": seed.number_value,
             "choice_value": seed.choice_value,
+            "secondary_choice_value": seed.secondary_choice_value,
         },
         "pre_counts": pre_counts,
         "smoke_counts": smoke_counts,
@@ -542,6 +546,8 @@ async def build_smoke_report(
         if settings.project_mutations_enabled:
             raise RuntimeError("rollback-only smoke requires PROJECT_MUTATIONS_ENABLED=false")
         health = await get_phase4_writer_health()
+        if not health.pre_unfreeze_ready:
+            raise RuntimeError("rollback-only smoke requires pre_unfreeze_ready=true")
         factory = session_factory or _session_factory()
         report = await _run_rollback_smoke(factory, health=health)
         report["health"] = health.model_dump()

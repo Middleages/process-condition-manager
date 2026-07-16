@@ -7,6 +7,7 @@ import json
 import os
 from collections.abc import AsyncIterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 from sqlalchemy import func, select
@@ -253,6 +254,8 @@ async def test_rollback_smoke_reuses_populated_canary_sqlite(
     assert first["seed"]["capture_choice_set_code"].startswith("equipment_mode_")
     assert first["seed"]["number_parameter_code"].startswith("spin_speed_")
     assert first["seed"]["choice_parameter_code"].startswith("pr_type_")
+    assert first["seed"]["secondary_choice_value"] == "SECONDARY"
+    assert first["seed"]["choice_value"] == "PRIMARY"
     assert first["target_event_counts"] == {
         "project_create": 1,
         "backbone_copy": 1,
@@ -277,6 +280,33 @@ async def test_rollback_smoke_rejects_enabled_mutations_without_db_access(monkey
         await verify_phase4_writer.build_smoke_report(rollback=True)
 
 
+async def test_rollback_smoke_rejects_incompatible_health_without_db_access(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(maintenance.settings, "project_mutations_enabled", False)
+
+    async def _incompatible_health() -> maintenance.Phase4WriterHealthOut:
+        return maintenance.Phase4WriterHealthOut(
+            contract_version=1,
+            db_revision="0006",
+            project_mutations_enabled=False,
+            pre_unfreeze_ready=False,
+            runtime_state="active",
+        )
+
+    def _should_not_run() -> object:
+        raise AssertionError("session factory must not run when health is incompatible")
+
+    monkeypatch.setattr(verify_phase4_writer, "get_phase4_writer_health", _incompatible_health)
+
+    session_factory: Any = _should_not_run
+
+    with pytest.raises(RuntimeError, match="pre_unfreeze_ready=true"):
+        await verify_phase4_writer.build_smoke_report(
+            rollback=True, session_factory=session_factory
+        )
+
+
 async def test_rollback_smoke_rolls_back_after_injected_failure(
     monkeypatch, sqlite_factory: async_sessionmaker[AsyncSession]
 ) -> None:
@@ -294,9 +324,7 @@ async def test_rollback_smoke_rolls_back_after_injected_failure(
     monkeypatch.setattr(verify_phase4_writer.ConditionService, "set_por", _fail_set_por)
 
     with pytest.raises(RuntimeError, match="injected failure"):
-        await verify_phase4_writer.build_smoke_report(
-            rollback=True, session_factory=sqlite_factory
-        )
+        await verify_phase4_writer.build_smoke_report(rollback=True, session_factory=sqlite_factory)
 
     post_counts = await _truth_counts(sqlite_factory)
     assert post_counts == pre_counts
@@ -338,9 +366,7 @@ async def test_rollback_smoke_reuses_populated_canary_postgres(
     await _seed_populated_canary(pg_factory)
     baseline_counts = await _truth_counts(pg_factory)
 
-    first = await verify_phase4_writer.build_smoke_report(
-        rollback=True, session_factory=pg_factory
-    )
+    first = await verify_phase4_writer.build_smoke_report(rollback=True, session_factory=pg_factory)
     second = await verify_phase4_writer.build_smoke_report(
         rollback=True, session_factory=pg_factory
     )
@@ -357,6 +383,7 @@ async def test_rollback_smoke_reuses_populated_canary_postgres(
     assert first["seed"]["target_part_id"] != second["seed"]["target_part_id"]
     assert first["seed"]["number_parameter_code"] != second["seed"]["number_parameter_code"]
     assert first["seed"]["choice_parameter_code"] != second["seed"]["choice_parameter_code"]
+    assert first["seed"]["secondary_choice_value"] == "SECONDARY"
     assert first["checks"]["row_counts_changed_during_smoke"] is True
     assert first["checks"]["row_counts_restored_after_rollback"] is True
     assert first["checks"]["project_counts_restored_after_rollback"] is True
@@ -393,9 +420,7 @@ async def test_rollback_smoke_fails_when_canonical_choice_set_has_no_active_opti
         await session.commit()
 
     with pytest.raises(RuntimeError, match="canonical ChoiceSet has no active option"):
-        await verify_phase4_writer.build_smoke_report(
-            rollback=True, session_factory=sqlite_factory
-        )
+        await verify_phase4_writer.build_smoke_report(rollback=True, session_factory=sqlite_factory)
 
 
 def test_main_prints_json_and_returns_zero_when_compatible(
