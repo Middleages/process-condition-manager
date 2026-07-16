@@ -9,7 +9,7 @@ import json
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any, Literal, Sequence, cast
+from typing import Any, Literal, NoReturn, Sequence, cast
 
 from app.domain.errors import RuleViolationError
 from app.models.project import ChangeEventType
@@ -178,6 +178,7 @@ def _format_datetime(value: datetime | str | None) -> str | None:
         return None
     if isinstance(value, str):
         value = _normalize_datetime(value, field_name="datetime", error_code="invalid_scope")
+    assert value is not None
     if value.tzinfo is None:
         value = value.replace(tzinfo=UTC)
     return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
@@ -525,11 +526,17 @@ def _member_filters_from_payload(payload: dict[str, Any]) -> HistoryMemberFilter
         actors=_normalize_sorted_unique_text_tuple(
             payload["actors"], field_name="actors", max_length=128, error_code=error_code
         ),
-        origins=cast(
-            tuple[HistoryOrigin, ...],
-            _normalize_sorted_unique_text_tuple(
-                payload["origins"], field_name="origins", max_length=32, error_code="invalid_scope"
-            ),
+        origins=tuple(
+            cast(
+                HistoryOrigin,
+                origin,
+            )
+            for origin in _normalize_sorted_unique_text_tuple(
+                payload["origins"],
+                field_name="origins",
+                max_length=32,
+                error_code="invalid_scope",
+            )
         ),
         source_project_ids=_normalize_sorted_unique_int_tuple(
             payload["source_project_ids"],
