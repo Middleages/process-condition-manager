@@ -3,9 +3,11 @@
 from dataclasses import dataclass
 
 from sqlalchemy import and_, func, or_, select
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased, selectinload
 
+from app.core.errors import ConflictError
 from app.domain.choices.rules import ResolvedChoice
 from app.models.choice import ChoiceOption, ChoiceSet
 from app.models.project import (
@@ -48,6 +50,41 @@ class ProjectRepository:
             .where(Project.id == project_id)
             .options(self._full_load(), selectinload(Project.profile))
         )
+        return result.scalar_one_or_none()
+
+    async def get_for_update(self, project_id: int) -> Project | None:
+        result = await self.session.execute(
+            select(Project)
+            .where(Project.id == project_id)
+            .options(self._full_load(), selectinload(Project.profile))
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        return result.scalar_one_or_none()
+
+    async def capture_source_project(
+        self, project_id: int, *, locked_target: Project | None = None
+    ) -> Project | None:
+        if locked_target is not None and locked_target.id == project_id:
+            return locked_target
+
+        stmt = (
+            select(Project)
+            .where(Project.id == project_id)
+            .options(self._full_load(), selectinload(Project.profile))
+            .with_for_update(read=True, nowait=True)
+            .execution_options(populate_existing=True)
+        )
+        try:
+            result = await self.session.execute(stmt)
+        except DBAPIError as exc:
+            if _is_lock_not_available(exc):
+                raise ConflictError(
+                    f"소스 프로젝트를 점유할 수 없다: {project_id}",
+                    code="source_project_busy",
+                    details={"project_id": project_id, "retryable": True},
+                ) from exc
+            raise
         return result.scalar_one_or_none()
 
     async def get_profile(self, project_id: int) -> tuple[Project, ProjectProfile] | None:
@@ -213,3 +250,22 @@ class ProjectRepository:
         ]
         next_cursor = summaries[-1].project.id if has_more and summaries else None
         return summaries, next_cursor
+
+
+def _is_lock_not_available(exc: DBAPIError) -> bool:
+    """Normalize PostgreSQL lock-conflict SQLSTATE across DB drivers."""
+    code = _dbapi_sqlstate(exc.orig)
+    return code == "55P03"
+
+
+def _dbapi_sqlstate(error: BaseException) -> str | None:
+    for attr in ("sqlstate", "pgcode"):
+        code = getattr(error, attr, None)
+        if code:
+            return str(code)
+    args = getattr(error, "args", ())
+    if args:
+        first = args[0]
+        if isinstance(first, str) and len(first) == 5 and first.isalnum():
+            return first
+    return None
