@@ -171,7 +171,7 @@ async def _seed_small_history_fixture(session: AsyncSession) -> SmallHistoryFixt
             project_id=project.id,
             event_type=ChangeEventType.BACKBONE_COPY,
             actor="dev-admin",
-            batch_id="batch-copy-001",
+            batch_id="1",
             origin="backbone",
             layer_key=current_layer.layer_key,
             condition_id=current_condition.id,
@@ -186,7 +186,7 @@ async def _seed_small_history_fixture(session: AsyncSession) -> SmallHistoryFixt
             project_id=project.id,
             event_type=ChangeEventType.BACKBONE_COPY,
             actor="audit-bot",
-            batch_id="batch-copy-001",
+            batch_id="1",
             origin="backbone",
             layer_key=current_layer.layer_key,
             condition_id=current_condition.id,
@@ -302,7 +302,7 @@ async def _seed_small_history_fixture(session: AsyncSession) -> SmallHistoryFixt
         deleted_parameter_code="param_001",
         current_layer_key=current_layer.layer_key,
         deleted_layer_key=deleted_layer.layer_key,
-        batch_copy_id="batch-copy-001",
+        batch_copy_id="1",
         batch_detail_id="batch-detail-100",
         batch_deleted_id="batch-deleted-history",
         remove_event_id=remove_id,
@@ -423,11 +423,14 @@ async def test_sqlite_repository_groups_batches_without_payload_and_counts_membe
         )
 
         assert [group.group_key for group in groups[:3]] == [
-            str(fixture.remove_event_id),
-            fixture.batch_deleted_id,
-            fixture.batch_detail_id,
+            f"event:{fixture.remove_event_id}",
+            f"batch:{fixture.batch_deleted_id}",
+            f"batch:{fixture.batch_detail_id}",
         ]
-        detail_group = next(group for group in groups if group.group_key == fixture.batch_detail_id)
+        assert {group.group_key for group in groups} >= {"batch:1", "event:1"}
+        detail_group = next(
+            group for group in groups if group.group_key == f"batch:{fixture.batch_detail_id}"
+        )
         assert detail_group.group_kind == "batch"
         assert detail_group.matched_event_count == 2
         assert detail_group.total_event_count == 3
@@ -452,7 +455,7 @@ async def test_sqlite_repository_groups_batches_without_payload_and_counts_membe
 
         coverage = await repo.coverage_counts(fixture.project_id, snapshot_max_event_id=snapshot)
         assert coverage.legacy_unresolved_layer_count == 0
-        assert coverage.legacy_detail_unavailable_count == 0
+        assert coverage.legacy_detail_unavailable_count > 0
 
 
 async def test_sqlite_repository_proves_current_and_deleted_coordinates_and_reads_cell_history(

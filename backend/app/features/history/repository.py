@@ -204,7 +204,14 @@ class HistoryRepository:
         )
         legacy_detail_stmt = select(func.count(ChangeEvent.id)).where(
             ChangeEvent.project_id == project_id,
-            ChangeEvent.payload.is_(None),
+            ChangeEvent.event_type.in_(
+                ("backbone_copy", "backbone_layer_replace")
+            ),
+            func.coalesce(
+                ChangeEvent.payload["payload_schema_version"].as_integer(),
+                1,
+            )
+            < 2,
         )
         if snapshot_max_event_id is not None:
             legacy_detail_stmt = legacy_detail_stmt.where(ChangeEvent.id <= snapshot_max_event_id)
@@ -485,7 +492,7 @@ class HistoryRepository:
                 )
                 .where(
                     ChangeEvent.event_type == "condition_remove",
-                    ChangeEvent.payload["snapshot"]["condition_id"].as_integer()
+                    ChangeEvent.payload["condition_id"].as_integer()
                     == condition_id,
                 )
                 .order_by(ChangeEvent.id.desc())
@@ -537,7 +544,7 @@ class HistoryRepository:
             )
             .where(
                 ChangeEvent.event_type == "condition_add",
-                ChangeEvent.payload["snapshot"]["condition_id"].as_integer()
+                ChangeEvent.payload["condition_id"].as_integer()
                 == condition_id,
             )
             .order_by(ChangeEvent.id.desc())
@@ -579,7 +586,10 @@ class HistoryRepository:
         if not isinstance(conditions, Sequence):
             return False
         for condition in conditions:
-            if isinstance(condition, Mapping) and condition.get("source_condition_id") == source_condition_id:
+            if (
+                isinstance(condition, Mapping)
+                and condition.get("source_condition_id") == source_condition_id
+            ):
                 return True
         return False
 
