@@ -8,22 +8,29 @@ coordinate proof. It intentionally does not expose write paths.
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Literal
 from typing import cast as typing_cast
 
-from sqlalchemy import String, and_, case, func, literal, select, true, tuple_, union_all
+from sqlalchemy import String, and_, case, func, literal, or_, select, true, tuple_, union_all
 from sqlalchemy import cast as sa_cast
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.core.errors import ConflictError
 from app.domain.backbone.snapshot import parse_backbone_snapshot
 from app.features.history.cursor import HistoryMemberFilterScope
 from app.features.history.projection import HistoryEntryRole, HistoryEventRow
 from app.models.parameter import Parameter
-from app.models.project import ChangeEvent, LayerCondition, Project, SheetLayer
+from app.models.project import (
+    ChangeEvent,
+    ChangeEventType,
+    LayerCondition,
+    Project,
+    SheetLayer,
+)
 
 HistoryGroupKind = Literal["batch", "event"]
 HistoryCoordinateState = Literal["current", "deleted"]
@@ -69,6 +76,13 @@ class HistoryCellHistoryContext:
 class HistoryCoverageCounts:
     legacy_unresolved_layer_count: int
     legacy_detail_unavailable_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class HistoryTimelineContext:
+    project_exists: bool
+    snapshot_max_event_id: int | None
+    coverage: HistoryCoverageCounts
 
 
 @dataclass(frozen=True, slots=True)
@@ -265,6 +279,84 @@ class HistoryRepository:
         stmt = self._apply_member_filters(stmt, member_filters)
         return self._scalar_int(await self.session.execute(stmt))
 
+    async def load_timeline_context(
+        self,
+        project_id: int,
+        *,
+        member_filters: HistoryMemberFilterScope | None = None,
+        snapshot_max_event_id: int | None = None,
+        resolve_snapshot: bool = True,
+    ) -> HistoryTimelineContext:
+        """Load project, frozen snapshot, and coverage truth in one round trip."""
+
+        snapshot_event = aliased(ChangeEvent)
+        coverage_event = aliased(ChangeEvent)
+        if resolve_snapshot:
+            snapshot_value = (
+                select(func.max(snapshot_event.id))
+                .where(
+                    snapshot_event.project_id == project_id,
+                    self._member_filter_expression(
+                        member_filters, event=snapshot_event
+                    ),
+                )
+                .scalar_subquery()
+            )
+        else:
+            snapshot_value = literal(snapshot_max_event_id)
+
+        snapshot = select(
+            snapshot_value.label("snapshot_max_event_id")
+        ).cte("timeline_snapshot")
+        unresolved_layers, unavailable_detail = self._coverage_expressions(coverage_event)
+        stmt = (
+            select(
+                Project.id.label("project_id"),
+                snapshot.c.snapshot_max_event_id,
+                unresolved_layers.label("legacy_unresolved_layer_count"),
+                unavailable_detail.label("legacy_detail_unavailable_count"),
+            )
+            .select_from(Project)
+            .join(snapshot, true())
+            .outerjoin(
+                coverage_event,
+                and_(
+                    coverage_event.project_id == Project.id,
+                    or_(
+                        snapshot.c.snapshot_max_event_id.is_(None),
+                        coverage_event.id <= snapshot.c.snapshot_max_event_id,
+                    ),
+                ),
+            )
+            .where(Project.id == project_id)
+            .group_by(Project.id, snapshot.c.snapshot_max_event_id)
+        )
+        row = (await self.session.execute(stmt)).mappings().first()
+        if row is None:
+            return HistoryTimelineContext(
+                project_exists=False,
+                snapshot_max_event_id=None,
+                coverage=HistoryCoverageCounts(
+                    legacy_unresolved_layer_count=0,
+                    legacy_detail_unavailable_count=0,
+                ),
+            )
+        resolved_snapshot = row["snapshot_max_event_id"]
+        return HistoryTimelineContext(
+            project_exists=True,
+            snapshot_max_event_id=(
+                int(resolved_snapshot) if resolved_snapshot is not None else None
+            ),
+            coverage=HistoryCoverageCounts(
+                legacy_unresolved_layer_count=int(
+                    row["legacy_unresolved_layer_count"]
+                ),
+                legacy_detail_unavailable_count=int(
+                    row["legacy_detail_unavailable_count"]
+                ),
+            ),
+        )
+
     async def list_timeline_groups(
         self,
         project_id: int,
@@ -297,12 +389,6 @@ class HistoryRepository:
             batch_ids,
             snapshot_max_event_id=snapshot_max_event_id,
         )
-        matched_rows_by_batch = await self._load_matched_batch_rows(
-            project_id,
-            batch_ids,
-            member_filters=member_filters,
-            snapshot_max_event_id=snapshot_max_event_id,
-        )
 
         rows: list[HistoryTimelineGroupRow] = []
         for row in summary_rows:
@@ -313,7 +399,6 @@ class HistoryRepository:
             started_at = row["started_at"]
             occurred_at = row["occurred_at"]
             if batch_id is None:
-                matched_rows = (representative,)
                 total_count = 1
                 group_kind: HistoryGroupKind = "event"
                 group_key = f"event:{max_event_id}"
@@ -321,8 +406,6 @@ class HistoryRepository:
                 total_count = total_counts_by_batch.get(batch_id, int(row["matched_event_count"]))
                 group_kind = "batch"
                 group_key = f"batch:{batch_id}"
-                matched_rows = matched_rows_by_batch.get(batch_id, (representative,))
-            ordered_rows = tuple(sorted(matched_rows, key=lambda item: item.event_id, reverse=True))
             rows.append(
                 HistoryTimelineGroupRow(
                     group_key=group_key,
@@ -332,14 +415,10 @@ class HistoryRepository:
                     max_event_id=max_event_id,
                     started_at=_utc_datetime(started_at),
                     occurred_at=_utc_datetime(occurred_at),
-                    event_types=_ordered_unique(row.event_type for row in ordered_rows),
-                    actors=_ordered_unique(row.actor for row in ordered_rows),
-                    origins=_ordered_unique(
-                        row.origin for row in ordered_rows if row.origin is not None
-                    ),
-                    layer_keys=_ordered_unique(
-                        row.layer_key for row in ordered_rows if row.layer_key is not None
-                    ),
+                    event_types=_event_type_metadata_values(row["event_types"]),
+                    actors=_metadata_values(row["actors"]),
+                    origins=_metadata_values(row["origins"]),
+                    layer_keys=_metadata_values(row["layer_keys"]),
                     matched_event_count=int(row["matched_event_count"]),
                     total_event_count=total_count,
                     representative=representative,
@@ -388,44 +467,8 @@ class HistoryRepository:
         *,
         snapshot_max_event_id: int | None = None,
     ) -> HistoryCoverageCounts:
-        layer_bearing_event_types = (
-            "cell_update",
-            "condition_add",
-            "condition_remove",
-            "por_change",
-            "backbone_copy",
-            "backbone_layer_replace",
-        )
-        legacy_unresolved_layer_count_expr = func.coalesce(
-            func.sum(
-            case(
-                (
-                    ChangeEvent.event_type.in_(layer_bearing_event_types)
-                    & ChangeEvent.layer_key.is_(None),
-                    1,
-                ),
-                else_=0,
-            )
-            ),
-            0,
-        )
-        legacy_detail_count_expr = func.coalesce(
-            func.sum(
-            case(
-                (
-                    ChangeEvent.event_type.in_(("backbone_copy", "backbone_layer_replace"))
-                    & (
-                        func.coalesce(
-                            ChangeEvent.payload["payload_schema_version"].as_integer(), 1
-                        )
-                        < 2
-                    ),
-                    1,
-                ),
-                else_=0,
-            )
-            ),
-            0,
+        legacy_unresolved_layer_count_expr, legacy_detail_count_expr = (
+            self._coverage_expressions(ChangeEvent)
         )
         stmt = select(
             legacy_unresolved_layer_count_expr.label("legacy_unresolved_layer_count"),
@@ -438,6 +481,49 @@ class HistoryRepository:
             legacy_unresolved_layer_count=int(unresolved_layers),
             legacy_detail_unavailable_count=int(legacy_detail_count),
         )
+
+    @staticmethod
+    def _coverage_expressions(event):
+        layer_bearing_event_types = (
+            "cell_update",
+            "condition_add",
+            "condition_remove",
+            "por_change",
+            "backbone_copy",
+            "backbone_layer_replace",
+        )
+        legacy_unresolved_layer_count_expr = func.coalesce(
+            func.sum(
+            case(
+                (
+                    event.event_type.in_(layer_bearing_event_types)
+                    & event.layer_key.is_(None),
+                    1,
+                ),
+                else_=0,
+            )
+            ),
+            0,
+        )
+        legacy_detail_count_expr = func.coalesce(
+            func.sum(
+            case(
+                (
+                    event.event_type.in_(("backbone_copy", "backbone_layer_replace"))
+                    & (
+                        func.coalesce(
+                            event.payload["payload_schema_version"].as_integer(), 1
+                        )
+                        < 2
+                    ),
+                    1,
+                ),
+                else_=0,
+            )
+            ),
+            0,
+        )
+        return legacy_unresolved_layer_count_expr, legacy_detail_count_expr
 
     async def load_cell_history_rows(
         self,
@@ -752,6 +838,15 @@ class HistoryRepository:
         before_group_max_id: int | None,
         limit: int,
     ):
+        if self.session.get_bind().dialect.name == "postgresql":
+            return self._postgres_timeline_summary_stmt(
+                project_id,
+                member_filters=member_filters,
+                snapshot_max_event_id=snapshot_max_event_id,
+                before_group_max_id=before_group_max_id,
+                limit=limit,
+            )
+
         group_key_expr = case(
             (ChangeEvent.batch_id.is_not(None), literal("batch:") + ChangeEvent.batch_id),
             else_=literal("event:") + sa_cast(ChangeEvent.id, String),
@@ -766,6 +861,7 @@ class HistoryRepository:
                 func.min(ChangeEvent.created_at).label("started_at"),
                 func.max(ChangeEvent.created_at).label("occurred_at"),
                 func.count().label("matched_event_count"),
+                *self._timeline_metadata_columns(ChangeEvent),
             )
             .where(ChangeEvent.project_id == project_id)
         )
@@ -777,30 +873,146 @@ class HistoryRepository:
             stmt = stmt.having(func.max(ChangeEvent.id) < before_group_max_id)
         return stmt.order_by(func.max(ChangeEvent.id).desc(), group_key_expr.asc()).limit(limit)
 
-    async def _load_matched_batch_rows(
+    def _postgres_timeline_summary_stmt(
         self,
         project_id: int,
-        batch_ids: Sequence[str],
         *,
         member_filters: HistoryMemberFilterScope | None,
         snapshot_max_event_id: int | None,
-    ) -> dict[str, tuple[HistoryEventRow, ...]]:
-        if not batch_ids:
-            return {}
-        stmt = self._event_row_stmt(
-            project_id,
-            snapshot_max_event_id=snapshot_max_event_id,
-            with_payload=False,
-        ).where(ChangeEvent.batch_id.in_(batch_ids))
-        stmt = self._apply_member_filters(stmt, member_filters)
-        stmt = stmt.order_by(ChangeEvent.batch_id.asc(), ChangeEvent.id.desc())
-        rows = await self._load_event_rows(stmt)
-        grouped: dict[str, list[HistoryEventRow]] = {}
-        for row in rows:
-            if row.batch_id is None:
-                continue
-            grouped.setdefault(row.batch_id, []).append(row)
-        return {batch_id: tuple(items) for batch_id, items in grouped.items()}
+        before_group_max_id: int | None,
+        limit: int,
+    ):
+        """Select exact group candidates through the Phase 4 indexes before aggregating."""
+
+        candidate_event = aliased(ChangeEvent)
+        candidate_predicates = [
+            candidate_event.project_id == project_id,
+            self._member_filter_expression(member_filters, event=candidate_event),
+        ]
+        if snapshot_max_event_id is not None:
+            candidate_predicates.append(candidate_event.id <= snapshot_max_event_id)
+
+        unbatched_predicates = [
+            *candidate_predicates,
+            candidate_event.batch_id.is_(None),
+        ]
+        if before_group_max_id is not None:
+            unbatched_predicates.append(candidate_event.id < before_group_max_id)
+        unbatched_candidates = (
+            select(
+                (literal("event:") + sa_cast(candidate_event.id, String)).label(
+                    "group_key"
+                ),
+                sa_cast(literal(None), String).label("batch_id"),
+                candidate_event.id.label("max_event_id"),
+            )
+            .where(*unbatched_predicates)
+            .order_by(candidate_event.id.desc())
+            .limit(limit)
+        )
+
+        latest_batch = (
+            select(
+                candidate_event.batch_id.label("batch_id"),
+                candidate_event.id.label("max_event_id"),
+            )
+            .where(*candidate_predicates, candidate_event.batch_id.is_not(None))
+            .distinct(candidate_event.batch_id)
+            .order_by(candidate_event.batch_id.asc(), candidate_event.id.desc())
+            .subquery("latest_timeline_batch")
+        )
+        batch_candidates = select(
+            (literal("batch:") + latest_batch.c.batch_id).label("group_key"),
+            latest_batch.c.batch_id,
+            latest_batch.c.max_event_id,
+        )
+        if before_group_max_id is not None:
+            batch_candidates = batch_candidates.where(
+                latest_batch.c.max_event_id < before_group_max_id
+            )
+        batch_candidates = batch_candidates.order_by(
+            latest_batch.c.max_event_id.desc(), latest_batch.c.batch_id.asc()
+        ).limit(limit)
+
+        candidate_union = union_all(unbatched_candidates, batch_candidates).subquery(
+            "timeline_candidate_union"
+        )
+        candidates = (
+            select(
+                candidate_union.c.group_key,
+                candidate_union.c.batch_id,
+                candidate_union.c.max_event_id,
+            )
+            .order_by(
+                candidate_union.c.max_event_id.desc(),
+                candidate_union.c.group_key.asc(),
+            )
+            .limit(limit)
+            .cte("timeline_candidates")
+        )
+
+        def summary_branch(member, *, batched: bool):
+            if batched:
+                member_join = and_(
+                    member.project_id == project_id,
+                    member.batch_id == candidates.c.batch_id,
+                )
+                candidate_kind = candidates.c.batch_id.is_not(None)
+            else:
+                member_join = and_(
+                    member.project_id == project_id,
+                    member.id == candidates.c.max_event_id,
+                )
+                candidate_kind = candidates.c.batch_id.is_(None)
+            predicates = [
+                candidate_kind,
+                self._member_filter_expression(member_filters, event=member),
+            ]
+            if snapshot_max_event_id is not None:
+                predicates.append(member.id <= snapshot_max_event_id)
+            return (
+                select(
+                    candidates.c.group_key,
+                    candidates.c.batch_id,
+                    func.min(member.id).label("min_event_id"),
+                    func.max(member.id).label("max_event_id"),
+                    func.min(member.created_at).label("started_at"),
+                    func.max(member.created_at).label("occurred_at"),
+                    func.count().label("matched_event_count"),
+                    *self._timeline_metadata_columns(member),
+                )
+                .select_from(candidates)
+                .join(member, member_join)
+                .where(*predicates)
+                .group_by(candidates.c.group_key, candidates.c.batch_id)
+            )
+
+        grouped = union_all(
+            summary_branch(aliased(ChangeEvent), batched=True),
+            summary_branch(aliased(ChangeEvent), batched=False),
+        ).subquery("timeline_group_summary")
+        return (
+            select(grouped)
+            .order_by(grouped.c.max_event_id.desc(), grouped.c.group_key.asc())
+            .limit(limit)
+        )
+
+    def _timeline_metadata_columns(self, event):
+        aggregate = (
+            func.jsonb_agg
+            if self.session.get_bind().dialect.name == "postgresql"
+            else func.json_group_array
+        )
+
+        def values(column, label: str):
+            return aggregate(column.distinct()).filter(column.is_not(None)).label(label)
+
+        return (
+            values(func.lower(event.event_type), "event_types"),
+            values(event.actor, "actors"),
+            values(event.origin, "origins"),
+            values(event.layer_key, "layer_keys"),
+        )
 
     def _event_row_stmt(
         self,
@@ -985,26 +1197,28 @@ class HistoryRepository:
     @staticmethod
     def _member_filter_expression(
         member_filters: HistoryMemberFilterScope | None,
+        *,
+        event=ChangeEvent,
     ):
         if member_filters is None:
             return true()
         predicates = []
         if member_filters.layer_keys:
-            predicates.append(ChangeEvent.layer_key.in_(member_filters.layer_keys))
+            predicates.append(event.layer_key.in_(member_filters.layer_keys))
         if member_filters.event_types:
-            predicates.append(ChangeEvent.event_type.in_(member_filters.event_types))
+            predicates.append(event.event_type.in_(member_filters.event_types))
         if member_filters.actors:
-            predicates.append(ChangeEvent.actor.in_(member_filters.actors))
+            predicates.append(event.actor.in_(member_filters.actors))
         if member_filters.origins:
-            predicates.append(ChangeEvent.origin.in_(member_filters.origins))
+            predicates.append(event.origin.in_(member_filters.origins))
         if member_filters.source_project_ids:
             predicates.append(
-                ChangeEvent.source_project_id.in_(member_filters.source_project_ids)
+                event.source_project_id.in_(member_filters.source_project_ids)
             )
         if member_filters.created_from is not None:
-            predicates.append(ChangeEvent.created_at >= member_filters.created_from)
+            predicates.append(event.created_at >= member_filters.created_from)
         if member_filters.created_to is not None:
-            predicates.append(ChangeEvent.created_at < member_filters.created_to)
+            predicates.append(event.created_at < member_filters.created_to)
         return and_(*predicates) if predicates else true()
 
     @staticmethod
@@ -1013,15 +1227,26 @@ class HistoryRepository:
         return int(value) if value is not None else None
 
 
-def _ordered_unique(values: Iterable[str]) -> tuple[str, ...]:
-    seen: set[str] = set()
-    ordered: list[str] = []
-    for value in values:
-        if value in seen:
+def _metadata_values(value: Any) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    decoded = json.loads(value) if isinstance(value, str) else value
+    if not isinstance(decoded, (list, tuple)):
+        return ()
+    return tuple(sorted({str(item) for item in decoded if item is not None}))
+
+
+def _event_type_metadata_values(value: Any) -> tuple[str, ...]:
+    normalized: set[str] = set()
+    for item in _metadata_values(value):
+        if item in ChangeEventType.__members__:
+            normalized.add(ChangeEventType[item].value)
             continue
-        seen.add(value)
-        ordered.append(value)
-    return tuple(ordered)
+        try:
+            normalized.add(ChangeEventType(item).value)
+        except ValueError:
+            normalized.add(item)
+    return tuple(sorted(normalized))
 
 
 def _utc_datetime(value: Any) -> datetime | None:

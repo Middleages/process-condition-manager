@@ -93,20 +93,27 @@ class HistoryService:
     async def list_events(
         self, project_id: int, query: HistoryTimelineQueryIn
     ) -> HistoryTimelineOut:
-        if not await self.repo.project_exists(project_id):
-            raise NotFoundError(f"project not found: {project_id}")
-
         member_filters = _member_filters(query)
         scope = HistoryTimelineScope(project_id=project_id, member_filters=member_filters)
         if query.cursor is None:
-            snapshot_max_event_id = await self.repo.snapshot_max_event_id(
-                project_id, member_filters=member_filters
-            )
+            cursor_snapshot_max_event_id = None
             before_group_max_id = None
+            resolve_snapshot = True
         else:
             cursor = decode_history_timeline_cursor(query.cursor, expected_scope=scope)
-            snapshot_max_event_id = cursor.snapshot_max_event_id
+            cursor_snapshot_max_event_id = cursor.snapshot_max_event_id
             before_group_max_id = cursor.before_group_max_id
+            resolve_snapshot = False
+
+        context = await self.repo.load_timeline_context(
+            project_id,
+            member_filters=member_filters,
+            snapshot_max_event_id=cursor_snapshot_max_event_id,
+            resolve_snapshot=resolve_snapshot,
+        )
+        if not context.project_exists:
+            raise NotFoundError(f"project not found: {project_id}")
+        snapshot_max_event_id = context.snapshot_max_event_id
 
         groups = await self.repo.list_timeline_groups(
             project_id,
@@ -116,9 +123,7 @@ class HistoryService:
             limit=query.limit + 1,
         )
         page = groups[: query.limit]
-        coverage = await self.repo.coverage_counts(
-            project_id, snapshot_max_event_id=snapshot_max_event_id
-        )
+        coverage = context.coverage
         next_cursor = None
         if len(groups) > query.limit and snapshot_max_event_id is not None and page:
             next_cursor = encode_history_timeline_cursor(

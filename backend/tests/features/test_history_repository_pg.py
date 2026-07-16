@@ -38,6 +38,8 @@ from app.features.history.repository import (
     HistoryRepository,
     HistoryTimelineGroupRow,
 )
+from app.features.history.schema import HistoryTimelineQueryIn
+from app.features.history.service import HistoryService
 from app.models.parameter import Parameter
 from app.models.project import (
     CellValue,
@@ -1556,3 +1558,53 @@ async def test_postgres_repository_frozen_traversal_ignores_late_events_and_excl
             row.total_event_count for row in first_page if row.batch_id is not None
         )
         assert first_page_total == 120
+
+
+@pytest.mark.skipif(_PG_URL is None, reason="APP_TEST_DATABASE_URL 미설정")
+async def test_postgres_timeline_round_trips_are_bounded_for_unfiltered_and_layer_filtered_pages(
+    pg_engine: AsyncEngine,
+    pg_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async def capture_round_trip(
+        call: Callable[[], Awaitable[Any]],
+    ) -> tuple[Any, list[str]]:
+        statements: list[str] = []
+
+        def capture_sql(
+            _conn: object,
+            _cursor: object,
+            statement: str,
+            _parameters: object,
+            _context: object,
+            _executemany: bool,
+        ) -> None:
+            statements.append(statement)
+
+        event.listen(pg_engine.sync_engine, "before_cursor_execute", capture_sql)
+        try:
+            result = await call()
+        finally:
+            event.remove(pg_engine.sync_engine, "before_cursor_execute", capture_sql)
+        return result, statements
+
+    async with pg_factory() as session:
+        fixture = await _seed_large_history_fixture(session)
+        service = HistoryService(HistoryRepository(session))
+
+        unfiltered_first_page, unfiltered_statements = await capture_round_trip(
+            lambda: service.list_events(
+                fixture.project_id,
+                HistoryTimelineQueryIn(limit=5),
+            )
+        )
+        assert unfiltered_first_page.next_cursor is not None
+        assert len(unfiltered_statements) <= 4
+
+        layer_filtered_first_page, layer_filtered_statements = await capture_round_trip(
+            lambda: service.list_events(
+                fixture.project_id,
+                HistoryTimelineQueryIn(limit=5, layer_key=fixture.layer_a_key),
+            )
+        )
+        assert layer_filtered_first_page.next_cursor is not None
+        assert len(layer_filtered_statements) <= 4
