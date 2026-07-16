@@ -65,6 +65,8 @@ class CellService:
                 details={"invalid_condition_ids": sorted(invalid_ids)},
             )
 
+        layer_key_by_condition_id = await self.repo.condition_layer_keys(requested_ids)
+
         # Existing rows must be known before validating choices: a known inactive code
         # is legal only as a no-op against the simulated current batch value.
         cell_by_key: dict[tuple[int, str], CellValue] = {
@@ -158,6 +160,11 @@ class CellService:
                         parameter_code=update.parameter_code,
                         old_value=update.old_value,
                         new_value=update.value,
+                        layer_key=layer_key_by_condition_id[update.condition_id],
+                        batch_id=batch_id,
+                        origin=data.origin,
+                        source_project_id=None,
+                        source_layer_key=None,
                         payload=payload,
                     )
                 )

@@ -276,6 +276,54 @@ async def test_add_fills_label_gap_but_index_is_monotonic(
     assert body["condition_index"] == 3  # index는 빈 자리를 채우지 않는다(최댓값 2 + 1).
 
 
+async def test_condition_events_populate_structured_envelope_columns(
+    db_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """조건 추가/삭제/POR은 layer_key/origin/condition_id 구조화 컬럼을 채운다."""
+    project_id, layer_key, cond_ids = await _seed_project(
+        db_session,
+        [
+            _Cond("C1", is_por=True, cells={"spin_speed": "1200"}),
+            _Cond("C2"),
+        ],
+    )
+    target_id, remove_id = cond_ids
+    token = await _acquire(db_client, project_id)
+
+    add_resp = await _add(
+        db_client,
+        project_id,
+        layer_key,
+        source_condition_id=target_id,
+        token=token,
+    )
+    assert add_resp.status_code == 201, add_resp.text
+    add_event = (await _events(db_session, project_id, ChangeEventType.CONDITION_ADD))[-1]
+    assert add_event.condition_id == add_resp.json()["id"]
+    assert add_event.layer_key == layer_key
+    assert add_event.origin == "manual"
+    assert add_event.source_project_id is None
+    assert add_event.source_layer_key is None
+
+    delete_resp = await _delete(db_client, project_id, remove_id, token=token)
+    assert delete_resp.status_code == 204, delete_resp.text
+    delete_event = (await _events(db_session, project_id, ChangeEventType.CONDITION_REMOVE))[-1]
+    assert delete_event.condition_id == remove_id
+    assert delete_event.layer_key == layer_key
+    assert delete_event.origin == "manual"
+    assert delete_event.source_project_id is None
+    assert delete_event.source_layer_key is None
+
+    por_resp = await _set_por(db_client, project_id, remove_id, token=token)
+    assert por_resp.status_code == 200, por_resp.text
+    por_event = (await _events(db_session, project_id, ChangeEventType.POR_CHANGE))[-1]
+    assert por_event.condition_id == remove_id
+    assert por_event.layer_key == layer_key
+    assert por_event.origin == "manual"
+    assert por_event.source_project_id is None
+    assert por_event.source_layer_key is None
+
+
 async def test_duplicate_copies_cells_and_forces_non_por(
     db_client: AsyncClient, db_session: AsyncSession
 ) -> None:

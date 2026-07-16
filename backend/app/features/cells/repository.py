@@ -52,6 +52,18 @@ class CellRepository:
         stmt = select(CellValue).where(CellValue.condition_id.in_(condition_ids))
         return list((await self.session.execute(stmt)).scalars().all())
 
+    async def condition_layer_keys(self, condition_ids: Collection[int]) -> dict[int, str]:
+        """조건 행 id를 layer_key로 인덱싱해 돌려준다."""
+        if not condition_ids:
+            return {}
+        stmt = (
+            select(LayerCondition.id, SheetLayer.layer_key)
+            .join(SheetLayer, LayerCondition.layer_id == SheetLayer.id)
+            .where(LayerCondition.id.in_(condition_ids))
+        )
+        rows = await self.session.execute(stmt)
+        return {condition_id: layer_key for condition_id, layer_key in rows.all()}
+
     async def active_parameters_by_code(
         self, codes: Collection[str]
     ) -> dict[str, Parameter]:
