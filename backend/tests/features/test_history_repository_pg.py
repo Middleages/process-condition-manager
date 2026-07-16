@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -33,6 +34,36 @@ from tests.factories import make_project_profile
 from tests.postgres_database import temporary_postgres_database
 
 _PG_URL = os.environ.get("APP_TEST_DATABASE_URL")
+
+
+@dataclass(slots=True)
+class SmallHistoryFixture:
+    project_id: int
+    current_condition_id: int
+    current_parameter_code: str
+    deleted_condition_id: int
+    deleted_parameter_code: str
+    current_layer_key: str
+    deleted_layer_key: str
+    batch_copy_id: str
+    batch_detail_id: str
+    batch_deleted_id: str
+    remove_event_id: int
+    current_event_ids: tuple[int, ...]
+    batch_detail_event_ids: tuple[int, ...]
+    deleted_event_ids: tuple[int, ...]
+    snapshot_max_event_id: int
+
+
+@dataclass(slots=True)
+class LargeHistoryFixture:
+    project_id: int
+    layer_a_key: str
+    layer_b_key: str
+    condition_a_id: int
+    condition_b_id: int
+    snapshot_max_event_id: int
+    batch_ids: tuple[str, ...]
 
 
 @pytest.fixture
@@ -79,7 +110,7 @@ def _dt(second: int) -> datetime:
     return datetime(2026, 7, 16, 1, 0, second, tzinfo=UTC)
 
 
-async def _seed_small_history_fixture(session: AsyncSession) -> dict[str, object]:
+async def _seed_small_history_fixture(session: AsyncSession) -> SmallHistoryFixture:
     project = Project(
         line_id="L1",
         process_id="PROC_HISTORY",
@@ -255,26 +286,26 @@ async def _seed_small_history_fixture(session: AsyncSession) -> dict[str, object
     await session.flush()
     await session.commit()
 
-    return {
-        "project_id": project.id,
-        "current_condition_id": current_condition.id,
-        "current_parameter_code": "param_000",
-        "deleted_condition_id": deleted_condition.id,
-        "deleted_parameter_code": "param_001",
-        "current_layer_key": current_layer.layer_key,
-        "deleted_layer_key": deleted_layer.layer_key,
-        "batch_copy_id": "batch-copy-001",
-        "batch_detail_id": "batch-detail-100",
-        "batch_deleted_id": "batch-deleted-history",
-        "remove_event_id": remove_id,
-        "current_event_ids": tuple(current_ids),
-        "batch_detail_event_ids": tuple(event.id for event in events[3:6]),
-        "deleted_event_ids": tuple(deleted_ids),
-        "snapshot_max_event_id": events[-1].id,
-    }
+    return SmallHistoryFixture(
+        project_id=project.id,
+        current_condition_id=current_condition.id,
+        current_parameter_code="param_000",
+        deleted_condition_id=deleted_condition.id,
+        deleted_parameter_code="param_001",
+        current_layer_key=current_layer.layer_key,
+        deleted_layer_key=deleted_layer.layer_key,
+        batch_copy_id="batch-copy-001",
+        batch_detail_id="batch-detail-100",
+        batch_deleted_id="batch-deleted-history",
+        remove_event_id=remove_id,
+        current_event_ids=tuple(current_ids),
+        batch_detail_event_ids=tuple(event.id for event in events[3:6]),
+        deleted_event_ids=tuple(deleted_ids),
+        snapshot_max_event_id=events[-1].id,
+    )
 
 
-async def _seed_large_history_fixture(session: AsyncSession) -> dict[str, object]:
+async def _seed_large_history_fixture(session: AsyncSession) -> LargeHistoryFixture:
     project = Project(
         line_id="L1",
         process_id="PROC_HISTORY_LARGE",
@@ -347,15 +378,15 @@ async def _seed_large_history_fixture(session: AsyncSession) -> dict[str, object
     await session.flush()
     await session.commit()
 
-    return {
-        "project_id": project.id,
-        "layer_a_key": layer_a.layer_key,
-        "layer_b_key": layer_b.layer_key,
-        "condition_a_id": condition_a.id,
-        "condition_b_id": condition_b.id,
-        "snapshot_max_event_id": events[-1].id,
-        "batch_ids": tuple(batch_ids),
-    }
+    return LargeHistoryFixture(
+        project_id=project.id,
+        layer_a_key=layer_a.layer_key,
+        layer_b_key=layer_b.layer_key,
+        condition_a_id=condition_a.id,
+        condition_b_id=condition_b.id,
+        snapshot_max_event_id=events[-1].id,
+        batch_ids=tuple(batch_ids),
+    )
 
 
 async def test_sqlite_repository_groups_batches_without_payload_and_counts_members(
@@ -365,49 +396,49 @@ async def test_sqlite_repository_groups_batches_without_payload_and_counts_membe
         fixture = await _seed_small_history_fixture(session)
         repo = HistoryRepository(session)
 
-        assert await repo.project_exists(fixture["project_id"]) is True
+        assert await repo.project_exists(fixture.project_id) is True
         assert await repo.project_exists(999999) is False
 
-        snapshot = await repo.snapshot_max_event_id(fixture["project_id"])
-        assert snapshot == fixture["snapshot_max_event_id"]
+        snapshot = await repo.snapshot_max_event_id(fixture.project_id)
+        assert snapshot == fixture.snapshot_max_event_id
 
         filtered = HistoryMemberFilterScope(actors=("dev-admin",))
         groups = await repo.list_timeline_groups(
-            fixture["project_id"],
+            fixture.project_id,
             member_filters=filtered,
             snapshot_max_event_id=snapshot,
             limit=10,
         )
 
         assert [group.group_key for group in groups[:3]] == [
-            str(fixture["remove_event_id"]),
-            fixture["batch_deleted_id"],
-            fixture["batch_detail_id"],
+            str(fixture.remove_event_id),
+            fixture.batch_deleted_id,
+            fixture.batch_detail_id,
         ]
-        detail_group = next(group for group in groups if group.group_key == fixture["batch_detail_id"])
+        detail_group = next(group for group in groups if group.group_key == fixture.batch_detail_id)
         assert detail_group.group_kind == "batch"
         assert detail_group.matched_event_count == 2
         assert detail_group.total_event_count == 3
         assert detail_group.representative.event_id == 5
-        assert detail_group.representative.batch_id == fixture["batch_detail_id"]
+        assert detail_group.representative.batch_id == fixture.batch_detail_id
 
         batch_members = await repo.load_batch_members(
-            fixture["project_id"],
-            fixture["batch_detail_id"],
+            fixture.project_id,
+            fixture.batch_detail_id,
             member_filters=filtered,
             snapshot_max_event_id=snapshot,
         )
         assert [row.event_id for row in batch_members] == sorted(
             (5, 4), reverse=True
         )
-        assert all(row.batch_id == fixture["batch_detail_id"] for row in batch_members)
+        assert all(row.batch_id == fixture.batch_detail_id for row in batch_members)
 
         batch_total = await repo.count_batch_members(
-            fixture["project_id"], fixture["batch_detail_id"], snapshot_max_event_id=snapshot
+            fixture.project_id, fixture.batch_detail_id, snapshot_max_event_id=snapshot
         )
         assert batch_total == 3
 
-        coverage = await repo.coverage_counts(fixture["project_id"], snapshot_max_event_id=snapshot)
+        coverage = await repo.coverage_counts(fixture.project_id, snapshot_max_event_id=snapshot)
         assert coverage.legacy_unresolved_layer_count == 0
         assert coverage.legacy_detail_unavailable_count == 0
 
@@ -419,55 +450,55 @@ async def test_sqlite_repository_proves_current_and_deleted_coordinates_and_read
         fixture = await _seed_small_history_fixture(session)
         await session.execute(
             delete(CellValue).where(
-                CellValue.condition_id == fixture["current_condition_id"]
+                CellValue.condition_id == fixture.current_condition_id
             )
         )
         await session.execute(
             update(ChangeEvent)
-            .where(ChangeEvent.id == fixture["remove_event_id"])
+            .where(ChangeEvent.id == fixture.remove_event_id)
             .values(condition_id=None, parameter_code=None, layer_key=None)
         )
         await session.commit()
         repo = HistoryRepository(session)
 
         current_proof = await repo.prove_cell_coordinate(
-            fixture["project_id"], fixture["current_condition_id"], fixture["current_parameter_code"]
+            fixture.project_id, fixture.current_condition_id, fixture.current_parameter_code
         )
         assert current_proof is not None
         assert current_proof.state == "current"
-        assert current_proof.layer_key == fixture["current_layer_key"]
+        assert current_proof.layer_key == fixture.current_layer_key
         assert current_proof.latest_event_id == 6
 
         deleted_proof = await repo.prove_cell_coordinate(
-            fixture["project_id"], fixture["deleted_condition_id"], fixture["deleted_parameter_code"]
+            fixture.project_id, fixture.deleted_condition_id, fixture.deleted_parameter_code
         )
         assert deleted_proof is not None
         assert deleted_proof.deleted is True
-        assert deleted_proof.layer_key == fixture["deleted_layer_key"]
-        assert deleted_proof.remove_event_id == fixture["remove_event_id"]
+        assert deleted_proof.layer_key == fixture.deleted_layer_key
+        assert deleted_proof.remove_event_id == fixture.remove_event_id
 
         current_rows = await repo.load_cell_history_rows(
-            fixture["project_id"], fixture["current_condition_id"], fixture["current_parameter_code"]
+            fixture.project_id, fixture.current_condition_id, fixture.current_parameter_code
         )
         assert [row.event_id for row in current_rows] == list(
-            sorted(fixture["batch_detail_event_ids"], reverse=True)
+            sorted(fixture.batch_detail_event_ids, reverse=True)
         )
-        assert all(row.condition_id == fixture["current_condition_id"] for row in current_rows)
-        assert all(row.parameter_code == fixture["current_parameter_code"] for row in current_rows)
+        assert all(row.condition_id == fixture.current_condition_id for row in current_rows)
+        assert all(row.parameter_code == fixture.current_parameter_code for row in current_rows)
 
         deleted_rows = await repo.load_cell_history_rows(
-            fixture["project_id"], fixture["deleted_condition_id"], fixture["deleted_parameter_code"]
+            fixture.project_id, fixture.deleted_condition_id, fixture.deleted_parameter_code
         )
         assert [row.event_id for row in deleted_rows] == list(
-            sorted(fixture["deleted_event_ids"], reverse=True)
+            sorted(fixture.deleted_event_ids, reverse=True)
         )
         anchor_rows = await repo.load_cell_history_anchor_rows(
-            fixture["project_id"], fixture["deleted_condition_id"], fixture["deleted_parameter_code"]
+            fixture.project_id, fixture.deleted_condition_id, fixture.deleted_parameter_code
         )
         anchor_projection = project_cell_history(anchor_rows)
         assert anchor_projection.initial_entry is not None
         assert anchor_projection.initial_entry.role == HistoryEntryRole.INITIAL
-        assert anchor_projection.initial_entry.event_id == fixture["remove_event_id"]
+        assert anchor_projection.initial_entry.event_id == fixture.remove_event_id
         assert anchor_projection.initial_state == HistoryAvailability.AVAILABLE
         projected = project_cell_history(
             [
@@ -483,54 +514,60 @@ async def test_postgres_repository_frozen_traversal_ignores_late_events_and_excl
     pg_engine: AsyncEngine,
     pg_factory: async_sessionmaker[AsyncSession],
 ) -> None:
-    statements: list[str] = []
+    async def capture_round_trip(call):
+        statements: list[str] = []
 
-    def capture_sql(
-        _conn: object,
-        _cursor: object,
-        statement: str,
-        _parameters: object,
-        _context: object,
-        _executemany: bool,
-    ) -> None:
-        statements.append(statement)
+        def capture_sql(
+            _conn: object,
+            _cursor: object,
+            statement: str,
+            _parameters: object,
+            _context: object,
+            _executemany: bool,
+        ) -> None:
+            statements.append(statement)
+
+        event.listen(pg_engine.sync_engine, "before_cursor_execute", capture_sql)
+        try:
+            result = await call()
+        finally:
+            event.remove(pg_engine.sync_engine, "before_cursor_execute", capture_sql)
+        return result, statements
 
     async with pg_factory() as session:
         fixture = await _seed_large_history_fixture(session)
         repo = HistoryRepository(session)
         filter_scope = HistoryMemberFilterScope(
             actors=("dev-admin",),
-            layer_keys=(fixture["layer_a_key"],),
+            layer_keys=(fixture.layer_a_key,),
         )
         snapshot = await repo.snapshot_max_event_id(
-            fixture["project_id"], member_filters=filter_scope
+            fixture.project_id, member_filters=filter_scope
         )
         assert snapshot is not None
 
-        event.listen(pg_engine.sync_engine, "before_cursor_execute", capture_sql)
-        try:
-            first_page = await repo.list_timeline_groups(
-                fixture["project_id"],
+        first_page, first_page_statements = await capture_round_trip(
+            lambda: repo.list_timeline_groups(
+                fixture.project_id,
                 member_filters=filter_scope,
                 snapshot_max_event_id=snapshot,
                 limit=5,
             )
-        finally:
-            event.remove(pg_engine.sync_engine, "before_cursor_execute", capture_sql)
+        )
 
         assert first_page
-        assert all("payload" not in statement.lower() for statement in statements)
-        assert all("capture" not in statement.lower() for statement in statements)
+        assert all("payload" not in statement.lower() for statement in first_page_statements)
+        assert all("capture" not in statement.lower() for statement in first_page_statements)
 
         last_seen = first_page[-1].max_event_id
         late_event = ChangeEvent(
-            project_id=fixture["project_id"],
+            project_id=fixture.project_id,
             event_type=ChangeEventType.CELL_UPDATE,
             actor="dev-admin",
             batch_id="batch-999",
             origin="manual",
-            layer_key=fixture["layer_a_key"],
-            condition_id=fixture["condition_a_id"],
+            layer_key=fixture.layer_a_key,
+            condition_id=fixture.condition_a_id,
             parameter_code="param_000",
             old_value="late-old",
             new_value="late-new",
@@ -540,25 +577,33 @@ async def test_postgres_repository_frozen_traversal_ignores_late_events_and_excl
         await session.flush()
         await session.commit()
 
-        frozen_first_page = await repo.list_timeline_groups(
-            fixture["project_id"],
-            member_filters=filter_scope,
-            snapshot_max_event_id=snapshot,
-            limit=5,
+        frozen_first_page, frozen_first_page_statements = await capture_round_trip(
+            lambda: repo.list_timeline_groups(
+                fixture.project_id,
+                member_filters=filter_scope,
+                snapshot_max_event_id=snapshot,
+                limit=5,
+            )
         )
         assert [row.group_key for row in frozen_first_page] == [row.group_key for row in first_page]
         assert [row.max_event_id for row in frozen_first_page] == [row.max_event_id for row in first_page]
+        assert all("payload" not in statement.lower() for statement in frozen_first_page_statements)
+        assert all("capture" not in statement.lower() for statement in frozen_first_page_statements)
 
-        next_page = await repo.list_timeline_groups(
-            fixture["project_id"],
-            member_filters=filter_scope,
-            snapshot_max_event_id=snapshot,
-            before_group_max_id=last_seen,
-            limit=5,
+        next_page, next_page_statements = await capture_round_trip(
+            lambda: repo.list_timeline_groups(
+                fixture.project_id,
+                member_filters=filter_scope,
+                snapshot_max_event_id=snapshot,
+                before_group_max_id=last_seen,
+                limit=5,
+            )
         )
         assert next_page
         assert all(row.max_event_id < last_seen for row in next_page)
         assert {row.group_key for row in next_page}.isdisjoint({row.group_key for row in first_page})
+        assert all("payload" not in statement.lower() for statement in next_page_statements)
+        assert all("capture" not in statement.lower() for statement in next_page_statements)
 
         first_page_total = sum(row.total_event_count for row in first_page if row.batch_id is not None)
         assert first_page_total > 0
