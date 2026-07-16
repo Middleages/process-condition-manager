@@ -14,16 +14,17 @@ from scripts.benchmark_history import (
     _LAYER_COUNT,
     _PARAMETER_COUNT,
     _PASTE_BATCH_SIZE,
-    _prepare_database,
-    _seed_history_fixture,
+    _TIMED_RUNS,
+    _WARMUP_RUNS,
+    QueryBenchmark,
+    _build_report,
 )
-from tests.postgres_database import temporary_postgres_database
 
 _PG_URL = os.environ.get("APP_TEST_DATABASE_URL")
 pytestmark = pytest.mark.skipif(_PG_URL is None, reason="APP_TEST_DATABASE_URL unset")
 
 
-def test_history_fixture_is_exact_and_writer_shaped() -> None:
+def test_history_contract_constants_are_exact() -> None:
     assert _HISTORY_EVENT_COUNT == 100_000
     assert _BASE_EVENT_COUNT == 99_643
     assert _LAYER_COUNT == 100
@@ -31,26 +32,42 @@ def test_history_fixture_is_exact_and_writer_shaped() -> None:
     assert _CELL_COUNT == 20_000
     assert _DETAIL_BATCH_SIZE == 100
     assert _PASTE_BATCH_SIZE == 200
+    assert _WARMUP_RUNS == 1
+    assert _TIMED_RUNS == 5
 
-    with temporary_postgres_database() as database:
-        migration_db = _prepare_database(database)
-        try:
-            fixture = _seed_history_fixture(migration_db.connection)
-            assert fixture.invariants == {
-                "project_count": 1,
-                "measured_event_count": 100_000,
-                "total_event_count": 100_000,
-                "layer_count": 100,
-                "condition_count": 100,
-                "parameter_count": 200,
-                "cell_count": 20_000,
-                "min_cells_per_condition": 200,
-                "max_cells_per_condition": 200,
-                "deleted_condition_count": 0,
-                "writer_shape_count": 7,
-                "v2_capture_count": 1,
-                "v1_capture_count": 1,
-            }
-        finally:
-            migration_db.connection.close()
-            migration_db.connection.engine.dispose()
+
+@pytest.mark.asyncio
+async def test_history_production_service_repository_gate() -> None:
+    report = await _build_report(compare_paste_overhead=True)
+
+    assert report["binding_mode"] == "production_service_repository"
+    fixture = report["fixture"]
+    assert fixture["project_count"] == 1
+    assert fixture["measured_event_count"] == 100_000
+    assert fixture["total_event_count"] == 100_000
+    assert fixture["layer_count"] == 100
+    assert fixture["condition_count"] == 100
+    assert fixture["parameter_count"] == 200
+    assert fixture["cell_count"] == 20_000
+    assert fixture["min_cells_per_condition"] == 200
+    assert fixture["max_cells_per_condition"] == 200
+    assert fixture["deleted_condition_count"] == 0
+    assert fixture["v1_capture_count"] == 1
+    assert fixture["v2_capture_count"] == 1
+
+    for label in (
+        "timeline_unfiltered",
+        "timeline_layer_filtered",
+        "batch_detail",
+        "cell_history_current",
+        "cell_history_deleted",
+    ):
+        metric = report[label]
+        assert isinstance(metric, QueryBenchmark)
+        assert metric.samples == 5
+        assert len(metric.sql_counts) == 5
+        assert len(metric.serialized_bytes) == 5
+
+    assert "paste_overhead" in report
+    report_failures = report["failures"]
+    assert report_failures == [], "\n".join(report_failures)
