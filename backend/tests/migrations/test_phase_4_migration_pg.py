@@ -14,12 +14,12 @@ from typing import cast
 
 import pytest
 import sqlalchemy as sa
+from alembic.config import Config
+from alembic.runtime.migration import MigrationContext
 from sqlalchemy import event
 from sqlalchemy.engine import Connection
 
 from alembic import command
-from alembic.config import Config
-from alembic.runtime.migration import MigrationContext
 from tests.postgres_database import TemporaryPostgresDatabase, temporary_postgres_database
 
 _BACKEND_ROOT = Path(__file__).resolve().parents[2]
