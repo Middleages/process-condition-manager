@@ -19,8 +19,8 @@ from sqlalchemy import func, select  # noqa: E402
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker  # noqa: E402
 
 import app.models  # noqa: F401,E402 -- register every table with Base.metadata
-from app.core.db import AppSessionLocal  # noqa: E402
 from app.core.config import settings  # noqa: E402
+from app.core.db import AppSessionLocal  # noqa: E402
 from app.core.maintenance import get_phase4_writer_health  # noqa: E402
 from app.domain.parameters.types import ValueType  # noqa: E402
 from app.features.cells.repository import CellRepository  # noqa: E402
