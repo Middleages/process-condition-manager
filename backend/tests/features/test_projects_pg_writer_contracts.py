@@ -23,7 +23,11 @@ import app.models  # noqa: F401 -- register every model for create_all
 from app.core.db import Base
 from app.core.errors import ConflictError
 from app.features.choice_sets.repository import ChoiceSetRepository
-from app.features.projects.repository import ProjectRepository
+from app.features.projects.repository import (
+    CapturedParameter,
+    CapturedParameterRegistry,
+    ProjectRepository,
+)
 from app.features.projects.schema import BackboneReplaceIn, ProjectCreate
 from app.features.projects.service import ProjectService
 from app.ingest.fixture_reader import FixtureIngestReader
@@ -363,6 +367,75 @@ async def test_backbone_replace_uses_captured_source_snapshot(
 
     assert source_value == "1300"
     assert target_value == "1200"
+
+
+async def test_create_maps_invalid_registry_value_type_to_conflict(
+    pg_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await _seed_required_choices(pg_factory)
+    fixture_reader = FixtureIngestReader()
+    provider = ManualProjectMetadataProvider()
+
+    source_payload = ProjectCreate(
+        line_id="L1",
+        process_id="PROC_ALPHA",
+        part_id="SOURCE",
+        name="Source",
+        device_type_code="DEFAULT",
+        project_category_code="DEFAULT",
+    )
+    target_payload = ProjectCreate(
+        line_id="L1",
+        process_id="PROC_BETA",
+        part_id="TARGET",
+        name="Target",
+        device_type_code="DEFAULT",
+        project_category_code="DEFAULT",
+    )
+
+    async with pg_factory() as session:
+        service = ProjectService(ProjectRepository(session), fixture_reader, provider)
+        source = await _create_project(service, source_payload, actor="seed-user")
+        await _seed_source_cell(
+            session,
+            project_id=source.id,
+            layer_key=source.layers[0].layer_key,
+            value_text="1200",
+        )
+
+        async def fake_capture_parameter_registry(
+            self: ProjectRepository, stored_source_cell_codes=None
+        ) -> CapturedParameterRegistry:
+            return CapturedParameterRegistry(
+                parameters=(
+                    CapturedParameter(
+                        parameter_code="spin_speed",
+                        value_type="bogus",
+                        display_name="Spin Speed",
+                        category_code=None,
+                        sort_order=1,
+                        active_at_capture=False,
+                    ),
+                ),
+                unresolved_codes=(),
+            )
+
+        monkeypatch.setattr(
+            ProjectRepository,
+            "capture_parameter_registry",
+            fake_capture_parameter_registry,
+        )
+
+        with pytest.raises(ConflictError) as excinfo:
+            await service.create_project(
+                target_payload.model_copy(update={"backbone_project_id": source.id}),
+                actor="seed-user",
+            )
+
+        assert excinfo.value.status_code == 409
+        assert excinfo.value.code == "unresolved_parameter_metadata"
+        assert excinfo.value.details == {"parameter_codes": ["spin_speed"]}
 
 
 async def test_backbone_create_rolls_back_when_event_flush_fails(

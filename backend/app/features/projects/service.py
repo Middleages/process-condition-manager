@@ -24,6 +24,7 @@ from app.domain.backbone import (
 )
 from app.domain.choices.rules import ResolvedChoice, normalize_choice_code
 from app.domain.decimal_values import normalize_optional_decimal
+from app.domain.errors import RuleViolationError
 from app.features.choice_sets.repository import ChoiceSetRepository
 from app.features.projects.repository import ProjectRepository, ProjectSummary
 from app.features.projects.schema import (
@@ -692,14 +693,21 @@ class ProjectService:
                 details={"parameter_codes": list(registry.unresolved_codes)},
             )
         for parameter in registry.parameters:
-            columns[parameter.parameter_code] = BackboneSnapshotColumn(
-                parameter_code=parameter.parameter_code,
-                value_type=parameter.value_type,
-                display_name=parameter.display_name,
-                category_code=parameter.category_code,
-                sort_order=parameter.sort_order,
-                active_at_capture=parameter.active_at_capture,
-            )
+            try:
+                columns[parameter.parameter_code] = BackboneSnapshotColumn(
+                    parameter_code=parameter.parameter_code,
+                    value_type=parameter.value_type,
+                    display_name=parameter.display_name,
+                    category_code=parameter.category_code,
+                    sort_order=parameter.sort_order,
+                    active_at_capture=parameter.active_at_capture,
+                )
+            except RuleViolationError as exc:
+                raise ConflictError(
+                    "백본 컬럼 메타데이터를 해석할 수 없다",
+                    code="unresolved_parameter_metadata",
+                    details={"parameter_codes": [parameter.parameter_code]},
+                ) from exc
         return columns
 
 
