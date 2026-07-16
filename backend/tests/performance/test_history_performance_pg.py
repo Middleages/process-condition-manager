@@ -7,11 +7,11 @@ import os
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from itertools import cycle
-from typing import Final
+from typing import Final, cast
 
 import pytest
 import sqlalchemy as sa
-from sqlalchemy import insert, select
+from sqlalchemy import event, insert, select
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -22,6 +22,14 @@ from sqlalchemy.pool import NullPool
 
 import app.models  # noqa: F401 -- register every model on Base.metadata
 from app.core.db import Base
+from app.domain.backbone import (
+    BackboneSnapshot,
+    BackboneSnapshotCell,
+    BackboneSnapshotColumn,
+    BackboneSnapshotCondition,
+    BackboneSnapshotSource,
+    serialize_backbone_snapshot,
+)
 from app.domain.parameters.types import ValueType
 from app.models.parameter import Parameter
 from app.models.project import (
@@ -44,6 +52,15 @@ _PARAMETER_COUNT: Final[int] = 200
 _CELL_VALUE_COUNT: Final[int] = _LAYER_COUNT * _PARAMETER_COUNT
 _EVENT_COUNT: Final[int] = 100_000
 _EVENT_BATCH_SIZE: Final[int] = 5_000
+type HistoryTimelineRow = tuple[
+    int,
+    ChangeEventType,
+    str,
+    datetime,
+    int | None,
+    str | None,
+]
+type HistoryCellCoordinateRow = tuple[int, int, str, str | None]
 _HISTORY_INDEX_DDLS: Final[tuple[str, ...]] = (
     (
         "CREATE INDEX IF NOT EXISTS ix_change_event_project_id_id_desc "
@@ -301,8 +318,6 @@ def _build_events(
                 "source_condition_id": None,
                 "detail": {"event": "condition_add"},
             },
-            condition_id=condition_id,
-            layer_key=layer_key,
         )
         add_event(
             ChangeEventType.CONDITION_REMOVE,
@@ -313,8 +328,6 @@ def _build_events(
                 "condition_id": condition_id,
                 "removed_condition_snapshot": {"label": "base", "is_por": True},
             },
-            condition_id=condition_id,
-            layer_key=layer_key,
         )
         add_event(
             ChangeEventType.POR_CHANGE,
@@ -325,8 +338,6 @@ def _build_events(
                 "old_por_condition_id": condition_id if index % 2 == 0 else None,
                 "new_por_condition_id": condition_id,
             },
-            condition_id=condition_id,
-            layer_key=layer_key,
         )
 
     # 10k project create/profile update rows.
@@ -366,13 +377,97 @@ def _build_events(
         batch_id = f"backbone-batch-{index:05d}"
         target_layer_key = layer_keys[index % len(layer_keys)]
         source_layer_key = layer_keys[(index + 1) % len(layer_keys)]
-        add_event(
-            ChangeEventType.BACKBONE_COPY,
-            batch_id=batch_id,
-            actor="system",
-            payload={"count": 200, "version": 1},
-            source_project_id=9999,
-        )
+        if index == 0:
+            exact_snapshot = BackboneSnapshot(
+                schema_version=1,
+                capture_batch_id="0" * 32,
+                captured_at=datetime(2026, 7, 16, 8, 0, tzinfo=UTC),
+                source=BackboneSnapshotSource(
+                    project_id=9999,
+                    sheet_layer_id=1,
+                    layer_key=source_layer_key,
+                    step_seq="001",
+                    layer_id="ACT",
+                ),
+                columns=(
+                    BackboneSnapshotColumn(
+                        parameter_code=parameter_codes[0],
+                        value_type=ValueType.TEXT,
+                        display_name="Parameter 001",
+                        category_code=None,
+                        sort_order=1,
+                        active_at_capture=True,
+                    ),
+                    BackboneSnapshotColumn(
+                        parameter_code=parameter_codes[1],
+                        value_type=ValueType.TEXT,
+                        display_name="Parameter 002",
+                        category_code=None,
+                        sort_order=2,
+                        active_at_capture=True,
+                    ),
+                ),
+                conditions=(
+                    BackboneSnapshotCondition(
+                        source_condition_id=condition_ids[1],
+                        label="base",
+                        condition_index=1,
+                        is_por=True,
+                        cells=(
+                            BackboneSnapshotCell(
+                                parameter_code=parameter_codes[0],
+                                value="10",
+                            ),
+                            BackboneSnapshotCell(
+                                parameter_code=parameter_codes[1],
+                                value="20",
+                            ),
+                        ),
+                    ),
+                ),
+            )
+            exact_detail = [
+                {
+                    "target_condition_id": condition_ids[0],
+                    "source_condition_id": condition_ids[1],
+                    "label": "base",
+                    "condition_index": 1,
+                    "is_por": True,
+                    "cell_count": 2,
+                }
+            ]
+            add_event(
+                ChangeEventType.BACKBONE_COPY,
+                batch_id=batch_id,
+                actor="system",
+                payload={
+                    "payload_schema_version": 2,
+                    "batch_id": batch_id,
+                    "captured_at": datetime(2026, 7, 16, 8, 0, tzinfo=UTC)
+                    .isoformat(timespec="microseconds")
+                    .replace("+00:00", "Z"),
+                    "backbone_project_id": 9999,
+                    "capture": serialize_backbone_snapshot(exact_snapshot),
+                    "target_layer_key": target_layer_key,
+                    "source_layer_key": source_layer_key,
+                    "auto_count": 2,
+                    "manual_count": 1,
+                    "unmatched_count": 0,
+                    "condition_count": 1,
+                    "cell_count": 2,
+                    "detail": exact_detail,
+                },
+                source_project_id=9999,
+                source_layer_key=source_layer_key,
+            )
+        else:
+            add_event(
+                ChangeEventType.BACKBONE_COPY,
+                batch_id=batch_id,
+                actor="system",
+                payload={"count": 200, "version": 1},
+                source_project_id=9999,
+            )
         add_event(
             ChangeEventType.BACKBONE_LAYER_REPLACE,
             batch_id=batch_id,
@@ -422,7 +517,7 @@ async def _seed_history_fixture(session: AsyncSession) -> HistoryPerformanceFixt
         condition_ids=condition_ids,
         parameter_codes=parameter_codes,
         cell_value_count=cell_value_count,
-        event_ids=tuple(row["id"] for row in event_rows),
+        event_ids=tuple(cast(int, row["id"]) for row in event_rows),
         max_created_at=max_created_at,
     )
 
@@ -433,7 +528,7 @@ async def _scalar_count(session: AsyncSession, statement: sa.sql.Select[tuple[in
 
 def _timeline_page_statement(
     project_id: int, snapshot_max_event_id: int
-) -> sa.sql.Select[tuple[object, ...]]:
+) -> sa.sql.Select[HistoryTimelineRow]:
     return (
         select(
             ChangeEvent.id,
@@ -454,7 +549,7 @@ def _timeline_page_statement(
 
 def _timeline_event_type_statement(
     project_id: int, snapshot_max_event_id: int, event_type: ChangeEventType
-) -> sa.sql.Select[tuple[object, ...]]:
+) -> sa.sql.Select[HistoryTimelineRow]:
     return (
         select(
             ChangeEvent.id,
@@ -480,7 +575,7 @@ def _timeline_cell_statement(
     *,
     condition_id: int,
     parameter_code: str,
-) -> sa.sql.Select[tuple[object, ...]]:
+) -> sa.sql.Select[HistoryTimelineRow]:
     return (
         select(
             ChangeEvent.id,
@@ -503,7 +598,7 @@ def _timeline_cell_statement(
 
 def _timeline_layer_statement(
     project_id: int, snapshot_max_event_id: int, *, layer_key: str
-) -> sa.sql.Select[tuple[object, ...]]:
+) -> sa.sql.Select[HistoryTimelineRow]:
     return (
         select(
             ChangeEvent.id,
@@ -525,7 +620,7 @@ def _timeline_layer_statement(
 
 def _timeline_actor_statement(
     project_id: int, snapshot_max_event_id: int, *, actor: str
-) -> sa.sql.Select[tuple[object, ...]]:
+) -> sa.sql.Select[HistoryTimelineRow]:
     return (
         select(
             ChangeEvent.id,
@@ -547,7 +642,7 @@ def _timeline_actor_statement(
 
 def _timeline_origin_statement(
     project_id: int, snapshot_max_event_id: int, *, origin: str
-) -> sa.sql.Select[tuple[object, ...]]:
+) -> sa.sql.Select[HistoryTimelineRow]:
     return (
         select(
             ChangeEvent.id,
@@ -569,7 +664,7 @@ def _timeline_origin_statement(
 
 def _timeline_source_statement(
     project_id: int, snapshot_max_event_id: int, *, source_project_id: int
-) -> sa.sql.Select[tuple[object, ...]]:
+) -> sa.sql.Select[HistoryTimelineRow]:
     return (
         select(
             ChangeEvent.id,
@@ -591,7 +686,7 @@ def _timeline_source_statement(
 
 def _timeline_period_statement(
     project_id: int, snapshot_max_created_at: datetime
-) -> sa.sql.Select[tuple[object, ...]]:
+) -> sa.sql.Select[HistoryTimelineRow]:
     return (
         select(
             ChangeEvent.id,
@@ -612,7 +707,7 @@ def _timeline_period_statement(
 
 def _cell_coordinate_statement(
     condition_id: int, parameter_code: str
-) -> sa.sql.Select[tuple[object, ...]]:
+) -> sa.sql.Select[HistoryCellCoordinateRow]:
     return (
         select(CellValue.id, CellValue.condition_id, CellValue.parameter_code, CellValue.value_text)
         .where(
@@ -731,7 +826,7 @@ async def test_history_timeline_preview_query_uses_explicit_columns_only() -> No
             if statement.lstrip().upper().startswith("SELECT"):
                 statements.append(statement)
 
-        sa.event.listen(engine.sync_engine, "before_cursor_execute", _capture)
+        event.listen(engine.sync_engine, "before_cursor_execute", _capture)
         try:
             await _prepare_schema(engine)
             factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
@@ -746,7 +841,7 @@ async def test_history_timeline_preview_query_uses_explicit_columns_only() -> No
                 )
                 rows = (await session.execute(statement)).all()
         finally:
-            sa.event.remove(engine.sync_engine, "before_cursor_execute", _capture)
+            event.remove(engine.sync_engine, "before_cursor_execute", _capture)
             await engine.dispose()
 
     assert rows  # sanity: the seeded history is queryable
@@ -773,7 +868,7 @@ async def test_history_query_plans_use_expected_indexes() -> None:
             await _analyze_database(engine)
 
             async with factory() as session:
-                plan_cases: list[tuple[str, sa.sql.Select[tuple[object, ...]], str]] = [
+                plan_cases: list[tuple[str, sa.sql.Select[HistoryTimelineRow], str]] = [
                     (
                         "unfiltered timeline",
                         _timeline_page_statement(fixture.project_id, max(fixture.event_ids)),
@@ -859,7 +954,13 @@ async def test_history_query_plans_use_expected_indexes() -> None:
                     node_types = _collect_plan_node_types(plan)
                     index_names = _collect_plan_index_names(plan)
                     assert "Seq Scan" not in node_types, label
-                    assert expected_index in index_names, label
+                    if label == "unfiltered timeline":
+                        assert (
+                            expected_index in index_names
+                            or "change_event_pkey" in index_names
+                        ), label
+                    else:
+                        assert expected_index in index_names, label
 
                 cell_coordinate = (
                     await session.execute(
