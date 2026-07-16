@@ -1,6 +1,5 @@
 """Immutable backbone snapshot contracts."""
 
-from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -98,18 +97,20 @@ class BackboneSnapshotSpec:
 
 def snapshot(spec: BackboneSnapshotSpec) -> dict[str, Any]:
     """Serialize a deterministic immutable backbone snapshot payload."""
+    seen_condition_ids: set[int] = set()
+    ordered_conditions = sorted(spec.conditions, key=_condition_sort_key)
+    for condition in ordered_conditions:
+        condition_id = _require_positive_int(condition.condition_id, "condition_id")
+        if condition_id in seen_condition_ids:
+            _configuration_invalid(f"duplicate condition_id: {condition_id}")
+        seen_condition_ids.add(condition_id)
+
     return {
         "version": SNAPSHOT_VERSION,
         "captured_at": _captured_at_out(spec.captured_at),
         "source_project": _source_project_out(spec.source_project),
         "source_layer": _source_layer_out(spec.source_layer),
-        "conditions": [
-            _condition_out(condition)
-            for condition in sorted(
-                spec.conditions,
-                key=lambda item: (item.condition_index, item.condition_id, item.label),
-            )
-        ],
+        "conditions": [_condition_out(condition) for condition in ordered_conditions],
     }
 
 
@@ -135,12 +136,14 @@ def _source_layer_out(source_layer: BackboneSourceLayer) -> dict[str, Any]:
 
 def _condition_out(condition: BackboneConditionSnapshot) -> dict[str, Any]:
     cell_values: dict[str, str] = {}
-    for cell in sorted(condition.cell_values, key=lambda item: item.parameter_code):
+    seen_parameter_codes: set[str] = set()
+    for cell in sorted(condition.cell_values, key=_cell_sort_key):
         parameter_code = _require_text(cell.parameter_code, "parameter_code")
-        if parameter_code in cell_values:
+        if parameter_code in seen_parameter_codes:
             _configuration_invalid(
                 f"duplicate parameter code in condition {condition.condition_id}: {parameter_code}"
             )
+        seen_parameter_codes.add(parameter_code)
         value_text = cell.value_text
         if value_text is None:
             continue
@@ -155,3 +158,15 @@ def _condition_out(condition: BackboneConditionSnapshot) -> dict[str, Any]:
         "is_por": bool(condition.is_por),
         "cells": cell_values,
     }
+
+
+def _condition_sort_key(condition: BackboneConditionSnapshot) -> tuple[int, int, str]:
+    return (
+        _require_non_negative_int(condition.condition_index, "condition_index"),
+        _require_positive_int(condition.condition_id, "condition_id"),
+        _require_text(condition.label, "label"),
+    )
+
+
+def _cell_sort_key(cell: BackboneCellValue) -> str:
+    return _require_text(cell.parameter_code, "parameter_code")
