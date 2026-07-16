@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 import app.models  # noqa: F401 -- register all tables for create_all
 from app.core.db import Base
 from app.core import maintenance
+import scripts.verify_phase4_writer as verify_phase4_writer
 from scripts.verify_phase4_writer import build_smoke_report, main
 
 
@@ -69,12 +70,15 @@ async def test_rollback_smoke_report_rejects_enabled_mutations(monkeypatch) -> N
         await build_smoke_report(rollback=True)
 
 
-def test_main_prints_json_and_returns_zero_when_compatible(monkeypatch, capsys) -> None:
+def test_main_prints_json_and_returns_zero_when_compatible(
+    monkeypatch, capsys, sqlite_factory: async_sessionmaker[AsyncSession]
+) -> None:
     async def _compatible_revision() -> str | None:
         return "0006"
 
     monkeypatch.setattr(maintenance, "read_app_revision", _compatible_revision)
     monkeypatch.setattr(maintenance.settings, "project_mutations_enabled", False)
+    monkeypatch.setattr(verify_phase4_writer, "_session_factory", lambda: sqlite_factory)
 
     exit_code = main(["--rollback"])
 
