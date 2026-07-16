@@ -4,7 +4,7 @@ import asyncio
 import os
 from collections.abc import AsyncIterator, Collection
 from datetime import UTC, datetime, timedelta
-from typing import Literal
+from typing import Literal, cast
 
 import pytest
 from sqlalchemy import func, select
@@ -71,8 +71,6 @@ async def pg_engine() -> AsyncIterator[AsyncEngine]:
         try:
             yield engine
         finally:
-            async with engine.begin() as connection:
-                await connection.run_sync(Base.metadata.drop_all)
             await engine.dispose()
 
 
@@ -411,6 +409,9 @@ async def test_profile_choice_write_vs_deactivation_is_serialized(
         monkeypatch.setattr(ChoiceSetRepository, "_lock_sets", controlled_consumer_lock)
         monkeypatch.setattr(ChoiceSetRepository, "get_set_for_update", controlled_admin_lock)
 
+        consumer_task: asyncio.Task[tuple[str, object]] | None = None
+        admin_task: asyncio.Task[None] | None = None
+
         async def run_consumer() -> tuple[str, object]:
             try:
                 result = await _consume_profile_choice(consumer_session, kind, project_id, token)
@@ -435,21 +436,36 @@ async def test_profile_choice_write_vs_deactivation_is_serialized(
                 )
             await admin_session.commit()
 
-        if winner == "consumer":
-            consumer_task = asyncio.create_task(run_consumer())
-            await asyncio.wait_for(consumer_locked.wait(), timeout=3)
-            admin_task = asyncio.create_task(run_deactivation())
-            await asyncio.wait_for(admin_attempted.wait(), timeout=3)
-            release_consumer.set()
-        else:
-            admin_task = asyncio.create_task(run_deactivation())
-            await asyncio.wait_for(admin_locked.wait(), timeout=3)
-            consumer_task = asyncio.create_task(run_consumer())
-            await asyncio.wait_for(consumer_attempted.wait(), timeout=3)
-            release_admin.set()
+        try:
+            if winner == "consumer":
+                consumer_task = asyncio.create_task(run_consumer())
+                await asyncio.wait_for(consumer_locked.wait(), timeout=3)
+                admin_task = asyncio.create_task(run_deactivation())
+                await asyncio.wait_for(admin_attempted.wait(), timeout=3)
+                release_consumer.set()
+            else:
+                admin_task = asyncio.create_task(run_deactivation())
+                await asyncio.wait_for(admin_locked.wait(), timeout=3)
+                consumer_task = asyncio.create_task(run_consumer())
+                await asyncio.wait_for(consumer_attempted.wait(), timeout=3)
+                release_admin.set()
 
-        outcome, result = await asyncio.wait_for(consumer_task, timeout=3)
-        await asyncio.wait_for(admin_task, timeout=3)
+            outcome, result = await asyncio.wait_for(consumer_task, timeout=3)
+            await asyncio.wait_for(admin_task, timeout=3)
+        finally:
+            release_consumer.set()
+            release_admin.set()
+            pending: list[asyncio.Future[object]] = []
+            for task in (consumer_task, admin_task):
+                if task is None:
+                    continue
+                if not task.done():
+                    task.cancel()
+                pending.append(cast(asyncio.Future[object], task))
+            for task in pending:
+                task.cancel()
+            if pending:
+                await asyncio.gather(*pending, return_exceptions=True)
 
     assert outcome == ("success" if winner == "consumer" else "unprocessable")
     if winner == "deactivation":

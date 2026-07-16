@@ -55,8 +55,6 @@ async def pg_engine(tmp_path_factory: pytest.TempPathFactory) -> AsyncIterator[A
         try:
             yield engine
         finally:
-            async with engine.begin() as connection:
-                await connection.run_sync(Base.metadata.drop_all)
             await engine.dispose()
         return
 
@@ -67,8 +65,6 @@ async def pg_engine(tmp_path_factory: pytest.TempPathFactory) -> AsyncIterator[A
         try:
             yield engine
         finally:
-            async with engine.begin() as connection:
-                await connection.run_sync(Base.metadata.drop_all)
             await engine.dispose()
 
 
