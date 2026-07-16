@@ -31,6 +31,7 @@
   - 2026-07-16 사용자 승인: A — 작업 집중형 3단계 프로젝트 생성 명료화
   - 2026-07-16 사용자 승인: A — 핵심정보 우선 프로젝트 목록·상세 명료화
   - 2026-07-16 사용자 승인: A — 실제 주 제목에 route focus
+  - 2026-07-16 실화면 후속 승인: 공통 PageHeader의 h1 focus ring 제거
 
 이 문서는 PCM UI/UX와 디자인 시스템의 정본이다. 구현 중 충돌이 발견되면 화면별
 임시 예외를 늘리기 전에 이 문서와 상세 스펙을 갱신한다.
@@ -156,7 +157,7 @@
   - P1-A 핵심정보 우선 탐색: 조밀한 filter 도구, 핵심 Profile 상시 노출, 고급 Profile 기본 접힘
   - W1 전체 화면 단계형 프로젝트 생성
   - W1-A 작업 집중형 생성: 얇은 진행 표시, 단계당 한 결정, 마지막 단계의 매칭 검토/필수 정보 분리
-  - H1-A route focus: 공통 PageHeader의 실제 주 제목만 focus하고 전체 header surface는 focus하지 않음
+  - H1-A route focus: 공통 PageHeader의 실제 주 제목만 programmatic focus하고 별도 ring은 그리지 않음
   - M1 목록 + 오른쪽 편집 드로어
   - 고정 Project Profile definition grid + 잠금 기반 오른쪽 편집 드로어
   - ChoiceSet 목록 + option 전체 페이지 관리
@@ -171,8 +172,10 @@
   본문 건너뛰기 link를 제공한다. Drawer/Dialog는 focus를 가두고 닫을 때 시작점으로 복귀한다.
 - **Contrast/readability:** 텍스트·상태 색은 AA 대비를 충족한다. 상태는 색과 함께 문구·아이콘을
   사용한다. 흰색 본문/작은 글자의 primary background는 `#0F766E`을 사용하며 `#14B8A6`
-  위 흰색 글자는 normal text 조합으로 사용하지 않는다. Focus ring은 밝은 surface에서
-  `#0F766E`, Ink header에서 `#14B8A6` 또는 white inverse token을 사용한다.
+  위 흰색 글자는 normal text 조합으로 사용하지 않는다. 상호작용 control의 Focus ring은 밝은
+  surface에서 `#0F766E`, Ink header에서 `#14B8A6` 또는 white inverse token을 사용한다.
+  route 안내용 공통 PageHeader h1은 programmatic focus semantics만 유지하고 별도 ring을 그리지
+  않으며, 조건표의 dark Focus Header ring은 기존 계약을 유지한다.
 - **Screen-reader semantics:** 저장·잠금·오류에는 적절한 `role="status"`, `role="alert"`,
   `aria-live`를 사용한다. label 없는 입력과 이름 없는 icon button을 허용하지 않는다.
 - **Reduced motion and sensory considerations:** reduced-motion 지원. 깜박임, 색만의 오류 표시,

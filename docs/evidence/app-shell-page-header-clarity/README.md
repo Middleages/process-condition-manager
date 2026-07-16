@@ -1,5 +1,9 @@
 # App Shell and PageHeader Clarity Browser Evidence
 
+> **Historical visual evidence:** 이 캡처는 PR #78의 title-only ring 구현을 기록한다.
+> 2026-07-16 실화면 후속 검토에서 공통 PageHeader h1의 보이는 ring은 제거하기로 했으며,
+> h1 marker·programmatic focus와 아래 geometry/focus-flow 검증은 계속 유효하다.
+
 - Build commit: `9b06e376378f34afcb83d7e124ab4f08c90b6d6c`
 - Runtime: Playwright 1.57.0 / Chromium 143.0.7499.4
 - Fixture: 8 list projects, 12 detail layers, backbone projects #41 and #44
