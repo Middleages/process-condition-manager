@@ -36,7 +36,10 @@ from app.models.project import (
     SheetLayer,
 )
 from app.project_metadata.manual import ManualProjectMetadataProvider
-from tests.factories import seed_required_profile_choice_sets
+from tests.factories import (
+    seed_backbone_capture_parameters,
+    seed_required_profile_choice_sets,
+)
 
 _PG_URL = os.environ.get("APP_TEST_DATABASE_URL")
 
@@ -68,6 +71,7 @@ def pg_factory(pg_engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
 async def _seed_required_choices(factory: async_sessionmaker[AsyncSession]) -> None:
     async with factory() as session:
         await seed_required_profile_choice_sets(session)
+        await seed_backbone_capture_parameters(session)
         await session.commit()
 
 
@@ -268,7 +272,7 @@ async def test_backbone_replace_uses_captured_source_snapshot(
             source_session,
             project_id=source.id,
             layer_key=source_layer_key,
-            value_text="SOURCE_ORIGINAL",
+            value_text="1200",
         )
 
         original_flush = AsyncSession.flush
@@ -299,7 +303,7 @@ async def test_backbone_replace_uses_captured_source_snapshot(
                         )
                     )
                 ).scalar_one()
-                row.value_text = "SOURCE_MUTATED"
+                row.value_text = "1300"
                 await mutator_session.commit()
             release_flush.set()
 
@@ -351,8 +355,8 @@ async def test_backbone_replace_uses_captured_source_snapshot(
             )
         ).scalar_one()
 
-    assert source_value == "SOURCE_MUTATED"
-    assert target_value == "SOURCE_ORIGINAL"
+    assert source_value == "1300"
+    assert target_value == "1200"
 
 
 async def test_backbone_create_rolls_back_when_event_flush_fails(

@@ -13,7 +13,10 @@ from app.models.project import (
     LayerCondition,
     SheetLayer,
 )
-from tests.factories import seed_required_profile_choice_sets
+from tests.factories import (
+    seed_backbone_capture_parameters,
+    seed_required_profile_choice_sets,
+)
 
 _CORE_PROFILE = {
     "device_type_code": "DEFAULT",
@@ -24,6 +27,12 @@ _CORE_PROFILE = {
 @pytest.fixture(autouse=True)
 async def _required_profile_choices(db_session: AsyncSession) -> None:
     await seed_required_profile_choice_sets(db_session)
+    await db_session.commit()
+
+
+@pytest.fixture(autouse=True)
+async def _required_backbone_parameters(db_session: AsyncSession) -> None:
+    await seed_backbone_capture_parameters(db_session)
     await db_session.commit()
 
 
@@ -341,6 +350,12 @@ async def test_backbone_copy_records_event_with_counts(
             },
         )
     ).json()
+    await _seed_backbone_cells(
+        db_session,
+        backbone["id"],
+        backbone["layers"][0]["layer_key"],
+        {"spin_speed": "1200", "pr_type": "A"},
+    )
     target = await db_client.post(
         "/api/projects",
         json={
@@ -354,7 +369,16 @@ async def test_backbone_copy_records_event_with_counts(
     )
     target_body = target.json()
     target_id = target_body["id"]
+    db_session.expire_all()
 
+    create_event = (
+        await db_session.execute(
+            select(ChangeEvent).where(
+                ChangeEvent.project_id == target_id,
+                ChangeEvent.event_type == ChangeEventType.PROJECT_CREATE,
+            )
+        )
+    ).scalar_one()
     event = (
         await db_session.execute(
             select(ChangeEvent).where(
@@ -363,13 +387,23 @@ async def test_backbone_copy_records_event_with_counts(
             )
         )
     ).scalar_one()
+    assert create_event.origin == "system"
+    assert create_event.source_project_id == backbone["id"]
+    assert create_event.layer_key is None
+    assert create_event.batch_id is not None
     assert event.event_type == ChangeEventType.BACKBONE_COPY
+    assert event.origin == "backbone"
+    assert event.batch_id == create_event.batch_id
+    assert event.source_project_id == backbone["id"]
+    assert event.layer_key == target_body["layers"][0]["layer_key"]
     assert event.payload["captured_at"].endswith("Z")
     assert event.payload["target_layer_key"] == target_body["layers"][0]["layer_key"]
     assert event.payload["source_layer_key"] == backbone["layers"][0]["layer_key"]
     assert event.payload["auto_count"] == 1
     assert event.payload["unmatched_count"] == 1
     assert "batch_id" in event.payload
+    assert event.payload["payload_schema_version"] == 2
+    assert event.payload["capture"]["source"]["project_id"] == backbone["id"]
     assert event.payload["detail"] == [
         {
             "target_condition_id": event.payload["detail"][0]["target_condition_id"],
@@ -377,7 +411,7 @@ async def test_backbone_copy_records_event_with_counts(
             "label": "base",
             "condition_index": 1,
             "is_por": False,
-            "cell_count": 1,
+            "cell_count": 2,
         }
     ]
 
@@ -429,6 +463,7 @@ async def test_backbone_copy_emits_one_event_per_matched_layer(
     )
     assert target.status_code == 201, target.text
     target_body = target.json()
+    db_session.expire_all()
 
     events = list(
         (
@@ -451,6 +486,9 @@ async def test_backbone_copy_emits_one_event_per_matched_layer(
         layer["layer_key"] for layer in target_body["layers"]
     ]
     assert all(len(event.payload["detail"]) == 1 for event in events)
+    assert {event.origin for event in events} == {"backbone"}
+    assert {event.source_project_id for event in events} == {source["id"]}
+    assert {event.batch_id for event in events} == {events[0].batch_id}
 
 
 async def test_create_without_backbone_records_project_create_event(
@@ -475,7 +513,12 @@ async def test_create_without_backbone_records_project_create_event(
         )
     ).scalar_one()
     assert event.event_type == ChangeEventType.PROJECT_CREATE
+    assert event.origin == "system"
+    assert event.batch_id is not None
     assert event.payload["backbone_project_id"] is None
+    assert event.source_project_id is None
+    assert event.source_layer_key is None
+    assert event.layer_key is None
 
 
 async def test_invalid_manual_override_is_rejected(db_client: AsyncClient) -> None:

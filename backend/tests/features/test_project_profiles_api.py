@@ -22,7 +22,7 @@ from app.models.project import (
     ProjectProfile,
 )
 from app.project_metadata import ProjectProfileSeed, get_project_metadata_provider
-from tests.factories import seed_choice_set
+from tests.factories import seed_backbone_capture_parameters, seed_choice_set
 
 
 class SeedProvider:
@@ -158,6 +158,8 @@ async def profile_client(
     db_client: AsyncClient, db_session: AsyncSession
 ) -> AsyncIterator[AsyncClient]:
     await _seed_profile_choices(db_session)
+    await seed_backbone_capture_parameters(db_session)
+    await db_session.commit()
     try:
         yield db_client
     finally:
@@ -462,6 +464,23 @@ async def test_backbone_create_records_project_create_and_copy_events(
     )
     assert event_types == [ChangeEventType.PROJECT_CREATE, ChangeEventType.BACKBONE_COPY]
 
+    events = list(
+        (
+            await db_session.execute(
+                select(ChangeEvent)
+                .where(ChangeEvent.project_id == target.json()["id"])
+                .order_by(ChangeEvent.id)
+            )
+        ).scalars()
+    )
+    assert events[0].origin == "system"
+    assert events[0].batch_id is not None
+    assert events[0].source_project_id == source.json()["id"]
+    assert events[1].origin == "backbone"
+    assert events[1].batch_id == events[0].batch_id
+    assert events[1].layer_key is not None
+    assert events[1].source_project_id == source.json()["id"]
+
 
 async def test_project_list_filters_exact_profile_choices(
     profile_client: AsyncClient,
@@ -713,6 +732,11 @@ async def test_profile_patch_records_one_event_and_touches_project_once(
     assert response.json()["active_direction"]["code"] == "UP"
     events = await _profile_events(project_with_lock.session, project_with_lock.project_id)
     assert len(events) == 1
+    assert events[0].origin == "manual"
+    assert events[0].batch_id is None
+    assert events[0].layer_key is None
+    assert events[0].source_project_id is None
+    assert events[0].source_layer_key is None
     assert set(events[0].payload["changes"]) == {
         "process_name",
         "comment",

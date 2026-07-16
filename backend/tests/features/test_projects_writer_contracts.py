@@ -383,7 +383,7 @@ async def test_replace_rejects_unresolved_parameter_metadata_with_conflict(
     source_condition = source.layers[0].conditions[0]
     source_condition.cell_values.extend(
         [
-            CellValue(parameter_code="aaa_missing_speed", value_text="17"),
+            CellValue(parameter_code="missing_speed", value_text="17"),
             CellValue(parameter_code="legacy_speed", value_text="42"),
         ]
     )
@@ -392,7 +392,7 @@ async def test_replace_rejects_unresolved_parameter_metadata_with_conflict(
     target = await _create_project(service, process_id="PROC_BETA", part_id="TGT")
     target_layer = target.layers[0].layer_key
 
-    with pytest.raises(ConflictError, match="unresolved_parameter_metadata"):
+    with pytest.raises(ConflictError) as excinfo:
         await service.replace_layer_backbone(
             target.id,
             target_layer,
@@ -402,3 +402,6 @@ async def test_replace_rejects_unresolved_parameter_metadata_with_conflict(
             ),
             actor="worker-2",
         )
+
+    assert excinfo.value.code == "unresolved_parameter_metadata"
+    assert excinfo.value.details["parameter_codes"] == ["missing_speed"]

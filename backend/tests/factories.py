@@ -70,3 +70,44 @@ async def seed_parameter(
     session.add(parameter)
     await session.flush()
     return parameter
+
+
+async def seed_backbone_capture_parameters(session: AsyncSession) -> None:
+    """Project backbone tests need the live registry rows referenced by ingest cells."""
+    category = ParameterCategory(code="photo", display_name="PHOTO", sort_order=0)
+    session.add(category)
+    await session.flush()
+
+    choice_set = await seed_choice_set(
+        session,
+        code="equipment_mode",
+        options=(
+            ("A", "A", True),
+            ("B", "B", True),
+            ("LEGACY", "Legacy", False),
+        ),
+    )
+    session.add_all(
+        [
+            Parameter(
+                code="spin_speed",
+                display_name="Spin Speed",
+                value_type=ValueType.NUMBER,
+                category_id=category.id,
+                unit="rpm",
+                min_value=Decimal("0"),
+                max_value=Decimal("2000"),
+                required=True,
+                sort_order=1,
+            ),
+            Parameter(
+                code="pr_type",
+                display_name="PR Type",
+                value_type=ValueType.CHOICE,
+                category_id=category.id,
+                choice_set=choice_set,
+                sort_order=2,
+            ),
+        ]
+    )
+    await session.flush()
