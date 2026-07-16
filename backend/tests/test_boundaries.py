@@ -277,7 +277,7 @@ def test_phase_4_metadata_exposes_backbone_snapshot_and_history_columns() -> Non
     assert sheet_layer.c.backbone_snapshot.nullable is True
 
     assert {"layer_key", "batch_id", "origin", "source_project_id", "source_layer_key"} <= set(
-        change_event.c
+        change_event.c.keys()
     )
     assert cast(Enum, change_event.c.event_type.type).enums == [
         "project_create",
