@@ -105,9 +105,27 @@ def _insert_event(
         connection,
         """
         INSERT INTO change_event
-            (project_id, event_type, actor, payload, condition_id, parameter_code, old_value, new_value)
+            (
+                project_id,
+                event_type,
+                actor,
+                payload,
+                condition_id,
+                parameter_code,
+                old_value,
+                new_value
+            )
         VALUES
-            (:project_id, :event_type, :actor, CAST(:payload AS jsonb), :condition_id, :parameter_code, :old_value, :new_value)
+            (
+                :project_id,
+                :event_type,
+                :actor,
+                CAST(:payload AS jsonb),
+                :condition_id,
+                :parameter_code,
+                :old_value,
+                :new_value
+            )
         RETURNING id
         """,
         {
@@ -634,7 +652,8 @@ def test_0007_retry_rebuilds_mismatched_index_after_partial_interruption(
     migration_db.upgrade("0006")
     migration_db.connection.execute(
         sa.text(
-            "CREATE INDEX ix_change_event_project_origin_id_desc ON change_event (project_id, actor, id DESC)"
+            "CREATE INDEX ix_change_event_project_origin_id_desc "
+            "ON change_event (project_id, actor, id DESC)"
         )
     )
     migration_db.connection.commit()
