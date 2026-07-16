@@ -6,9 +6,9 @@ These tests cover two gaps that the SQLite API suites do not prove as strongly:
   layer changes before repopulation resumes
 """
 
-from collections.abc import AsyncIterator
 import asyncio
 import os
+from collections.abc import AsyncIterator
 
 import pytest
 from sqlalchemy import func, select
@@ -116,28 +116,28 @@ async def _seed_source_cell(
 async def _change_event_count(
     session: AsyncSession, project_id: int, event_type: ChangeEventType
 ) -> int:
-    return int(
-        await session.scalar(
-            select(func.count(ChangeEvent.id)).where(
-                ChangeEvent.project_id == project_id,
-                ChangeEvent.event_type == event_type,
-            )
+    count = await session.scalar(
+        select(func.count(ChangeEvent.id)).where(
+            ChangeEvent.project_id == project_id,
+            ChangeEvent.event_type == event_type,
         )
     )
+    assert count is not None
+    return int(count)
 
 
 async def _project_count(
     session: AsyncSession, *, line_id: str, process_id: str, part_id: str
 ) -> int:
-    return int(
-        await session.scalar(
-            select(func.count(Project.id)).where(
-                Project.line_id == line_id,
-                Project.process_id == process_id,
-                Project.part_id == part_id,
-            )
+    count = await session.scalar(
+        select(func.count(Project.id)).where(
+            Project.line_id == line_id,
+            Project.process_id == process_id,
+            Project.part_id == part_id,
         )
     )
+    assert count is not None
+    return int(count)
 
 
 async def test_create_project_race_rolls_back_the_loser(
