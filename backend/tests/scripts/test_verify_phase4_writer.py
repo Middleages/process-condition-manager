@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 import app.models  # noqa: F401 -- register all tables for create_all
 import scripts.verify_phase4_writer as verify_phase4_writer
 from app.core import maintenance
-import scripts.verify_phase4_writer as verify_phase4_writer
+from app.core.db import Base
 from scripts.verify_phase4_writer import build_smoke_report, main
 
 
