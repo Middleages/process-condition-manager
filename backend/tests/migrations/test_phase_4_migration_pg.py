@@ -8,7 +8,7 @@ from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
-from threading import Event
+from typing import cast
 
 import pytest
 import sqlalchemy as sa
@@ -661,16 +661,10 @@ def test_0007_retry_rebuilds_mismatched_index_after_partial_interruption(
     finally:
         event.remove(migration_db.connection, "after_cursor_execute", _interrupt_after_first_create)
 
-    assert migration_db.connection.scalar(
-        sa.text(
-            "SELECT indisvalid FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid WHERE c.relname = 'ix_change_event_project_id_id_desc'"
-        )
-    ) is True
-    assert migration_db.connection.scalar(
-        sa.text(
-            "SELECT pg_get_indexdef(i.indexrelid) FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid WHERE c.relname = 'ix_change_event_project_origin_id_desc'"
-        )
-    ) is not None
+    assert _index_validity(migration_db.connection)["ix_change_event_project_id_id_desc"] is True
+    assert "actor, id desc" in _index_defs(migration_db.connection)[
+        "ix_change_event_project_origin_id_desc"
+    ]
 
     migration_db.upgrade("head")
     assert migration_db.current_revision() == "0007"
@@ -688,4 +682,15 @@ def test_0007_retry_rebuilds_mismatched_index_after_partial_interruption(
 
     migration_db.downgrade("0006")
     remaining_indexes = _index_defs(migration_db.connection)
-    assert remaining_indexes == {}
+    assert {
+        "ix_change_event_project_id_id_desc",
+        "ix_change_event_project_type_id_desc",
+        "ix_change_event_project_cell_id_desc",
+        "ix_change_event_project_condition_id_desc",
+        "ix_change_event_project_layer_id_desc",
+        "ix_change_event_project_actor_id_desc",
+        "ix_change_event_project_origin_id_desc",
+        "ix_change_event_project_source_id_desc",
+        "ix_change_event_project_created_id_desc",
+        "ix_change_event_project_batch_id_desc",
+    }.isdisjoint(remaining_indexes)

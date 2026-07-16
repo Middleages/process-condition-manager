@@ -268,6 +268,34 @@ def test_phase_2_6_metadata_has_no_legacy_option_or_project_description() -> Non
     assert isinstance(Base.metadata.tables["parameter"].c.max_value.type, Numeric)
 
 
+def test_phase_4_metadata_exposes_backbone_snapshot_and_history_columns() -> None:
+    from sqlalchemy import Enum, JSON, Table
+    from sqlalchemy.dialects.postgresql import JSONB, dialect
+
+    from app.models import Base
+
+    sheet_layer = cast(Table, Base.metadata.tables["sheet_layer"])
+    change_event = cast(Table, Base.metadata.tables["change_event"])
+
+    assert isinstance(sheet_layer.c.backbone_snapshot.type, JSON)
+    assert isinstance(sheet_layer.c.backbone_snapshot.type.dialect_impl(dialect()), JSONB)
+    assert sheet_layer.c.backbone_snapshot.nullable is True
+
+    assert {"layer_key", "batch_id", "origin", "source_project_id", "source_layer_key"} <= set(
+        change_event.c
+    )
+    assert cast(Enum, change_event.c.event_type.type).enums == [
+        "project_create",
+        "project_profile_update",
+        "backbone_copy",
+        "backbone_layer_replace",
+        "cell_update",
+        "condition_add",
+        "condition_remove",
+        "por_change",
+    ]
+
+
 def test_fixed_profile_choice_set_mapping_is_exact() -> None:
     from app.domain.choices.constants import PROFILE_CHOICE_SET_FIELDS
 
