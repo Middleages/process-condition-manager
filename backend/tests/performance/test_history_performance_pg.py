@@ -111,7 +111,7 @@ def test_history_gate_rejects_values_just_above_each_limit(
 
 
 def test_history_report_shape_is_well_formed() -> None:
-    report = _build_report(warmup_runs=0, timed_runs=1, compare_paste_overhead=False)
+    report = _build_report(compare_paste_overhead=False)
 
     assert report["binding_mode"] == "sql_contracts"
     assert "RED handoff" in report["red_handoff"]
