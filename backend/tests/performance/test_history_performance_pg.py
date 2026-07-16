@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
 from itertools import cycle
 from typing import Final, cast
@@ -28,9 +28,11 @@ from app.domain.backbone import (
     BackboneSnapshotColumn,
     BackboneSnapshotCondition,
     BackboneSnapshotSource,
+    format_captured_at,
     serialize_backbone_snapshot,
 )
 from app.domain.parameters.types import ValueType
+from app.features.projects.service import normalize_profile_seed
 from app.models.parameter import Parameter
 from app.models.project import (
     CellValue,
@@ -40,6 +42,7 @@ from app.models.project import (
     Project,
     SheetLayer,
 )
+from app.project_metadata import ProjectProfileSeed
 from tests.factories import make_project_profile
 from tests.postgres_database import temporary_postgres_database
 
@@ -109,6 +112,23 @@ _HISTORY_INDEX_DDLS: Final[tuple[str, ...]] = (
         "WHERE batch_id IS NOT NULL"
     ),
 )
+
+_PROJECT_CREATE_PROFILE_SEED: Final[ProjectProfileSeed] = ProjectProfileSeed(
+    comment="provider comment",
+    pitch_x="001.5000",
+    gross_die=" 20 ",
+)
+_PROJECT_CREATE_PROFILE_SEED_PAYLOAD: Final[dict[str, object | None]] = asdict(
+    _PROJECT_CREATE_PROFILE_SEED
+)
+_PROJECT_CREATE_PROFILE_FINAL_PAYLOAD: Final[dict[str, object | None]] = {
+    "process_name": "HISTORY_PERF",
+    **normalize_profile_seed(_PROJECT_CREATE_PROFILE_SEED),
+}
+
+
+def _batch_id(namespace: int, index: int) -> str:
+    return f"{(namespace << 120) + index:032x}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -242,6 +262,26 @@ def _build_events(
     created_at = datetime(2026, 7, 16, 8, 0, tzinfo=UTC)
     event_id = 0
 
+    condition_snapshot = {
+        "label": "base",
+        "is_por": True,
+        "condition_index": 1,
+        "cells": {
+            parameter_codes[0]: "10",
+            parameter_codes[1]: "20",
+        },
+    }
+    project_profile_changes = {
+        "comment": {
+            "old": "provider comment",
+            "new": "provider comment (updated)",
+        }
+    }
+    cell_batch_ids: set[str] = set()
+    project_batch_ids: set[str] = set()
+    backbone_batch_ids: set[str] = set()
+    replace_batch_ids: set[str] = set()
+
     def add_event(
         event_type: ChangeEventType,
         *,
@@ -280,12 +320,37 @@ def _build_events(
             }
         )
 
+    def add_exact_condition_event(
+        event_type: ChangeEventType,
+        *,
+        layer_key: str,
+        condition_id: int,
+        source_condition_id: int | None,
+    ) -> None:
+        payload: dict[str, object] = {
+            "layer_key": layer_key,
+            "condition_id": condition_id,
+            "snapshot": dict(condition_snapshot),
+        }
+        if event_type is ChangeEventType.CONDITION_ADD:
+            payload["source_condition_id"] = source_condition_id
+        add_event(
+            event_type,
+            batch_id=None,
+            actor="operator",
+            payload=payload,
+            condition_id=condition_id,
+            layer_key=layer_key,
+            origin="manual",
+        )
+
     manual_or_paste = cycle(("manual", "paste"))
     actors = cycle(("dev-admin", "perf-bot", "qa-bot"))
 
     # 30k cell updates: deterministic batches with manual/paste origins.
     for batch_index in range(15_000):
-        batch_id = f"cell-batch-{batch_index:05d}"
+        batch_id = _batch_id(1, batch_index)
+        cell_batch_ids.add(batch_id)
         for repeat in range(2):
             coordinate_index = batch_index * 2 + repeat
             layer_index = coordinate_index % len(layer_keys)
@@ -308,31 +373,25 @@ def _build_events(
     for index in range(10_000):
         layer_key = layer_keys[index % len(layer_keys)]
         condition_id = condition_ids[index % len(condition_ids)]
-        add_event(
+        add_exact_condition_event(
             ChangeEventType.CONDITION_ADD,
-            batch_id=None,
-            actor="operator",
-            payload={
-                "layer_key": layer_key,
-                "condition_id": condition_id,
-                "source_condition_id": None,
-                "detail": {"event": "condition_add"},
-            },
+            layer_key=layer_key,
+            condition_id=condition_id,
+            source_condition_id=None,
         )
-        add_event(
+        add_exact_condition_event(
             ChangeEventType.CONDITION_REMOVE,
-            batch_id=None,
-            actor="operator",
-            payload={
-                "layer_key": layer_key,
-                "condition_id": condition_id,
-                "removed_condition_snapshot": {"label": "base", "is_por": True},
-            },
+            layer_key=layer_key,
+            condition_id=condition_id,
+            source_condition_id=None,
         )
         add_event(
             ChangeEventType.POR_CHANGE,
             batch_id=None,
             actor="operator",
+            condition_id=condition_id,
+            layer_key=layer_key,
+            origin="manual",
             payload={
                 "layer_key": layer_key,
                 "old_por_condition_id": condition_id if index % 2 == 0 else None,
@@ -342,153 +401,156 @@ def _build_events(
 
     # 10k project create/profile update rows.
     for index in range(10_000):
-        batch_id = f"project-batch-{index:05d}"
+        batch_id = _batch_id(2, index)
+        project_batch_ids.add(batch_id)
+        project_part_id = f"P{index:04d}"
+        project_captured_at = datetime(2026, 7, 16, 8, 0, tzinfo=UTC) + timedelta(
+            seconds=index
+        )
         add_event(
             ChangeEventType.PROJECT_CREATE,
             batch_id=batch_id,
             actor="system",
+            origin="system",
             payload={
                 "batch_id": batch_id,
-                "capture": {
+                "captured_at": format_captured_at(project_captured_at),
+                "payload_schema_version": 2,
+                "identity": {
                     "line_id": "L1",
                     "process_id": "HISTORY_PERF",
-                    "part_id": f"P{index:04d}",
+                    "part_id": project_part_id,
+                    "name": "history-perf",
                 },
-                "detail": {"event": "project_create", "version": 1},
+                "metadata_provider": "manual",
+                "backbone_project_id": 9999 if index % 3 == 0 else None,
+                "profile_seed": _PROJECT_CREATE_PROFILE_SEED_PAYLOAD,
+                "profile_final": _PROJECT_CREATE_PROFILE_FINAL_PAYLOAD,
             },
             source_project_id=9999 if index % 3 == 0 else None,
         )
         add_event(
             ChangeEventType.PROJECT_PROFILE_UPDATE,
-            batch_id=batch_id,
+            batch_id=None,
             actor="system",
-            payload={
-                "batch_id": batch_id,
-                "capture": {
-                    "process_name": "HISTORY_PERF",
-                    "device_type_code": "DUT-A",
-                },
-                "detail": {"event": "project_profile_update", "version": 2},
-            },
+            origin="manual",
+            payload={"changes": project_profile_changes},
         )
 
     # 10k v1 count-only backbone copy rows and 10k v2 capture+detail layer replace rows.
     for index in range(10_000):
-        batch_id = f"backbone-batch-{index:05d}"
+        copy_batch_id = _batch_id(3, index)
+        replace_batch_id = _batch_id(4, index)
+        backbone_batch_ids.add(copy_batch_id)
+        replace_batch_ids.add(replace_batch_id)
         target_layer_key = layer_keys[index % len(layer_keys)]
         source_layer_key = layer_keys[(index + 1) % len(layer_keys)]
-        if index == 0:
-            exact_snapshot = BackboneSnapshot(
-                schema_version=1,
-                capture_batch_id="0" * 32,
-                captured_at=datetime(2026, 7, 16, 8, 0, tzinfo=UTC),
-                source=BackboneSnapshotSource(
-                    project_id=9999,
-                    sheet_layer_id=1,
-                    layer_key=source_layer_key,
-                    step_seq="001",
-                    layer_id="ACT",
+        snapshot_captured_at = datetime(2026, 7, 16, 8, 0, tzinfo=UTC) + timedelta(
+            seconds=index
+        )
+        capture_snapshot = BackboneSnapshot(
+            capture_batch_id=replace_batch_id,
+            captured_at=snapshot_captured_at,
+            source=BackboneSnapshotSource(
+                project_id=9999,
+                sheet_layer_id=1,
+                layer_key=source_layer_key,
+                step_seq="001",
+                layer_id="ACT",
+            ),
+            columns=(
+                BackboneSnapshotColumn(
+                    parameter_code=parameter_codes[0],
+                    value_type=ValueType.TEXT,
+                    display_name="Parameter 001",
+                    category_code=None,
+                    sort_order=1,
+                    active_at_capture=True,
                 ),
-                columns=(
-                    BackboneSnapshotColumn(
-                        parameter_code=parameter_codes[0],
-                        value_type=ValueType.TEXT,
-                        display_name="Parameter 001",
-                        category_code=None,
-                        sort_order=1,
-                        active_at_capture=True,
-                    ),
-                    BackboneSnapshotColumn(
-                        parameter_code=parameter_codes[1],
-                        value_type=ValueType.TEXT,
-                        display_name="Parameter 002",
-                        category_code=None,
-                        sort_order=2,
-                        active_at_capture=True,
-                    ),
+                BackboneSnapshotColumn(
+                    parameter_code=parameter_codes[1],
+                    value_type=ValueType.TEXT,
+                    display_name="Parameter 002",
+                    category_code=None,
+                    sort_order=2,
+                    active_at_capture=True,
                 ),
-                conditions=(
-                    BackboneSnapshotCondition(
-                        source_condition_id=condition_ids[1],
-                        label="base",
-                        condition_index=1,
-                        is_por=True,
-                        cells=(
-                            BackboneSnapshotCell(
-                                parameter_code=parameter_codes[0],
-                                value="10",
-                            ),
-                            BackboneSnapshotCell(
-                                parameter_code=parameter_codes[1],
-                                value="20",
-                            ),
+            ),
+            conditions=(
+                BackboneSnapshotCondition(
+                    source_condition_id=condition_ids[1],
+                    label="base",
+                    condition_index=1,
+                    is_por=True,
+                    cells=(
+                        BackboneSnapshotCell(
+                            parameter_code=parameter_codes[0],
+                            value="10",
+                        ),
+                        BackboneSnapshotCell(
+                            parameter_code=parameter_codes[1],
+                            value="20",
                         ),
                     ),
                 ),
-            )
-            exact_detail = [
-                {
-                    "target_condition_id": condition_ids[0],
-                    "source_condition_id": condition_ids[1],
-                    "label": "base",
-                    "condition_index": 1,
-                    "is_por": True,
-                    "cell_count": 2,
-                }
-            ]
-            add_event(
-                ChangeEventType.BACKBONE_COPY,
-                batch_id=batch_id,
-                actor="system",
-                payload={
-                    "payload_schema_version": 2,
-                    "batch_id": batch_id,
-                    "captured_at": datetime(2026, 7, 16, 8, 0, tzinfo=UTC)
-                    .isoformat(timespec="microseconds")
-                    .replace("+00:00", "Z"),
-                    "backbone_project_id": 9999,
-                    "capture": serialize_backbone_snapshot(exact_snapshot),
-                    "target_layer_key": target_layer_key,
-                    "source_layer_key": source_layer_key,
-                    "auto_count": 2,
-                    "manual_count": 1,
-                    "unmatched_count": 0,
-                    "condition_count": 1,
-                    "cell_count": 2,
-                    "detail": exact_detail,
-                },
-                source_project_id=9999,
-                source_layer_key=source_layer_key,
-            )
-        else:
-            add_event(
-                ChangeEventType.BACKBONE_COPY,
-                batch_id=batch_id,
-                actor="system",
-                payload={"count": 200, "version": 1},
-                source_project_id=9999,
-            )
+            ),
+        )
+        exact_detail = [
+            {
+                "target_condition_id": condition_ids[0],
+                "source_condition_id": condition_ids[1],
+                "label": "base",
+                "condition_index": 1,
+                "is_por": True,
+                "cell_count": 2,
+            }
+        ]
+        add_event(
+            ChangeEventType.BACKBONE_COPY,
+            batch_id=copy_batch_id,
+            actor="system",
+            origin="backbone",
+            payload={
+                "batch_id": copy_batch_id,
+                "backbone_project_id": 9999,
+                "auto_count": 2,
+                "manual_count": 1,
+                "unmatched_count": 0,
+            },
+            source_project_id=9999,
+        )
         add_event(
             ChangeEventType.BACKBONE_LAYER_REPLACE,
-            batch_id=batch_id,
+            batch_id=replace_batch_id,
             actor="system",
-            payload={
-                "capture": {
-                    "source_project_id": 9999,
-                    "source_layer_key": source_layer_key,
-                    "target_layer_key": target_layer_key,
-                },
-                "detail": {
-                    "version": 2,
-                    "source_layer_key": source_layer_key,
-                    "target_layer_key": target_layer_key,
-                },
-            },
+            origin="backbone",
             layer_key=target_layer_key,
+            payload={
+                "batch_id": replace_batch_id,
+                "captured_at": format_captured_at(snapshot_captured_at),
+                "payload_schema_version": 2,
+                "target_layer_key": target_layer_key,
+                "source_project_id": 9999,
+                "source_layer_key": source_layer_key,
+                "before": {"condition_count": 1, "cell_count": 2},
+                "after": {"condition_count": 1, "cell_count": 2},
+                "capture": serialize_backbone_snapshot(capture_snapshot),
+                "detail": exact_detail,
+            },
             source_project_id=9999,
             source_layer_key=source_layer_key,
         )
 
+    assert len(cell_batch_ids) == 15_000
+    assert len(project_batch_ids) == 10_000
+    assert len(backbone_batch_ids) == 10_000
+    assert len(replace_batch_ids) == 10_000
+    assert cell_batch_ids.isdisjoint(project_batch_ids)
+    assert cell_batch_ids.isdisjoint(backbone_batch_ids)
+    assert cell_batch_ids.isdisjoint(replace_batch_ids)
+    assert project_batch_ids.isdisjoint(backbone_batch_ids)
+    assert project_batch_ids.isdisjoint(replace_batch_ids)
+    assert backbone_batch_ids.isdisjoint(replace_batch_ids)
     assert len(rows) == _EVENT_COUNT
     return rows, created_at
 
@@ -524,6 +586,24 @@ async def _seed_history_fixture(session: AsyncSession) -> HistoryPerformanceFixt
 
 async def _scalar_count(session: AsyncSession, statement: sa.sql.Select[tuple[int]]) -> int:
     return int((await session.execute(statement)).scalar_one())
+
+
+async def _first_event(
+    session: AsyncSession,
+    *,
+    project_id: int,
+    event_type: ChangeEventType,
+) -> ChangeEvent:
+    statement = (
+        select(ChangeEvent)
+        .where(
+            ChangeEvent.project_id == project_id,
+            ChangeEvent.event_type == event_type,
+        )
+        .order_by(ChangeEvent.id)
+        .limit(1)
+    )
+    return (await session.execute(statement)).scalar_one()
 
 
 def _timeline_page_statement(
@@ -821,6 +901,119 @@ async def test_history_fixture_builder_seeds_expected_counts() -> None:
                     await _scalar_count(session, select(sa.func.count(ChangeEvent.id)))
                     == _EVENT_COUNT
                 )
+                condition_add = await _first_event(
+                    session,
+                    project_id=fixture.project_id,
+                    event_type=ChangeEventType.CONDITION_ADD,
+                )
+                assert condition_add.origin == "manual"
+                assert condition_add.condition_id is not None
+                assert condition_add.layer_key is not None
+                assert condition_add.parameter_code is None
+                assert set(condition_add.payload) == {
+                    "layer_key",
+                    "condition_id",
+                    "source_condition_id",
+                    "snapshot",
+                }
+                assert set(condition_add.payload["snapshot"]) == {
+                    "label",
+                    "is_por",
+                    "condition_index",
+                    "cells",
+                }
+
+                condition_remove = await _first_event(
+                    session,
+                    project_id=fixture.project_id,
+                    event_type=ChangeEventType.CONDITION_REMOVE,
+                )
+                assert condition_remove.origin == "manual"
+                assert condition_remove.condition_id is not None
+                assert condition_remove.layer_key is not None
+                assert condition_remove.parameter_code is None
+                assert set(condition_remove.payload) == {
+                    "layer_key",
+                    "condition_id",
+                    "snapshot",
+                }
+                assert set(condition_remove.payload["snapshot"]) == {
+                    "label",
+                    "is_por",
+                    "condition_index",
+                    "cells",
+                }
+
+                project_create = await _first_event(
+                    session,
+                    project_id=fixture.project_id,
+                    event_type=ChangeEventType.PROJECT_CREATE,
+                )
+                assert project_create.origin == "system"
+                assert project_create.batch_id is not None
+                assert len(project_create.batch_id) == 32
+                assert project_create.batch_id == project_create.payload["batch_id"]
+                assert project_create.payload["metadata_provider"] == "manual"
+                assert set(project_create.payload) == {
+                    "batch_id",
+                    "captured_at",
+                    "payload_schema_version",
+                    "identity",
+                    "metadata_provider",
+                    "backbone_project_id",
+                    "profile_seed",
+                    "profile_final",
+                }
+
+                profile_update = await _first_event(
+                    session,
+                    project_id=fixture.project_id,
+                    event_type=ChangeEventType.PROJECT_PROFILE_UPDATE,
+                )
+                assert profile_update.origin == "manual"
+                assert profile_update.batch_id is None
+                assert profile_update.source_project_id is None
+                assert profile_update.source_layer_key is None
+                assert set(profile_update.payload) == {"changes"}
+
+                backbone_copy = await _first_event(
+                    session,
+                    project_id=fixture.project_id,
+                    event_type=ChangeEventType.BACKBONE_COPY,
+                )
+                assert backbone_copy.origin == "backbone"
+                assert backbone_copy.batch_id is not None
+                assert len(backbone_copy.batch_id) == 32
+                assert backbone_copy.layer_key is None
+                assert backbone_copy.source_project_id == 9999
+                assert backbone_copy.source_layer_key is None
+                assert set(backbone_copy.payload) == {
+                    "batch_id",
+                    "backbone_project_id",
+                    "auto_count",
+                    "manual_count",
+                    "unmatched_count",
+                }
+                assert backbone_copy.payload["batch_id"] == backbone_copy.batch_id
+                assert backbone_copy.payload["backbone_project_id"] == 9999
+                assert "payload_schema_version" not in backbone_copy.payload
+                assert "capture" not in backbone_copy.payload
+                assert "detail" not in backbone_copy.payload
+
+                backbone_replace = await _first_event(
+                    session,
+                    project_id=fixture.project_id,
+                    event_type=ChangeEventType.BACKBONE_LAYER_REPLACE,
+                )
+                assert backbone_replace.origin == "backbone"
+                assert backbone_replace.batch_id is not None
+                assert backbone_replace.batch_id != backbone_copy.batch_id
+                assert backbone_replace.layer_key is not None
+                assert backbone_replace.payload["batch_id"] == backbone_replace.batch_id
+                assert (
+                    backbone_replace.payload["capture"]["capture_batch_id"]
+                    == backbone_replace.batch_id
+                )
         finally:
             await engine.dispose()
 
@@ -865,7 +1058,7 @@ async def test_history_timeline_preview_query_uses_explicit_columns_only() -> No
     assert len(statements) >= 1
     assert "payload" not in statements[-1].lower()
     assert "change_event.payload" not in statements[-1].lower()
-    assert "order by change_event.id desc" in statements[-1].lower()
+    assert "order by change_event.project_id, change_event.id desc" in statements[-1].lower()
     assert "limit" in statements[-1].lower()
 
 
