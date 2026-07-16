@@ -9,9 +9,9 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, Literal, cast
+from typing import Any, Literal, cast as typing_cast
 
-from sqlalchemy import String, cast, case, func, select
+from sqlalchemy import String, cast as sa_cast, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.features.history.cursor import HistoryMemberFilterScope
@@ -55,7 +55,7 @@ class HistoryCellCoordinateProof:
         return self.state == "deleted"
 
 
-_EVENT_COLUMNS = (
+_SUMMARY_EVENT_COLUMNS = (
     ChangeEvent.id,
     ChangeEvent.event_type,
     ChangeEvent.actor,
@@ -69,6 +69,10 @@ _EVENT_COLUMNS = (
     ChangeEvent.new_value,
     ChangeEvent.source_project_id,
     ChangeEvent.source_layer_key,
+)
+
+_DETAIL_EVENT_COLUMNS = (
+    *_SUMMARY_EVENT_COLUMNS,
     ChangeEvent.payload,
 )
 
@@ -170,7 +174,11 @@ class HistoryRepository:
         snapshot_max_event_id: int | None = None,
         limit: int = 200,
     ) -> tuple[HistoryEventRow, ...]:
-        stmt = self._event_row_stmt(project_id, snapshot_max_event_id=snapshot_max_event_id)
+        stmt = self._event_row_stmt(
+            project_id,
+            snapshot_max_event_id=snapshot_max_event_id,
+            with_payload=True,
+        )
         stmt = stmt.where(ChangeEvent.batch_id == batch_id)
         stmt = self._apply_member_filters(stmt, member_filters)
         stmt = stmt.order_by(ChangeEvent.id.desc()).limit(limit)
@@ -247,7 +255,11 @@ class HistoryRepository:
         snapshot_max_event_id: int | None = None,
         limit: int = 100,
     ) -> tuple[HistoryEventRow, ...]:
-        stmt = self._event_row_stmt(project_id, snapshot_max_event_id=snapshot_max_event_id)
+        stmt = self._event_row_stmt(
+            project_id,
+            snapshot_max_event_id=snapshot_max_event_id,
+            with_payload=True,
+        )
         stmt = stmt.where(
             ChangeEvent.condition_id == condition_id,
             ChangeEvent.parameter_code == parameter_code,
@@ -336,7 +348,7 @@ class HistoryRepository:
     ):
         group_key = case(
             (ChangeEvent.batch_id.is_not(None), ChangeEvent.batch_id),
-            else_=cast(ChangeEvent.id, String),
+            else_=sa_cast(ChangeEvent.id, String),
         )
         stmt = (
             select(
@@ -360,8 +372,10 @@ class HistoryRepository:
         project_id: int,
         *,
         snapshot_max_event_id: int | None,
+        with_payload: bool = False,
     ):
-        stmt = select(*_EVENT_COLUMNS).where(ChangeEvent.project_id == project_id)
+        columns = _DETAIL_EVENT_COLUMNS if with_payload else _SUMMARY_EVENT_COLUMNS
+        stmt = select(*columns).where(ChangeEvent.project_id == project_id)
         if snapshot_max_event_id is not None:
             stmt = stmt.where(ChangeEvent.id <= snapshot_max_event_id)
         return stmt
@@ -375,7 +389,11 @@ class HistoryRepository:
     ) -> tuple[HistoryEventRow, ...]:
         if not event_ids:
             return ()
-        stmt = self._event_row_stmt(project_id, snapshot_max_event_id=None).where(
+        stmt = self._event_row_stmt(
+            project_id,
+            snapshot_max_event_id=None,
+            with_payload=False,
+        ).where(
             ChangeEvent.id.in_(event_ids)
         )
         stmt = stmt.order_by(ChangeEvent.id.desc())
@@ -409,7 +427,11 @@ class HistoryRepository:
         parameter_code: str,
     ) -> HistoryEventRow | None:
         stmt = (
-            self._event_row_stmt(project_id, snapshot_max_event_id=None)
+            self._event_row_stmt(
+                project_id,
+                snapshot_max_event_id=None,
+                with_payload=True,
+            )
             .where(
                 ChangeEvent.condition_id == condition_id,
                 ChangeEvent.parameter_code == parameter_code,
@@ -428,7 +450,11 @@ class HistoryRepository:
         parameter_code: str,
     ) -> HistoryEventRow | None:
         stmt = (
-            self._event_row_stmt(project_id, snapshot_max_event_id=None)
+            self._event_row_stmt(
+                project_id,
+                snapshot_max_event_id=None,
+                with_payload=True,
+            )
             .where(
                 ChangeEvent.condition_id == condition_id,
                 ChangeEvent.event_type == "condition_remove",
@@ -439,7 +465,11 @@ class HistoryRepository:
         rows = await self._load_event_rows(stmt)
         if not rows:
             stmt = (
-                self._event_row_stmt(project_id, snapshot_max_event_id=None)
+                self._event_row_stmt(
+                    project_id,
+                    snapshot_max_event_id=None,
+                    with_payload=True,
+                )
                 .where(ChangeEvent.event_type == "condition_remove")
                 .order_by(ChangeEvent.id.desc())
                 .limit(200)
@@ -454,7 +484,7 @@ class HistoryRepository:
                     or (
                         isinstance(row.detail, Mapping)
                         and parameter_code
-                        in cast(Mapping[str, Any], row.detail).get("cells", {})
+                        in typing_cast(Mapping[str, Any], row.detail).get("cells", {})
                     )
                 )
             )
@@ -466,7 +496,11 @@ class HistoryRepository:
         condition_id: int,
     ) -> HistoryEventRow | None:
         stmt = (
-            self._event_row_stmt(project_id, snapshot_max_event_id=None)
+            self._event_row_stmt(
+                project_id,
+                snapshot_max_event_id=None,
+                with_payload=True,
+            )
             .where(
                 ChangeEvent.condition_id == condition_id,
                 ChangeEvent.event_type == "condition_add",
@@ -479,7 +513,11 @@ class HistoryRepository:
             return rows[0]
 
         stmt = (
-            self._event_row_stmt(project_id, snapshot_max_event_id=None)
+            self._event_row_stmt(
+                project_id,
+                snapshot_max_event_id=None,
+                with_payload=True,
+            )
             .where(ChangeEvent.event_type == "condition_add")
             .order_by(ChangeEvent.id.desc())
             .limit(200)
