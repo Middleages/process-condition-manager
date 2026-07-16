@@ -68,9 +68,7 @@ class Project(Base):
         default=ProjectStatus.DRAFT,
         server_default=ProjectStatus.DRAFT.value,
     )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
@@ -129,9 +127,7 @@ class ProjectProfile(Base):
     soh: Mapped[str | None] = mapped_column(Text, nullable=True)
     pspi: Mapped[str | None] = mapped_column(Text, nullable=True)
     metal_layer_count: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
@@ -247,9 +243,7 @@ class ChangeEvent(Base):
     origin: Mapped[str | None] = mapped_column(String(32), nullable=True)
     source_project_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     source_layer_key: Mapped[str | None] = mapped_column(String(256), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     project: Mapped[Project] = relationship(back_populates="events")
 

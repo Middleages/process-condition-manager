@@ -163,18 +163,22 @@ def _expected_index_sql(index: sa.Index) -> str:
 
 
 def _fetch_index_state(name: str) -> tuple[bool, str | None]:
-    row = op.get_bind().execute(
-        sa.text(
-            """
+    row = (
+        op.get_bind()
+        .execute(
+            sa.text(
+                """
             SELECT i.indisvalid, pg_get_indexdef(i.indexrelid) AS indexdef
             FROM pg_index AS i
             JOIN pg_class AS c ON c.oid = i.indexrelid
             JOIN pg_namespace AS n ON n.oid = c.relnamespace
             WHERE c.relname = :name AND n.nspname = current_schema()
             """
-        ),
-        {"name": name},
-    ).first()
+            ),
+            {"name": name},
+        )
+        .first()
+    )
     if row is None:
         return (False, None)
     return (bool(row[0]), row[1])

@@ -220,7 +220,9 @@ def upgrade() -> None:
     op.add_column("change_event", sa.Column("batch_id", sa.String(length=64), nullable=True))
     op.add_column("change_event", sa.Column("origin", sa.String(length=32), nullable=True))
     op.add_column("change_event", sa.Column("source_project_id", sa.Integer(), nullable=True))
-    op.add_column("change_event", sa.Column("source_layer_key", sa.String(length=256), nullable=True))
+    op.add_column(
+        "change_event", sa.Column("source_layer_key", sa.String(length=256), nullable=True)
+    )
 
     _backfill_change_event_columns()
 

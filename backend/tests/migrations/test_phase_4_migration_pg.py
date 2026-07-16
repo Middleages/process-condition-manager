@@ -12,11 +12,11 @@ from typing import cast
 
 import pytest
 import sqlalchemy as sa
-from alembic import command
-from alembic.config import Config
 from sqlalchemy import event
 from sqlalchemy.engine import Connection
 
+from alembic import command
+from alembic.config import Config
 from tests.postgres_database import TemporaryPostgresDatabase, temporary_postgres_database
 
 _BACKEND_ROOT = Path(__file__).resolve().parents[2]
@@ -83,7 +83,9 @@ class SeededHistoryFixture:
     event_ids: tuple[int, ...]
 
 
-def _insert_scalar(connection: Connection, sql: str, params: dict[str, object] | None = None) -> int:
+def _insert_scalar(
+    connection: Connection, sql: str, params: dict[str, object] | None = None
+) -> int:
     return int(connection.execute(sa.text(sql), params or {}).scalar_one())
 
 
@@ -317,8 +319,12 @@ def _seed_history_fixture(connection: Connection) -> SeededHistoryFixture:
         ),
     )
 
-    connection.execute(sa.text("DELETE FROM layer_condition WHERE id = :id"), {"id": deleted_condition_id})
-    connection.execute(sa.text("DELETE FROM layer_condition WHERE id = :id"), {"id": remove_condition_id})
+    connection.execute(
+        sa.text("DELETE FROM layer_condition WHERE id = :id"), {"id": deleted_condition_id}
+    )
+    connection.execute(
+        sa.text("DELETE FROM layer_condition WHERE id = :id"), {"id": remove_condition_id}
+    )
     connection.commit()
 
     return SeededHistoryFixture(
@@ -337,8 +343,7 @@ def _seed_history_fixture(connection: Connection) -> SeededHistoryFixture:
 def _table_counts(connection: Connection) -> dict[str, int]:
     tables = ["project", "sheet_layer", "layer_condition", "cell_value", "change_event"]
     return {
-        table: int(connection.scalar(sa.text(f"SELECT count(*) FROM {table}")))
-        for table in tables
+        table: int(connection.scalar(sa.text(f"SELECT count(*) FROM {table}"))) for table in tables
     }
 
 
@@ -359,7 +364,9 @@ def _event_rows(connection: Connection) -> list[tuple[object, ...]]:
 
 
 def _normalized(sql: str) -> str:
-    return " ".join(sql.lower().replace('"', "").replace("public.", "").replace("using btree", "").split())
+    return " ".join(
+        sql.lower().replace('"', "").replace("public.", "").replace("using btree", "").split()
+    )
 
 
 def _index_defs(connection: Connection) -> dict[str, str]:
@@ -412,9 +419,7 @@ def test_history_columns_backfill_repeatable_upgrade_downgrade_upgrade(
     assert sheet_columns["backbone_snapshot"]["nullable"] is True
     assert sheet_columns["backbone_snapshot"]["default"] is None
 
-    change_columns = {
-        column["name"]: column for column in inspector.get_columns("change_event")
-    }
+    change_columns = {column["name"]: column for column in inspector.get_columns("change_event")}
     assert {
         "layer_key",
         "batch_id",
@@ -558,9 +563,7 @@ def test_history_columns_backfill_repeatable_upgrade_downgrade_upgrade(
 
     assert (
         migration_db.connection.scalar(
-            sa.text(
-                "SELECT count(*) FROM sheet_layer WHERE backbone_snapshot IS NOT NULL"
-            )
+            sa.text("SELECT count(*) FROM sheet_layer WHERE backbone_snapshot IS NOT NULL")
         )
         == 0
     )
@@ -647,7 +650,11 @@ def test_0007_retry_rebuilds_mismatched_index_after_partial_interruption(
         _executemany,
     ) -> None:
         nonlocal interrupted
-        if not interrupted and "CREATE INDEX CONCURRENTLY" in statement and "ix_change_event_project_id_id_desc" in statement:
+        if (
+            not interrupted
+            and "CREATE INDEX CONCURRENTLY" in statement
+            and "ix_change_event_project_id_id_desc" in statement
+        ):
             interrupted = True
             raise RuntimeError("simulated interruption after the first concurrent index")
 
@@ -662,9 +669,10 @@ def test_0007_retry_rebuilds_mismatched_index_after_partial_interruption(
         event.remove(migration_db.connection, "after_cursor_execute", _interrupt_after_first_create)
 
     assert _index_validity(migration_db.connection)["ix_change_event_project_id_id_desc"] is True
-    assert "actor, id desc" in _index_defs(migration_db.connection)[
-        "ix_change_event_project_origin_id_desc"
-    ]
+    assert (
+        "actor, id desc"
+        in _index_defs(migration_db.connection)["ix_change_event_project_origin_id_desc"]
+    )
 
     migration_db.upgrade("head")
     assert migration_db.current_revision() == "0007"
@@ -672,13 +680,9 @@ def test_0007_retry_rebuilds_mismatched_index_after_partial_interruption(
     indexes = _index_defs(migration_db.connection)
     validities = _index_validity(migration_db.connection)
     assert validities and all(validities.values())
-    assert indexes["ix_change_event_project_origin_id_desc"].endswith(
-        "where (origin is not null)"
-    )
+    assert indexes["ix_change_event_project_origin_id_desc"].endswith("where (origin is not null)")
     assert indexes["ix_change_event_project_id_id_desc"].endswith("(project_id, id desc)")
-    assert indexes["ix_change_event_project_batch_id_desc"].endswith(
-        "where (batch_id is not null)"
-    )
+    assert indexes["ix_change_event_project_batch_id_desc"].endswith("where (batch_id is not null)")
 
     migration_db.downgrade("0006")
     remaining_indexes = _index_defs(migration_db.connection)

@@ -110,9 +110,7 @@ def test_transactional_dependencies_finalize_before_response(
     assert scopes == ["function"] * len(scopes)
 
     if shares_edit_session:
-        edit_session = _depends(
-            get_type_hints(require_edit_lock, include_extras=True)["session"]
-        )
+        edit_session = _depends(get_type_hints(require_edit_lock, include_extras=True)["session"])
         assert (
             edit_session.dependency,
             edit_session.scope,
@@ -148,9 +146,7 @@ def test_locked_routes_reuse_the_transaction_session() -> None:
             if dependency.call is get_app_session
         )
         service_session = next(
-            dependency
-            for dependency in service.dependencies
-            if dependency.call is get_app_session
+            dependency for dependency in service.dependencies if dependency.call is get_app_session
         )
 
         assert edit_session.use_cache is service_session.use_cache is True
@@ -250,9 +246,7 @@ def test_validation_rule_model_is_registered_with_strict_storage_contract() -> N
         "ix_validation_rule_active_code",
         "ix_validation_rule_code",
     }
-    assert next(
-        index for index in table.indexes if index.name == "ix_validation_rule_code"
-    ).unique
+    assert next(index for index in table.indexes if index.name == "ix_validation_rule_code").unique
 
 
 def test_phase_2_6_metadata_has_no_legacy_option_or_project_description() -> None:
@@ -269,7 +263,7 @@ def test_phase_2_6_metadata_has_no_legacy_option_or_project_description() -> Non
 
 
 def test_phase_4_metadata_exposes_backbone_snapshot_and_history_columns() -> None:
-    from sqlalchemy import Enum, JSON, Table
+    from sqlalchemy import JSON, Enum, Table
     from sqlalchemy.dialects.postgresql import JSONB, dialect
 
     from app.models import Base
