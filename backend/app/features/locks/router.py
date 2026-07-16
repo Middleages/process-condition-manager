@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import UserContext, get_current_user
 from app.core.db import get_app_session
 from app.core.locks import as_utc
+from app.core.maintenance import require_project_mutations_enabled
 from app.features.locks.repository import EditLockRepository
 from app.features.locks.schema import LockHeartbeatIn, LockOut, LockReleaseIn
 from app.features.locks.service import LockService
@@ -39,13 +40,21 @@ ServiceDep = Annotated[LockService, Depends(get_service, scope="function")]
 UserDep = Annotated[UserContext, Depends(get_current_user)]
 
 
-@router.post("/{project_id}/lock", response_model=LockOut)
+@router.post(
+    "/{project_id}/lock",
+    response_model=LockOut,
+    dependencies=[Depends(require_project_mutations_enabled)],
+)
 async def acquire_lock(project_id: int, service: ServiceDep, user: UserDep) -> LockOut:
     lock = await service.acquire(project_id, user_id=user.id)
     return _lock_out(lock)
 
 
-@router.post("/{project_id}/lock/heartbeat", response_model=LockOut)
+@router.post(
+    "/{project_id}/lock/heartbeat",
+    response_model=LockOut,
+    dependencies=[Depends(require_project_mutations_enabled)],
+)
 async def heartbeat_lock(
     project_id: int, data: LockHeartbeatIn, service: ServiceDep, user: UserDep
 ) -> LockOut:

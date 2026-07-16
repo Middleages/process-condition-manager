@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     # 개발용 인증 스텁 활성화 여부 (실제 어댑터 구현은 T5)
     auth_dev_stub: bool = True
 
+    # Phase 4 writer 릴리스 게이트: false면 project truth mutation을 503으로 차단한다.
+    project_mutations_enabled: bool = True
+
     # 편집 잠금(T5): TTL 3분, 하트비트 45초. 상수 조정 지점.
     edit_lock_ttl_seconds: int = 180
     edit_lock_heartbeat_seconds: int = 45

@@ -9,6 +9,7 @@ from fastapi import APIRouter, FastAPI
 from app.core.config import settings
 from app.core.db import app_engine, ingest_engine
 from app.core.errors import register_exception_handlers
+from app.core.maintenance import Phase4WriterHealthOut, get_phase4_writer_health
 from app.features.cells.router import router as cells_router
 from app.features.choice_sets.router import router as choice_sets_router
 from app.features.conditions.router import router as conditions_router
@@ -26,6 +27,12 @@ health_router = APIRouter(tags=["health"])
 async def health() -> dict[str, str]:
     """라이브니스 체크 (DB 미접속)."""
     return {"status": "ok", "app": settings.app_name}
+
+
+@health_router.get("/phase4-writer", response_model=Phase4WriterHealthOut)
+async def phase4_writer_health() -> Phase4WriterHealthOut:
+    """Phase 4 writer canary / rollback-only health attestation."""
+    return await get_phase4_writer_health()
 
 
 def create_app() -> FastAPI:

@@ -27,6 +27,7 @@ from app.core.errors import (
     register_exception_handlers,
 )
 from app.core.locks import require_edit_lock
+from app.core.maintenance import require_project_mutations_enabled
 from app.features.cells import router as cells_router
 from app.features.choice_sets import router as choice_sets_router
 from app.features.conditions import router as conditions_router
@@ -155,6 +156,57 @@ def test_locked_routes_reuse_the_transaction_session() -> None:
         assert edit_session.use_cache is service_session.use_cache is True
         assert edit_session.cache_key == service_session.cache_key
         assert edit_session.cache_key == (get_app_session, (), "function")
+
+
+def test_phase4_writer_mutation_gate_covers_all_project_truth_write_routes() -> None:
+    """Route enumeration must force explicit coverage for every truth-mutation surface."""
+
+    blocked_routes = {
+        ("POST", "/projects"),
+        ("POST", "/projects/{project_id}/layers/{layer_key}/backbone-replace"),
+        ("PATCH", "/projects/{project_id}/profile"),
+        ("PATCH", "/projects/{project_id}/cells"),
+        ("POST", "/projects/{project_id}/layers/{layer_key}/conditions"),
+        ("DELETE", "/projects/{project_id}/conditions/{condition_id}"),
+        ("PUT", "/projects/{project_id}/conditions/{condition_id}/por"),
+        ("POST", "/projects/{project_id}/lock"),
+        ("POST", "/projects/{project_id}/lock/heartbeat"),
+    }
+    allowed_routes = {
+        ("POST", "/projects/backbone-preview"),
+        ("DELETE", "/projects/{project_id}/lock"),
+        ("POST", "/projects/{project_id}/lock/release"),
+    }
+
+    seen: set[tuple[str, str]] = set()
+    for router in (
+        projects_router.router,
+        cells_router.router,
+        conditions_router.router,
+        locks_router.router,
+    ):
+        for route in router.routes:
+            if not isinstance(route, APIRoute):
+                continue
+            method = next(iter(route.methods))
+            if method == "GET":
+                continue
+            spec = (method, route.path)
+            if spec in blocked_routes:
+                assert any(
+                    dependency.call is require_project_mutations_enabled
+                    for dependency in route.dependant.dependencies
+                ), spec
+            elif spec in allowed_routes:
+                assert all(
+                    dependency.call is not require_project_mutations_enabled
+                    for dependency in route.dependant.dependencies
+                ), spec
+            else:
+                pytest.fail(f"Unhandled non-GET project-truth route: {spec}")
+            seen.add(spec)
+
+    assert seen == blocked_routes | allowed_routes
 
 
 def test_app_database_url_sync_swaps_driver() -> None:

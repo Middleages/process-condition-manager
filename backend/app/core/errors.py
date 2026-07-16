@@ -23,10 +23,12 @@ class AppError(Exception):
         code: str | None = None,
         status_code: int | None = None,
         details: dict | None = None,
+        headers: dict[str, str] | None = None,
     ) -> None:
         super().__init__(message)
         self.message = message
         self.details = details or {}
+        self.headers = headers or {}
         if code is not None:
             self.code = code
         if status_code is not None:
@@ -71,7 +73,7 @@ async def _app_error_handler(request: Request, exc: Exception) -> JSONResponse:
     content: dict = {"code": exc.code, "message": exc.message}
     if exc.details:
         content["details"] = exc.details
-    return JSONResponse(status_code=exc.status_code, content=content)
+    return JSONResponse(status_code=exc.status_code, content=content, headers=exc.headers)
 
 
 async def _domain_error_handler(request: Request, exc: Exception) -> JSONResponse:

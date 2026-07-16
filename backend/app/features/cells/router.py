@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import UserContext, get_current_user
 from app.core.db import get_app_session
 from app.core.locks import require_edit_lock
+from app.core.maintenance import require_project_mutations_enabled
 from app.features.cells.repository import CellRepository
 from app.features.cells.schema import CellsPatchIn, CellsPatchOut
 from app.features.cells.service import CellService
@@ -22,7 +23,11 @@ from app.features.cells.service import CellService
 router = APIRouter(
     prefix="/projects",
     tags=["cells"],
-    dependencies=[Depends(get_current_user), Depends(require_edit_lock)],
+    dependencies=[
+        Depends(get_current_user),
+        Depends(require_edit_lock),
+        Depends(require_project_mutations_enabled),
+    ],
 )
 
 

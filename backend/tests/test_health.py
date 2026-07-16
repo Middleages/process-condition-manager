@@ -2,6 +2,8 @@
 
 from httpx import AsyncClient
 
+from app.core import maintenance
+
 
 async def test_health_returns_ok(client: AsyncClient) -> None:
     """GET /health 가 200과 상태를 반환한다."""
@@ -10,6 +12,61 @@ async def test_health_returns_ok(client: AsyncClient) -> None:
     body = resp.json()
     assert body["status"] == "ok"
     assert body["app"] == "process-condition-manager"
+
+
+async def test_phase4_writer_health_reports_pre_unfreeze_when_mutations_disabled(
+    client: AsyncClient, monkeypatch
+) -> None:
+    async def _compatible_revision() -> str | None:
+        return "0006"
+
+    monkeypatch.setattr(maintenance, "read_app_revision", _compatible_revision)
+    monkeypatch.setattr(maintenance.settings, "project_mutations_enabled", False)
+
+    resp = await client.get("/health/phase4-writer")
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["status"] == "ok"
+    assert body["contract_version"] == 1
+    assert body["db_revision"] == "0006"
+    assert body["project_mutations_enabled"] is False
+    assert body["pre_unfreeze_ready"] is True
+    assert body["runtime_state"] == "pre_unfreeze"
+
+
+async def test_phase4_writer_health_reports_active_when_mutations_enabled(
+    client: AsyncClient, monkeypatch
+) -> None:
+    async def _compatible_revision() -> str | None:
+        return "0006"
+
+    monkeypatch.setattr(maintenance, "read_app_revision", _compatible_revision)
+    monkeypatch.setattr(maintenance.settings, "project_mutations_enabled", True)
+
+    resp = await client.get("/health/phase4-writer")
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["pre_unfreeze_ready"] is False
+    assert body["runtime_state"] == "active"
+
+
+async def test_phase4_writer_health_returns_503_on_revision_mismatch(
+    client: AsyncClient, monkeypatch
+) -> None:
+    async def _incompatible_revision() -> str | None:
+        return "0005"
+
+    monkeypatch.setattr(maintenance, "read_app_revision", _incompatible_revision)
+    monkeypatch.setattr(maintenance.settings, "project_mutations_enabled", False)
+
+    resp = await client.get("/health/phase4-writer")
+
+    assert resp.status_code == 503, resp.text
+    body = resp.json()
+    assert body["code"] == "phase4_writer_contract_mismatch"
+    assert body["details"]["minimum_revision"] == "0006"
 
 
 def test_dual_engines_initialized() -> None:

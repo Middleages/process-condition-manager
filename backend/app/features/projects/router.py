@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import UserContext, get_current_user
 from app.core.db import get_app_session
 from app.core.locks import require_edit_lock
+from app.core.maintenance import require_project_mutations_enabled
 from app.features.projects.repository import ProjectRepository
 from app.features.projects.schema import (
     BackboneCandidateOut,
@@ -83,7 +84,12 @@ async def preview_backbone(data: MatchPreviewIn, service: ServiceDep) -> MatchPr
     return await service.preview_match(data)
 
 
-@router.post("", response_model=ProjectOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=ProjectOut,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_project_mutations_enabled)],
+)
 async def create_project(
     data: ProjectCreate, service: ServiceDep, user: UserDep
 ) -> ProjectOut:
@@ -94,7 +100,7 @@ async def create_project(
 @router.post(
     "/{project_id}/layers/{layer_key}/backbone-replace",
     response_model=ProjectOut,
-    dependencies=[Depends(require_edit_lock)],
+    dependencies=[Depends(require_edit_lock), Depends(require_project_mutations_enabled)],
 )
 async def replace_layer_backbone(
     project_id: int,
@@ -170,7 +176,7 @@ async def get_profile(project_id: int, service: ServiceDep) -> ProjectProfileOut
 @router.patch(
     "/{project_id}/profile",
     response_model=ProjectProfileOut,
-    dependencies=[Depends(require_edit_lock)],
+    dependencies=[Depends(require_edit_lock), Depends(require_project_mutations_enabled)],
 )
 async def patch_profile(
     project_id: int,
