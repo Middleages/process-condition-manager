@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import StrEnum
 from types import MappingProxyType
 from typing import Any
@@ -233,8 +233,8 @@ def _format_timestamp(value: datetime | None) -> str | None:
     if value is None:
         return None
     if value.tzinfo is None:
-        value = value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+        value = value.replace(tzinfo=UTC)
+    return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
 def _row_kind(row: HistoryEventRow) -> str:
@@ -401,7 +401,10 @@ def project_backbone_capture(rows: Sequence[HistoryEventRow]) -> BackboneCapture
         BackboneCaptureItem(
             target_layer_sort=_require_int(row.layer_sort_order, "layer_sort_order"),
             layer_key=_require_str(row.layer_key, "layer_key"),
-            source_condition_index=_require_int(row.source_condition_index, "source_condition_index"),
+            source_condition_index=_require_int(
+                row.source_condition_index,
+                "source_condition_index",
+            ),
             source_condition_id=_require_int(row.source_condition_id, "source_condition_id"),
             parameter_sort=_require_int(row.parameter_sort_order, "parameter_sort_order"),
             parameter_code=_require_str(row.parameter_code, "parameter_code"),
@@ -440,9 +443,15 @@ def project_cell_history(rows: Sequence[HistoryEventRow]) -> HistoryCellHistoryP
     """Project newest-first cell history plus baseline/initial anchors."""
 
     ordered_rows = tuple(sorted(rows, key=lambda row: row.event_id, reverse=True))
-    current_rows = tuple(row for row in ordered_rows if row.history_role is HistoryEntryRole.CURRENT)
-    baseline_rows = tuple(row for row in ordered_rows if row.history_role is HistoryEntryRole.BASELINE)
-    initial_rows = tuple(row for row in ordered_rows if row.history_role is HistoryEntryRole.INITIAL)
+    current_rows = tuple(
+        row for row in ordered_rows if row.history_role is HistoryEntryRole.CURRENT
+    )
+    baseline_rows = tuple(
+        row for row in ordered_rows if row.history_role is HistoryEntryRole.BASELINE
+    )
+    initial_rows = tuple(
+        row for row in ordered_rows if row.history_role is HistoryEntryRole.INITIAL
+    )
     entries = tuple(_project_cell_history_entry(row) for row in current_rows)
     baseline_entry = _project_cell_history_entry(baseline_rows[0]) if baseline_rows else None
     initial_entry = _project_cell_history_entry(initial_rows[0]) if initial_rows else None
@@ -451,7 +460,9 @@ def project_cell_history(rows: Sequence[HistoryEventRow]) -> HistoryCellHistoryP
         baseline_entry=baseline_entry,
         initial_entry=initial_entry,
         initial_state=(
-            HistoryAvailability.AVAILABLE if initial_entry is not None else HistoryAvailability.NO_APPLICABLE
+            HistoryAvailability.AVAILABLE
+            if initial_entry is not None
+            else HistoryAvailability.NO_APPLICABLE
         ),
     )
 
