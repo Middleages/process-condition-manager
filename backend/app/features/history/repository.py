@@ -428,17 +428,14 @@ class HistoryRepository:
         before_group_max_id: int | None,
         limit: int,
     ):
-        group_key = case(
+        group_key_expr = case(
             (ChangeEvent.batch_id.is_not(None), literal("batch:") + ChangeEvent.batch_id),
             else_=literal("event:") + sa_cast(ChangeEvent.id, String),
         )
-        group_anchor = case(
-            (ChangeEvent.batch_id.is_not(None), ChangeEvent.batch_id),
-            else_=sa_cast(ChangeEvent.id, String),
-        )
+        group_key = group_key_expr.label("group_key")
         stmt = (
             select(
-                group_key.label("group_key"),
+                group_key,
                 ChangeEvent.batch_id.label("batch_id"),
                 func.min(ChangeEvent.id).label("min_event_id"),
                 func.max(ChangeEvent.id).label("max_event_id"),
@@ -451,10 +448,10 @@ class HistoryRepository:
         if snapshot_max_event_id is not None:
             stmt = stmt.where(ChangeEvent.id <= snapshot_max_event_id)
         stmt = self._apply_member_filters(stmt, member_filters)
-        stmt = stmt.group_by(ChangeEvent.batch_id, group_anchor)
+        stmt = stmt.group_by(ChangeEvent.batch_id, group_key_expr)
         if before_group_max_id is not None:
             stmt = stmt.having(func.max(ChangeEvent.id) < before_group_max_id)
-        return stmt.order_by(func.max(ChangeEvent.id).desc(), group_key.asc()).limit(limit)
+        return stmt.order_by(func.max(ChangeEvent.id).desc(), group_key_expr.asc()).limit(limit)
 
     async def _load_matched_batch_rows(
         self,
