@@ -19,11 +19,11 @@ from sqlalchemy import func, select  # noqa: E402
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker  # noqa: E402
 
 import app.models  # noqa: F401,E402 -- register every table with Base.metadata
-from app.core.maintenance import get_phase4_writer_health  # noqa: E402
 from app.core.db import AppSessionLocal  # noqa: E402
+from app.core.maintenance import get_phase4_writer_health  # noqa: E402
 from app.domain.parameters.types import ValueType  # noqa: E402
 from app.features.cells.repository import CellRepository  # noqa: E402
-from app.features.cells.schema import CellUpdateIn, CellsPatchIn  # noqa: E402
+from app.features.cells.schema import CellsPatchIn, CellUpdateIn  # noqa: E402
 from app.features.cells.service import CellService  # noqa: E402
 from app.features.conditions.repository import ConditionRepository  # noqa: E402
 from app.features.conditions.schema import ConditionCreateIn  # noqa: E402
@@ -39,9 +39,9 @@ from app.ingest.fixture_reader import FixtureIngestReader  # noqa: E402
 from app.models.choice import ChoiceOption, ChoiceSet  # noqa: E402
 from app.models.parameter import Parameter, ParameterCategory  # noqa: E402
 from app.models.project import (  # noqa: E402
+    CellValue,
     ChangeEvent,
     ChangeEventType,
-    CellValue,
     LayerCondition,
     Project,
     ProjectProfile,
@@ -153,7 +153,9 @@ async def _event_counts(session: AsyncSession, project_id: int) -> dict[str, int
     return {event_type.value: int(count or 0) for event_type, count in rows.all()}
 
 
-async def _events(session: AsyncSession, project_id: int, event_type: ChangeEventType) -> list[ChangeEvent]:
+async def _events(
+    session: AsyncSession, project_id: int, event_type: ChangeEventType
+) -> list[ChangeEvent]:
     rows = await session.execute(
         select(ChangeEvent)
         .where(
@@ -282,7 +284,9 @@ async def _run_rollback_smoke(
             assert event.layer_key is not None
             assert event.payload["capture"] == capture_by_layer[event.layer_key]
 
-        target_copy_layer = next(layer for layer in matched_layers if layer.layer_key == "L1::PROC_BETA::001::CLN")
+        target_copy_layer = next(
+            layer for layer in matched_layers if layer.layer_key == "L1::PROC_BETA::001::CLN"
+        )
         base_condition = target_copy_layer.conditions[0]
 
         manual_patch = await cell_service.patch_cells(
@@ -328,7 +332,9 @@ async def _run_rollback_smoke(
             actor="phase4-smoke",
         )
 
-        replace_layer = next(layer for layer in target.layers if layer.layer_key == "L1::PROC_BETA::015::WELL")
+        replace_layer = next(
+            layer for layer in target.layers if layer.layer_key == "L1::PROC_BETA::015::WELL"
+        )
         replace_source_layer_key = seed.source_layer_keys[1]
         replaced = await service.replace_layer_backbone(
             target.id,
@@ -369,9 +375,12 @@ async def _run_rollback_smoke(
         assert profile_events[0].source_layer_key is None
 
         replace_event = replace_events[0]
-        replaced_layer = next(layer for layer in replaced.layers if layer.layer_key == replace_layer.layer_key)
+        replaced_layer = next(
+            layer for layer in replaced.layers if layer.layer_key == replace_layer.layer_key
+        )
         assert replace_event.payload["capture"] == replaced_layer.backbone_snapshot
         assert replace_event.payload["before"]["condition_count"] == 1
+        assert replaced_layer.backbone_snapshot is not None
         assert replace_event.payload["after"]["condition_count"] == len(
             replaced_layer.backbone_snapshot["conditions"]
         )
@@ -434,14 +443,20 @@ async def _main_async(argv: list[str]) -> int:
     parser.add_argument(
         "--rollback",
         action="store_true",
-        help="Emit rollback-only attestation fields and require project mutations to stay disabled.",
+        help=(
+            "Emit rollback-only attestation fields and require project mutations to stay disabled."
+        ),
     )
     args = parser.parse_args(argv)
 
     try:
         report = await build_smoke_report(rollback=args.rollback)
     except Exception as exc:  # pragma: no cover - defensive CLI guard
-        report = {"status": "FAIL", "error": str(exc), "mode": "rollback" if args.rollback else "health"}
+        report = {
+            "status": "FAIL",
+            "error": str(exc),
+            "mode": "rollback" if args.rollback else "health",
+        }
         print(json.dumps(report, ensure_ascii=False, sort_keys=True))
         return 1
 

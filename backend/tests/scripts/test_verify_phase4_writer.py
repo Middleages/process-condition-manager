@@ -1,19 +1,22 @@
 """Rollback-only Phase 4 writer smoke scaffold contract."""
 
+from collections.abc import AsyncIterator
 from pathlib import Path
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 import app.models  # noqa: F401 -- register all tables for create_all
-from app.core.db import Base
-from app.core import maintenance
 import scripts.verify_phase4_writer as verify_phase4_writer
+from app.core import maintenance
+from app.core.db import Base
 from scripts.verify_phase4_writer import build_smoke_report, main
 
 
 @pytest.fixture
-async def sqlite_factory(tmp_path: Path) -> async_sessionmaker[AsyncSession]:
+async def sqlite_factory(
+    tmp_path: Path,
+) -> AsyncIterator[async_sessionmaker[AsyncSession]]:
     engine = create_async_engine(
         f"sqlite+aiosqlite:///{tmp_path / 'phase4-writer.sqlite'}",
         connect_args={"check_same_thread": False},
