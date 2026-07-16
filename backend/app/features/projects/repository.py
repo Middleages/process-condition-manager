@@ -254,6 +254,8 @@ class ProjectRepository:
 
 def _is_lock_not_available(exc: DBAPIError) -> bool:
     """Normalize PostgreSQL lock-conflict SQLSTATE across DB drivers."""
+    if exc.orig is None:
+        return False
     code = _dbapi_sqlstate(exc.orig)
     return code == "55P03"
 

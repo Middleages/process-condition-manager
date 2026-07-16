@@ -89,7 +89,7 @@ async def _seed_project(
     return project
 
 
-async def _new_factory(
+def _new_factory(
     pg_engine: AsyncEngine,
 ) -> async_sessionmaker[AsyncSession]:
     return async_sessionmaker(pg_engine, expire_on_commit=False, class_=AsyncSession)
@@ -98,7 +98,7 @@ async def _new_factory(
 async def test_source_capture_conflicts_with_inflight_source_mutation_and_recovers_after_release(
     pg_engine: AsyncEngine,
 ) -> None:
-    factory = await _new_factory(pg_engine)
+    factory = _new_factory(pg_engine)
     async with factory() as session:
         source = await _seed_project(
             session,
@@ -163,7 +163,7 @@ async def test_source_capture_conflicts_with_inflight_source_mutation_and_recove
 async def test_source_capture_same_project_reuses_locked_target_without_second_sql(
     pg_engine: AsyncEngine,
 ) -> None:
-    factory = await _new_factory(pg_engine)
+    factory = _new_factory(pg_engine)
     async with factory() as session:
         project = await _seed_project(
             session,
@@ -207,7 +207,7 @@ async def test_source_capture_same_project_reuses_locked_target_without_second_s
 async def test_source_capture_nowait_avoids_cross_project_deadlock(
     pg_engine: AsyncEngine,
 ) -> None:
-    factory = await _new_factory(pg_engine)
+    factory = _new_factory(pg_engine)
     async with factory() as session:
         left = await _seed_project(
             session,
@@ -237,28 +237,51 @@ async def test_source_capture_nowait_avoids_cross_project_deadlock(
         assert right_target is not None
 
         go = asyncio.Event()
+        attempts = 0
+        attempts_lock = asyncio.Lock()
+        allow_rollback = asyncio.Event()
 
         async def capture_from_left() -> str:
+            nonlocal attempts
             await go.wait()
+            code = ""
             try:
                 await left_repo.capture_source_project(
                     right.id, locked_target=left_target
                 )
             except ConflictError as exc:
-                await left_session.rollback()
-                return exc.code
-            raise AssertionError("expected source_project_busy")
+                code = exc.code
+            finally:
+                async with attempts_lock:
+                    attempts += 1
+                    if attempts == 2:
+                        allow_rollback.set()
+            await allow_rollback.wait()
+            await left_session.rollback()
+            if code != "source_project_busy":
+                raise AssertionError("expected source_project_busy")
+            return code
 
         async def capture_from_right() -> str:
+            nonlocal attempts
             await go.wait()
+            code = ""
             try:
                 await right_repo.capture_source_project(
                     left.id, locked_target=right_target
                 )
             except ConflictError as exc:
-                await right_session.rollback()
-                return exc.code
-            raise AssertionError("expected source_project_busy")
+                code = exc.code
+            finally:
+                async with attempts_lock:
+                    attempts += 1
+                    if attempts == 2:
+                        allow_rollback.set()
+            await allow_rollback.wait()
+            await right_session.rollback()
+            if code != "source_project_busy":
+                raise AssertionError("expected source_project_busy")
+            return code
 
         left_task = asyncio.create_task(capture_from_left())
         right_task = asyncio.create_task(capture_from_right())
