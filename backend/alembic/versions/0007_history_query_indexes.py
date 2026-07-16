@@ -32,19 +32,20 @@ def _require_online() -> None:
         raise RuntimeError("Phase 4 concurrent indexes require an online database connection")
 
 
-_change_event = sa.table(
+_change_event = sa.Table(
     "change_event",
-    sa.column("project_id", sa.Integer()),
-    sa.column("id", sa.Integer()),
-    sa.column("event_type", sa.String()),
-    sa.column("condition_id", sa.Integer()),
-    sa.column("parameter_code", sa.String()),
-    sa.column("layer_key", sa.String()),
-    sa.column("actor", sa.String()),
-    sa.column("origin", sa.String()),
-    sa.column("source_project_id", sa.Integer()),
-    sa.column("created_at", sa.DateTime(timezone=True)),
-    sa.column("batch_id", sa.String()),
+    sa.MetaData(),
+    sa.Column("project_id", sa.Integer()),
+    sa.Column("id", sa.Integer()),
+    sa.Column("event_type", sa.String()),
+    sa.Column("condition_id", sa.Integer()),
+    sa.Column("parameter_code", sa.String()),
+    sa.Column("layer_key", sa.String()),
+    sa.Column("actor", sa.String()),
+    sa.Column("origin", sa.String()),
+    sa.Column("source_project_id", sa.Integer()),
+    sa.Column("created_at", sa.DateTime(timezone=True)),
+    sa.Column("batch_id", sa.String()),
 )
 
 _INDEX_SPECS = [
@@ -180,14 +181,26 @@ def _fetch_index_state(name: str) -> tuple[bool, str | None]:
     return (bool(row[0]), row[1])
 
 
+def _execute_concurrently(sql: str) -> None:
+    bind = op.get_bind()
+    if bind.in_transaction():
+        bind.commit()
+    autocommit_bind = bind.execution_options(isolation_level="AUTOCOMMIT")
+    try:
+        autocommit_bind.exec_driver_sql(sql)
+    finally:
+        if autocommit_bind.in_transaction():
+            autocommit_bind.rollback()
+
+
 def _drop_index_concurrently(name: str) -> None:
-    op.execute(sa.text(f'DROP INDEX CONCURRENTLY IF EXISTS "{name}"'))
+    _execute_concurrently(f'DROP INDEX CONCURRENTLY IF EXISTS "{name}"')
 
 
 def _create_index_concurrently(index: sa.Index) -> None:
     sql = str(CreateIndex(index).compile(dialect=postgresql.dialect()))
     sql = sql.replace("CREATE INDEX ", "CREATE INDEX CONCURRENTLY ", 1)
-    op.execute(sa.text(sql))
+    _execute_concurrently(sql)
 
 
 def _ensure_index(spec: IndexSpec) -> None:
@@ -197,10 +210,9 @@ def _ensure_index(spec: IndexSpec) -> None:
     if valid and current_sql is not None and _normalize_index_sql(current_sql) == expected_sql:
         return
 
-    with op.get_context().autocommit_block():
-        if current_sql is not None:
-            _drop_index_concurrently(name)
-        _create_index_concurrently(index)
+    if current_sql is not None:
+        _drop_index_concurrently(name)
+    _create_index_concurrently(index)
 
     valid, current_sql = _fetch_index_state(name)
     if not valid or current_sql is None or _normalize_index_sql(current_sql) != expected_sql:
@@ -231,5 +243,4 @@ def downgrade() -> None:
         _valid, current_sql = _fetch_index_state(name)
         if current_sql is None:
             continue
-        with op.get_context().autocommit_block():
-            _drop_index_concurrently(name)
+        _drop_index_concurrently(name)
