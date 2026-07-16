@@ -1,4 +1,4 @@
-"""백본 layer 매칭 순수 도메인 로직."""
+"""백본 layer matching and snapshot contracts."""
 
 from app.domain.backbone.matching import (
     LayerMatchInput,
@@ -7,25 +7,45 @@ from app.domain.backbone.matching import (
     match_layers,
 )
 from app.domain.backbone.snapshot import (
+    BASELINE_UNAVAILABLE,
+    INVALID_BACKBONE_SNAPSHOT,
     SNAPSHOT_VERSION,
-    BackboneCellValue,
-    BackboneConditionSnapshot,
-    BackboneSnapshotSpec,
-    BackboneSourceLayer,
-    BackboneSourceProject,
+    UNRESOLVED_PARAMETER_METADATA,
+    BackboneSnapshot,
+    BackboneSnapshotCell,
+    BackboneSnapshotColumn,
+    BackboneSnapshotCondition,
+    BackboneSnapshotSource,
+    backbone_snapshot_hash,
+    format_captured_at,
+    new_capture_batch_id,
+    normalize_capture_batch_id,
+    normalize_captured_at,
+    parse_backbone_snapshot,
+    serialize_backbone_snapshot,
     snapshot,
 )
 
 __all__ = [
-    "BackboneCellValue",
-    "BackboneConditionSnapshot",
-    "BackboneSnapshotSpec",
-    "BackboneSourceLayer",
-    "BackboneSourceProject",
+    "BASELINE_UNAVAILABLE",
+    "BackboneSnapshot",
+    "BackboneSnapshotCell",
+    "BackboneSnapshotColumn",
+    "BackboneSnapshotCondition",
+    "BackboneSnapshotSource",
+    "INVALID_BACKBONE_SNAPSHOT",
     "LayerMatchInput",
     "ManualOverride",
     "MatchResult",
     "SNAPSHOT_VERSION",
+    "UNRESOLVED_PARAMETER_METADATA",
+    "backbone_snapshot_hash",
+    "format_captured_at",
     "match_layers",
+    "new_capture_batch_id",
+    "normalize_capture_batch_id",
+    "normalize_captured_at",
+    "parse_backbone_snapshot",
+    "serialize_backbone_snapshot",
     "snapshot",
 ]
