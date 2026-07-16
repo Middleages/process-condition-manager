@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -25,18 +25,17 @@ from app.features.history.cursor import (
 )
 
 
-
 def test_timeline_cursor_round_trips_with_normalized_scope_filters() -> None:
     scope = HistoryTimelineScope(
         project_id=7,
         member_filters=HistoryMemberFilterScope(
             layer_keys=(" layer-b ", "layer-a"),
             event_types=("UPDATED", "CREATED"),
-            actors=("alice", "bob", "alice"),
+            actors=("alice", "bob"),
             origins=("paste", "manual"),
-            source_project_ids=(9, 3, 9),
+            source_project_ids=(9, 3),
             created_from="2026-07-01T00:00:00Z",
-            created_to=datetime(2026, 7, 2, 0, 0, tzinfo=timezone.utc),
+            created_to=datetime(2026, 7, 2, 0, 0, tzinfo=UTC),
         ),
     )
     cursor = HistoryTimelineCursor(
@@ -60,11 +59,17 @@ def test_timeline_cursor_round_trips_with_normalized_scope_filters() -> None:
                 actors=("alice", "bob"),
                 origins=("manual", "paste"),
                 source_project_ids=(3, 9),
-                created_from=datetime(2026, 7, 1, 0, 0, tzinfo=timezone.utc),
-                created_to=datetime(2026, 7, 2, 0, 0, tzinfo=timezone.utc),
+                created_from=datetime(2026, 7, 1, 0, 0, tzinfo=UTC),
+                created_to=datetime(2026, 7, 2, 0, 0, tzinfo=UTC),
             ),
         ),
     )
+
+
+def test_member_filter_scope_rejects_duplicate_values() -> None:
+    with pytest.raises(RuleViolationError) as exc_info:
+        HistoryMemberFilterScope(layer_keys=("layer-a", "layer-a"))
+    assert exc_info.value.code == "invalid_scope"
 
 
 @pytest.mark.parametrize(
@@ -106,7 +111,9 @@ def test_detail_scope_round_trips_and_rejects_scope_mismatch() -> None:
 
     other_scope = HistoryDetailScope(project_id=9, batch_id="batch-999")
     with pytest.raises(RuleViolationError) as exc_info:
-        decode_history_detail_cursor(encode_history_detail_cursor(cursor), expected_scope=other_scope)
+        decode_history_detail_cursor(
+            encode_history_detail_cursor(cursor), expected_scope=other_scope
+        )
     assert exc_info.value.code == "invalid_scope"
 
 
@@ -160,7 +167,9 @@ def test_detail_scope_rejects_malformed_tokens(raw: str, expected_code: str) -> 
         {"expected_parameter_code": "PARAM"},
     ],
 )
-def test_cell_history_cursor_round_trips_and_scope_matches(expected_kwargs: dict[str, object]) -> None:
+def test_cell_history_cursor_round_trips_and_scope_matches(
+    expected_kwargs: dict[str, object],
+) -> None:
     cursor = HistoryCellHistoryCursor(
         version=1,
         project_id=3,
@@ -168,7 +177,9 @@ def test_cell_history_cursor_round_trips_and_scope_matches(expected_kwargs: dict
         parameter_code="PARAM",
         last_event_id=25,
     )
-    decoded = decode_history_cell_history_cursor(encode_history_cell_history_cursor(cursor), **expected_kwargs)
+    decoded = decode_history_cell_history_cursor(
+        encode_history_cell_history_cursor(cursor), **expected_kwargs
+    )
     assert decoded == cursor
 
 
@@ -194,11 +205,23 @@ def test_scope_mismatch_helper_raises_invalid_scope() -> None:
 @pytest.mark.parametrize(
     "bad_cursor_kwargs",
     [
-        {"version": 2, "snapshot_max_event_id": 10, "before_group_max_id": 8, "scope": HistoryTimelineScope(project_id=1)},
-        {"version": 1, "snapshot_max_event_id": 10, "before_group_max_id": 8, "scope": "not-a-scope"},
+        {
+            "version": 2,
+            "snapshot_max_event_id": 10,
+            "before_group_max_id": 8,
+            "scope": HistoryTimelineScope(project_id=1),
+        },
+        {
+            "version": 1,
+            "snapshot_max_event_id": 10,
+            "before_group_max_id": 8,
+            "scope": "not-a-scope",
+        },
     ],
 )
-def test_cursor_dataclasses_reject_bad_versions_and_types(bad_cursor_kwargs: dict[str, object]) -> None:
+def test_cursor_dataclasses_reject_bad_versions_and_types(
+    bad_cursor_kwargs: dict[str, object],
+) -> None:
     with pytest.raises(RuleViolationError):
         HistoryTimelineCursor(**bad_cursor_kwargs)  # type: ignore[arg-type]
 

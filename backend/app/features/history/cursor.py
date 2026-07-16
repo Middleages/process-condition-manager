@@ -6,7 +6,7 @@ import base64
 import binascii
 import json
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Literal
 
 from app.domain.errors import RuleViolationError
@@ -100,7 +100,7 @@ def _normalize_sorted_unique_text_tuple(
 ) -> tuple[str, ...]:
     if raw is None:
         return ()
-    if not isinstance(raw, (list, tuple)):
+    if not isinstance(raw, list | tuple):
         if error_code == "invalid_scope":
             _raise_invalid_scope(f"{field_name} must be a list")
         _raise_invalid_cursor(f"{field_name} must be a list")
@@ -118,10 +118,12 @@ def _normalize_sorted_unique_text_tuple(
     return tuple(sorted(values))
 
 
-def _normalize_sorted_unique_int_tuple(raw: object, *, field_name: str, error_code: str) -> tuple[int, ...]:
+def _normalize_sorted_unique_int_tuple(
+    raw: object, *, field_name: str, error_code: str
+) -> tuple[int, ...]:
     if raw is None:
         return ()
-    if not isinstance(raw, (list, tuple)):
+    if not isinstance(raw, list | tuple):
         if error_code == "invalid_scope":
             _raise_invalid_scope(f"{field_name} must be a list")
         _raise_invalid_cursor(f"{field_name} must be a list")
@@ -138,21 +140,24 @@ def _normalize_sorted_unique_int_tuple(raw: object, *, field_name: str, error_co
 def _normalize_datetime(raw: object, *, field_name: str, error_code: str) -> datetime | None:
     if raw is None:
         return None
-    if not isinstance(raw, str):
+    if isinstance(raw, datetime):
+        parsed = raw
+    elif isinstance(raw, str):
+        normalized = raw.strip().replace("Z", "+00:00")
+        try:
+            parsed = datetime.fromisoformat(normalized)
+        except ValueError:
+            if error_code == "invalid_scope":
+                _raise_invalid_scope(f"{field_name} is invalid")
+            _raise_invalid_cursor(f"{field_name} is invalid")
+    else:
         if error_code == "invalid_scope":
             _raise_invalid_scope(f"{field_name} must be an ISO datetime string")
         _raise_invalid_cursor(f"{field_name} must be an ISO datetime string")
-    normalized = raw.strip().replace("Z", "+00:00")
-    try:
-        parsed = datetime.fromisoformat(normalized)
-    except ValueError:
-        if error_code == "invalid_scope":
-            _raise_invalid_scope(f"{field_name} is invalid")
-        _raise_invalid_cursor(f"{field_name} is invalid")
     if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
+        parsed = parsed.replace(tzinfo=UTC)
     else:
-        parsed = parsed.astimezone(timezone.utc)
+        parsed = parsed.astimezone(UTC)
     return parsed
 
 
@@ -160,8 +165,8 @@ def _format_datetime(value: datetime | None) -> str | None:
     if value is None:
         return None
     if value.tzinfo is None:
-        value = value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+        value = value.replace(tzinfo=UTC)
+    return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
 @dataclass(frozen=True, slots=True)
@@ -315,7 +320,10 @@ class HistoryCaptureKey:
             self,
             "target_layer_sort",
             _normalize_int(
-                self.target_layer_sort, field_name="target_layer_sort", minimum=0, error_code="invalid_cursor"
+                self.target_layer_sort,
+                field_name="target_layer_sort",
+                minimum=0,
+                error_code="invalid_cursor",
             ),
         )
         object.__setattr__(
@@ -351,7 +359,10 @@ class HistoryCaptureKey:
             self,
             "parameter_sort",
             _normalize_int(
-                self.parameter_sort, field_name="parameter_sort", minimum=0, error_code="invalid_cursor"
+                self.parameter_sort,
+                field_name="parameter_sort",
+                minimum=0,
+                error_code="invalid_cursor",
             ),
         )
         object.__setattr__(
@@ -398,10 +409,14 @@ class HistoryDetailCursor:
             object.__setattr__(
                 self,
                 "last_event_id",
-                _normalize_int(self.last_event_id, field_name="last_event_id", error_code="invalid_cursor"),
+                _normalize_int(
+                    self.last_event_id, field_name="last_event_id", error_code="invalid_cursor"
+                ),
             )
         else:
-            if self.last_event_id is not None or not isinstance(self.last_capture_key, HistoryCaptureKey):
+            if self.last_event_id is not None or not isinstance(
+                self.last_capture_key, HistoryCaptureKey
+            ):
                 _raise_invalid_cursor("capture_asc cursors require last_capture_key only")
 
 
@@ -429,19 +444,26 @@ class HistoryCellHistoryCursor:
         object.__setattr__(
             self,
             "condition_id",
-            _normalize_int(self.condition_id, field_name="condition_id", error_code="invalid_cursor"),
+            _normalize_int(
+                self.condition_id, field_name="condition_id", error_code="invalid_cursor"
+            ),
         )
         object.__setattr__(
             self,
             "parameter_code",
             _normalize_non_empty_text(
-                self.parameter_code, field_name="parameter_code", max_length=64, error_code="invalid_cursor"
+                self.parameter_code,
+                field_name="parameter_code",
+                max_length=64,
+                error_code="invalid_cursor",
             ),
         )
         object.__setattr__(
             self,
             "last_event_id",
-            _normalize_int(self.last_event_id, field_name="last_event_id", error_code="invalid_cursor"),
+            _normalize_int(
+                self.last_event_id, field_name="last_event_id", error_code="invalid_cursor"
+            ),
         )
 
 
@@ -472,10 +494,16 @@ def _member_filters_from_payload(payload: object) -> HistoryMemberFilterScope:
         _raise_invalid_scope("member filters are invalid")
     return HistoryMemberFilterScope(
         layer_keys=_normalize_sorted_unique_text_tuple(
-            payload["layer_keys"], field_name="layer_keys", max_length=64, error_code="invalid_scope"
+            payload["layer_keys"],
+            field_name="layer_keys",
+            max_length=64,
+            error_code="invalid_scope",
         ),
         event_types=_normalize_sorted_unique_text_tuple(
-            payload["event_types"], field_name="event_types", max_length=64, error_code="invalid_scope"
+            payload["event_types"],
+            field_name="event_types",
+            max_length=64,
+            error_code="invalid_scope",
         ),
         actors=_normalize_sorted_unique_text_tuple(
             payload["actors"], field_name="actors", max_length=128, error_code="invalid_scope"
@@ -484,24 +512,33 @@ def _member_filters_from_payload(payload: object) -> HistoryMemberFilterScope:
             payload["origins"], field_name="origins", max_length=32, error_code="invalid_scope"
         ),
         source_project_ids=_normalize_sorted_unique_int_tuple(
-            payload["source_project_ids"], field_name="source_project_ids", error_code="invalid_scope"
+            payload["source_project_ids"],
+            field_name="source_project_ids",
+            error_code="invalid_scope",
         ),
         created_from=_normalize_datetime(
             payload["created_from"], field_name="created_from", error_code="invalid_scope"
         ),
-        created_to=_normalize_datetime(payload["created_to"], field_name="created_to", error_code="invalid_scope"),
+        created_to=_normalize_datetime(
+            payload["created_to"], field_name="created_to", error_code="invalid_scope"
+        ),
     )
 
 
 def _timeline_scope_to_payload(scope: HistoryTimelineScope) -> dict[str, Any]:
-    return {"project_id": scope.project_id, "member_filters": _member_filters_to_payload(scope.member_filters)}
+    return {
+        "project_id": scope.project_id,
+        "member_filters": _member_filters_to_payload(scope.member_filters),
+    }
 
 
 def _timeline_scope_from_payload(payload: object) -> HistoryTimelineScope:
     if not isinstance(payload, dict) or set(payload) != {"project_id", "member_filters"}:
         _raise_invalid_cursor("timeline scope is invalid")
     return HistoryTimelineScope(
-        project_id=_normalize_int(payload["project_id"], field_name="project_id", error_code="invalid_cursor"),
+        project_id=_normalize_int(
+            payload["project_id"], field_name="project_id", error_code="invalid_cursor"
+        ),
         member_filters=_member_filters_from_payload(payload["member_filters"]),
     )
 
@@ -515,10 +552,16 @@ def _detail_scope_to_payload(scope: HistoryDetailScope) -> dict[str, Any]:
 
 
 def _detail_scope_from_payload(payload: object) -> HistoryDetailScope:
-    if not isinstance(payload, dict) or set(payload) != {"project_id", "batch_id", "member_filters"}:
+    if not isinstance(payload, dict) or set(payload) != {
+        "project_id",
+        "batch_id",
+        "member_filters",
+    }:
         _raise_invalid_scope("detail scope is invalid")
     return HistoryDetailScope(
-        project_id=_normalize_int(payload["project_id"], field_name="project_id", error_code="invalid_scope"),
+        project_id=_normalize_int(
+            payload["project_id"], field_name="project_id", error_code="invalid_scope"
+        ),
         batch_id=_normalize_non_empty_text(
             payload["batch_id"], field_name="batch_id", max_length=64, error_code="invalid_scope"
         ),
@@ -551,10 +594,16 @@ def _capture_key_from_payload(payload: object) -> HistoryCaptureKey:
         _raise_invalid_cursor("capture key is invalid")
     return HistoryCaptureKey(
         target_layer_sort=_normalize_int(
-            payload["target_layer_sort"], field_name="target_layer_sort", minimum=0, error_code="invalid_cursor"
+            payload["target_layer_sort"],
+            field_name="target_layer_sort",
+            minimum=0,
+            error_code="invalid_cursor",
         ),
         target_layer_key=_normalize_non_empty_text(
-            payload["target_layer_key"], field_name="target_layer_key", max_length=64, error_code="invalid_cursor"
+            payload["target_layer_key"],
+            field_name="target_layer_key",
+            max_length=64,
+            error_code="invalid_cursor",
         ),
         source_condition_index=_normalize_int(
             payload["source_condition_index"],
@@ -563,13 +612,21 @@ def _capture_key_from_payload(payload: object) -> HistoryCaptureKey:
             error_code="invalid_cursor",
         ),
         source_condition_id=_normalize_int(
-            payload["source_condition_id"], field_name="source_condition_id", error_code="invalid_cursor"
+            payload["source_condition_id"],
+            field_name="source_condition_id",
+            error_code="invalid_cursor",
         ),
         parameter_sort=_normalize_int(
-            payload["parameter_sort"], field_name="parameter_sort", minimum=0, error_code="invalid_cursor"
+            payload["parameter_sort"],
+            field_name="parameter_sort",
+            minimum=0,
+            error_code="invalid_cursor",
         ),
         parameter_code=_normalize_non_empty_text(
-            payload["parameter_code"], field_name="parameter_code", max_length=64, error_code="invalid_cursor"
+            payload["parameter_code"],
+            field_name="parameter_code",
+            max_length=64,
+            error_code="invalid_cursor",
         ),
         event_id=_normalize_optional_int(payload["event_id"], field_name="event_id"),
     )
@@ -595,10 +652,14 @@ def decode_history_timeline_cursor(
     cursor = HistoryTimelineCursor(
         version=_normalize_int(payload["v"], field_name="version", error_code="invalid_cursor"),
         snapshot_max_event_id=_normalize_int(
-            payload["snapshot_max_event_id"], field_name="snapshot_max_event_id", error_code="invalid_cursor"
+            payload["snapshot_max_event_id"],
+            field_name="snapshot_max_event_id",
+            error_code="invalid_cursor",
         ),
         before_group_max_id=_normalize_int(
-            payload["before_group_max_id"], field_name="before_group_max_id", error_code="invalid_cursor"
+            payload["before_group_max_id"],
+            field_name="before_group_max_id",
+            error_code="invalid_cursor",
         ),
         scope=_timeline_scope_from_payload(payload["scope"]),
     )
@@ -689,12 +750,21 @@ def decode_history_cell_history_cursor(
         _raise_invalid_cursor("history cursor token is invalid")
     cursor = HistoryCellHistoryCursor(
         version=_normalize_int(payload["v"], field_name="version", error_code="invalid_cursor"),
-        project_id=_normalize_int(payload["project_id"], field_name="project_id", error_code="invalid_cursor"),
-        condition_id=_normalize_int(payload["condition_id"], field_name="condition_id", error_code="invalid_cursor"),
-        parameter_code=_normalize_non_empty_text(
-            payload["parameter_code"], field_name="parameter_code", max_length=64, error_code="invalid_cursor"
+        project_id=_normalize_int(
+            payload["project_id"], field_name="project_id", error_code="invalid_cursor"
         ),
-        last_event_id=_normalize_int(payload["last_event_id"], field_name="last_event_id", error_code="invalid_cursor"),
+        condition_id=_normalize_int(
+            payload["condition_id"], field_name="condition_id", error_code="invalid_cursor"
+        ),
+        parameter_code=_normalize_non_empty_text(
+            payload["parameter_code"],
+            field_name="parameter_code",
+            max_length=64,
+            error_code="invalid_cursor",
+        ),
+        last_event_id=_normalize_int(
+            payload["last_event_id"], field_name="last_event_id", error_code="invalid_cursor"
+        ),
     )
     if (
         (expected_project_id is not None and cursor.project_id != expected_project_id)

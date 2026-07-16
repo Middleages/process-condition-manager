@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from pydantic import ValidationError
@@ -23,7 +23,7 @@ from app.features.history.schema import (
 
 
 def _dt() -> datetime:
-    return datetime(2026, 7, 1, 12, 0, tzinfo=timezone.utc)
+    return datetime(2026, 7, 1, 12, 0, tzinfo=UTC)
 
 
 def test_history_query_limits_are_validated() -> None:
@@ -108,7 +108,9 @@ def test_detail_and_cell_schema_support_baseline_initial_and_jump_states() -> No
             event_id=11,
         ),
     )
-    detail = HistoryDetailOut(order_kind="capture_asc", detail_status="available", items=[detail_item])
+    detail = HistoryDetailOut(
+        order_kind="capture_asc", detail_status="available", items=[detail_item]
+    )
     assert detail.model_dump()["items"][0]["metadata_status"] == "complete"
 
     cell_item = HistoryCellHistoryItemOut(

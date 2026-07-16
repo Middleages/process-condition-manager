@@ -23,8 +23,12 @@ SummaryText = Annotated[str, StringConstraints(strip_whitespace=True, min_length
 ParameterCodeText = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64)
 ]
-ChoiceCodeText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=128)]
-ChoiceLabelText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=128)]
+ChoiceCodeText = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=128)
+]
+ChoiceLabelText = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=128)
+]
 
 
 class _StrictModel(BaseModel):
