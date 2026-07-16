@@ -1,13 +1,49 @@
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
+from typing import Any
 
 import pytest
+from fastapi import Request
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.features.history.cursor import HistoryDetailScope, encode_history_detail_scope
-from app.models.project import ChangeEvent, ChangeEventType, Project, ProjectProfile
+from app.core.auth import get_current_user
+from app.core.errors import AppError
+from app.domain.backbone.snapshot import (
+    BackboneSnapshot,
+    BackboneSnapshotCell,
+    BackboneSnapshotColumn,
+    BackboneSnapshotCondition,
+    BackboneSnapshotSource,
+    serialize_backbone_snapshot,
+)
+from app.domain.parameters.types import ValueType
+from app.features.history.cursor import (
+    HistoryCaptureKey,
+    HistoryDetailCursor,
+    HistoryDetailScope,
+    HistoryMemberFilterScope,
+    decode_history_detail_scope,
+    encode_history_detail_cursor,
+    encode_history_detail_scope,
+)
+from app.features.history.projection import HistoryEventRow
+from app.features.history.repository import (
+    HistoryCellCoordinateProof,
+    HistoryRepository,
+)
+from app.main import app
+from app.models.project import (
+    CellValue,
+    ChangeEvent,
+    ChangeEventType,
+    LayerCondition,
+    Project,
+    ProjectProfile,
+    SheetLayer,
+)
 
 
 async def _seed_history_project(session: AsyncSession) -> int:
@@ -45,12 +81,226 @@ async def _seed_history_project(session: AsyncSession) -> int:
                 parameter_code="P1",
                 old_value="OLD",
                 new_value="NEW",
+                payload={"private_value": "SECRET_RAW_VALUE"},
                 created_at=datetime(2026, 7, 1, 0, 1, tzinfo=UTC),
             ),
         ]
     )
     await session.commit()
     return project.id
+
+
+def _scope(
+    project_id: int,
+    batch_id: str,
+    *,
+    member_filters: HistoryMemberFilterScope | None = None,
+) -> str:
+    return encode_history_detail_scope(
+        HistoryDetailScope(
+            project_id=project_id,
+            batch_id=batch_id,
+            member_filters=member_filters or HistoryMemberFilterScope(),
+        )
+    )
+
+
+def _capture_snapshot() -> dict[str, Any]:
+    return serialize_backbone_snapshot(
+        BackboneSnapshot(
+            capture_batch_id="0123456789abcdef0123456789abcdef",
+            captured_at=datetime(2026, 7, 1, 0, 2, tzinfo=UTC),
+            source=BackboneSnapshotSource(
+                project_id=99,
+                sheet_layer_id=100,
+                layer_key="SOURCE-L1",
+                step_seq="010",
+                layer_id="ACT",
+            ),
+            columns=(
+                BackboneSnapshotColumn(
+                    parameter_code="alpha",
+                    value_type=ValueType.TEXT,
+                    display_name="Alpha",
+                    category_code=None,
+                    sort_order=0,
+                    active_at_capture=True,
+                ),
+                BackboneSnapshotColumn(
+                    parameter_code="beta",
+                    value_type=ValueType.TEXT,
+                    display_name="Beta",
+                    category_code=None,
+                    sort_order=1,
+                    active_at_capture=True,
+                ),
+            ),
+            conditions=(
+                BackboneSnapshotCondition(
+                    source_condition_id=7,
+                    label="Captured condition",
+                    condition_index=0,
+                    is_por=True,
+                    cells=(
+                        BackboneSnapshotCell(parameter_code="alpha", value="A"),
+                        BackboneSnapshotCell(parameter_code="beta", value="B"),
+                    ),
+                ),
+            ),
+        )
+    )
+
+
+def _capture_detail() -> list[dict[str, Any]]:
+    return [
+        {
+            "target_condition_id": 501,
+            "source_condition_id": 7,
+            "label": "Captured condition",
+            "condition_index": 0,
+            "is_por": True,
+            "cell_count": 2,
+        }
+    ]
+
+
+async def _seed_current_and_deleted_cells(
+    session: AsyncSession,
+) -> tuple[int, int, int]:
+    project = Project(
+        line_id="L-CELL",
+        process_id="PROC_CELL_HISTORY",
+        part_id="PART-CELL",
+        name="Cell history project",
+        profile=ProjectProfile(
+            process_name="Cell history project",
+            device_type_code="DEFAULT",
+            project_category_code="DEFAULT",
+        ),
+    )
+    layer = SheetLayer(
+        layer_key="L-CELL::PROC_CELL_HISTORY::010::ACT",
+        step_seq="010",
+        layer_id="ACT",
+        sort_order=0,
+    )
+    current = LayerCondition(
+        label="Current condition",
+        condition_index=0,
+        is_por=True,
+        source_condition_id=77,
+    )
+    current.cell_values.append(CellValue(parameter_code="P1", value_text="CURRENT"))
+    layer.conditions.append(current)
+    project.layers.append(layer)
+    session.add(project)
+    await session.flush()
+
+    layer.backbone_snapshot = serialize_backbone_snapshot(
+        BackboneSnapshot(
+            capture_batch_id="abcdef0123456789abcdef0123456789",
+            captured_at=datetime(2026, 7, 1, 0, 0, tzinfo=UTC),
+            source=BackboneSnapshotSource(
+                project_id=project.id,
+                sheet_layer_id=layer.id,
+                layer_key=layer.layer_key,
+                step_seq=layer.step_seq,
+                layer_id=layer.layer_id,
+            ),
+            columns=(
+                BackboneSnapshotColumn(
+                    parameter_code="P1",
+                    value_type=ValueType.TEXT,
+                    display_name="P1",
+                    category_code=None,
+                    sort_order=0,
+                    active_at_capture=True,
+                ),
+            ),
+            conditions=(
+                BackboneSnapshotCondition(
+                    source_condition_id=77,
+                    label="Baseline condition",
+                    condition_index=0,
+                    is_por=True,
+                    cells=(BackboneSnapshotCell(parameter_code="P1", value="BASE"),),
+                ),
+            ),
+        )
+    )
+    deleted_condition_id = current.id + 1000
+    session.add_all(
+        [
+            ChangeEvent(
+                project_id=project.id,
+                event_type=ChangeEventType.CONDITION_ADD,
+                actor="dev-admin",
+                condition_id=current.id,
+                layer_key=layer.layer_key,
+                payload={
+                    "condition_id": current.id,
+                    "snapshot": {"label": "Current initial", "cells": {"P1": "INIT"}},
+                },
+                created_at=datetime(2026, 7, 1, 0, 1, tzinfo=UTC),
+            ),
+            ChangeEvent(
+                project_id=project.id,
+                event_type=ChangeEventType.CELL_UPDATE,
+                actor="dev-admin",
+                batch_id="current-cell-batch",
+                origin="manual",
+                condition_id=current.id,
+                parameter_code="P1",
+                layer_key=layer.layer_key,
+                old_value="INIT",
+                new_value="CURRENT",
+                payload={"private_value": "DO_NOT_LOG_CURRENT"},
+                created_at=datetime(2026, 7, 1, 0, 2, tzinfo=UTC),
+            ),
+            ChangeEvent(
+                project_id=project.id,
+                event_type=ChangeEventType.CONDITION_ADD,
+                actor="dev-admin",
+                condition_id=deleted_condition_id,
+                layer_key=layer.layer_key,
+                payload={
+                    "condition_id": deleted_condition_id,
+                    "snapshot": {"label": "Deleted initial", "cells": {"P1": "D-INIT"}},
+                },
+                created_at=datetime(2026, 7, 1, 0, 3, tzinfo=UTC),
+            ),
+            ChangeEvent(
+                project_id=project.id,
+                event_type=ChangeEventType.CELL_UPDATE,
+                actor="dev-admin",
+                batch_id="deleted-cell-batch",
+                origin="manual",
+                condition_id=deleted_condition_id,
+                parameter_code="P1",
+                layer_key=layer.layer_key,
+                old_value="D-INIT",
+                new_value="D-NEW",
+                created_at=datetime(2026, 7, 1, 0, 4, tzinfo=UTC),
+            ),
+            ChangeEvent(
+                project_id=project.id,
+                event_type=ChangeEventType.CONDITION_REMOVE,
+                actor="dev-admin",
+                condition_id=deleted_condition_id,
+                layer_key=layer.layer_key,
+                payload={
+                    "condition_id": deleted_condition_id,
+                    "snapshot": {
+                        "label": "Deleted condition",
+                        "cells": {"P1": "D-NEW"},
+                    },
+                },
+                created_at=datetime(2026, 7, 1, 0, 5, tzinfo=UTC),
+            ),
+        ]
+    )
+    await session.commit()
+    return project.id, current.id, deleted_condition_id
 
 
 @pytest.mark.asyncio
@@ -77,6 +327,10 @@ async def test_history_events_route_is_authenticated_and_payload_free(
     assert first_item["detail_status"] == "available"
     assert "raw_payload" not in first_item
     assert "full_capture" not in first_item
+    unbatched = next(item for item in body["items"] if item["kind"] == "event")
+    assert unbatched["detail_status"] == "not_applicable"
+    assert unbatched["detail_scope"] is None
+    assert unbatched["metadata_status"] == "complete"
 
 
 @pytest.mark.asyncio
@@ -88,16 +342,34 @@ async def test_history_events_limit_above_max_is_rejected(
     response = await db_client.get(f"/api/projects/{project_id}/events", params={"limit": 101})
 
     assert response.status_code == 422
+    detail = await db_client.get(
+        f"/api/projects/{project_id}/event-batches/batch-1",
+        params={"scope": _scope(project_id, "batch-1"), "limit": 201},
+    )
+    cell = await db_client.get(
+        f"/api/projects/{project_id}/cell-history",
+        params={"condition_id": 1, "parameter_code": "P1", "limit": 101},
+    )
+    assert detail.status_code == 422
+    assert cell.status_code == 422
 
 
 @pytest.mark.asyncio
 async def test_history_event_batch_scope_mismatch_is_rejected(
-    db_client: AsyncClient, db_session: AsyncSession
+    db_client: AsyncClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     project_id = await _seed_history_project(db_session)
     scope = encode_history_detail_scope(
         HistoryDetailScope(project_id=project_id, batch_id="batch-other")
     )
+
+    async def _repository_read_must_not_run(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise AssertionError("scope/path mismatch reached the repository")
+
+    monkeypatch.setattr(HistoryRepository, "project_exists", _repository_read_must_not_run)
 
     response = await db_client.get(
         f"/api/projects/{project_id}/event-batches/batch-1",
@@ -109,11 +381,442 @@ async def test_history_event_batch_scope_mismatch_is_rejected(
 
 
 @pytest.mark.asyncio
-async def test_history_cell_history_missing_target_returns_404(db_client: AsyncClient) -> None:
-    response = await db_client.get(
+async def test_history_cell_history_missing_target_returns_404(
+    db_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    missing_project = await db_client.get(
         "/api/projects/999999/cell-history",
         params={"condition_id": 1, "parameter_code": "P1"},
     )
+    project_id = await _seed_history_project(db_session)
+    missing_coordinate = await db_client.get(
+        f"/api/projects/{project_id}/cell-history",
+        params={"condition_id": 999999, "parameter_code": "P1"},
+    )
 
-    assert response.status_code == 404
-    assert response.json()["code"] == "not_found"
+    assert missing_project.status_code == 404
+    assert missing_project.json()["code"] == "not_found"
+    assert missing_coordinate.status_code == 404
+    assert missing_coordinate.json()["code"] == "not_found"
+
+
+@pytest.mark.asyncio
+async def test_history_routes_execute_real_auth_dependency(db_client: AsyncClient) -> None:
+    async def _reject_auth(request: Request) -> None:
+        del request
+        raise AppError("authentication required", code="unauthorized", status_code=401)
+
+    app.dependency_overrides[get_current_user] = _reject_auth
+    try:
+        response = await db_client.get("/api/projects/1/events")
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
+
+    assert response.status_code == 401
+    assert response.json()["code"] == "unauthorized"
+
+
+@pytest.mark.asyncio
+async def test_timeline_cursor_freezes_normalized_filters_and_detail_scope(
+    db_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    project_id = await _seed_history_project(db_session)
+
+    first = await db_client.get(
+        f"/api/projects/{project_id}/events",
+        params={"actor": " dev-admin ", "limit": 1},
+    )
+    assert first.status_code == 200, first.text
+    first_body = first.json()
+    assert first_body["next_cursor"] is not None
+    detail_scope = decode_history_detail_scope(first_body["items"][0]["detail_scope"])
+    assert detail_scope.member_filters.actors == ("dev-admin",)
+
+    db_session.add(
+        ChangeEvent(
+            project_id=project_id,
+            event_type=ChangeEventType.CELL_UPDATE,
+            actor="dev-admin",
+            batch_id="late-batch",
+            origin="manual",
+            layer_key="L1",
+            condition_id=1,
+            parameter_code="P1",
+            old_value="SECRET_LATE_OLD",
+            new_value="SECRET_LATE_NEW",
+            created_at=datetime(2026, 7, 1, 0, 9, tzinfo=UTC),
+        )
+    )
+    await db_session.commit()
+
+    second = await db_client.get(
+        f"/api/projects/{project_id}/events",
+        params={
+            "actor": "dev-admin",
+            "limit": 1,
+            "cursor": first_body["next_cursor"],
+        },
+    )
+    assert second.status_code == 200, second.text
+    assert all(item["batch_id"] != "late-batch" for item in second.json()["items"])
+    assert second.json()["items"][0]["kind"] == "event"
+    assert second.json()["items"][0]["detail_status"] == "not_applicable"
+    assert second.json()["items"][0]["detail_scope"] is None
+
+    mismatch = await db_client.get(
+        f"/api/projects/{project_id}/events",
+        params={"actor": "someone-else", "cursor": first_body["next_cursor"]},
+    )
+    assert mismatch.status_code == 422
+    assert mismatch.json()["code"] == "invalid_scope"
+
+
+@pytest.mark.asyncio
+async def test_timeline_is_lazy_and_emits_one_scrubbed_summary_log(
+    db_client: AsyncClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    project_id = await _seed_history_project(db_session)
+
+    async def _detail_read_must_not_run(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise AssertionError("timeline attempted a detail payload read")
+
+    monkeypatch.setattr(HistoryRepository, "load_batch_members", _detail_read_must_not_run)
+    caplog.set_level(logging.INFO, logger="app.features.history.router")
+
+    response = await db_client.get(
+        f"/api/projects/{project_id}/events",
+        params={"limit": 1},
+        headers={
+            "authorization": "Bearer SECRET_AUTH_TOKEN",
+            "x-edit-lock-token": "SECRET_EDIT_LOCK_TOKEN",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    records = [
+        record for record in caplog.records if record.getMessage() == "history_request_summary"
+    ]
+    assert len(records) == 1
+    record = records[0]
+    assert record.route == "timeline"  # type: ignore[attr-defined]
+    assert record.status == 200  # type: ignore[attr-defined]
+    assert record.count == 1  # type: ignore[attr-defined]
+    assert record.duration_ms >= 0  # type: ignore[attr-defined]
+    serialized = f"{record.getMessage()} {record.__dict__!r}"
+    for forbidden in (
+        "SECRET_RAW_VALUE",
+        "OLD",
+        "NEW",
+        "SECRET_AUTH_TOKEN",
+        "SECRET_EDIT_LOCK_TOKEN",
+        "dev-admin",
+        response.json()["items"][0]["detail_scope"],
+    ):
+        assert forbidden not in serialized
+
+
+@pytest.mark.asyncio
+async def test_cell_batch_pages_descending_and_proves_current_and_deleted_targets(
+    db_client: AsyncClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project_id, current_id, deleted_id = await _seed_current_and_deleted_cells(db_session)
+    db_session.add(
+        ChangeEvent(
+            project_id=project_id,
+            event_type=ChangeEventType.CELL_UPDATE,
+            actor="dev-admin",
+            batch_id="current-cell-batch",
+            origin="manual",
+            condition_id=current_id,
+            parameter_code="P1",
+            layer_key="L-CELL::PROC_CELL_HISTORY::010::ACT",
+            old_value="CURRENT",
+            new_value="LATEST",
+            created_at=datetime(2026, 7, 1, 0, 6, tzinfo=UTC),
+        )
+    )
+    await db_session.commit()
+
+    current_scope_value = _scope(project_id, "current-cell-batch")
+    first = await db_client.get(
+        f"/api/projects/{project_id}/event-batches/current-cell-batch",
+        params={"scope": current_scope_value, "limit": 1},
+    )
+    assert first.status_code == 200, first.text
+    first_body = first.json()
+    assert first_body["order_kind"] == "event_desc"
+    assert first_body["detail_status"] == "available"
+    assert first_body["items"][0]["new_code"] == "LATEST"
+    assert first_body["items"][0]["jump_target"]["jump_status"] == "available"
+    assert first_body["next_cursor"] is not None
+
+    second = await db_client.get(
+        f"/api/projects/{project_id}/event-batches/current-cell-batch",
+        params={"scope": current_scope_value, "cursor": first_body["next_cursor"], "limit": 1},
+    )
+    assert second.status_code == 200, second.text
+    assert second.json()["items"][0]["new_code"] == "CURRENT"
+    assert second.json()["next_cursor"] is None
+
+    deleted = await db_client.get(
+        f"/api/projects/{project_id}/event-batches/deleted-cell-batch",
+        params={"scope": _scope(project_id, "deleted-cell-batch")},
+    )
+    assert deleted.status_code == 200, deleted.text
+    assert deleted.json()["items"][0]["jump_target"]["jump_status"] == "deleted"
+
+    capture_cursor = encode_history_detail_cursor(
+        HistoryDetailCursor(
+            version=1,
+            scope=decode_history_detail_scope(current_scope_value),
+            order_kind="capture_asc",
+            last_capture_key=HistoryCaptureKey(
+                target_layer_sort=0,
+                target_layer_key="L1",
+                source_condition_index=0,
+                source_condition_id=1,
+                parameter_sort=0,
+                parameter_code="P1",
+                event_id=1,
+            ),
+        )
+    )
+
+    async def _proof_must_not_run(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise AssertionError("cursor order mismatch reached coordinate proof")
+
+    monkeypatch.setattr(HistoryRepository, "prove_cell_coordinate", _proof_must_not_run)
+    mismatch = await db_client.get(
+        f"/api/projects/{project_id}/event-batches/current-cell-batch",
+        params={"scope": current_scope_value, "cursor": capture_cursor},
+    )
+    assert mismatch.status_code == 422
+    assert mismatch.json()["code"] == "invalid_cursor"
+
+    # The coordinate is part of the cursor scope and is also strictly validated.
+    cell_cursor_mismatch = await db_client.get(
+        f"/api/projects/{project_id}/cell-history",
+        params={
+            "condition_id": deleted_id,
+            "parameter_code": "P1",
+            "cursor": first_body["next_cursor"],
+        },
+    )
+    assert cell_cursor_mismatch.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_cell_history_exposes_separate_current_and_deleted_anchors(
+    db_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    project_id, current_id, deleted_id = await _seed_current_and_deleted_cells(db_session)
+
+    current = await db_client.get(
+        f"/api/projects/{project_id}/cell-history",
+        params={"condition_id": current_id, "parameter_code": "P1"},
+    )
+    deleted = await db_client.get(
+        f"/api/projects/{project_id}/cell-history",
+        params={"condition_id": deleted_id, "parameter_code": "P1"},
+    )
+
+    assert current.status_code == 200, current.text
+    assert current.json()["items"][0]["jump_status"] == "available"
+    assert current.json()["baseline_entry"] == {"code": "BASE", "label": "Baseline condition"}
+    assert current.json()["initial_entry"] == {"code": "INIT", "label": "Current initial"}
+    assert "event_id" not in current.json()["baseline_entry"]
+    assert "event_id" not in current.json()["initial_entry"]
+    assert current.json()["initial_state_unavailable"] is False
+
+    assert deleted.status_code == 200, deleted.text
+    assert deleted.json()["items"][0]["jump_status"] == "deleted"
+    assert deleted.json()["baseline_entry"] is None
+    assert deleted.json()["initial_entry"] == {"code": "D-INIT", "label": "Deleted initial"}
+    assert "event_id" not in deleted.json()["initial_entry"]
+
+
+@pytest.mark.asyncio
+async def test_batch_detail_rejects_mixed_and_corrupt_and_marks_legacy_or_irrelevant(
+    db_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    project_id = await _seed_history_project(db_session)
+    db_session.add_all(
+        [
+            ChangeEvent(
+                project_id=project_id,
+                event_type=ChangeEventType.BACKBONE_COPY,
+                actor="dev-admin",
+                batch_id="batch-1",
+                origin="backbone",
+                layer_key="L1",
+                payload={},
+            ),
+            ChangeEvent(
+                project_id=project_id,
+                event_type=ChangeEventType.BACKBONE_COPY,
+                actor="dev-admin",
+                batch_id="legacy-batch",
+                origin="backbone",
+                layer_key="L1",
+                payload={},
+            ),
+            ChangeEvent(
+                project_id=project_id,
+                event_type=ChangeEventType.PROJECT_PROFILE_UPDATE,
+                actor="dev-admin",
+                batch_id="irrelevant-batch",
+                payload={"profile": "SECRET_PROFILE_DATA"},
+            ),
+            ChangeEvent(
+                project_id=project_id,
+                event_type=ChangeEventType.BACKBONE_COPY,
+                actor="dev-admin",
+                batch_id="corrupt-batch",
+                origin="backbone",
+                layer_key="L1",
+                payload={"payload_schema_version": 2, "detail": [], "capture": "broken"},
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    mixed = await db_client.get(
+        f"/api/projects/{project_id}/event-batches/batch-1",
+        params={"scope": _scope(project_id, "batch-1")},
+    )
+    corrupt = await db_client.get(
+        f"/api/projects/{project_id}/event-batches/corrupt-batch",
+        params={"scope": _scope(project_id, "corrupt-batch")},
+    )
+    legacy = await db_client.get(
+        f"/api/projects/{project_id}/event-batches/legacy-batch",
+        params={"scope": _scope(project_id, "legacy-batch")},
+    )
+    irrelevant = await db_client.get(
+        f"/api/projects/{project_id}/event-batches/irrelevant-batch",
+        params={"scope": _scope(project_id, "irrelevant-batch")},
+    )
+    missing = await db_client.get(
+        f"/api/projects/{project_id}/event-batches/missing-batch",
+        params={"scope": _scope(project_id, "missing-batch")},
+    )
+
+    assert mixed.status_code == 409
+    assert mixed.json()["code"] == "invalid_event_batch"
+    assert corrupt.status_code == 409
+    assert corrupt.json()["code"] == "invalid_event_batch"
+    assert legacy.status_code == 200, legacy.text
+    assert legacy.json()["order_kind"] == "capture_asc"
+    assert legacy.json()["detail_status"] == "legacy_unavailable"
+    assert legacy.json()["items"] == []
+    assert irrelevant.status_code == 200, irrelevant.text
+    assert irrelevant.json()["order_kind"] == "event_desc"
+    assert irrelevant.json()["detail_status"] == "not_applicable"
+    assert irrelevant.json()["items"] == []
+    assert missing.status_code == 404
+    assert missing.json()["code"] == "not_found"
+
+
+@pytest.mark.asyncio
+async def test_capture_detail_structurally_pages_complete_repository_rows(
+    db_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project_id = 42
+    batch_id = "complete-capture-batch"
+    scope_value = _scope(project_id, batch_id)
+    scope = decode_history_detail_scope(scope_value)
+    row = HistoryEventRow(
+        event_id=10,
+        event_type=ChangeEventType.BACKBONE_COPY.value,
+        actor="capture-operator",
+        created_at=datetime(2026, 7, 1, 0, 2, tzinfo=UTC),
+        batch_id=batch_id,
+        origin="backbone",
+        layer_key="TARGET-L1",
+        layer_sort_order=3,
+        schema_version=2,
+        detail=_capture_detail(),
+        capture=_capture_snapshot(),
+    )
+    calls = {"proof": 0}
+
+    async def _project_exists(self: HistoryRepository, requested_project_id: int) -> bool:
+        del self
+        return requested_project_id == project_id
+
+    async def _count(self: HistoryRepository, *args: object, **kwargs: object) -> int:
+        del self, args, kwargs
+        return 1
+
+    async def _load(
+        self: HistoryRepository, *args: object, **kwargs: object
+    ) -> tuple[HistoryEventRow, ...]:
+        del self, args, kwargs
+        return (row,)
+
+    async def _proof(
+        self: HistoryRepository,
+        requested_project_id: int,
+        condition_id: int,
+        parameter_code: str,
+    ) -> HistoryCellCoordinateProof:
+        del self, parameter_code
+        calls["proof"] += 1
+        return HistoryCellCoordinateProof(
+            state="deleted",
+            project_id=requested_project_id,
+            condition_id=condition_id,
+            parameter_code="alpha",
+            layer_key="TARGET-L1",
+            current_event_id=None,
+            remove_event_id=99,
+            latest_event_id=10,
+        )
+
+    monkeypatch.setattr(HistoryRepository, "project_exists", _project_exists)
+    monkeypatch.setattr(HistoryRepository, "count_batch_members", _count)
+    monkeypatch.setattr(HistoryRepository, "load_batch_members", _load)
+    monkeypatch.setattr(HistoryRepository, "prove_cell_coordinate", _proof)
+
+    wrong_order = encode_history_detail_cursor(
+        HistoryDetailCursor(
+            version=1,
+            scope=scope,
+            order_kind="event_desc",
+            last_event_id=10,
+        )
+    )
+    mismatch = await db_client.get(
+        f"/api/projects/{project_id}/event-batches/{batch_id}",
+        params={"scope": scope_value, "cursor": wrong_order},
+    )
+    assert mismatch.status_code == 422
+    assert mismatch.json()["code"] == "invalid_cursor"
+    assert calls["proof"] == 0
+
+    first = await db_client.get(
+        f"/api/projects/{project_id}/event-batches/{batch_id}",
+        params={"scope": scope_value, "limit": 1},
+    )
+    assert first.status_code == 200, first.text
+    first_body = first.json()
+    assert first_body["order_kind"] == "capture_asc"
+    assert first_body["detail_status"] == "available"
+    assert first_body["items"][0]["capture_tuple"]["parameter_code"] == "alpha"
+    assert first_body["items"][0]["jump_target"]["jump_status"] == "deleted"
+    assert first_body["next_cursor"] is not None
+
+    second = await db_client.get(
+        f"/api/projects/{project_id}/event-batches/{batch_id}",
+        params={"scope": scope_value, "cursor": first_body["next_cursor"], "limit": 1},
+    )
+    assert second.status_code == 200, second.text
+    assert second.json()["items"][0]["capture_tuple"]["parameter_code"] == "beta"
+    assert second.json()["next_cursor"] is None
