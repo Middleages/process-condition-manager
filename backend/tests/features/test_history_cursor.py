@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+# pyright: reportMissingImports=false
+
 from datetime import UTC, datetime
+from typing import cast
 
 import pytest
 
@@ -11,6 +14,7 @@ from app.features.history.cursor import (
     HistoryDetailCursor,
     HistoryDetailScope,
     HistoryMemberFilterScope,
+    HistoryOrigin,
     HistoryTimelineCursor,
     HistoryTimelineScope,
     decode_history_cell_history_cursor,
@@ -191,17 +195,7 @@ def test_detail_scope_rejects_malformed_tokens(raw: str, expected_code: str) -> 
     assert exc_info.value.code == expected_code
 
 
-@pytest.mark.parametrize(
-    "expected_kwargs",
-    [
-        {"expected_project_id": 3},
-        {"expected_condition_id": 4},
-        {"expected_parameter_code": "PARAM"},
-    ],
-)
-def test_cell_history_cursor_round_trips_and_scope_matches(
-    expected_kwargs: dict[str, object],
-) -> None:
+def test_cell_history_cursor_round_trips_with_project_scope() -> None:
     cursor = HistoryCellHistoryCursor(
         version=1,
         project_id=3,
@@ -210,7 +204,35 @@ def test_cell_history_cursor_round_trips_and_scope_matches(
         last_event_id=25,
     )
     decoded = decode_history_cell_history_cursor(
-        encode_history_cell_history_cursor(cursor), **expected_kwargs
+        encode_history_cell_history_cursor(cursor), expected_project_id=3
+    )
+    assert decoded == cursor
+
+
+def test_cell_history_cursor_round_trips_with_condition_scope() -> None:
+    cursor = HistoryCellHistoryCursor(
+        version=1,
+        project_id=3,
+        condition_id=4,
+        parameter_code="PARAM",
+        last_event_id=25,
+    )
+    decoded = decode_history_cell_history_cursor(
+        encode_history_cell_history_cursor(cursor), expected_condition_id=4
+    )
+    assert decoded == cursor
+
+
+def test_cell_history_cursor_round_trips_with_parameter_scope() -> None:
+    cursor = HistoryCellHistoryCursor(
+        version=1,
+        project_id=3,
+        condition_id=4,
+        parameter_code="PARAM",
+        last_event_id=25,
+    )
+    decoded = decode_history_cell_history_cursor(
+        encode_history_cell_history_cursor(cursor), expected_parameter_code="PARAM"
     )
     assert decoded == cursor
 
@@ -241,7 +263,7 @@ def test_scope_mismatch_helper_raises_invalid_scope() -> None:
             "version": 2,
             "snapshot_max_event_id": 10,
             "before_group_max_id": 8,
-            "scope": HistoryTimelineScope(project_id=1),
+            "scope": cast(object, HistoryTimelineScope(project_id=1)),
         },
         {
             "version": 1,
@@ -279,5 +301,7 @@ def test_scope_dataclasses_reject_invalid_values() -> None:
 
 def test_member_filter_scope_rejects_unsupported_origin_values() -> None:
     with pytest.raises(RuleViolationError) as exc_info:
-        HistoryMemberFilterScope(origins=("unsupported",))  # type: ignore[arg-type]
+        HistoryMemberFilterScope(
+            origins=cast(tuple[HistoryOrigin, ...], ("unsupported",))
+        )
     assert exc_info.value.code == "invalid_scope"

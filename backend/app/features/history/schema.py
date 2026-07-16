@@ -1,5 +1,7 @@
 """Strict public JSON contracts for history read surfaces."""
 
+# pyright: reportMissingImports=false
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
