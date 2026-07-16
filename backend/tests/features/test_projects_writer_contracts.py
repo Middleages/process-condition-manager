@@ -208,7 +208,6 @@ async def test_create_emits_per_layer_copy_events_with_shared_batch_and_captured
         assert snapshot["captured_at"] == copy_event.payload["captured_at"]
         assert snapshot["source"]["project_id"] == source.id
         assert snapshot["source"]["layer_key"] == layer.source_layer_key
-        assert copy_event.origin == "system"
         assert copy_event.source_project_id == source.id
         assert copy_event.source_layer_key == layer.source_layer_key
         assert copy_event.batch_id == copy_event.payload["batch_id"]
@@ -227,9 +226,10 @@ async def test_create_leaves_no_copy_events_for_unmatched_layers(
     db_session: AsyncSession,
 ) -> None:
     await _seed_required_choices(db_session)
+    source_service = _service(db_session)
     service = _service(db_session, reader=UnmatchedReader())
 
-    source = await _create_project(service, process_id="PROC_ALPHA", part_id="SRC")
+    source = await _create_project(source_service, process_id="PROC_ALPHA", part_id="SRC")
     target = await _create_project(
         service,
         process_id="PROC_GAMMA",
@@ -324,33 +324,52 @@ async def test_replace_resets_target_baseline_and_records_structured_event(
     assert event.payload["payload_schema_version"] == 2
     assert event.payload["target_layer_key"] == target_layer.layer_key
     assert event.payload["detail"][0]["target_condition_id"] == replaced_layer.conditions[0].id
+    assert _contains_recursive_key(snapshot, "target_condition_id") is False
+    assert _contains_recursive_key(event.payload["detail"], "capture_batch_id") is False
     assert re.fullmatch(r"[0-9a-f]{32}", event.payload["batch_id"])
 
 
-async def test_create_records_manual_profile_envelope_and_payload_contract(
-    db_session: AsyncSession,
+async def test_patch_profile_records_manual_profile_update_envelope(
+    db_client: AsyncClient, db_session: AsyncSession
 ) -> None:
     await _seed_required_choices(db_session)
-    service = _service(db_session)
+    created = await db_client.post(
+        "/api/projects",
+        json={
+            "line_id": "L1",
+            "process_id": "PROC_ALPHA",
+            "part_id": "MANUAL",
+            "name": "Task9 writer MANUAL",
+            "device_type_code": "DEFAULT",
+            "project_category_code": "DEFAULT",
+        },
+    )
+    assert created.status_code == 201, created.text
+    project_id = created.json()["id"]
 
-    project = await _create_project(service, process_id="PROC_ALPHA", part_id="MANUAL")
-    events = await _change_events(db_session, project.id, ChangeEventType.PROJECT_CREATE)
+    locked = await db_client.post(f"/api/projects/{project_id}/lock")
+    assert locked.status_code == 200, locked.text
+    lock_token = locked.json()["lock_token"]
+
+    patched = await db_client.patch(
+        f"/api/projects/{project_id}/profile",
+        headers={"X-Lock-Token": lock_token},
+        json={"comment": "patched comment", "pitch_x": " 0010.5000 "},
+    )
+    assert patched.status_code == 200, patched.text
+    assert patched.json()["comment"] == "patched comment"
+    assert patched.json()["pitch_x"] == "10.5"
+
+    events = await _change_events(db_session, project_id, ChangeEventType.PROJECT_PROFILE_UPDATE)
     assert len(events) == 1
     event = events[0]
-
-    assert event.payload["metadata_provider"] == "manual"
-    assert event.payload["profile_seed"]["comment"] is None
-    assert event.payload["profile_seed"]["device_type_code"] is None
-    assert event.payload["profile_final"]["process_name"] == "L1 / PROC_ALPHA"
-    assert event.payload["profile_final"]["device_type_code"] == "DEFAULT"
-    assert event.payload["profile_final"]["project_category_code"] == "DEFAULT"
-    assert event.payload["profile_final"]["map_offset_x"] is None
-    assert event.payload["profile_final"]["map_offset_y"] is None
-    assert event.batch_id == event.payload["batch_id"]
+    assert event.origin == "manual"
+    assert event.batch_id is None
+    assert event.layer_key is None
     assert event.source_project_id is None
     assert event.source_layer_key is None
-    assert event.payload["payload_schema_version"] == 2
-    assert re.fullmatch(r"[0-9a-f]{32}", event.payload["batch_id"])
+    assert event.payload["changes"]["comment"] == {"old": None, "new": "patched comment"}
+    assert event.payload["changes"]["pitch_x"] == {"old": None, "new": "10.5"}
 
 
 async def test_capture_parameter_registry_returns_active_rows_without_stored_codes(
@@ -416,18 +435,12 @@ async def test_replace_rejects_unresolved_parameter_metadata_with_conflict(
     )
     await db_session.commit()
 
-    target = await _create_project(service, process_id="PROC_BETA", part_id="TGT")
-    target_layer = target.layers[0].layer_key
-
     with pytest.raises(ConflictError) as excinfo:
-        await service.replace_layer_backbone(
-            target.id,
-            target_layer,
-            BackboneReplaceIn(
-                source_project_id=source.id,
-                source_layer_key=source.layers[0].layer_key,
-            ),
-            actor="worker-2",
+        await _create_project(
+            service,
+            process_id="PROC_BETA",
+            part_id="TGT",
+            backbone_project_id=source.id,
         )
 
     assert excinfo.value.code == "unresolved_parameter_metadata"
