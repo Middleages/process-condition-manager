@@ -28,7 +28,7 @@ export function PageHeader({
       <div className="min-w-0">
         {eyebrow ? <div className="mb-1 text-xs font-semibold text-brand-700">{eyebrow}</div> : null}
         <h1
-          className="rounded-sm text-2xl font-bold tracking-tight text-ink-950 focus:outline-2 focus:outline-offset-2 focus:outline-brand-700 sm:text-[1.75rem]"
+          className="text-2xl font-bold tracking-tight text-ink-950 focus:outline-none sm:text-[1.75rem]"
           data-page-title
           tabIndex={-1}
         >

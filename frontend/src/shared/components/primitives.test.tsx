@@ -92,7 +92,7 @@ describe('shared primitives', () => {
     expect(html).toContain('aria-invalid="true"')
   })
 
-  it('keeps route focus on the h1 instead of the entire PageHeader surface', () => {
+  it('keeps route focus on the h1 without drawing a title ring', () => {
     const html = renderToStaticMarkup(
       <PageHeader
         eyebrow={<Badge tone="draft">초안</Badge>}
@@ -115,10 +115,11 @@ describe('shared primitives', () => {
     expect(headingTag).toBeDefined()
     expect(headingTag).toContain('data-page-title="true"')
     expect(headingTag).toContain('tabindex="-1"')
-    expect(headingTag).toContain('rounded-sm')
-    expect(headingTag).toContain('focus:outline-2')
-    expect(headingTag).toContain('focus:outline-offset-2')
-    expect(headingTag).toContain('focus:outline-brand-700')
+    expect(headingTag).not.toContain('rounded-sm')
+    expect(headingTag).toContain('focus:outline-none')
+    expect(headingTag).not.toContain('focus:outline-2')
+    expect(headingTag).not.toContain('focus:outline-offset-2')
+    expect(headingTag).not.toContain('focus:outline-brand-700')
 
     expect(html).toContain('초안')
     expect(html).toContain('프로젝트')

@@ -6,6 +6,12 @@
 - **Design authority:** [`DESIGN.md`](../../../DESIGN.md)
 - **Implementation scope:** 일반 App Shell의 공통 `PageHeader`와 route focus 계약
 
+> **2026-07-16 실화면 후속 변경:** 사용자가 공통 PageHeader h1의 보이는 ring을 제거하도록
+> 승인했다. `data-page-title`과 `tabIndex={-1}` 및 pathname 기반 programmatic focus는 유지하되,
+> 공통 h1의 `rounded-sm`과 custom outline class는 제거한다. 아래의 2px 공통 h1 ring 요구와
+> browser outline 측정은 PR #78 당시의 기록이며 이 후속 결정으로 시각 부분만 대체된다.
+> 상호작용 control과 조건표 dark Focus Header의 focus ring 계약은 변경하지 않는다.
+
 ## 1. 배경과 문제
 
 프로젝트 생성과 탐색 화면을 정리한 뒤 공통 shell을 다시 검토했다. 일반 route는 이동 후
