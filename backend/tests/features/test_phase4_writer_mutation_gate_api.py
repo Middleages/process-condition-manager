@@ -19,14 +19,20 @@ async def _required_profile_choices(db_session: AsyncSession) -> None:
     await db_session.commit()
 
 
-async def _create_project(db_client: AsyncClient, *, name: str = "Phase 4 Gate") -> dict:
+async def _create_project(
+    db_client: AsyncClient,
+    *,
+    name: str = "Phase 4 Gate",
+    process_id: str = "PROC_ALPHA",
+    part_id: str = "PART-001",
+) -> dict:
     resp = await db_client.post(
         "/api/projects",
         json={
             **_CORE_PROFILE,
             "line_id": "L1",
-            "process_id": "PROC_ALPHA",
-            "part_id": "PART-001",
+            "process_id": process_id,
+            "part_id": part_id,
             "name": name,
         },
     )
@@ -44,7 +50,9 @@ async def test_mutation_gate_blocks_project_truth_writes_and_keeps_drain_release
     db_client: AsyncClient, monkeypatch
 ) -> None:
     locked_project = await _create_project(db_client, name="Locked project")
-    unlocked_project = await _create_project(db_client, name="Unlocked project")
+    unlocked_project = await _create_project(
+        db_client, name="Unlocked project", process_id="PROC_BETA", part_id="PART-002"
+    )
     headers = await _acquire_lock(db_client, locked_project["id"])
 
     monkeypatch.setattr(maintenance.settings, "project_mutations_enabled", False)
