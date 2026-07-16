@@ -182,26 +182,14 @@ def _fetch_index_state(name: str) -> tuple[bool, str | None]:
     return (bool(row[0]), row[1])
 
 
-def _execute_concurrently(sql: str) -> None:
-    bind = op.get_bind()
-    if bind.in_transaction():
-        bind.commit()
-    autocommit_bind = bind.execution_options(isolation_level="AUTOCOMMIT")
-    try:
-        autocommit_bind.exec_driver_sql(sql)
-    finally:
-        if autocommit_bind.in_transaction():
-            autocommit_bind.rollback()
-
-
 def _drop_index_concurrently(name: str) -> None:
-    _execute_concurrently(f'DROP INDEX CONCURRENTLY IF EXISTS "{name}"')
+    op.execute(sa.text(f'DROP INDEX CONCURRENTLY IF EXISTS "{name}"'))
 
 
 def _create_index_concurrently(index: sa.Index) -> None:
     sql = str(CreateIndex(index).compile(dialect=postgresql.dialect()))
     sql = sql.replace("CREATE INDEX ", "CREATE INDEX CONCURRENTLY ", 1)
-    _execute_concurrently(sql)
+    op.execute(sa.text(sql))
 
 
 def _ensure_index(spec: IndexSpec) -> None:
@@ -211,9 +199,10 @@ def _ensure_index(spec: IndexSpec) -> None:
     if valid and current_sql is not None and _normalize_index_sql(current_sql) == expected_sql:
         return
 
-    if current_sql is not None:
-        _drop_index_concurrently(name)
-    _create_index_concurrently(index)
+    with op.get_context().autocommit_block():
+        if current_sql is not None:
+            _drop_index_concurrently(name)
+        _create_index_concurrently(index)
 
     valid, current_sql = _fetch_index_state(name)
     if not valid or current_sql is None or _normalize_index_sql(current_sql) != expected_sql:
@@ -244,4 +233,5 @@ def downgrade() -> None:
         _valid, current_sql = _fetch_index_state(name)
         if current_sql is None:
             continue
-        _drop_index_concurrently(name)
+        with op.get_context().autocommit_block():
+            _drop_index_concurrently(name)

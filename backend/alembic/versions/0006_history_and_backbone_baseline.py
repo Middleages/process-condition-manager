@@ -22,6 +22,10 @@ down_revision: str | None = "0005"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
+_INT4_MAX = 2_147_483_647
+_BATCH_ID_MAX_LENGTH = 64
+_LAYER_KEY_MAX_LENGTH = 256
+
 
 def _require_online() -> None:
     if op.get_context().as_sql:
@@ -32,26 +36,44 @@ def _execute(sql: str) -> None:
     op.get_bind().execute(sa.text(sql))
 
 
+def _safe_positive_int_expression(field: str) -> str:
+    return (
+        "CASE "
+        f"WHEN jsonb_typeof(payload->'{field}') = 'number' "
+        f"AND (payload->>'{field}') ~ '^[0-9]+$' "
+        f"AND (payload->>'{field}')::numeric BETWEEN 1 AND {_INT4_MAX} "
+        f"THEN (payload->>'{field}')::integer "
+        "ELSE NULL "
+        "END"
+    )
+
+
+def _safe_string_expression(field: str, *, max_length: int) -> str:
+    return (
+        "CASE "
+        f"WHEN jsonb_typeof(payload->'{field}') = 'string' "
+        f"AND char_length(payload->>'{field}') <= {max_length} "
+        f"THEN payload->>'{field}' "
+        "ELSE NULL "
+        "END"
+    )
+
+
 def _backfill_change_event_columns() -> None:
     _execute(
         """
         UPDATE change_event
         SET condition_id = NULL,
             layer_key = NULL,
-            batch_id = CASE
-                WHEN jsonb_typeof(payload->'batch_id') = 'string'
-                THEN payload->>'batch_id'
-                ELSE NULL
-            END,
+            batch_id = {batch_id},
             origin = 'system',
-            source_project_id = CASE
-                WHEN jsonb_typeof(payload->'backbone_project_id') = 'number'
-                THEN (payload->>'backbone_project_id')::integer
-                ELSE NULL
-            END,
+            source_project_id = {backbone_project_id},
             source_layer_key = NULL
         WHERE event_type = 'project_create'
-        """
+        """.format(
+            batch_id=_safe_string_expression("batch_id", max_length=_BATCH_ID_MAX_LENGTH),
+            backbone_project_id=_safe_positive_int_expression("backbone_project_id"),
+        )
     )
     _execute(
         """
@@ -70,57 +92,41 @@ def _backfill_change_event_columns() -> None:
         UPDATE change_event
         SET condition_id = NULL,
             layer_key = NULL,
-            batch_id = CASE
-                WHEN jsonb_typeof(payload->'batch_id') = 'string'
-                THEN payload->>'batch_id'
-                ELSE NULL
-            END,
+            batch_id = {batch_id},
             origin = 'backbone',
-            source_project_id = CASE
-                WHEN jsonb_typeof(payload->'backbone_project_id') = 'number'
-                THEN (payload->>'backbone_project_id')::integer
-                ELSE NULL
-            END,
+            source_project_id = {backbone_project_id},
             source_layer_key = NULL
         WHERE event_type = 'backbone_copy'
-        """
+        """.format(
+            batch_id=_safe_string_expression("batch_id", max_length=_BATCH_ID_MAX_LENGTH),
+            backbone_project_id=_safe_positive_int_expression("backbone_project_id"),
+        )
     )
     _execute(
         """
         UPDATE change_event
         SET condition_id = NULL,
-            layer_key = CASE
-                WHEN jsonb_typeof(payload->'target_layer_key') = 'string'
-                THEN payload->>'target_layer_key'
-                ELSE NULL
-            END,
-            batch_id = CASE
-                WHEN jsonb_typeof(payload->'batch_id') = 'string'
-                THEN payload->>'batch_id'
-                ELSE NULL
-            END,
+            layer_key = {target_layer_key},
+            batch_id = {batch_id},
             origin = 'backbone',
-            source_project_id = CASE
-                WHEN jsonb_typeof(payload->'source_project_id') = 'number'
-                THEN (payload->>'source_project_id')::integer
-                ELSE NULL
-            END,
-            source_layer_key = CASE
-                WHEN jsonb_typeof(payload->'source_layer_key') = 'string'
-                THEN payload->>'source_layer_key'
-                ELSE NULL
-            END
+            source_project_id = {source_project_id},
+            source_layer_key = {source_layer_key}
         WHERE event_type = 'backbone_layer_replace'
-        """
+        """.format(
+            target_layer_key=_safe_string_expression(
+                "target_layer_key", max_length=_LAYER_KEY_MAX_LENGTH
+            ),
+            batch_id=_safe_string_expression("batch_id", max_length=_BATCH_ID_MAX_LENGTH),
+            source_project_id=_safe_positive_int_expression("source_project_id"),
+            source_layer_key=_safe_string_expression(
+                "source_layer_key", max_length=_LAYER_KEY_MAX_LENGTH
+            ),
+        )
     )
     _execute(
         """
         UPDATE change_event
-        SET batch_id = CASE
-                WHEN jsonb_typeof(payload->'batch_id') = 'string'
-                THEN payload->>'batch_id'
-                ELSE NULL
-            END,
+        SET batch_id = {batch_id},
             origin = CASE
                 WHEN jsonb_typeof(payload->'origin') = 'string'
                      AND payload->>'origin' IN ('manual', 'paste')
@@ -131,7 +137,7 @@ def _backfill_change_event_columns() -> None:
             source_layer_key = NULL,
             layer_key = NULL
         WHERE event_type = 'cell_update'
-        """
+        """.format(batch_id=_safe_string_expression("batch_id", max_length=_BATCH_ID_MAX_LENGTH))
     )
     _execute(
         """
@@ -146,62 +152,47 @@ def _backfill_change_event_columns() -> None:
     _execute(
         """
         UPDATE change_event
-        SET condition_id = CASE
-                WHEN jsonb_typeof(payload->'condition_id') = 'number'
-                THEN (payload->>'condition_id')::integer
-                ELSE NULL
-            END,
-            layer_key = CASE
-                WHEN jsonb_typeof(payload->'layer_key') = 'string'
-                THEN payload->>'layer_key'
-                ELSE NULL
-            END,
+        SET condition_id = {condition_id},
+            layer_key = {layer_key},
             batch_id = NULL,
             origin = 'manual',
             source_project_id = NULL,
             source_layer_key = NULL
         WHERE event_type = 'condition_add'
-        """
+        """.format(
+            condition_id=_safe_positive_int_expression("condition_id"),
+            layer_key=_safe_string_expression("layer_key", max_length=_LAYER_KEY_MAX_LENGTH),
+        )
     )
     _execute(
         """
         UPDATE change_event
-        SET condition_id = CASE
-                WHEN jsonb_typeof(payload->'condition_id') = 'number'
-                THEN (payload->>'condition_id')::integer
-                ELSE NULL
-            END,
-            layer_key = CASE
-                WHEN jsonb_typeof(payload->'layer_key') = 'string'
-                THEN payload->>'layer_key'
-                ELSE NULL
-            END,
+        SET condition_id = {condition_id},
+            layer_key = {layer_key},
             batch_id = NULL,
             origin = 'manual',
             source_project_id = NULL,
             source_layer_key = NULL
         WHERE event_type = 'condition_remove'
-        """
+        """.format(
+            condition_id=_safe_positive_int_expression("condition_id"),
+            layer_key=_safe_string_expression("layer_key", max_length=_LAYER_KEY_MAX_LENGTH),
+        )
     )
     _execute(
         """
         UPDATE change_event
-        SET condition_id = CASE
-                WHEN jsonb_typeof(payload->'new_por_condition_id') = 'number'
-                THEN (payload->>'new_por_condition_id')::integer
-                ELSE NULL
-            END,
-            layer_key = CASE
-                WHEN jsonb_typeof(payload->'layer_key') = 'string'
-                THEN payload->>'layer_key'
-                ELSE NULL
-            END,
+        SET condition_id = {condition_id},
+            layer_key = {layer_key},
             batch_id = NULL,
             origin = 'manual',
             source_project_id = NULL,
             source_layer_key = NULL
         WHERE event_type = 'por_change'
-        """
+        """.format(
+            condition_id=_safe_positive_int_expression("new_por_condition_id"),
+            layer_key=_safe_string_expression("layer_key", max_length=_LAYER_KEY_MAX_LENGTH),
+        )
     )
 
 
