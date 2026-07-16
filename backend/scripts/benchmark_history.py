@@ -238,7 +238,6 @@ def _seed_bulk_events(
     connection: Connection,
     *,
     project_id: int,
-    noise_project_id: int,
     source_layer_key: str,
     current_condition_id: int,
     deleted_condition_id: int,
@@ -249,7 +248,6 @@ def _seed_bulk_events(
             WITH generated AS (
                 SELECT
                     gs,
-                    CASE WHEN gs % 2 = 0 THEN :project_id ELSE :noise_project_id END AS project_id,
                     CASE (gs % 8)
                         WHEN 0 THEN 'cell_update'
                         WHEN 1 THEN 'project_create'
@@ -273,7 +271,7 @@ def _seed_bulk_events(
                         ELSE 'system'
                     END AS origin,
                     CASE WHEN gs % 5 = 0 THEN 'batch-timeline-' || lpad((gs / 5)::text, 6, '0') END AS batch_id,
-                    CASE WHEN gs % 7 = 0 THEN :noise_project_id END AS source_project_id,
+                    CASE WHEN gs % 7 = 0 THEN :project_id END AS source_project_id,
                     CASE WHEN gs % 7 = 0 THEN :source_layer_key END AS source_layer_key,
                     CASE WHEN gs % 8 = 0 THEN :current_condition_id ELSE :deleted_condition_id END AS condition_id,
                     CASE
@@ -313,7 +311,7 @@ def _seed_bulk_events(
                 created_at
             )
             SELECT
-                project_id,
+                :project_id,
                 event_type,
                 actor,
                 CASE event_type
@@ -385,7 +383,6 @@ def _seed_bulk_events(
         {
             "count": _BASE_EVENT_COUNT,
             "project_id": project_id,
-            "noise_project_id": noise_project_id,
             "source_layer_key": source_layer_key,
             "current_condition_id": current_condition_id,
             "deleted_condition_id": deleted_condition_id,
@@ -580,14 +577,6 @@ def _seed_history_fixture(connection: Connection) -> HistoryFixture:
         RETURNING id
         """,
     )
-    noise_project_id = _insert_scalar(
-        connection,
-        """
-        INSERT INTO project (line_id, process_id, part_id, name)
-        VALUES ('L1', 'PROC_HISTORY_NOISE', 'PART_HISTORY_NOISE', 'History noise project')
-        RETURNING id
-        """,
-    )
     _seed_parameters(connection)
     layer_keys, current_condition_id, deleted_condition_id = _seed_layers_and_cells(
         connection, project_id=project_id
@@ -595,7 +584,6 @@ def _seed_history_fixture(connection: Connection) -> HistoryFixture:
     _seed_bulk_events(
         connection,
         project_id=project_id,
-        noise_project_id=noise_project_id,
         source_layer_key=layer_keys[0],
         current_condition_id=current_condition_id,
         deleted_condition_id=deleted_condition_id,
@@ -618,25 +606,12 @@ def _seed_history_fixture(connection: Connection) -> HistoryFixture:
         layer_key=layer_keys[0],
         detail_batch_id=detail_batch_id,
         paste_batch_id=paste_batch_id,
-        source_project_id=noise_project_id,
+        source_project_id=project_id,
     )
 
 
-def _timeline_summary_sql(filter_clause: str = "", *, raw_limit: int = 1000) -> str:
+def _timeline_summary_sql(filter_clause: str = "") -> str:
     return f"""
-        WITH raw AS (
-            SELECT
-                id,
-                batch_id,
-                event_type,
-                origin,
-                created_at
-            FROM change_event
-            WHERE project_id = :project_id
-              {filter_clause}
-            ORDER BY id DESC
-            LIMIT {raw_limit}
-        )
         SELECT
             CASE WHEN batch_id IS NULL THEN id::text ELSE batch_id END AS group_key,
             MAX(id) AS group_max_id,
@@ -644,7 +619,9 @@ def _timeline_summary_sql(filter_clause: str = "", *, raw_limit: int = 1000) -> 
             MAX(created_at)::text AS latest_created_at,
             MAX(event_type)::text AS sample_event_type,
             MAX(origin)::text AS sample_origin
-        FROM raw
+        FROM change_event
+        WHERE project_id = :project_id
+          {filter_clause}
         GROUP BY 1
         ORDER BY group_max_id DESC
         LIMIT :limit
