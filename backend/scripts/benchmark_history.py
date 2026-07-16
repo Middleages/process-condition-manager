@@ -46,6 +46,9 @@ from app.domain.backbone.snapshot import (
     serialize_backbone_snapshot,
 )
 from app.domain.parameters.types import ValueType
+from app.features.cells.repository import CellRepository
+from app.features.cells.schema import CellsPatchIn, CellUpdateIn
+from app.features.cells.service import CellService
 from app.features.history.cursor import (
     HistoryDetailScope,
     HistoryMemberFilterScope,
@@ -1245,7 +1248,7 @@ async def _collect_plan_evidence(
         return plans, {str(name) for name in index_rows}
 
 
-def _seed_overhead_fixture(connection: Connection) -> tuple[int, int, str]:
+def _seed_overhead_fixture(connection: Connection) -> tuple[int, int]:
     project_id = _scalar(
         connection,
         """
@@ -1284,71 +1287,65 @@ def _seed_overhead_fixture(connection: Connection) -> tuple[int, int, str]:
         {"condition_id": condition_id},
     )
     connection.commit()
-    return project_id, condition_id, layer_key
+    return project_id, condition_id
 
 
-def _measure_write_series(
-    connection: Connection,
+async def _measure_write_series(
+    database_url: str,
     *,
     label: str,
     project_id: int,
     condition_id: int,
-    layer_key: str,
     warmup_runs: int,
     timed_runs: int,
 ) -> WriteBenchmark:
-    statement = sa.text(
-        """
-        INSERT INTO change_event (
-            project_id, event_type, actor, payload, condition_id, parameter_code,
-            old_value, new_value, layer_key, batch_id, origin, created_at
-        )
-        SELECT
-            :project_id, 'CELL_UPDATE', 'dev-admin',
-            jsonb_build_object('batch_id', :batch_id, 'origin', 'paste'),
-            :condition_id, code, 'old-' || code, 'new-' || code, :layer_key,
-            :batch_id, 'paste',
-            timestamp with time zone '2026-07-21 00:00:00+00'
-                + make_interval(secs => sort_order)
-        FROM parameter ORDER BY sort_order
-        RETURNING id
-        """
+    engine = create_async_engine(database_url)
+    factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    request = CellsPatchIn(
+        cells=[
+            CellUpdateIn(
+                condition_id=condition_id,
+                parameter_code=f"param_{index:04d}",
+                value=f"new-param_{index:04d}",
+            )
+            for index in range(_PASTE_BATCH_SIZE)
+        ],
+        origin="paste",
     )
 
-    def run_once() -> float:
-        transaction = connection.begin()
-        try:
+    async def run_once() -> float:
+        async with factory() as session:
             started = time.perf_counter()
-            rows = connection.execute(
-                statement,
-                {
-                    "project_id": project_id,
-                    "batch_id": "batch-overhead-200",
-                    "condition_id": condition_id,
-                    "layer_key": layer_key,
-                },
-            ).all()
+            response = await CellService(CellRepository(session)).patch_cells(
+                project_id,
+                request,
+                actor="dev-admin",
+            )
             elapsed = (time.perf_counter() - started) * 1000
-            assert len(rows) == _PASTE_BATCH_SIZE
+            assert len(response.cells) == _PASTE_BATCH_SIZE
+            # Flush/index maintenance is complete. Roll back after timing so every
+            # sample starts from the exact same 200 current values.
+            await session.rollback()
             return elapsed
-        finally:
-            transaction.rollback()
 
-    for _ in range(warmup_runs):
-        run_once()
-    samples = [run_once() for _ in range(timed_runs)]
-    ordered = sorted(samples)
-    p95_index = max(0, math.ceil(0.95 * len(ordered)) - 1)
-    return WriteBenchmark(
-        label=label,
-        samples_ms=tuple(round(value, 3) for value in samples),
-        p50_ms=statistics.median(ordered),
-        p95_ms=ordered[p95_index],
-        max_ms=max(ordered),
-    )
+    try:
+        for _ in range(warmup_runs):
+            await run_once()
+        samples = [await run_once() for _ in range(timed_runs)]
+        ordered = sorted(samples)
+        p95_index = max(0, math.ceil(0.95 * len(ordered)) - 1)
+        return WriteBenchmark(
+            label=label,
+            samples_ms=tuple(round(value, 3) for value in samples),
+            p50_ms=statistics.median(ordered),
+            p95_ms=ordered[p95_index],
+            max_ms=max(ordered),
+        )
+    finally:
+        await engine.dispose()
 
 
-def _measure_paste_overhead(
+async def _measure_paste_overhead(
     *, warmup_runs: int, timed_runs: int
 ) -> tuple[dict[str, Any], list[str]]:
     results: dict[str, WriteBenchmark] = {}
@@ -1356,21 +1353,21 @@ def _measure_paste_overhead(
         with temporary_postgres_database() as database:
             migration_db = _prepare_database(database, target=revision)
             try:
-                project_id, condition_id, layer_key = _seed_overhead_fixture(
+                project_id, condition_id = _seed_overhead_fixture(
                     migration_db.connection
                 )
-                results[revision] = _measure_write_series(
-                    migration_db.connection,
-                    label=f"paste_overhead_{revision}",
-                    project_id=project_id,
-                    condition_id=condition_id,
-                    layer_key=layer_key,
-                    warmup_runs=warmup_runs,
-                    timed_runs=timed_runs,
-                )
+                database_url = database.async_url
             finally:
                 migration_db.connection.close()
                 migration_db.connection.engine.dispose()
+            results[revision] = await _measure_write_series(
+                database_url,
+                label=f"paste_overhead_{revision}",
+                project_id=project_id,
+                condition_id=condition_id,
+                warmup_runs=warmup_runs,
+                timed_runs=timed_runs,
+            )
     pre = results["0006"]
     post = results["head"]
     ratio = (post.p50_ms - pre.p50_ms) / pre.p50_ms if pre.p50_ms else math.inf
@@ -1537,7 +1534,7 @@ async def _build_report(
         "failures": failures,
     }
     if compare_paste_overhead:
-        overhead, overhead_failures = _measure_paste_overhead(
+        overhead, overhead_failures = await _measure_paste_overhead(
             warmup_runs=warmup_runs,
             timed_runs=timed_runs,
         )
