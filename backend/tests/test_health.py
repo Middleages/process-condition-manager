@@ -1,5 +1,6 @@
 """T2 골격 검증: 앱 부팅 + 이중 엔진 초기화."""
 
+import pytest
 from httpx import AsyncClient
 
 from app.core import maintenance
@@ -50,6 +51,38 @@ async def test_phase4_writer_health_reports_active_when_mutations_enabled(
     body = resp.json()
     assert body["pre_unfreeze_ready"] is False
     assert body["runtime_state"] == "active"
+
+
+@pytest.mark.parametrize(
+    ("mutations_enabled", "expected_pre_unfreeze_ready", "expected_runtime_state"),
+    [
+        (False, True, "pre_unfreeze"),
+        (True, False, "active"),
+    ],
+)
+async def test_phase4_writer_health_accepts_revision_0007(
+    client: AsyncClient,
+    monkeypatch,
+    mutations_enabled: bool,
+    expected_pre_unfreeze_ready: bool,
+    expected_runtime_state: str,
+) -> None:
+    async def _compatible_revision() -> str | None:
+        return "0007"
+
+    monkeypatch.setattr(maintenance, "read_app_revision", _compatible_revision)
+    monkeypatch.setattr(maintenance.settings, "project_mutations_enabled", mutations_enabled)
+
+    resp = await client.get("/health/phase4-writer")
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["status"] == "ok"
+    assert body["contract_version"] == 1
+    assert body["db_revision"] == "0007"
+    assert body["project_mutations_enabled"] is mutations_enabled
+    assert body["pre_unfreeze_ready"] is expected_pre_unfreeze_ready
+    assert body["runtime_state"] == expected_runtime_state
 
 
 async def test_phase4_writer_health_returns_503_on_revision_mismatch(
