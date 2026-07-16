@@ -9,7 +9,7 @@ import json
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any, Literal, NoReturn, cast
+from typing import Any, Literal
 
 from app.domain.errors import RuleViolationError
 from app.models.project import ChangeEventType
@@ -127,20 +127,6 @@ def _normalize_sorted_unique_text_tuple(
     return tuple(sorted(values))
 
 
-def _normalize_sorted_unique_event_type_tuple(
-    raw: object, *, field_name: str, error_code: str
-) -> tuple[str, ...]:
-    values = _normalize_sorted_unique_text_tuple(
-        raw, field_name=field_name, max_length=64, error_code=error_code
-    )
-    allowed_values = {event_type.value for event_type in ChangeEventType}
-    if any(value not in allowed_values for value in values):
-        if error_code == "invalid_scope":
-            _raise_invalid_scope(f"{field_name} contains an unsupported value")
-        _raise_invalid_cursor(f"{field_name} contains an unsupported value")
-    return values
-
-
 def _normalize_sorted_unique_int_tuple(
     raw: object, *, field_name: str, error_code: str
 ) -> tuple[int, ...]:
@@ -164,7 +150,6 @@ def _normalize_sorted_unique_int_tuple(
 def _normalize_datetime(raw: object, *, field_name: str, error_code: str) -> datetime | None:
     if raw is None:
         return None
-    parsed: datetime | None = None
     if isinstance(raw, datetime):
         parsed = raw
     elif isinstance(raw, str):
@@ -179,7 +164,6 @@ def _normalize_datetime(raw: object, *, field_name: str, error_code: str) -> dat
         if error_code == "invalid_scope":
             _raise_invalid_scope(f"{field_name} must be an ISO datetime string")
         _raise_invalid_cursor(f"{field_name} must be an ISO datetime string")
-    assert parsed is not None
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=UTC)
     else:
@@ -530,13 +514,14 @@ def _member_filters_from_payload(
         layer_keys=_normalize_sorted_unique_text_tuple(
             payload["layer_keys"],
             field_name="layer_keys",
-            max_length=256,
-            error_code=error_code,
+            max_length=64,
+            error_code="invalid_scope",
         ),
-        event_types=_normalize_sorted_unique_event_type_tuple(
+        event_types=_normalize_sorted_unique_text_tuple(
             payload["event_types"],
             field_name="event_types",
-            error_code=error_code,
+            max_length=64,
+            error_code="invalid_scope",
         ),
         actors=_normalize_sorted_unique_text_tuple(
             payload["actors"], field_name="actors", max_length=128, error_code=error_code
@@ -556,13 +541,16 @@ def _member_filters_from_payload(
         source_project_ids=_normalize_sorted_unique_int_tuple(
             payload["source_project_ids"],
             field_name="source_project_ids",
-            error_code=error_code,
+            error_code="invalid_scope",
         ),
         created_from=_normalize_datetime(
             payload["created_from"], field_name="created_from", error_code=error_code
         ),
         created_to=_normalize_datetime(
             payload["created_to"], field_name="created_to", error_code=error_code
+        ),
+        created_to=_normalize_datetime(
+            payload["created_to"], field_name="created_to", error_code="invalid_scope"
         ),
     )
 
@@ -581,9 +569,7 @@ def _timeline_scope_from_payload(payload: dict[str, Any]) -> HistoryTimelineScop
         project_id=_normalize_int(
             payload["project_id"], field_name="project_id", error_code="invalid_cursor"
         ),
-        member_filters=_member_filters_from_payload(
-            payload["member_filters"], error_code="invalid_cursor"
-        ),
+        member_filters=_member_filters_from_payload(payload["member_filters"]),
     )
 
 
@@ -595,8 +581,8 @@ def _detail_scope_to_payload(scope: HistoryDetailScope) -> dict[str, Any]:
     }
 
 
-def _detail_scope_from_payload(payload: dict[str, Any]) -> HistoryDetailScope:
-    if set(payload) != {
+def _detail_scope_from_payload(payload: object) -> HistoryDetailScope:
+    if not isinstance(payload, dict) or set(payload) != {
         "project_id",
         "batch_id",
         "member_filters",
@@ -648,7 +634,7 @@ def _capture_key_from_payload(payload: dict[str, Any]) -> HistoryCaptureKey:
         target_layer_key=_normalize_non_empty_text(
             payload["target_layer_key"],
             field_name="target_layer_key",
-            max_length=256,
+            max_length=64,
             error_code="invalid_cursor",
         ),
         source_condition_index=_normalize_int(
@@ -718,12 +704,12 @@ def decode_history_timeline_cursor(
             payload_dict["v"], field_name="version", error_code="invalid_cursor"
         ),
         snapshot_max_event_id=_normalize_int(
-            payload_dict["snapshot_max_event_id"],
+            payload["snapshot_max_event_id"],
             field_name="snapshot_max_event_id",
             error_code="invalid_cursor",
         ),
         before_group_max_id=_normalize_int(
-            payload_dict["before_group_max_id"],
+            payload["before_group_max_id"],
             field_name="before_group_max_id",
             error_code="invalid_cursor",
         ),
@@ -846,25 +832,21 @@ def decode_history_cell_history_cursor(
         _raise_invalid_cursor("history cursor token is invalid")
     payload_dict = cast(dict[str, Any], payload)
     cursor = HistoryCellHistoryCursor(
-        version=_normalize_int(
-            payload_dict["v"], field_name="version", error_code="invalid_cursor"
-        ),
+        version=_normalize_int(payload["v"], field_name="version", error_code="invalid_cursor"),
         project_id=_normalize_int(
-            payload_dict["project_id"], field_name="project_id", error_code="invalid_cursor"
+            payload["project_id"], field_name="project_id", error_code="invalid_cursor"
         ),
         condition_id=_normalize_int(
-            payload_dict["condition_id"], field_name="condition_id", error_code="invalid_cursor"
+            payload["condition_id"], field_name="condition_id", error_code="invalid_cursor"
         ),
         parameter_code=_normalize_non_empty_text(
-            payload_dict["parameter_code"],
+            payload["parameter_code"],
             field_name="parameter_code",
             max_length=64,
             error_code="invalid_cursor",
         ),
         last_event_id=_normalize_int(
-            payload_dict["last_event_id"],
-            field_name="last_event_id",
-            error_code="invalid_cursor",
+            payload["last_event_id"], field_name="last_event_id", error_code="invalid_cursor"
         ),
     )
     if (
