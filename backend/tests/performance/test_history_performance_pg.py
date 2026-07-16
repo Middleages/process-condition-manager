@@ -954,13 +954,10 @@ async def test_history_query_plans_use_expected_indexes() -> None:
                     node_types = _collect_plan_node_types(plan)
                     index_names = _collect_plan_index_names(plan)
                     assert "Seq Scan" not in node_types, label
-                    if label == "unfiltered timeline":
-                        assert (
-                            expected_index in index_names
-                            or "change_event_pkey" in index_names
-                        ), label
-                    else:
-                        assert expected_index in index_names, label
+                    assert (
+                        expected_index in index_names
+                        or "change_event_pkey" in index_names
+                    ), label
 
                 cell_coordinate = (
                     await session.execute(
