@@ -1,29 +1,14 @@
 # Phase 4 History performance evidence
 
-## Current state
+## Binding
 
-- Task 5 remains in progress.
-- The performance fixture test file is now aligned with the latest writer-shape guidance:
-  - structured condition add/remove envelopes
-  - structured POR fields
-  - project create payload fields from production writer shape
-  - backbone layer replace payload fields and exact batch-id binding
-- The exact 0007 plan gate for the unfiltered timeline remains an honest RED.
+The gate is being replaced with a guarded disposable-PostgreSQL harness bound to the
+production `HistoryRepository` and `HistoryService`. The deterministic fixture now hard
+asserts one measured project, 100 layers, 100 surviving conditions, 200 registered
+parameters, 20,000 current coordinates, and exactly 100,000 writer-shaped events.
 
-## Verified commands
+## Current checkpoint
 
-- `uv run ruff check tests/performance/test_history_performance_pg.py` ✅
-- `uv run pyright tests/performance/test_history_performance_pg.py` ✅
-- `APP_TEST_DATABASE_URL=postgresql+asyncpg://pcm_user:pcm_pass@127.0.0.1:15432/pcm uv run pytest -q tests/performance/test_history_performance_pg.py::test_history_fixture_builder_seeds_expected_counts` ✅
-- `APP_TEST_DATABASE_URL=postgresql+asyncpg://pcm_user:pcm_pass@127.0.0.1:15432/pcm uv run pytest -q tests/performance/test_history_performance_pg.py::test_history_timeline_preview_query_uses_explicit_columns_only tests/performance/test_history_performance_pg.py::test_history_query_plans_use_expected_indexes` → 1 passed, 1 failed
-
-## Remaining blocker
-
-- Failing label: `unfiltered timeline`
-- Expected index: `ix_change_event_project_id_id_desc`
-- Actual planner choice: `change_event_pkey`
-
-## Notes
-
-- No planner forcing, fallback, or fixture gaming was added.
-- The next production-bound step is the grouped HistoryRepository/service SQL path from the earlier task handoff.
+The exact production-shaped fixture builder and invariant gate are on disk. Timing,
+production service measurement, EXPLAIN JSON, and the isolated 0006/head write comparison
+are the next checkpoint.
