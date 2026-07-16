@@ -1,8 +1,10 @@
-# pyright: reportMissingImports=false
 from __future__ import annotations
 
+import base64
+import hashlib
+import json
 from datetime import UTC, datetime
-from typing import Any, cast
+from typing import Any
 
 import pytest
 
@@ -338,6 +340,5 @@ def test_scope_dataclasses_reject_invalid_values() -> None:
 
 def test_member_filter_scope_rejects_unsupported_origin_values() -> None:
     with pytest.raises(RuleViolationError) as exc_info:
-        bad_origins: Any = ("unsupported",)
-        HistoryMemberFilterScope(origins=bad_origins)
+        HistoryMemberFilterScope(origins=("unsupported",))  # type: ignore[arg-type]
     assert exc_info.value.code == "invalid_scope"
