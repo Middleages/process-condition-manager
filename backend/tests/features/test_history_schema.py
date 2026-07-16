@@ -1,8 +1,6 @@
-# pyright: reportMissingImports=false
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import cast
 
 import pytest
 from pydantic import ValidationError
@@ -31,19 +29,24 @@ def _dt() -> datetime:
 
 
 def test_history_query_limits_are_validated() -> None:
-    query = HistoryTimelineQueryIn(
-        created_from="2026-07-01T00:00:00-07:00",
-        created_to="2026-07-02T00:00:00-07:00",
-        layer_key="L1",
-        event_type=["project_create", "backbone_copy"],
-        actor="alice",
-        origin=["manual", "paste"],
-        source_project_id=99,
+    query = HistoryTimelineQueryIn.model_validate(
+        {
+            "created_from": "2026-07-01T00:00:00-07:00",
+            "created_to": "2026-07-02T00:00:00-07:00",
+            "layer_key": "L1",
+            "event_type": ["project_create", "backbone_copy"],
+            "actor": "alice",
+            "origin": "manual",
+            "source_project_id": 99,
+        }
     )
     assert query.created_from == datetime(2026, 7, 1, 7, 0, tzinfo=UTC)
     assert query.created_to == datetime(2026, 7, 2, 7, 0, tzinfo=UTC)
-    assert query.event_type == ["project_create", "backbone_copy"]
-    assert query.origin == ["manual", "paste"]
+    assert query.event_type == [
+        ChangeEventType.PROJECT_CREATE,
+        ChangeEventType.BACKBONE_COPY,
+    ]
+    assert query.origin == "manual"
     assert query.limit == 50
     assert HistoryDetailQueryIn(scope="opaque").limit == 100
     assert HistoryCellHistoryQueryIn(condition_id=1, parameter_code="P").limit == 50
@@ -57,15 +60,21 @@ def test_history_query_limits_are_validated() -> None:
     with pytest.raises(ValidationError):
         HistoryCellHistoryQueryIn(condition_id=1, parameter_code="P", limit=101)
     with pytest.raises(ValidationError):
-        HistoryTimelineQueryIn(
-            created_from="2026-07-02T00:00:00Z",
-            created_to="2026-07-02T00:00:00Z",
+        HistoryTimelineQueryIn.model_validate(
+            {
+                "created_from": "2026-07-02T00:00:00Z",
+                "created_to": "2026-07-02T00:00:00Z",
+            }
         )
     with pytest.raises(ValidationError):
-        HistoryTimelineQueryIn(
-            created_from="2026-07-03T00:00:00Z",
-            created_to="2026-07-02T00:00:00Z",
+        HistoryTimelineQueryIn.model_validate(
+            {
+                "created_from": "2026-07-03T00:00:00Z",
+                "created_to": "2026-07-02T00:00:00Z",
+            }
         )
+    with pytest.raises(ValidationError):
+        HistoryTimelineQueryIn.model_validate({"origin": ["manual", "paste"]})
 
 
 def test_timeline_schema_whitelists_public_fields_and_rejects_raw_payload() -> None:
@@ -77,7 +86,7 @@ def test_timeline_schema_whitelists_public_fields_and_rejects_raw_payload() -> N
         summary="Grouped change events",
         detail_status="available",
         detail_scope="opaque-scope",
-        event_types=["project_create"],
+        event_types=[ChangeEventType.PROJECT_CREATE],
         actors=["alice"],
         origins=["manual"],
         layer_keys=["L1"],
@@ -116,10 +125,9 @@ def test_timeline_schema_whitelists_public_fields_and_rejects_raw_payload() -> N
 def test_detail_and_cell_schema_support_baseline_initial_and_jump_states() -> None:
     detail_item = HistoryDetailItemOut(
         event_id=11,
-        order_kind="capture_asc",
-        old_code="OLD",
-        new_code="NEW",
-        baseline_value="BASELINE",
+        old_code="  OLD  ",
+        new_code="",
+        copied_value="  BASELINE  ",
         choice_label="Label",
         actor="operator",
         origin="backbone",
@@ -137,23 +145,25 @@ def test_detail_and_cell_schema_support_baseline_initial_and_jump_states() -> No
             parameter_sort=2,
             parameter_code="P1",
             event_id=11,
-            domain_coordinate=HistoryDomainCoordinateOut(
-                layer_key="L1", condition_id=3, parameter_code="P1"
-            ),
-            copied_baseline_value="BASELINE",
         ),
     )
     detail = HistoryDetailOut(
         order_kind="capture_asc", detail_status="available", items=[detail_item]
     )
     assert detail.model_dump()["items"][0]["metadata_status"] == "complete"
-    assert detail.model_dump()["items"][0]["baseline_value"] == "BASELINE"
+    assert detail.model_dump()["items"][0]["copied_value"] == "  BASELINE  "
+    assert detail.model_dump()["items"][0]["old_code"] == "  OLD  "
+    assert detail.model_dump()["items"][0]["new_code"] == ""
     assert detail.model_dump()["items"][0]["domain_coordinate"] == {
         "layer_key": "L1",
         "condition_id": 3,
         "parameter_code": "P1",
         "cell_ref": None,
     }
+    assert "baseline_value" not in HistoryDetailItemOut.model_fields
+    assert "order_kind" not in HistoryDetailItemOut.model_fields
+    assert "domain_coordinate" not in HistoryDetailCaptureTupleOut.model_fields
+    assert "copied_baseline_value" not in HistoryDetailCaptureTupleOut.model_fields
 
     cell_item = HistoryCellHistoryItemOut(
         event_id=21,
@@ -168,13 +178,17 @@ def test_detail_and_cell_schema_support_baseline_initial_and_jump_states() -> No
     )
     cell_history = HistoryCellHistoryOut(
         items=[cell_item],
-        baseline_entry=HistoryStateEntryOut(code="BASE", label="Base label"),
-        initial_entry=HistoryStateEntryOut(code="INIT", label="Initial label"),
+        baseline_entry=HistoryStateEntryOut(code="", label="Base label"),
+        initial_entry=HistoryStateEntryOut(code="  INIT  ", label="Initial label"),
         next_cursor=None,
     )
     assert cell_history.model_dump()["baseline_entry"] == {
-        "code": "BASE",
+        "code": "",
         "label": "Base label",
+    }
+    assert cell_history.model_dump()["initial_entry"] == {
+        "code": "  INIT  ",
+        "label": "Initial label",
     }
     assert cell_history.model_dump()["initial_state_unavailable"] is False
     assert "baseline_entry" not in HistoryCellHistoryItemOut.model_fields

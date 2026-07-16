@@ -1,8 +1,10 @@
-# pyright: reportMissingImports=false
 from __future__ import annotations
 
+import base64
+import hashlib
+import json
 from datetime import UTC, datetime
-from typing import Any, cast
+from typing import Any
 
 import pytest
 
@@ -13,7 +15,6 @@ from app.features.history.cursor import (
     HistoryDetailCursor,
     HistoryDetailScope,
     HistoryMemberFilterScope,
-    HistoryOrigin,
     HistoryTimelineCursor,
     HistoryTimelineScope,
     decode_history_cell_history_cursor,
@@ -28,12 +29,28 @@ from app.features.history.cursor import (
 )
 
 
+def _encode_payload(payload: dict[str, Any]) -> str:
+    raw = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode()
+    return base64.urlsafe_b64encode(raw).decode().rstrip("=")
+
+
+def _decode_payload(token: str) -> dict[str, Any]:
+    padding = "=" * (-len(token) % 4)
+    raw = base64.urlsafe_b64decode(token + padding)
+    return json.loads(raw)
+
+
+def _fingerprint_payload(payload: object) -> str:
+    raw = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode()
+    return hashlib.sha256(raw).hexdigest()
+
+
 def test_timeline_cursor_round_trips_with_normalized_scope_filters() -> None:
     scope = HistoryTimelineScope(
         project_id=7,
         member_filters=HistoryMemberFilterScope(
             layer_keys=(" layer-b ", "layer-a"),
-            event_types=("UPDATED", "CREATED"),
+            event_types=("project_create", "backbone_copy"),
             actors=("alice", "bob"),
             origins=("paste", "manual"),
             source_project_ids=(9, 3),
@@ -69,9 +86,51 @@ def test_timeline_cursor_round_trips_with_normalized_scope_filters() -> None:
     )
 
 
+def test_timeline_cursor_rejects_scope_fingerprint_tampering() -> None:
+    cursor = HistoryTimelineCursor(
+        version=1,
+        snapshot_max_event_id=123,
+        before_group_max_id=120,
+        scope=HistoryTimelineScope(
+            project_id=7,
+            member_filters=HistoryMemberFilterScope(layer_keys=("layer-a",)),
+        ),
+    )
+    payload = _decode_payload(encode_history_timeline_cursor(cursor))
+    scope = payload["scope"]
+    scope["project_id"] = 9
+    tampered = _encode_payload(payload)
+
+    with pytest.raises(RuleViolationError) as exc_info:
+        decode_history_timeline_cursor(tampered)
+    assert exc_info.value.code == "invalid_cursor"
+
+
+def test_timeline_cursor_rejects_nested_malformed_scope() -> None:
+    cursor = HistoryTimelineCursor(
+        version=1,
+        snapshot_max_event_id=123,
+        before_group_max_id=120,
+        scope=HistoryTimelineScope(project_id=7),
+    )
+    payload = _decode_payload(encode_history_timeline_cursor(cursor))
+    payload["scope"] = "broken"
+    payload["scope_fingerprint"] = _fingerprint_payload("broken")
+
+    with pytest.raises(RuleViolationError) as exc_info:
+        decode_history_timeline_cursor(_encode_payload(payload))
+    assert exc_info.value.code == "invalid_cursor"
+
+
 def test_member_filter_scope_rejects_duplicate_values() -> None:
     with pytest.raises(RuleViolationError) as exc_info:
         HistoryMemberFilterScope(layer_keys=("layer-a", "layer-a"))
+    assert exc_info.value.code == "invalid_scope"
+
+
+def test_member_filter_scope_rejects_unsupported_event_type_values() -> None:
+    with pytest.raises(RuleViolationError) as exc_info:
+        HistoryMemberFilterScope(event_types=("not-a-real-event-type",))
     assert exc_info.value.code == "invalid_scope"
 
 
@@ -255,26 +314,7 @@ def test_scope_mismatch_helper_raises_invalid_scope() -> None:
     assert exc_info.value.code == "invalid_scope"
 
 
-@pytest.mark.parametrize(
-    "bad_cursor_kwargs",
-    [
-        {
-            "version": 2,
-            "snapshot_max_event_id": 10,
-            "before_group_max_id": 8,
-            "scope": cast(object, HistoryTimelineScope(project_id=1)),
-        },
-        {
-            "version": 1,
-            "snapshot_max_event_id": 10,
-            "before_group_max_id": 8,
-            "scope": "not-a-scope",
-        },
-    ],
-)
-def test_cursor_dataclasses_reject_bad_versions_and_types(
-    bad_cursor_kwargs: dict[str, object],
-) -> None:
+def test_cursor_dataclasses_reject_bad_versions_and_types() -> None:
     with pytest.raises(RuleViolationError):
         HistoryTimelineCursor(
             version=2,
@@ -300,6 +340,5 @@ def test_scope_dataclasses_reject_invalid_values() -> None:
 
 def test_member_filter_scope_rejects_unsupported_origin_values() -> None:
     with pytest.raises(RuleViolationError) as exc_info:
-        bad_origins: Any = ("unsupported",)
-        HistoryMemberFilterScope(origins=bad_origins)
+        HistoryMemberFilterScope(origins=("unsupported",))  # type: ignore[arg-type]
     assert exc_info.value.code == "invalid_scope"
