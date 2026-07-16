@@ -130,6 +130,9 @@ async def _seed_or_reuse_profile_choice_set(
         await _seed_choice_set(session, code=code, options=_DEFAULT_PROFILE_OPTIONS)
         return "DEFAULT"
 
+    if not choice_set.is_active:
+        raise RuntimeError(f"canonical ChoiceSet is inactive: {code}")
+
     active_options = sorted(
         (option for option in choice_set.options if option.is_active),
         key=lambda option: (option.sort_order, option.code),
@@ -357,6 +360,7 @@ async def _run_rollback_smoke(
         )
         cell_service = CellService(CellRepository(session))
         condition_service = ConditionService(ConditionRepository(session))
+        transaction = await session.begin()
 
         try:
             seed = await _seed_source_project(session)
@@ -495,6 +499,7 @@ async def _run_rollback_smoke(
                 replaced_layer.backbone_snapshot["conditions"]
             )
         finally:
+            await transaction.rollback()
             await session.rollback()
 
     async with session_factory() as session:
