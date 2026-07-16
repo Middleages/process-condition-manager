@@ -9,9 +9,11 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, Literal, cast as typing_cast
+from typing import Any, Literal
+from typing import cast as typing_cast
 
-from sqlalchemy import String, cast as sa_cast, case, func, select
+from sqlalchemy import String, case, func, select
+from sqlalchemy import cast as sa_cast
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.features.history.cursor import HistoryMemberFilterScope
@@ -138,11 +140,11 @@ class HistoryRepository:
             if batch_id is None:
                 total_count = 1
                 group_kind: HistoryGroupKind = "event"
-                group_key = str(max_event_id)
+                group_key = f"event:{max_event_id}"
             else:
                 total_count = total_counts_by_batch.get(batch_id, int(row["matched_event_count"]))
                 group_kind = "batch"
-                group_key = batch_id
+                group_key = f"batch:{batch_id}"
             rows.append(
                 HistoryTimelineGroupRow(
                     group_key=group_key,
@@ -163,7 +165,11 @@ class HistoryRepository:
         *,
         snapshot_max_event_id: int | None = None,
     ) -> int:
-        return await self._count_batch_member(batch_id, project_id, snapshot_max_event_id=snapshot_max_event_id)
+        return await self._count_batch_member(
+            batch_id,
+            project_id,
+            snapshot_max_event_id=snapshot_max_event_id,
+        )
 
     async def load_batch_members(
         self,
@@ -196,12 +202,16 @@ class HistoryRepository:
                 SheetLayer.backbone_snapshot.is_(None),
             )
         )
-        # The current phase does not persist a legacy schema-version flag for history rows;
-        # repository coverage therefore exposes the structural layer count plus a zero legacy
-        # detail count. Future schema versions can tighten this without changing callers.
+        legacy_detail_stmt = select(func.count(ChangeEvent.id)).where(
+            ChangeEvent.project_id == project_id,
+            ChangeEvent.payload.is_(None),
+        )
+        if snapshot_max_event_id is not None:
+            legacy_detail_stmt = legacy_detail_stmt.where(ChangeEvent.id <= snapshot_max_event_id)
+        legacy_detail_count = await self.session.execute(legacy_detail_stmt)
         return HistoryCoverageCounts(
             legacy_unresolved_layer_count=int(unresolved_layers.scalar_one()),
-            legacy_detail_unavailable_count=0,
+            legacy_detail_unavailable_count=int(legacy_detail_count.scalar_one()),
         )
 
     async def prove_cell_coordinate(
@@ -281,7 +291,10 @@ class HistoryRepository:
             await self.load_cell_history_rows(project_id, condition_id, parameter_code)
         )
         baseline_row = await self._latest_condition_add_event(project_id, condition_id)
-        if baseline_row is not None:
+        if baseline_row is not None and await self._live_condition_matches_backbone_snapshot(
+            project_id,
+            condition_id,
+        ):
             rows.append(
                 _anchor_row_from_event(
                     baseline_row,
@@ -382,7 +395,7 @@ class HistoryRepository:
 
     async def _load_event_rows(self, stmt) -> tuple[HistoryEventRow, ...]:
         rows = (await self.session.execute(stmt)).mappings().all()
-        return tuple(_event_row_from_mapping(row) for row in rows)
+        return tuple(_event_row_from_mapping(typing_cast(Mapping[str, Any], row)) for row in rows)
 
     async def _load_event_rows_by_ids(
         self, project_id: int, event_ids: Sequence[int]
@@ -418,7 +431,7 @@ class HistoryRepository:
             .limit(1)
         )
         row = (await self.session.execute(stmt)).mappings().first()
-        return row
+        return typing_cast(Mapping[str, Any] | None, row)
 
     async def _latest_cell_event(
         self,
@@ -470,9 +483,13 @@ class HistoryRepository:
                     snapshot_max_event_id=None,
                     with_payload=True,
                 )
-                .where(ChangeEvent.event_type == "condition_remove")
+                .where(
+                    ChangeEvent.event_type == "condition_remove",
+                    ChangeEvent.payload["snapshot"]["condition_id"].as_integer()
+                    == condition_id,
+                )
                 .order_by(ChangeEvent.id.desc())
-                .limit(200)
+                .limit(20)
             )
             rows = tuple(
                 row
@@ -518,12 +535,53 @@ class HistoryRepository:
                 snapshot_max_event_id=None,
                 with_payload=True,
             )
-            .where(ChangeEvent.event_type == "condition_add")
+            .where(
+                ChangeEvent.event_type == "condition_add",
+                ChangeEvent.payload["snapshot"]["condition_id"].as_integer()
+                == condition_id,
+            )
             .order_by(ChangeEvent.id.desc())
-            .limit(200)
+            .limit(20)
         )
-        rows = tuple(row for row in await self._load_event_rows(stmt) if row.condition_id == condition_id)
+        rows = tuple(
+            row
+            for row in await self._load_event_rows(stmt)
+            if row.condition_id == condition_id
+        )
         return rows[0] if rows else None
+
+    async def _live_condition_matches_backbone_snapshot(
+        self,
+        project_id: int,
+        condition_id: int,
+    ) -> bool:
+        stmt = (
+            select(
+                LayerCondition.source_condition_id.label("source_condition_id"),
+                SheetLayer.backbone_snapshot.label("backbone_snapshot"),
+            )
+            .select_from(LayerCondition)
+            .join(SheetLayer, SheetLayer.id == LayerCondition.layer_id)
+            .where(
+                SheetLayer.project_id == project_id,
+                LayerCondition.id == condition_id,
+            )
+            .limit(1)
+        )
+        row = (await self.session.execute(stmt)).mappings().first()
+        if row is None:
+            return False
+        source_condition_id = row["source_condition_id"]
+        backbone_snapshot = row["backbone_snapshot"]
+        if source_condition_id is None or not isinstance(backbone_snapshot, Mapping):
+            return False
+        conditions = backbone_snapshot.get("conditions")
+        if not isinstance(conditions, Sequence):
+            return False
+        for condition in conditions:
+            if isinstance(condition, Mapping) and condition.get("source_condition_id") == source_condition_id:
+                return True
+        return False
 
     def _apply_member_filters(
         self,
@@ -577,7 +635,11 @@ def _event_row_from_mapping(mapping: Mapping[str, Any]) -> HistoryEventRow:
         actor=actor.value if hasattr(actor, "value") else str(actor),
         created_at=mapping["created_at"],
         batch_id=mapping["batch_id"],
-        origin=None if origin is None else (origin.value if hasattr(origin, "value") else str(origin)),
+        origin=(
+            None
+            if origin is None
+            else (origin.value if hasattr(origin, "value") else str(origin))
+        ),
         layer_key=layer_key,
         condition_id=condition_id,
         condition_index=None,
@@ -603,14 +665,14 @@ def _history_payload_fields(
     event_type_text = event_type.value if hasattr(event_type, "value") else str(event_type)
     payload_mapping = payload if isinstance(payload, Mapping) else {}
     if event_type_text in {"backbone_copy", "backbone_layer_replace"}:
-        schema_version = 2
+        schema_version = 1
         if "payload_schema_version" in payload_mapping:
             schema_version_value = payload_mapping["payload_schema_version"]
             if isinstance(schema_version_value, bool) or not isinstance(schema_version_value, int):
                 raise TypeError("payload_schema_version must be an int")
             schema_version = schema_version_value
         detail = payload_mapping.get("detail", {})
-        capture = payload_mapping.get("capture", {})
+        capture = payload_mapping.get("capture", {}) if schema_version >= 2 else {}
         return (
             dict(detail) if isinstance(detail, Mapping) else {},
             dict(capture) if isinstance(capture, Mapping) else {},

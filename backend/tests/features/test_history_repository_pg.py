@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 import os
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import delete, event, update
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlalchemy.pool import StaticPool
 
 import app.models  # noqa: F401 -- register every model for metadata.create_all
@@ -20,7 +25,10 @@ from app.features.history.projection import (
     HistoryEntryRole,
     project_cell_history,
 )
-from app.features.history.repository import HistoryRepository
+from app.features.history.repository import (
+    HistoryRepository,
+    HistoryTimelineGroupRow,
+)
 from app.models.project import (
     CellValue,
     ChangeEvent,
@@ -351,7 +359,11 @@ async def _seed_large_history_fixture(session: AsyncSession) -> LargeHistoryFixt
     for index in range(120):
         is_batch = index % 6 != 0
         batch_id = batch_ids[index % len(batch_ids)] if is_batch else None
-        event_type = ChangeEventType.CELL_UPDATE if is_batch else event_types[index % len(event_types)]
+        event_type = (
+            ChangeEventType.CELL_UPDATE
+            if is_batch
+            else event_types[index % len(event_types)]
+        )
         actor = "dev-admin" if index % 2 == 0 else "qa-bot"
         layer = layer_a if index % 3 == 0 else layer_b
         condition = condition_a if index % 2 == 0 else condition_b
@@ -514,7 +526,9 @@ async def test_postgres_repository_frozen_traversal_ignores_late_events_and_excl
     pg_engine: AsyncEngine,
     pg_factory: async_sessionmaker[AsyncSession],
 ) -> None:
-    async def capture_round_trip(call):
+    async def capture_round_trip(
+        call: Callable[[], Awaitable[tuple[HistoryTimelineGroupRow, ...]]],
+    ) -> tuple[tuple[HistoryTimelineGroupRow, ...], list[str]]:
         statements: list[str] = []
 
         def capture_sql(
@@ -586,7 +600,9 @@ async def test_postgres_repository_frozen_traversal_ignores_late_events_and_excl
             )
         )
         assert [row.group_key for row in frozen_first_page] == [row.group_key for row in first_page]
-        assert [row.max_event_id for row in frozen_first_page] == [row.max_event_id for row in first_page]
+        assert [row.max_event_id for row in frozen_first_page] == [
+            row.max_event_id for row in first_page
+        ]
         assert all("payload" not in statement.lower() for statement in frozen_first_page_statements)
         assert all("capture" not in statement.lower() for statement in frozen_first_page_statements)
 
@@ -601,9 +617,13 @@ async def test_postgres_repository_frozen_traversal_ignores_late_events_and_excl
         )
         assert next_page
         assert all(row.max_event_id < last_seen for row in next_page)
-        assert {row.group_key for row in next_page}.isdisjoint({row.group_key for row in first_page})
+        assert {row.group_key for row in next_page}.isdisjoint(
+            {row.group_key for row in first_page}
+        )
         assert all("payload" not in statement.lower() for statement in next_page_statements)
         assert all("capture" not in statement.lower() for statement in next_page_statements)
 
-        first_page_total = sum(row.total_event_count for row in first_page if row.batch_id is not None)
+        first_page_total = sum(
+            row.total_event_count for row in first_page if row.batch_id is not None
+        )
         assert first_page_total > 0
