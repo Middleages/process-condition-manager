@@ -50,17 +50,26 @@ async def pg_engine(tmp_path_factory: pytest.TempPathFactory) -> AsyncIterator[A
         database_path = tmp_path_factory.mktemp("phase4-writer") / "writer.sqlite"
         url = f"sqlite+aiosqlite:///{database_path}"
         engine = create_async_engine(url, connect_args={"check_same_thread": False})
-    else:
-        engine = create_async_engine(_PG_URL)
-    async with engine.begin() as connection:
-        await connection.run_sync(Base.metadata.drop_all)
-        await connection.run_sync(Base.metadata.create_all)
-    try:
-        yield engine
-    finally:
         async with engine.begin() as connection:
-            await connection.run_sync(Base.metadata.drop_all)
-        await engine.dispose()
+            await connection.run_sync(Base.metadata.create_all)
+        try:
+            yield engine
+        finally:
+            async with engine.begin() as connection:
+                await connection.run_sync(Base.metadata.drop_all)
+            await engine.dispose()
+        return
+
+    with temporary_postgres_database() as database:
+        engine = create_async_engine(database.async_url)
+        async with engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+        try:
+            yield engine
+        finally:
+            async with engine.begin() as connection:
+                await connection.run_sync(Base.metadata.drop_all)
+            await engine.dispose()
 
 
 @pytest.fixture

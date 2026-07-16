@@ -24,6 +24,7 @@ from app.features.locks.service import LockService
 from app.main import app
 from app.models.project import EditLock, Project, ProjectStatus
 from tests.factories import make_project_profile
+from tests.postgres_database import temporary_postgres_database
 
 _PG_URL = os.environ.get("APP_TEST_DATABASE_URL")
 
@@ -36,16 +37,16 @@ pytestmark = pytest.mark.skipif(
 @pytest.fixture
 async def pg_engine() -> AsyncIterator[AsyncEngine]:
     assert _PG_URL is not None
-    engine = create_async_engine(_PG_URL)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
-        await conn.run_sync(Base.metadata.create_all)
-    try:
-        yield engine
-    finally:
+    with temporary_postgres_database() as database:
+        engine = create_async_engine(database.async_url)
         async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.drop_all)
-        await engine.dispose()
+            await conn.run_sync(Base.metadata.create_all)
+        try:
+            yield engine
+        finally:
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.drop_all)
+            await engine.dispose()
 
 
 async def test_concurrent_acquire_returns_one_success_and_only_conflicts(

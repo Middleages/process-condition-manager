@@ -49,6 +49,7 @@ from app.models.project import (
 )
 from app.project_metadata import ManualProjectMetadataProvider, ProjectProfileSeed
 from tests.factories import make_project_profile, seed_choice_set, seed_parameter
+from tests.postgres_database import temporary_postgres_database
 
 _PG_URL = os.environ.get("APP_TEST_DATABASE_URL")
 
@@ -63,16 +64,16 @@ DeactivationKind = Literal["set", "option"]
 @pytest.fixture
 async def pg_engine() -> AsyncIterator[AsyncEngine]:
     assert _PG_URL is not None
-    engine = create_async_engine(_PG_URL)
-    async with engine.begin() as connection:
-        await connection.run_sync(Base.metadata.drop_all)
-        await connection.run_sync(Base.metadata.create_all)
-    try:
-        yield engine
-    finally:
+    with temporary_postgres_database() as database:
+        engine = create_async_engine(database.async_url)
         async with engine.begin() as connection:
-            await connection.run_sync(Base.metadata.drop_all)
-        await engine.dispose()
+            await connection.run_sync(Base.metadata.create_all)
+        try:
+            yield engine
+        finally:
+            async with engine.begin() as connection:
+                await connection.run_sync(Base.metadata.drop_all)
+            await engine.dispose()
 
 
 async def _seed_case(
