@@ -168,32 +168,56 @@ async def _seed_lock(
     return lock.lock_token
 
 
-async def _cell_events(session: AsyncSession, project_id: int) -> list[ChangeEvent]:
+async def _cell_events(session: AsyncSession, project_id: int) -> list[dict[str, object]]:
     session.expire_all()
     rows = await session.execute(
-        select(ChangeEvent)
+        select(
+            ChangeEvent.id,
+            ChangeEvent.project_id,
+            ChangeEvent.event_type,
+            ChangeEvent.condition_id,
+            ChangeEvent.layer_key,
+            ChangeEvent.origin,
+            ChangeEvent.source_project_id,
+            ChangeEvent.source_layer_key,
+            ChangeEvent.batch_id,
+            ChangeEvent.actor,
+            ChangeEvent.payload,
+        )
         .where(
             ChangeEvent.project_id == project_id,
             ChangeEvent.event_type == ChangeEventType.CELL_UPDATE,
         )
         .order_by(ChangeEvent.id)
     )
-    return list(rows.scalars().all())
+    return [dict(row) for row in rows.mappings().all()]
 
 
 async def _condition_events(
     session: AsyncSession, project_id: int, event_type: ChangeEventType
-) -> list[ChangeEvent]:
+) -> list[dict[str, object]]:
     session.expire_all()
     rows = await session.execute(
-        select(ChangeEvent)
+        select(
+            ChangeEvent.id,
+            ChangeEvent.project_id,
+            ChangeEvent.event_type,
+            ChangeEvent.condition_id,
+            ChangeEvent.layer_key,
+            ChangeEvent.origin,
+            ChangeEvent.source_project_id,
+            ChangeEvent.source_layer_key,
+            ChangeEvent.batch_id,
+            ChangeEvent.actor,
+            ChangeEvent.payload,
+        )
         .where(
             ChangeEvent.project_id == project_id,
             ChangeEvent.event_type == event_type,
         )
         .order_by(ChangeEvent.id)
     )
-    return list(rows.scalars().all())
+    return [dict(row) for row in rows.mappings().all()]
 
 
 async def _condition_cells(
@@ -208,14 +232,18 @@ async def _condition_cells(
     return {code: value for code, value in rows.all()}
 
 
-async def _condition_row(session: AsyncSession, condition_id: int) -> LayerCondition | None:
+async def _condition_row(session: AsyncSession, condition_id: int) -> dict[str, object] | None:
     session.expire_all()
     row = (
         await session.execute(
-            select(LayerCondition).where(LayerCondition.id == condition_id)
+            select(
+                LayerCondition.id,
+                LayerCondition.source_condition_id,
+                LayerCondition.is_por,
+            ).where(LayerCondition.id == condition_id)
         )
-    ).scalar_one_or_none()
-    return row
+    ).mappings().one_or_none()
+    return dict(row) if row is not None else None
 
 
 @pytest.mark.parametrize("origin", ["manual", "paste"])
@@ -244,12 +272,12 @@ async def test_cell_batches_record_exact_provenance_and_shared_batch(
 
     assert len(events) == 2
     assert response.batch_id and len(response.batch_id) == 32
-    assert {event.batch_id for event in events} == {response.batch_id}
-    assert {event.origin for event in events} == {origin}
-    assert {event.layer_key for event in events} == {"L1::PROC_PG::010::ACT"}
-    assert {event.source_project_id for event in events} == {None}
-    assert {event.source_layer_key for event in events} == {None}
-    assert {(event.condition_id, event.parameter_code) for event in events} == {
+    assert {event["batch_id"] for event in events} == {response.batch_id}
+    assert {event["origin"] for event in events} == {origin}
+    assert {event["layer_key"] for event in events} == {"L1::PROC_PG::010::ACT"}
+    assert {event["source_project_id"] for event in events} == {None}
+    assert {event["source_layer_key"] for event in events} == {None}
+    assert {(event["condition_id"], event["parameter_code"]) for event in events} == {
         (source_id, "spin_speed"),
         (removable_id, "memo"),
     }
@@ -285,12 +313,12 @@ async def test_condition_writers_record_exact_envelope_and_snapshots(
         assert added.layer_key == layer_key
         assert por.layer_key == layer_key
 
-        assert add_event.condition_id == added.id
-        assert add_event.layer_key == layer_key
-        assert add_event.origin == "manual"
-        assert add_event.source_project_id is None
-        assert add_event.source_layer_key is None
-        assert add_event.payload == {
+        assert add_event["condition_id"] == added.id
+        assert add_event["layer_key"] == layer_key
+        assert add_event["origin"] == "manual"
+        assert add_event["source_project_id"] is None
+        assert add_event["source_layer_key"] is None
+        assert add_event["payload"] == {
             "layer_key": layer_key,
             "condition_id": added.id,
             "source_condition_id": source_id,
@@ -302,24 +330,24 @@ async def test_condition_writers_record_exact_envelope_and_snapshots(
             },
         }
 
-        assert remove_event.condition_id == removable_id
-        assert remove_event.layer_key == layer_key
-        assert remove_event.origin == "manual"
-        assert remove_event.source_project_id is None
-        assert remove_event.source_layer_key is None
-        assert remove_event.payload["snapshot"] == {
+        assert remove_event["condition_id"] == removable_id
+        assert remove_event["layer_key"] == layer_key
+        assert remove_event["origin"] == "manual"
+        assert remove_event["source_project_id"] is None
+        assert remove_event["source_layer_key"] is None
+        assert remove_event["payload"]["snapshot"] == {
             "label": "C2",
             "is_por": False,
             "condition_index": 2,
             "cells": {},
         }
 
-        assert por_event.condition_id == por_target_id
-        assert por_event.layer_key == layer_key
-        assert por_event.origin == "manual"
-        assert por_event.source_project_id is None
-        assert por_event.source_layer_key is None
-        assert por_event.payload == {
+        assert por_event["condition_id"] == por_target_id
+        assert por_event["layer_key"] == layer_key
+        assert por_event["origin"] == "manual"
+        assert por_event["source_project_id"] is None
+        assert por_event["source_layer_key"] is None
+        assert por_event["payload"] == {
             "layer_key": layer_key,
             "old_por_condition_id": source_id,
             "new_por_condition_id": por_target_id,
@@ -484,4 +512,4 @@ async def test_concurrent_edits_are_serialized_by_project_lock(
 
     assert source_cells["spin_speed"] == "1200"
     assert duplicate_cells["spin_speed"] == "1200"
-    assert add_events[-1].payload["snapshot"]["cells"]["spin_speed"] == "1200"
+    assert add_events[-1]["payload"]["snapshot"]["cells"]["spin_speed"] == "1200"
