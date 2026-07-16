@@ -212,6 +212,7 @@ async def test_create_emits_per_layer_copy_events_with_shared_batch_and_captured
         assert copy_event.source_layer_key == layer.source_layer_key
         assert copy_event.batch_id == copy_event.payload["batch_id"]
         assert copy_event.layer_key == layer.layer_key
+        assert copy_event.payload["capture"] == snapshot
         assert copy_event.payload["payload_schema_version"] == 2
         assert copy_event.payload["backbone_project_id"] == source.id
         assert copy_event.payload["target_layer_key"] == layer.layer_key
@@ -321,6 +322,7 @@ async def test_replace_resets_target_baseline_and_records_structured_event(
     assert event.layer_key == target_layer.layer_key
     assert event.source_project_id == source_b.id
     assert event.source_layer_key == source_b.layers[0].layer_key
+    assert event.payload["capture"] == snapshot
     assert event.payload["payload_schema_version"] == 2
     assert event.payload["target_layer_key"] == target_layer.layer_key
     assert event.payload["detail"][0]["target_condition_id"] == replaced_layer.conditions[0].id
