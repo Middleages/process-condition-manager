@@ -462,14 +462,12 @@ async def test_profile_choice_write_vs_deactivation_is_serialized(
                 if not task.done():
                     task.cancel()
                 pending.append(cast(asyncio.Future[object], task))
-            for task in pending:
-                task.cancel()
             if pending:
                 await asyncio.gather(*pending, return_exceptions=True)
 
     assert outcome == ("success" if winner == "consumer" else "unprocessable")
     if winner == "deactivation":
-        assert isinstance(result, (RuleViolationError, DomainValidationError))
+        assert isinstance(result, RuleViolationError | DomainValidationError)
 
     async with factory() as verification:
         profile_count = await verification.scalar(select(func.count()).select_from(ProjectProfile))
