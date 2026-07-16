@@ -1,5 +1,6 @@
 """Project aggregate persistence and resolved Profile list queries."""
 
+from collections.abc import Collection
 from dataclasses import dataclass
 
 from sqlalchemy import and_, func, or_, select
@@ -9,7 +10,9 @@ from sqlalchemy.orm import aliased, selectinload
 
 from app.core.errors import ConflictError
 from app.domain.choices.rules import ResolvedChoice
+from app.domain.parameters.types import ValueType
 from app.models.choice import ChoiceOption, ChoiceSet
+from app.models.parameter import Parameter
 from app.models.project import (
     CellValue,
     LayerCondition,
@@ -27,6 +30,22 @@ class ProjectSummary:
     project_category: ResolvedChoice
     layer_count: int
     cell_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class CapturedParameter:
+    parameter_code: str
+    value_type: ValueType | str
+    display_name: str
+    category_code: str | None
+    sort_order: int
+    active_at_capture: bool
+
+
+@dataclass(frozen=True, slots=True)
+class CapturedParameterRegistry:
+    parameters: tuple[CapturedParameter, ...]
+    unresolved_codes: tuple[str, ...]
 
 
 class ProjectRepository:
@@ -86,6 +105,47 @@ class ProjectRepository:
                 ) from exc
             raise
         return result.scalar_one_or_none()
+
+    async def capture_parameter_registry(
+        self,
+        stored_source_cell_codes: Collection[str] | None = None,
+    ) -> CapturedParameterRegistry:
+        requested_codes = tuple(sorted({code for code in stored_source_cell_codes or ()}))
+        stmt = (
+            select(Parameter)
+            .options(selectinload(Parameter.category))
+            .order_by(Parameter.sort_order, Parameter.code)
+        )
+        if requested_codes:
+            stmt = stmt.where(
+                or_(
+                    Parameter.is_active.is_(True),
+                    Parameter.code.in_(requested_codes),
+                )
+            )
+        else:
+            stmt = stmt.where(Parameter.is_active.is_(True))
+
+        rows = list((await self.session.execute(stmt)).scalars().all())
+        rows_by_code = {row.code: row for row in rows}
+        unresolved_codes = tuple(
+            code for code in requested_codes if code not in rows_by_code
+        )
+        parameters = tuple(
+            CapturedParameter(
+                parameter_code=row.code,
+                value_type=row.value_type,
+                display_name=row.display_name,
+                category_code=row.category.code if row.category is not None else None,
+                sort_order=row.sort_order,
+                active_at_capture=row.is_active,
+            )
+            for row in rows
+        )
+        return CapturedParameterRegistry(
+            parameters=parameters,
+            unresolved_codes=unresolved_codes,
+        )
 
     async def get_profile(self, project_id: int) -> tuple[Project, ProjectProfile] | None:
         row = (
