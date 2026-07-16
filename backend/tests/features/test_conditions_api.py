@@ -250,10 +250,21 @@ async def test_add_empty_condition_assigns_next_label_and_index(
     # condition_add 이벤트: payload에 layer_key/condition_id/source(None).
     events = await _events(db_session, project_id, ChangeEventType.CONDITION_ADD)
     assert len(events) == 1
+    assert events[0].condition_id == new_id
+    assert events[0].layer_key == layer_key
+    assert events[0].origin == "manual"
+    assert events[0].source_project_id is None
+    assert events[0].source_layer_key is None
     assert events[0].payload == {
         "layer_key": layer_key,
         "condition_id": new_id,
         "source_condition_id": None,
+        "snapshot": {
+            "label": "C3",
+            "is_por": False,
+            "condition_index": 3,
+            "cells": {},
+        },
     }
     assert events[0].actor == "dev-admin"
 
@@ -285,16 +296,17 @@ async def test_condition_events_populate_structured_envelope_columns(
         [
             _Cond("C1", is_por=True, cells={"spin_speed": "1200"}),
             _Cond("C2"),
+            _Cond("C3"),
         ],
     )
-    target_id, remove_id = cond_ids
+    source_id, remove_id, por_id = cond_ids
     token = await _acquire(db_client, project_id)
 
     add_resp = await _add(
         db_client,
         project_id,
         layer_key,
-        source_condition_id=target_id,
+        source_condition_id=source_id,
         token=token,
     )
     assert add_resp.status_code == 201, add_resp.text
@@ -314,10 +326,10 @@ async def test_condition_events_populate_structured_envelope_columns(
     assert delete_event.source_project_id is None
     assert delete_event.source_layer_key is None
 
-    por_resp = await _set_por(db_client, project_id, remove_id, token=token)
+    por_resp = await _set_por(db_client, project_id, por_id, token=token)
     assert por_resp.status_code == 200, por_resp.text
     por_event = (await _events(db_session, project_id, ChangeEventType.POR_CHANGE))[-1]
-    assert por_event.condition_id == remove_id
+    assert por_event.condition_id == por_id
     assert por_event.layer_key == layer_key
     assert por_event.origin == "manual"
     assert por_event.source_project_id is None
@@ -367,6 +379,10 @@ async def test_duplicate_copies_cells_and_forces_non_por(
     assert len(events) == 1
     assert events[0].payload["source_condition_id"] == source_id
     assert events[0].payload["condition_id"] == new_id
+    assert events[0].payload["snapshot"]["cells"] == {
+        "spin_speed": "1200",
+        "pr_type": "A",
+    }
 
 
 async def test_duplicate_rejects_source_from_other_layer(

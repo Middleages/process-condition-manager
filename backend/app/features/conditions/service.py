@@ -30,6 +30,24 @@ def _next_label(existing_labels: set[str]) -> str:
     return f"C{n}"
 
 
+def _condition_snapshot(
+    condition: LayerCondition, *, cells: list[tuple[str, str | None]] | None = None
+) -> dict[str, object]:
+    return {
+        "label": condition.label,
+        "is_por": condition.is_por,
+        "condition_index": condition.condition_index,
+        "cells": {
+            code: value
+            for code, value in (
+                cells
+                if cells is not None
+                else ((cell.parameter_code, cell.value_text) for cell in condition.cell_values)
+            )
+        },
+    }
+
+
 class ConditionService:
     """조건 행 추가/삭제/POR 이양 오케스트레이션."""
 
@@ -69,10 +87,16 @@ class ConditionService:
                 project_id=project_id,
                 event_type=ChangeEventType.CONDITION_ADD,
                 actor=actor,
+                condition_id=condition.id,
+                layer_key=layer_key,
+                origin="manual",
+                source_project_id=None,
+                source_layer_key=None,
                 payload={
                     "layer_key": layer_key,
                     "condition_id": condition.id,
                     "source_condition_id": data.source_condition_id,
+                    "snapshot": _condition_snapshot(condition, cells=source_cells),
                 },
             )
         )
@@ -105,18 +129,15 @@ class ConditionService:
                 project_id=project_id,
                 event_type=ChangeEventType.CONDITION_REMOVE,
                 actor=actor,
+                condition_id=condition_id,
+                layer_key=layer_key,
+                origin="manual",
+                source_project_id=None,
+                source_layer_key=None,
                 payload={
                     "layer_key": layer_key,
                     "condition_id": condition_id,
-                    "snapshot": {
-                        "label": condition.label,
-                        "is_por": condition.is_por,
-                        "condition_index": condition.condition_index,
-                        "cells": {
-                            cell.parameter_code: cell.value_text
-                            for cell in condition.cell_values
-                        },
-                    },
+                    "snapshot": _condition_snapshot(condition),
                 },
             )
         )
@@ -151,6 +172,11 @@ class ConditionService:
                 project_id=project_id,
                 event_type=ChangeEventType.POR_CHANGE,
                 actor=actor,
+                condition_id=condition_id,
+                layer_key=layer_key,
+                origin="manual",
+                source_project_id=None,
+                source_layer_key=None,
                 payload={
                     "layer_key": layer_key,
                     "old_por_condition_id": old_por_id,
