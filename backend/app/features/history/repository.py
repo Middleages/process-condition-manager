@@ -325,14 +325,11 @@ class HistoryRepository:
         )
         if snapshot_max_event_id is not None:
             stmt = stmt.where(ChangeEvent.id <= snapshot_max_event_id)
-        if before_group_max_id is not None:
-            stmt = stmt.where(ChangeEvent.id < before_group_max_id)
         stmt = self._apply_member_filters(stmt, member_filters)
-        return (
-            stmt.group_by(group_key, ChangeEvent.batch_id)
-            .order_by(func.max(ChangeEvent.id).desc(), group_key.asc())
-            .limit(limit)
-        )
+        stmt = stmt.group_by(group_key, ChangeEvent.batch_id)
+        if before_group_max_id is not None:
+            stmt = stmt.having(func.max(ChangeEvent.id) < before_group_max_id)
+        return stmt.order_by(func.max(ChangeEvent.id).desc(), group_key.asc()).limit(limit)
 
     def _event_row_stmt(
         self,
