@@ -272,7 +272,7 @@ async def test_backbone_replace_uses_captured_source_snapshot(
             source_session,
             project_id=source.id,
             layer_key=source_layer_key,
-            value_text="SOURCE_ORIGINAL",
+            value_text="1200",
         )
 
         original_flush = AsyncSession.flush
@@ -303,7 +303,7 @@ async def test_backbone_replace_uses_captured_source_snapshot(
                         )
                     )
                 ).scalar_one()
-                row.value_text = "SOURCE_MUTATED"
+                row.value_text = "1300"
                 await mutator_session.commit()
             release_flush.set()
 
@@ -355,8 +355,8 @@ async def test_backbone_replace_uses_captured_source_snapshot(
             )
         ).scalar_one()
 
-    assert source_value == "SOURCE_MUTATED"
-    assert target_value == "SOURCE_ORIGINAL"
+    assert source_value == "1300"
+    assert target_value == "1200"
 
 
 async def test_backbone_create_rolls_back_when_event_flush_fails(

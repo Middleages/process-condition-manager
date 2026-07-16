@@ -4,7 +4,6 @@ from dataclasses import asdict, dataclass
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.core.errors import ConflictError, DomainValidationError, NotFoundError
@@ -39,7 +38,6 @@ from app.features.projects.schema import (
     ProjectProfilePatchIn,
 )
 from app.ingest.reader import IngestReader, LayerInfo
-from app.models.parameter import Parameter, ParameterCategory
 from app.models.project import (
     CellValue,
     ChangeEvent,
@@ -104,18 +102,6 @@ _PATCH_FIELD_ORDER = (
     "pspi",
     "metal_layer_count",
 )
-
-
-@dataclass(frozen=True, slots=True)
-class _ConditionSnapshot:
-    """복사 원본이 자기 자신일 때도 안전하도록 조건 행을 값으로 떠 둔다."""
-
-    label: str
-    condition_index: int
-    is_por: bool
-    source_condition_id: int | None
-    cells: tuple[tuple[str, str | None], ...]
-
 
 @dataclass(frozen=True, slots=True)
 class _CapturedLayer:
@@ -641,20 +627,24 @@ class ProjectService:
         captured_at: datetime,
         columns_by_code: dict[str, BackboneSnapshotColumn] | None = None,
     ) -> _CapturedLayer:
-        columns_by_code = columns_by_code or {}
         current_codes = {
             cell.parameter_code
             for condition in source_layer.conditions
             for cell in condition.cell_values
             if cell.value_text is not None
         }
-        missing_codes = sorted(current_codes - set(columns_by_code))
-        if missing_codes:
-            raise ConflictError(
-                "백본 컬럼 메타데이터를 찾을 수 없다",
-                code="unresolved_parameter_metadata",
-                details={"parameter_codes": missing_codes},
+        if columns_by_code is None:
+            columns_by_code = await self._load_parameter_columns(current_codes)
+        layer_columns = tuple(
+            sorted(
+                (
+                    column
+                    for column in columns_by_code.values()
+                    if column.active_at_capture or column.parameter_code in current_codes
+                ),
+                key=_snapshot_column_sort_key,
             )
+        )
 
         snapshot = BackboneSnapshot(
             capture_batch_id=batch_id,
@@ -666,9 +656,7 @@ class ProjectService:
                 step_seq=source_layer.step_seq,
                 layer_id=source_layer.layer_id,
             ),
-            columns=tuple(
-                sorted(columns_by_code.values(), key=_snapshot_column_sort_key)
-            ),
+            columns=layer_columns,
             conditions=tuple(
                 BackboneSnapshotCondition(
                     source_condition_id=condition.id,
@@ -692,30 +680,22 @@ class ProjectService:
     async def _load_parameter_columns(
         self, parameter_codes: set[str]
     ) -> dict[str, BackboneSnapshotColumn]:
-        result = await self.repo.session.execute(
-            select(Parameter, ParameterCategory.code)
-            .outerjoin(ParameterCategory, Parameter.category_id == ParameterCategory.id)
-            .where(
-                Parameter.is_active.is_(True)
-                | Parameter.code.in_(sorted(parameter_codes))
-            )
-        )
         columns: dict[str, BackboneSnapshotColumn] = {}
-        for parameter, category_code in result.all():
-            columns[parameter.code] = BackboneSnapshotColumn(
-                parameter_code=parameter.code,
-                value_type=parameter.value_type,
-                display_name=parameter.display_name,
-                category_code=category_code,
-                sort_order=parameter.sort_order,
-                active_at_capture=parameter.is_active,
-            )
-        missing_codes = sorted(parameter_codes - set(columns))
-        if missing_codes:
+        registry = await self.repo.capture_parameter_registry(parameter_codes)
+        if registry.unresolved_codes:
             raise ConflictError(
                 "백본 컬럼 메타데이터를 찾을 수 없다",
                 code="unresolved_parameter_metadata",
-                details={"parameter_codes": missing_codes},
+                details={"parameter_codes": list(registry.unresolved_codes)},
+            )
+        for parameter in registry.parameters:
+            columns[parameter.parameter_code] = BackboneSnapshotColumn(
+                parameter_code=parameter.parameter_code,
+                value_type=parameter.value_type,
+                display_name=parameter.display_name,
+                category_code=parameter.category_code,
+                sort_order=parameter.sort_order,
+                active_at_capture=parameter.active_at_capture,
             )
         return columns
 
@@ -910,21 +890,6 @@ def _sheet_layer_from_ingest(layer: LayerInfo, index: int) -> SheetLayer:
 
 def _snapshot_column_sort_key(column: BackboneSnapshotColumn) -> tuple[int, str]:
     return column.sort_order, column.parameter_code
-
-
-def _snapshot_conditions(source_layer: SheetLayer) -> list[_ConditionSnapshot]:
-    return [
-        _ConditionSnapshot(
-            label=condition.label,
-            condition_index=condition.condition_index,
-            is_por=condition.is_por,
-            source_condition_id=condition.id,
-            cells=tuple(
-                (cell.parameter_code, cell.value_text) for cell in condition.cell_values
-            ),
-        )
-        for condition in source_layer.conditions
-    ]
 
 
 def _apply_snapshots(

@@ -1,9 +1,9 @@
 from decimal import Decimal
 
-from app.domain.parameters.types import ValueType
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.choices.constants import PROFILE_CHOICE_SET_FIELDS
+from app.domain.parameters.types import ValueType
 from app.models.choice import ChoiceOption, ChoiceSet
 from app.models.parameter import Parameter, ParameterCategory
 from app.models.project import ProjectProfile

@@ -363,6 +363,7 @@ async def test_backbone_copy_records_event_with_counts(
     )
     target_body = target.json()
     target_id = target_body["id"]
+    db_session.expire_all()
 
     create_event = (
         await db_session.execute(
@@ -404,7 +405,7 @@ async def test_backbone_copy_records_event_with_counts(
             "label": "base",
             "condition_index": 1,
             "is_por": False,
-            "cell_count": 1,
+            "cell_count": 2,
         }
     ]
 
@@ -456,6 +457,7 @@ async def test_backbone_copy_emits_one_event_per_matched_layer(
     )
     assert target.status_code == 201, target.text
     target_body = target.json()
+    db_session.expire_all()
 
     events = list(
         (
