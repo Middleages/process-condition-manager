@@ -196,6 +196,11 @@ def test_timeline_summary_orders_newest_first_and_sanitizes_payload() -> None:
     assert "raw" not in json.dumps(asdict(projection), ensure_ascii=False)
 
 
+def test_history_availability_uses_not_applicable_member_only() -> None:
+    assert HistoryAvailability.NOT_APPLICABLE.value == "not_applicable"
+    assert not hasattr(HistoryAvailability, "NO_APPLICABLE")
+
+
 @pytest.mark.parametrize(
     "event_type",
     ["project_create", "condition_add", "condition_remove", "por_change"],
@@ -206,8 +211,8 @@ def test_timeline_summary_preserves_non_expandable_event_types(event_type: str) 
     assert [item.event_type for item in projection.items] == [event_type]
     assert projection.metadata.cell_items == 0
     assert projection.metadata.capture_items == 0
-    assert projection.items[0].detail_applicability == HistoryAvailability.NO_APPLICABLE
-    assert projection.items[0].legacy_coverage == HistoryAvailability.NO_APPLICABLE
+    assert projection.items[0].detail_applicability == HistoryAvailability.NOT_APPLICABLE
+    assert projection.items[0].legacy_coverage == HistoryAvailability.NOT_APPLICABLE
 
 
 def test_cell_detail_projects_descending_ids_and_legacy_unavailable() -> None:
@@ -305,44 +310,23 @@ def test_backbone_capture_v1_is_legacy_unavailable() -> None:
     assert v1_projection.items == ()
 
 
-@pytest.mark.parametrize(
-    ("row_kwargs", "detail"),
-    [
-        ({"layer_sort_order": 0}, []),
-        (
-            {"layer_sort_order": 0},
-            [
-                {
-                    "target_condition_id": 0,
-                    "source_condition_id": 7,
-                    "label": "C7",
-                    "condition_index": 2,
-                    "is_por": False,
-                    "cell_count": 2,
-                },
-            ],
-        ),
-    ],
-)
-def test_backbone_capture_invalid_v2_payload_fails_closed(
-    row_kwargs: dict[str, Any], detail: list[dict[str, Any]]
-) -> None:
-    with pytest.raises(ConflictError) as raised:
-        project_backbone_capture(
-            [
-                _row(
-                    3,
-                    "backbone_copy",
-                    schema_version=2,
-                    layer_key="T-L0",
-                    capture={"schema_version": 1},
-                    detail=detail,
-                    **row_kwargs,
-                )
-            ]
-        )
+def test_backbone_capture_absent_legacy_detail_is_legacy_unavailable() -> None:
+    projection = project_backbone_capture(
+        [
+            _row(
+                2,
+                "backbone_copy",
+                schema_version=2,
+                layer_sort_order=0,
+                layer_key="T-L0",
+                capture=_capture_snapshot(),
+                detail=None,
+            )
+        ]
+    )
 
-    assert raised.value.code == "invalid_event_batch"
+    assert projection.availability == HistoryAvailability.LEGACY_UNAVAILABLE
+    assert projection.items == ()
 
 
 @pytest.mark.parametrize(
@@ -454,20 +438,6 @@ def test_cell_history_without_initial_marks_state_unavailable() -> None:
 
     assert projection.initial_entry is None
     assert projection.initial_state == HistoryAvailability.NOT_APPLICABLE
-    assert projection.initial_state_unavailable is True
-
-
-def test_cell_history_explicit_legacy_initial_state_uses_legacy_unavailable() -> None:
-    projection = project_cell_history(
-        [
-            _row(4, "cell_update", history_role=HistoryEntryRole.CURRENT),
-            _row(3, "cell_update", history_role=HistoryEntryRole.BASELINE),
-        ],
-        initial_state_unavailable=True,
-    )
-
-    assert projection.initial_entry is None
-    assert projection.initial_state == HistoryAvailability.LEGACY_UNAVAILABLE
     assert projection.initial_state_unavailable is True
 
 

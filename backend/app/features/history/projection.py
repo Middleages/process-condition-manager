@@ -46,7 +46,7 @@ class HistoryAvailability(StrEnum):
 
     AVAILABLE = "available"
     LEGACY_UNAVAILABLE = "legacy_unavailable"
-    NO_APPLICABLE = "not_applicable"
+    NOT_APPLICABLE = "not_applicable"
 
 
 class HistoryJumpState(StrEnum):
@@ -257,7 +257,7 @@ def _format_timestamp(value: datetime | None) -> str | None:
 def _freeze_payload(value: Any) -> Any:
     if isinstance(value, Mapping):
         return MappingProxyType({key: _freeze_payload(item) for key, item in value.items()})
-    if isinstance(value, list | tuple):
+    if isinstance(value, (list, tuple)):
         return tuple(_freeze_payload(item) for item in value)
     return value
 
@@ -423,6 +423,8 @@ def _capture_items_from_row(
 ) -> tuple[BackboneCaptureItem, ...]:
     if row.schema_version == 1:
         raise _LegacyCaptureUnavailable("legacy capture row")
+    if row.detail is None:
+        raise _LegacyCaptureUnavailable("missing legacy capture detail")
     snapshot = _parse_capture_snapshot(row.capture)
     detail_by_source = _capture_detail_by_source(row.detail)
     columns_by_code = {column["parameter_code"]: column for column in snapshot["columns"]}
@@ -609,11 +611,11 @@ def project_backbone_capture(
             availability=HistoryAvailability.LEGACY_UNAVAILABLE,
             items=(),
         )
-    except (ConflictError, RuleViolationError, ValueError, TypeError, KeyError):
-        raise ConflictError("capture batch is invalid", code="invalid_event_batch")
+    except (ConflictError, RuleViolationError, ValueError, TypeError, KeyError) as err:
+        raise ConflictError("capture batch is invalid", code="invalid_event_batch") from err
     if not items:
         return BackboneCaptureProjection(
-            availability=HistoryAvailability.NO_APPLICABLE,
+            availability=HistoryAvailability.NOT_APPLICABLE,
             items=(),
         )
     return BackboneCaptureProjection(
@@ -672,7 +674,7 @@ def project_cell_history(
             if initial_entry is not None
             else HistoryAvailability.LEGACY_UNAVAILABLE
             if initial_state_unavailable
-            else HistoryAvailability.NO_APPLICABLE
+            else HistoryAvailability.NOT_APPLICABLE
         ),
     )
 
