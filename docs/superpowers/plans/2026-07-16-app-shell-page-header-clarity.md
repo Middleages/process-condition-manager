@@ -426,6 +426,20 @@ cp /tmp/pcm-project-browse-playwright/project_browse_clarity_qa.mjs \
   /tmp/pcm-app-shell-page-header-qa.mjs
 ```
 
+The source runner recorded the previous checkout explicitly. Replace that hard-coded cwd with the
+isolated worktree executing this command:
+
+```js
+const repoRoot = process.cwd()
+```
+
+```js
+const buildCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
+  cwd: repoRoot,
+  encoding: 'utf8',
+}).trim()
+```
+
 ```js
 async function measureRouteTitleFocus(page, route, viewport) {
   return page.evaluate(({ route, viewport }) => {
