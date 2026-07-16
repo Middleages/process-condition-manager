@@ -196,23 +196,15 @@ def test_timeline_summary_orders_newest_first_and_sanitizes_payload() -> None:
     assert "raw" not in json.dumps(asdict(projection), ensure_ascii=False)
 
 
-def test_history_availability_uses_not_applicable_member_only() -> None:
-    assert HistoryAvailability.NOT_APPLICABLE.value == "not_applicable"
-    assert not hasattr(HistoryAvailability, "NO_APPLICABLE")
-
-
-@pytest.mark.parametrize(
-    "event_type",
-    ["project_create", "condition_add", "condition_remove", "por_change"],
-)
+@pytest.mark.parametrize("event_type", ["condition_add", "condition_remove", "por_change"])
 def test_timeline_summary_preserves_non_expandable_event_types(event_type: str) -> None:
     projection = project_timeline_summary([_row(1, event_type, schema_version=2)])
 
     assert [item.event_type for item in projection.items] == [event_type]
     assert projection.metadata.cell_items == 0
     assert projection.metadata.capture_items == 0
-    assert projection.items[0].detail_applicability == HistoryAvailability.NOT_APPLICABLE
-    assert projection.items[0].legacy_coverage == HistoryAvailability.NOT_APPLICABLE
+    assert projection.items[0].detail_applicability == HistoryAvailability.NO_APPLICABLE
+    assert projection.items[0].legacy_coverage == HistoryAvailability.NO_APPLICABLE
 
 
 def test_cell_detail_projects_descending_ids_and_legacy_unavailable() -> None:
@@ -254,6 +246,16 @@ def test_backbone_capture_flattens_real_v2_payload_and_sorts_by_structure() -> N
             capture=_capture_snapshot(),
             detail=_capture_detail(),
         ),
+        _row(
+            5,
+            "backbone_layer_replace",
+            schema_version=2,
+            layer_sort_order=0,
+            layer_key="T-L0",
+            capture=_capture_snapshot(),
+            detail=_capture_detail(),
+            deleted=True,
+        ),
     ]
 
     projection = project_backbone_capture(
@@ -281,17 +283,20 @@ def test_backbone_capture_flattens_real_v2_payload_and_sorts_by_structure() -> N
         )
         for item in projection.items
     ] == [
+        (0, "T-L0", 501, 1, 3, 0, "alpha", "a3", HistoryJumpState.DELETED, 5),
+        (0, "T-L0", 502, 2, 7, 0, "alpha", "a7", HistoryJumpState.DELETED, 5),
+        (0, "T-L0", 502, 2, 7, 1, "beta", "b7", HistoryJumpState.DELETED, 5),
         (1, "T-L1", 501, 1, 3, 0, "alpha", "a3", HistoryJumpState.PRESENT, 10),
         (1, "T-L1", 501, 1, 3, 0, "alpha", "a3", HistoryJumpState.PRESENT, 20),
-        (1, "T-L1", 502, 2, 7, 0, "alpha", "a7", HistoryJumpState.DELETED, 10),
-        (1, "T-L1", 502, 2, 7, 0, "alpha", "a7", HistoryJumpState.DELETED, 20),
-        (1, "T-L1", 502, 2, 7, 1, "beta", "b7", HistoryJumpState.DELETED, 10),
-        (1, "T-L1", 502, 2, 7, 1, "beta", "b7", HistoryJumpState.DELETED, 20),
+        (1, "T-L1", 502, 2, 7, 0, "alpha", "a7", HistoryJumpState.PRESENT, 10),
+        (1, "T-L1", 502, 2, 7, 0, "alpha", "a7", HistoryJumpState.PRESENT, 20),
+        (1, "T-L1", 502, 2, 7, 1, "beta", "b7", HistoryJumpState.PRESENT, 10),
+        (1, "T-L1", 502, 2, 7, 1, "beta", "b7", HistoryJumpState.PRESENT, 20),
     ]
     assert "raw" not in json.dumps(asdict(projection), ensure_ascii=False)
 
 
-def test_backbone_capture_v1_is_legacy_unavailable() -> None:
+def test_backbone_capture_v1_or_missing_detail_is_legacy_unavailable() -> None:
     v1_projection = project_backbone_capture(
         [
             _row(
@@ -305,13 +310,7 @@ def test_backbone_capture_v1_is_legacy_unavailable() -> None:
             )
         ]
     )
-
-    assert v1_projection.availability == HistoryAvailability.LEGACY_UNAVAILABLE
-    assert v1_projection.items == ()
-
-
-def test_backbone_capture_absent_legacy_detail_is_legacy_unavailable() -> None:
-    projection = project_backbone_capture(
+    missing_detail_projection = project_backbone_capture(
         [
             _row(
                 2,
@@ -320,7 +319,28 @@ def test_backbone_capture_absent_legacy_detail_is_legacy_unavailable() -> None:
                 layer_sort_order=0,
                 layer_key="T-L0",
                 capture=_capture_snapshot(),
-                detail=None,
+                detail=[],
+            )
+        ]
+    )
+
+    assert v1_projection.availability == HistoryAvailability.LEGACY_UNAVAILABLE
+    assert v1_projection.items == ()
+    assert missing_detail_projection.availability == HistoryAvailability.LEGACY_UNAVAILABLE
+    assert missing_detail_projection.items == ()
+
+
+def test_backbone_capture_corrupt_snapshot_is_legacy_unavailable() -> None:
+    projection = project_backbone_capture(
+        [
+            _row(
+                3,
+                "backbone_copy",
+                schema_version=2,
+                layer_sort_order=0,
+                layer_key="T-L0",
+                capture={"schema_version": 1},
+                detail=_capture_detail(),
             )
         ]
     )
@@ -438,6 +458,20 @@ def test_cell_history_without_initial_marks_state_unavailable() -> None:
 
     assert projection.initial_entry is None
     assert projection.initial_state == HistoryAvailability.NOT_APPLICABLE
+    assert projection.initial_state_unavailable is True
+
+
+def test_cell_history_explicit_legacy_initial_state_uses_legacy_unavailable() -> None:
+    projection = project_cell_history(
+        [
+            _row(4, "cell_update", history_role=HistoryEntryRole.CURRENT),
+            _row(3, "cell_update", history_role=HistoryEntryRole.BASELINE),
+        ],
+        initial_state_unavailable=True,
+    )
+
+    assert projection.initial_entry is None
+    assert projection.initial_state == HistoryAvailability.LEGACY_UNAVAILABLE
     assert projection.initial_state_unavailable is True
 
 

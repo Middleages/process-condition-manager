@@ -257,7 +257,7 @@ def _format_timestamp(value: datetime | None) -> str | None:
 def _freeze_payload(value: Any) -> Any:
     if isinstance(value, Mapping):
         return MappingProxyType({key: _freeze_payload(item) for key, item in value.items()})
-    if isinstance(value, (list, tuple)):
+    if isinstance(value, list | tuple):
         return tuple(_freeze_payload(item) for item in value)
     return value
 
@@ -296,10 +296,6 @@ class _BackboneCaptureDetail:
     condition_index: int
     is_por: bool
     cell_count: int
-
-
-class _LegacyCaptureUnavailable(ValueError):
-    pass
 
 
 def _jump_state(row: HistoryEventRow | None) -> HistoryJumpProjection:
@@ -416,44 +412,28 @@ def _project_cell_detail_item(row: HistoryEventRow) -> HistoryCellDetailItem:
     )
 
 
-def _capture_items_from_row(
-    row: HistoryEventRow,
-    *,
-    target_condition_states: Mapping[int, HistoryJumpState] | None = None,
-) -> tuple[BackboneCaptureItem, ...]:
+def _capture_items_from_row(row: HistoryEventRow) -> tuple[BackboneCaptureItem, ...]:
     if row.schema_version == 1:
-        raise _LegacyCaptureUnavailable("legacy capture row")
-    if row.detail is None:
-        raise _LegacyCaptureUnavailable("missing legacy capture detail")
-    snapshot = _parse_capture_snapshot(row.capture)
+        raise ValueError("legacy capture row")
+    snapshot = serialize_backbone_snapshot(row.capture)
     detail_by_source = _capture_detail_by_source(row.detail)
     columns_by_code = {column["parameter_code"]: column for column in snapshot["columns"]}
     expected_sources = {
         condition["source_condition_id"] for condition in snapshot["conditions"]
     }
     if expected_sources != set(detail_by_source):
-        raise ConflictError(
-            "capture detail does not match snapshot conditions",
-            code="invalid_event_batch",
-        )
+        raise ValueError("capture detail does not match snapshot conditions")
 
     items: list[BackboneCaptureItem] = []
     for condition in snapshot["conditions"]:
         condition_detail = detail_by_source[condition["source_condition_id"]]
         _validate_capture_condition(condition, condition_detail)
-        jump_state = _jump_state_for_target(
-            condition_detail.target_condition_id,
-            target_condition_states=target_condition_states,
-            fallback_deleted=row.deleted,
-        )
         cells = condition["cells"]
         cell_items = tuple(
             sorted(
                 (
                     (
-                        _require_non_negative_int(
-                            columns_by_code[parameter_code]["sort_order"], "sort_order"
-                        ),
+                        _require_int(columns_by_code[parameter_code]["sort_order"], "sort_order"),
                         parameter_code,
                         value,
                     )
@@ -464,45 +444,28 @@ def _capture_items_from_row(
             )
         )
         for parameter_sort, parameter_code, value in cell_items:
+            jump_state = (
+                HistoryJumpState.DELETED if row.deleted else HistoryJumpState.PRESENT
+            )
             items.append(
                 BackboneCaptureItem(
-                    target_layer_sort=_require_non_negative_int(
-                        row.layer_sort_order, "layer_sort_order"
-                    ),
+                    target_layer_sort=_require_int(row.layer_sort_order, "layer_sort_order"),
                     layer_key=_require_str(row.layer_key, "layer_key"),
                     target_condition_id=condition_detail.target_condition_id,
-                    source_condition_index=_require_non_negative_int(
+                    source_condition_index=_require_int(
                         condition["condition_index"], "condition_index"
                     ),
-                    source_condition_id=_require_positive_int(
+                    source_condition_id=_require_int(
                         condition["source_condition_id"], "source_condition_id"
                     ),
                     parameter_sort=parameter_sort,
                     parameter_code=parameter_code,
-                    value=_require_str(value, "value"),
+                    value=value if isinstance(value, str) else (_raise_capture_value_error()),
                     jump_state=jump_state,
                     event_id=row.event_id,
                 )
             )
     return tuple(items)
-
-
-def _parse_capture_snapshot(raw: Any) -> dict[str, Any]:
-    try:
-        snapshot = serialize_backbone_snapshot(raw)
-    except (ConflictError, RuleViolationError, ValueError, TypeError, KeyError) as exc:
-        raise ConflictError(
-            "capture snapshot is invalid",
-            code="invalid_event_batch",
-        ) from exc
-    if not isinstance(snapshot, Mapping):
-        raise ConflictError("capture snapshot is invalid", code="invalid_event_batch")
-    _require_exact_keys(
-        snapshot,
-        {"schema_version", "capture_batch_id", "captured_at", "source", "columns", "conditions"},
-        "capture snapshot",
-    )
-    return dict(snapshot)
 
 
 def _capture_detail_by_source(raw: Any) -> dict[int, _BackboneCaptureDetail]:
@@ -523,18 +486,16 @@ def _capture_detail_by_source(raw: Any) -> dict[int, _BackboneCaptureDetail]:
             "detail item",
         )
         detail = _BackboneCaptureDetail(
-            target_condition_id=_require_positive_int(
+            target_condition_id=_require_int(
                 mapping["target_condition_id"], "target_condition_id"
             ),
-            source_condition_id=_require_positive_int(
+            source_condition_id=_require_int(
                 mapping["source_condition_id"], "source_condition_id"
             ),
             label=_require_str(mapping["label"], "label"),
-            condition_index=_require_non_negative_int(
-                mapping["condition_index"], "condition_index"
-            ),
+            condition_index=_require_int(mapping["condition_index"], "condition_index"),
             is_por=_require_bool(mapping["is_por"], "is_por"),
-            cell_count=_require_non_negative_int(mapping["cell_count"], "cell_count"),
+            cell_count=_require_int(mapping["cell_count"], "cell_count"),
         )
         if detail.source_condition_id in parsed:
             raise ValueError("duplicate source_condition_id in capture detail")
@@ -546,16 +507,13 @@ def _validate_capture_condition(
     condition: Mapping[str, Any], detail: _BackboneCaptureDetail
 ) -> None:
     if (
-        _require_positive_int(condition["source_condition_id"], "source_condition_id")
+        _require_int(condition["source_condition_id"], "source_condition_id")
         != detail.source_condition_id
     ):
         raise ValueError("capture detail source mismatch")
     if _require_str(condition["label"], "label") != detail.label:
         raise ValueError("capture detail label mismatch")
-    if (
-        _require_non_negative_int(condition["condition_index"], "condition_index")
-        != detail.condition_index
-    ):
+    if _require_int(condition["condition_index"], "condition_index") != detail.condition_index:
         raise ValueError("capture detail index mismatch")
     if _require_bool(condition["is_por"], "is_por") != detail.is_por:
         raise ValueError("capture detail POR mismatch")
@@ -563,27 +521,11 @@ def _validate_capture_condition(
         raise ValueError("capture detail cell_count mismatch")
 
 
-def _jump_state_for_target(
-    target_condition_id: int,
-    *,
-    target_condition_states: Mapping[int, HistoryJumpState] | None,
-    fallback_deleted: bool,
-) -> HistoryJumpState:
-    if target_condition_states is not None and target_condition_id in target_condition_states:
-        state = target_condition_states[target_condition_id]
-        if isinstance(state, bool):
-            return HistoryJumpState.DELETED if state else HistoryJumpState.PRESENT
-        if isinstance(state, HistoryJumpState):
-            return state
-        raise ConflictError("invalid target condition state", code="invalid_event_batch")
-    return HistoryJumpState.DELETED if fallback_deleted else HistoryJumpState.PRESENT
+def _raise_capture_value_error() -> Any:
+    raise ValueError("capture cell value must be a string")
 
 
-def project_backbone_capture(
-    rows: Sequence[HistoryEventRow],
-    *,
-    target_condition_states: Mapping[int, HistoryJumpState] | None = None,
-) -> BackboneCaptureProjection:
+def project_backbone_capture(rows: Sequence[HistoryEventRow]) -> BackboneCaptureProjection:
     """Project v2 backbone capture rows.
 
     The capture batch must stay pure: mixed cell/capture rows are a conflict,
@@ -602,20 +544,16 @@ def project_backbone_capture(
         items = tuple(
             item
             for row in capture_rows
-            for item in _capture_items_from_row(
-                row, target_condition_states=target_condition_states
-            )
+            for item in _capture_items_from_row(row)
         )
-    except _LegacyCaptureUnavailable:
+    except (ConflictError, RuleViolationError, ValueError, TypeError, KeyError):
         return BackboneCaptureProjection(
             availability=HistoryAvailability.LEGACY_UNAVAILABLE,
             items=(),
         )
-    except (ConflictError, RuleViolationError, ValueError, TypeError, KeyError) as err:
-        raise ConflictError("capture batch is invalid", code="invalid_event_batch") from err
     if not items:
         return BackboneCaptureProjection(
-            availability=HistoryAvailability.NOT_APPLICABLE,
+            availability=HistoryAvailability.NO_APPLICABLE,
             items=(),
         )
     return BackboneCaptureProjection(
@@ -674,7 +612,7 @@ def project_cell_history(
             if initial_entry is not None
             else HistoryAvailability.LEGACY_UNAVAILABLE
             if initial_state_unavailable
-            else HistoryAvailability.NOT_APPLICABLE
+            else HistoryAvailability.NO_APPLICABLE
         ),
     )
 
@@ -706,18 +644,6 @@ def _require_int(value: int | None, field_name: str) -> int:
 def _require_str(value: str | None, field_name: str) -> str:
     if value is None:
         raise ValueError(f"{field_name} is required for history projection")
-    return value
-
-
-def _require_positive_int(value: Any, field_name: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        raise ValueError(f"{field_name} must be a positive integer")
-    return value
-
-
-def _require_non_negative_int(value: Any, field_name: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        raise ValueError(f"{field_name} must be a non-negative integer")
     return value
 
 
