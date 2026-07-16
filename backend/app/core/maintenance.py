@@ -83,6 +83,7 @@ async def get_phase4_writer_health() -> Phase4WriterHealthOut:
     db_revision = await read_app_revision()
     if not _revision_is_compatible(db_revision):
         raise Phase4WriterContractMismatchError(db_revision=db_revision)
+    assert db_revision is not None
 
     mutations_enabled = settings.project_mutations_enabled
     return Phase4WriterHealthOut(

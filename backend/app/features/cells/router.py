@@ -25,8 +25,8 @@ router = APIRouter(
     tags=["cells"],
     dependencies=[
         Depends(get_current_user),
-        Depends(require_edit_lock),
         Depends(require_project_mutations_enabled),
+        Depends(require_edit_lock),
     ],
 )
 

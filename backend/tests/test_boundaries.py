@@ -184,7 +184,8 @@ def test_phase4_writer_mutation_gate_covers_all_project_truth_write_routes() -> 
         for route in router.routes:
             if not isinstance(route, APIRoute):
                 continue
-            method = next(iter(route.methods))
+            methods = route.methods or set()
+            method = next(iter(methods))
             if method == "GET":
                 continue
             spec = (method, route.path)

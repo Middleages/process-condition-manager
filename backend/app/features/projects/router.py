@@ -100,7 +100,7 @@ async def create_project(
 @router.post(
     "/{project_id}/layers/{layer_key}/backbone-replace",
     response_model=ProjectOut,
-    dependencies=[Depends(require_edit_lock), Depends(require_project_mutations_enabled)],
+    dependencies=[Depends(require_project_mutations_enabled), Depends(require_edit_lock)],
 )
 async def replace_layer_backbone(
     project_id: int,
@@ -176,7 +176,7 @@ async def get_profile(project_id: int, service: ServiceDep) -> ProjectProfileOut
 @router.patch(
     "/{project_id}/profile",
     response_model=ProjectProfileOut,
-    dependencies=[Depends(require_edit_lock), Depends(require_project_mutations_enabled)],
+    dependencies=[Depends(require_project_mutations_enabled), Depends(require_edit_lock)],
 )
 async def patch_profile(
     project_id: int,
