@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import base64
 import binascii
+import hashlib
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any, Literal, NoReturn, Sequence, cast
+from typing import Any, Literal, NoReturn, cast
 
 from app.domain.errors import RuleViolationError
+from app.models.project import ChangeEventType
 
 _HISTORY_CURSOR_VERSION = 1
 _MAX_TOKEN_LENGTH = 4096
@@ -33,6 +36,11 @@ def _is_safe_token_character(character: str) -> bool:
 def _encode_payload(payload: dict[str, Any]) -> str:
     raw = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode()
     return base64.urlsafe_b64encode(raw).decode().rstrip("=")
+
+
+def _fingerprint_payload(payload: dict[str, Any]) -> str:
+    raw = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode()
+    return hashlib.sha256(raw).hexdigest()
 
 
 def _decode_payload(raw: str, *, error_code: str) -> dict[str, Any]:
@@ -119,6 +127,20 @@ def _normalize_sorted_unique_text_tuple(
     return tuple(sorted(values))
 
 
+def _normalize_sorted_unique_event_type_tuple(
+    raw: object, *, field_name: str, error_code: str
+) -> tuple[str, ...]:
+    values = _normalize_sorted_unique_text_tuple(
+        raw, field_name=field_name, max_length=64, error_code=error_code
+    )
+    allowed_values = {event_type.value for event_type in ChangeEventType}
+    if any(value not in allowed_values for value in values):
+        if error_code == "invalid_scope":
+            _raise_invalid_scope(f"{field_name} contains an unsupported value")
+        _raise_invalid_cursor(f"{field_name} contains an unsupported value")
+    return values
+
+
 def _normalize_sorted_unique_int_tuple(
     raw: object, *, field_name: str, error_code: str
 ) -> tuple[int, ...]:
@@ -191,17 +213,17 @@ class HistoryMemberFilterScope:
             self,
             "layer_keys",
             _normalize_sorted_unique_text_tuple(
-                self.layer_keys, field_name="layer_keys", max_length=64, error_code="invalid_scope"
+                self.layer_keys,
+                field_name="layer_keys",
+                max_length=256,
+                error_code="invalid_scope",
             ),
         )
         object.__setattr__(
             self,
             "event_types",
-            _normalize_sorted_unique_text_tuple(
-                self.event_types,
-                field_name="event_types",
-                max_length=64,
-                error_code="invalid_scope",
+            _normalize_sorted_unique_event_type_tuple(
+                self.event_types, field_name="event_types", error_code="invalid_scope"
             ),
         )
         object.__setattr__(
@@ -342,7 +364,7 @@ class HistoryCaptureKey:
             _normalize_non_empty_text(
                 self.target_layer_key,
                 field_name="target_layer_key",
-                max_length=64,
+                max_length=256,
                 error_code="invalid_cursor",
             ),
         )
@@ -489,7 +511,9 @@ def _member_filters_to_payload(filters: HistoryMemberFilterScope) -> dict[str, A
     }
 
 
-def _member_filters_from_payload(payload: dict[str, Any]) -> HistoryMemberFilterScope:
+def _member_filters_from_payload(
+    payload: dict[str, Any], *, error_code: str
+) -> HistoryMemberFilterScope:
     if set(payload) != {
         "layer_keys",
         "event_types",
@@ -499,22 +523,23 @@ def _member_filters_from_payload(payload: dict[str, Any]) -> HistoryMemberFilter
         "created_from",
         "created_to",
     }:
-        _raise_invalid_scope("member filters are invalid")
+        if error_code == "invalid_scope":
+            _raise_invalid_scope("member filters are invalid")
+        _raise_invalid_cursor("member filters are invalid")
     return HistoryMemberFilterScope(
         layer_keys=_normalize_sorted_unique_text_tuple(
             payload["layer_keys"],
             field_name="layer_keys",
-            max_length=64,
-            error_code="invalid_scope",
+            max_length=256,
+            error_code=error_code,
         ),
-        event_types=_normalize_sorted_unique_text_tuple(
+        event_types=_normalize_sorted_unique_event_type_tuple(
             payload["event_types"],
             field_name="event_types",
-            max_length=64,
-            error_code="invalid_scope",
+            error_code=error_code,
         ),
         actors=_normalize_sorted_unique_text_tuple(
-            payload["actors"], field_name="actors", max_length=128, error_code="invalid_scope"
+            payload["actors"], field_name="actors", max_length=128, error_code=error_code
         ),
         origins=tuple(
             cast(
@@ -525,19 +550,19 @@ def _member_filters_from_payload(payload: dict[str, Any]) -> HistoryMemberFilter
                 payload["origins"],
                 field_name="origins",
                 max_length=32,
-                error_code="invalid_scope",
+                error_code=error_code,
             )
         ),
         source_project_ids=_normalize_sorted_unique_int_tuple(
             payload["source_project_ids"],
             field_name="source_project_ids",
-            error_code="invalid_scope",
+            error_code=error_code,
         ),
         created_from=_normalize_datetime(
-            payload["created_from"], field_name="created_from", error_code="invalid_scope"
+            payload["created_from"], field_name="created_from", error_code=error_code
         ),
         created_to=_normalize_datetime(
-            payload["created_to"], field_name="created_to", error_code="invalid_scope"
+            payload["created_to"], field_name="created_to", error_code=error_code
         ),
     )
 
@@ -556,7 +581,9 @@ def _timeline_scope_from_payload(payload: dict[str, Any]) -> HistoryTimelineScop
         project_id=_normalize_int(
             payload["project_id"], field_name="project_id", error_code="invalid_cursor"
         ),
-        member_filters=_member_filters_from_payload(payload["member_filters"]),
+        member_filters=_member_filters_from_payload(
+            payload["member_filters"], error_code="invalid_cursor"
+        ),
     )
 
 
@@ -582,7 +609,9 @@ def _detail_scope_from_payload(payload: dict[str, Any]) -> HistoryDetailScope:
         batch_id=_normalize_non_empty_text(
             payload["batch_id"], field_name="batch_id", max_length=64, error_code="invalid_scope"
         ),
-        member_filters=_member_filters_from_payload(payload["member_filters"]),
+        member_filters=_member_filters_from_payload(
+            payload["member_filters"], error_code="invalid_scope"
+        ),
     )
 
 
@@ -619,7 +648,7 @@ def _capture_key_from_payload(payload: dict[str, Any]) -> HistoryCaptureKey:
         target_layer_key=_normalize_non_empty_text(
             payload["target_layer_key"],
             field_name="target_layer_key",
-            max_length=64,
+            max_length=256,
             error_code="invalid_cursor",
         ),
         source_condition_index=_normalize_int(
@@ -650,12 +679,14 @@ def _capture_key_from_payload(payload: dict[str, Any]) -> HistoryCaptureKey:
 
 
 def encode_history_timeline_cursor(cursor: HistoryTimelineCursor) -> str:
+    scope_payload = _timeline_scope_to_payload(cursor.scope)
     return _encode_payload(
         {
             "v": cursor.version,
             "snapshot_max_event_id": cursor.snapshot_max_event_id,
             "before_group_max_id": cursor.before_group_max_id,
-            "scope": _timeline_scope_to_payload(cursor.scope),
+            "scope": scope_payload,
+            "scope_fingerprint": _fingerprint_payload(scope_payload),
         }
     )
 
@@ -664,9 +695,24 @@ def decode_history_timeline_cursor(
     raw: str, *, expected_scope: HistoryTimelineScope | None = None
 ) -> HistoryTimelineCursor:
     payload = _decode_payload(raw, error_code="invalid_cursor")
-    if set(payload) != {"v", "snapshot_max_event_id", "before_group_max_id", "scope"}:
+    if set(payload) != {
+        "v",
+        "snapshot_max_event_id",
+        "before_group_max_id",
+        "scope",
+        "scope_fingerprint",
+    }:
         _raise_invalid_cursor("history cursor token is invalid")
     payload_dict = cast(dict[str, Any], payload)
+    scope_payload = cast(dict[str, Any], payload_dict["scope"])
+    if payload_dict["scope_fingerprint"] != _fingerprint_payload(scope_payload):
+        _raise_invalid_cursor("history cursor scope fingerprint is invalid")
+    try:
+        scope = _timeline_scope_from_payload(scope_payload)
+    except RuleViolationError as exc:
+        if exc.code == "invalid_scope":
+            _raise_invalid_cursor("timeline scope is invalid")
+        raise
     cursor = HistoryTimelineCursor(
         version=_normalize_int(
             payload_dict["v"], field_name="version", error_code="invalid_cursor"
@@ -681,7 +727,7 @@ def decode_history_timeline_cursor(
             field_name="before_group_max_id",
             error_code="invalid_cursor",
         ),
-        scope=_timeline_scope_from_payload(cast(dict[str, Any], payload_dict["scope"])),
+        scope=scope,
     )
     if expected_scope is not None and cursor.scope != expected_scope:
         _raise_invalid_scope("history timeline scope does not match the cursor")
@@ -697,18 +743,18 @@ def decode_history_detail_scope(raw: str) -> HistoryDetailScope:
     if set(payload) != {"v", "scope"}:
         _raise_invalid_scope("history scope token is invalid")
     payload_dict = cast(dict[str, Any], payload)
-    version = _normalize_int(
-        payload_dict["v"], field_name="version", error_code="invalid_scope"
-    )
+    version = _normalize_int(payload_dict["v"], field_name="version", error_code="invalid_scope")
     if version != _HISTORY_CURSOR_VERSION:
         _raise_invalid_scope("history scope version is unsupported")
     return _detail_scope_from_payload(cast(dict[str, Any], payload_dict["scope"]))
 
 
 def encode_history_detail_cursor(cursor: HistoryDetailCursor) -> str:
+    scope_payload = _detail_scope_to_payload(cursor.scope)
     payload: dict[str, Any] = {
         "v": cursor.version,
-        "scope": _detail_scope_to_payload(cursor.scope),
+        "scope": scope_payload,
+        "scope_fingerprint": _fingerprint_payload(scope_payload),
         "order_kind": cursor.order_kind,
     }
     if cursor.order_kind == "event_desc":
@@ -727,14 +773,30 @@ def decode_history_detail_cursor(
     if payload.get("order_kind") not in {"event_desc", "capture_asc"}:
         _raise_invalid_cursor("history cursor token is invalid")
     payload_dict = cast(dict[str, Any], payload)
+    if payload_dict.get("scope_fingerprint") != _fingerprint_payload(
+        cast(dict[str, Any], payload_dict["scope"])
+    ):
+        _raise_invalid_cursor("history cursor scope fingerprint is invalid")
+    try:
+        scope = _detail_scope_from_payload(cast(dict[str, Any], payload_dict["scope"]))
+    except RuleViolationError as exc:
+        if exc.code == "invalid_scope":
+            _raise_invalid_cursor("detail scope is invalid")
+        raise
     if payload.get("order_kind") == "event_desc":
-        if set(payload) != {"v", "scope", "order_kind", "last_event_id"}:
+        if set(payload) != {
+            "v",
+            "scope",
+            "scope_fingerprint",
+            "order_kind",
+            "last_event_id",
+        }:
             _raise_invalid_cursor("history cursor token is invalid")
         cursor = HistoryDetailCursor(
             version=_normalize_int(
                 payload_dict["v"], field_name="version", error_code="invalid_cursor"
             ),
-            scope=_detail_scope_from_payload(cast(dict[str, Any], payload_dict["scope"])),
+            scope=scope,
             order_kind="event_desc",
             last_event_id=_normalize_int(
                 payload_dict["last_event_id"],
@@ -743,13 +805,13 @@ def decode_history_detail_cursor(
             ),
         )
     else:
-        if set(payload) != {"v", "scope", "order_kind", "last_capture_key"}:
+        if set(payload) != {"v", "scope", "scope_fingerprint", "order_kind", "last_capture_key"}:
             _raise_invalid_cursor("history cursor token is invalid")
         cursor = HistoryDetailCursor(
             version=_normalize_int(
                 payload_dict["v"], field_name="version", error_code="invalid_cursor"
             ),
-            scope=_detail_scope_from_payload(cast(dict[str, Any], payload_dict["scope"])),
+            scope=scope,
             order_kind="capture_asc",
             last_capture_key=_capture_key_from_payload(
                 cast(dict[str, Any], payload_dict["last_capture_key"])

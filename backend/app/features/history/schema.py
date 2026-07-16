@@ -1,4 +1,3 @@
-# pyright: reportMissingImports=false
 """Strict public JSON contracts for history read surfaces."""
 
 from __future__ import annotations
@@ -26,10 +25,19 @@ HistoryOrderKind = Literal["event_desc", "capture_asc"]
 OpaqueTokenText = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=4096)
 ]
-BatchIdText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64)]
-LayerKeyText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64)]
-ActorText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=128)]
-SummaryText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=512)]
+BatchIdText = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64)
+]
+LayerKeyText = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=256)
+]
+ActorText = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=128)
+]
+SummaryText = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=512)
+]
+HistoricalValueText = Annotated[str, StringConstraints(max_length=4096)]
 ParameterCodeText = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=64)
 ]
@@ -53,7 +61,7 @@ class HistoryTimelineQueryIn(_StrictModel):
     layer_key: LayerKeyText | None = None
     event_type: list[ChangeEventType] = Field(default_factory=list)
     actor: ActorText | None = None
-    origin: list[HistoryOrigin] = Field(default_factory=list)
+    origin: HistoryOrigin | None = None
     source_project_id: int | None = Field(default=None, ge=1)
 
     @field_validator("created_from", "created_to", mode="before")
@@ -63,7 +71,9 @@ class HistoryTimelineQueryIn(_StrictModel):
             return value
         if isinstance(value, str):
             parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
-            return parsed.astimezone(UTC) if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
+            if parsed.tzinfo is not None:
+                return parsed.astimezone(UTC)
+            return parsed.replace(tzinfo=UTC)
         raise ValueError("datetime filters must be ISO datetime strings")
 
     @field_validator("event_type", mode="before")
@@ -71,21 +81,12 @@ class HistoryTimelineQueryIn(_StrictModel):
     def _normalize_event_type(cls, value: object) -> list[ChangeEventType]:
         if value is None:
             return []
-        if isinstance(value, (str, ChangeEventType)):
+        if isinstance(value, str | ChangeEventType):
             return [ChangeEventType(value)]
         return [ChangeEventType(item) for item in value]  # type: ignore[arg-type]
 
-    @field_validator("origin", mode="before")
-    @classmethod
-    def _normalize_origin(cls, value: object) -> list[HistoryOrigin]:
-        if value is None:
-            return []
-        if isinstance(value, str):
-            return [value]  # type: ignore[list-item]
-        return list(value)  # type: ignore[arg-type]
-
     @model_validator(mode="after")
-    def _validate_time_range(self) -> "HistoryTimelineQueryIn":
+    def _validate_time_range(self) -> HistoryTimelineQueryIn:
         if (
             self.created_from is not None
             and self.created_to is not None
@@ -166,21 +167,18 @@ class HistoryDetailCaptureTupleOut(_StrictModel):
     parameter_sort: int = Field(ge=0)
     parameter_code: ParameterCodeText
     event_id: int | None = Field(default=None, ge=1)
-    domain_coordinate: HistoryDomainCoordinateOut | None = None
-    copied_baseline_value: ChoiceCodeText | None = None
 
 
 class HistoryStateEntryOut(_StrictModel):
-    code: ChoiceCodeText | None = None
+    code: HistoricalValueText | None = None
     label: ChoiceLabelText | None = None
 
 
 class HistoryDetailItemOut(_StrictModel):
     event_id: int = Field(ge=1)
-    order_kind: HistoryOrderKind
-    old_code: ChoiceCodeText | None = None
-    new_code: ChoiceCodeText | None = None
-    baseline_value: ChoiceCodeText | None = None
+    old_code: HistoricalValueText | None = None
+    new_code: HistoricalValueText | None = None
+    copied_value: HistoricalValueText | None = None
     choice_label: ChoiceLabelText | None = None
     actor: ActorText | None = None
     origin: HistoryOrigin
@@ -202,8 +200,8 @@ class HistoryDetailOut(_StrictModel):
 
 class HistoryCellHistoryItemOut(_StrictModel):
     event_id: int = Field(ge=1)
-    old_code: ChoiceCodeText | None = None
-    new_code: ChoiceCodeText | None = None
+    old_code: HistoricalValueText | None = None
+    new_code: HistoricalValueText | None = None
     choice_label: ChoiceLabelText | None = None
     actor: ActorText | None = None
     origin: HistoryOrigin
@@ -242,6 +240,7 @@ __all__ = [
     "HistoryMetadataStatus",
     "HistoryOrderKind",
     "HistoryOrigin",
+    "HistoricalValueText",
     "HistoryStateEntryOut",
     "HistoryTimelineItemOut",
     "HistoryTimelineOut",
