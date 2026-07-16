@@ -40,6 +40,7 @@ from tests.factories import (
     seed_backbone_capture_parameters,
     seed_required_profile_choice_sets,
 )
+from tests.postgres_database import temporary_postgres_database
 
 _PG_URL = os.environ.get("APP_TEST_DATABASE_URL")
 
