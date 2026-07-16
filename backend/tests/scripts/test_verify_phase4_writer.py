@@ -12,6 +12,7 @@ from typing import Any
 import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.orm import selectinload
 
 import app.models  # noqa: F401 -- register all tables for create_all
 import scripts.verify_phase4_writer as verify_phase4_writer
@@ -176,6 +177,13 @@ def _assert_no_commit_calls(path: Path) -> None:
     assert not commit_calls, f"unexpected commit call(s) at lines {commit_calls}"
 
 
+def _assert_explicit_transaction_handle(path: Path) -> None:
+    source = path.read_text()
+    assert "transaction = await session.begin()" in source
+    assert "await transaction.rollback()" in source
+    assert "async with session.begin()" not in source
+
+
 async def test_rollback_smoke_report_marks_pass_when_gate_is_disabled(
     monkeypatch, sqlite_factory: async_sessionmaker[AsyncSession]
 ) -> None:
@@ -331,7 +339,9 @@ async def test_rollback_smoke_rolls_back_after_injected_failure(
 
 
 def test_smoke_script_has_no_commit_calls() -> None:
-    _assert_no_commit_calls(Path(verify_phase4_writer.__file__).resolve())
+    script_path = Path(verify_phase4_writer.__file__).resolve()
+    _assert_no_commit_calls(script_path)
+    _assert_explicit_transaction_handle(script_path)
 
 
 async def test_rollback_smoke_passes_against_guarded_postgres(
@@ -389,7 +399,7 @@ async def test_rollback_smoke_reuses_populated_canary_postgres(
     assert first["checks"]["project_counts_restored_after_rollback"] is True
 
 
-async def test_rollback_smoke_fails_when_canonical_choice_set_has_no_active_option(
+async def test_rollback_smoke_fails_when_canonical_choice_set_is_inactive(
     monkeypatch, sqlite_factory: async_sessionmaker[AsyncSession]
 ) -> None:
     async def _compatible_revision() -> str | None:
@@ -399,10 +409,10 @@ async def test_rollback_smoke_fails_when_canonical_choice_set_has_no_active_opti
     monkeypatch.setattr(maintenance.settings, "project_mutations_enabled", False)
 
     async with sqlite_factory() as session:
-        device_type = ChoiceSet(code="device_type", display_name="device_type")
+        device_type = ChoiceSet(code="device_type", display_name="device_type", is_active=False)
         device_type.options.extend(
             [
-                ChoiceOption(code="LOGIC", label="Logic", is_active=False, sort_order=10),
+                ChoiceOption(code="LOGIC", label="Logic", is_active=True, sort_order=10),
             ]
         )
         project_category = ChoiceSet(code="project_category", display_name="project_category")
@@ -419,8 +429,22 @@ async def test_rollback_smoke_fails_when_canonical_choice_set_has_no_active_opti
         session.add_all([device_type, project_category])
         await session.commit()
 
-    with pytest.raises(RuntimeError, match="canonical ChoiceSet has no active option"):
+    baseline_counts = await _truth_counts(sqlite_factory)
+
+    with pytest.raises(RuntimeError, match="canonical ChoiceSet is inactive: device_type"):
         await verify_phase4_writer.build_smoke_report(rollback=True, session_factory=sqlite_factory)
+
+    assert await _truth_counts(sqlite_factory) == baseline_counts
+
+    async with sqlite_factory() as session:
+        row = await session.scalar(
+            select(ChoiceSet)
+            .options(selectinload(ChoiceSet.options))
+            .where(ChoiceSet.code == "device_type")
+        )
+        assert row is not None
+        assert row.is_active is False
+        assert [option.code for option in row.options] == ["LOGIC"]
 
 
 async def test_rollback_smoke_fails_when_canonical_choice_set_is_inactive(
