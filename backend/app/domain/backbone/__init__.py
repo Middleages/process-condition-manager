@@ -6,5 +6,26 @@ from app.domain.backbone.matching import (
     MatchResult,
     match_layers,
 )
+from app.domain.backbone.snapshot import (
+    SNAPSHOT_VERSION,
+    BackboneCellValue,
+    BackboneConditionSnapshot,
+    BackboneSnapshotSpec,
+    BackboneSourceLayer,
+    BackboneSourceProject,
+    snapshot,
+)
 
-__all__ = ["LayerMatchInput", "ManualOverride", "MatchResult", "match_layers"]
+__all__ = [
+    "BackboneCellValue",
+    "BackboneConditionSnapshot",
+    "BackboneSnapshotSpec",
+    "BackboneSourceLayer",
+    "BackboneSourceProject",
+    "LayerMatchInput",
+    "ManualOverride",
+    "MatchResult",
+    "SNAPSHOT_VERSION",
+    "match_layers",
+    "snapshot",
+]
