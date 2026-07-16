@@ -101,6 +101,7 @@ def _initialize_project_events(
     target: Project, args: tuple[object, ...], kwargs: dict[str, object]
 ) -> None:
     target.events = []
+    target.layers = []
 
 
 async def _seed_parameter_registry(
