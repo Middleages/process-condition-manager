@@ -29,7 +29,7 @@ async def health() -> dict[str, str]:
     return {"status": "ok", "app": settings.app_name}
 
 
-@health_router.get("/phase4-writer", response_model=Phase4WriterHealthOut)
+@health_router.get("/health/phase4-writer", response_model=Phase4WriterHealthOut)
 async def phase4_writer_health() -> Phase4WriterHealthOut:
     """Phase 4 writer canary / rollback-only health attestation."""
     return await get_phase4_writer_health()

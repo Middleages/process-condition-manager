@@ -43,8 +43,9 @@ async def _acquire_lock(db_client: AsyncClient, project_id: int) -> dict[str, st
 async def test_mutation_gate_blocks_project_truth_writes_and_keeps_drain_releases(
     db_client: AsyncClient, monkeypatch
 ) -> None:
-    project = await _create_project(db_client)
-    headers = await _acquire_lock(db_client, project["id"])
+    locked_project = await _create_project(db_client, name="Locked project")
+    unlocked_project = await _create_project(db_client, name="Unlocked project")
+    headers = await _acquire_lock(db_client, locked_project["id"])
 
     monkeypatch.setattr(maintenance.settings, "project_mutations_enabled", False)
 
@@ -64,35 +65,35 @@ async def test_mutation_gate_blocks_project_truth_writes_and_keeps_drain_release
         ),
         (
             "POST",
-            f"/api/projects/{project['id']}/layers/{project['layers'][1]['layer_key']}/backbone-replace",
+            f"/api/projects/{locked_project['id']}/layers/{locked_project['layers'][1]['layer_key']}/backbone-replace",
             {
                 "json": {
-                    "source_project_id": project["id"],
-                    "source_layer_key": project["layers"][0]["layer_key"],
+                    "source_project_id": locked_project["id"],
+                    "source_layer_key": locked_project["layers"][0]["layer_key"],
                 },
             },
         ),
         (
             "PATCH",
-            f"/api/projects/{project['id']}/profile",
+            f"/api/projects/{locked_project['id']}/profile",
             {"json": {"comment": "blocked"}},
         ),
         (
             "PATCH",
-            f"/api/projects/{project['id']}/cells",
+            f"/api/projects/{locked_project['id']}/cells",
             {"json": {"cells": [], "origin": "manual"}},
         ),
         (
             "POST",
-            f"/api/projects/{project['id']}/layers/{project['layers'][0]['layer_key']}/conditions",
+            f"/api/projects/{locked_project['id']}/layers/{locked_project['layers'][0]['layer_key']}/conditions",
             {"json": {}},
         ),
-        ("DELETE", f"/api/projects/{project['id']}/conditions/999999", {}),
-        ("PUT", f"/api/projects/{project['id']}/conditions/999999/por", {}),
-        ("POST", f"/api/projects/{project['id']}/lock", {}),
+        ("DELETE", f"/api/projects/{locked_project['id']}/conditions/999999", {}),
+        ("PUT", f"/api/projects/{locked_project['id']}/conditions/999999/por", {}),
+        ("POST", f"/api/projects/{unlocked_project['id']}/lock", {}),
         (
             "POST",
-            f"/api/projects/{project['id']}/lock/heartbeat",
+            f"/api/projects/{locked_project['id']}/lock/heartbeat",
             {"json": {"lock_token": headers["X-Lock-Token"]}},
         ),
     ]
@@ -111,12 +112,14 @@ async def test_mutation_gate_blocks_project_truth_writes_and_keeps_drain_release
     assert allowed_preview.status_code == 200, allowed_preview.text
 
     release_delete = await db_client.request(
-        "DELETE", f"/api/projects/{project['id']}/lock", json={"lock_token": headers["X-Lock-Token"]}
+        "DELETE",
+        f"/api/projects/{locked_project['id']}/lock",
+        json={"lock_token": headers["X-Lock-Token"]},
     )
     assert release_delete.status_code == 204, release_delete.text
 
     release_beacon = await db_client.post(
-        f"/api/projects/{project['id']}/lock/release",
+        f"/api/projects/{locked_project['id']}/lock/release",
         json={"lock_token": headers["X-Lock-Token"]},
     )
     assert release_beacon.status_code == 204, release_beacon.text
