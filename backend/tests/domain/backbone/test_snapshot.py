@@ -13,7 +13,6 @@ from app.domain.backbone.snapshot import (
     BASELINE_UNAVAILABLE,
     INVALID_BACKBONE_SNAPSHOT,
     SNAPSHOT_VERSION,
-    UNRESOLVED_PARAMETER_METADATA,
     BackboneSnapshot,
     BackboneSnapshotCell,
     BackboneSnapshotColumn,
@@ -36,7 +35,7 @@ def _raw_snapshot(overrides: dict[str, Any] | None = None) -> dict[str, Any]:
     raw: dict[str, Any] = {
         "schema_version": 1,
         "capture_batch_id": "0123456789abcdef0123456789abcdef",
-        "captured_at": "2026-07-16T04:17:58.715Z",
+        "captured_at": "2026-07-16T04:17:58.715000Z",
         "source": {
             "project_id": 42,
             "sheet_layer_id": 7,
@@ -198,7 +197,7 @@ def _semantic_snapshot_b() -> BackboneSnapshot:
     return BackboneSnapshot(
         schema_version=1,
         capture_batch_id="0123456789abcdef0123456789abcdef",
-        captured_at="2026-07-16T04:17:58.715Z",
+        captured_at="2026-07-16T04:17:58.715000Z",
         source=BackboneSnapshotSource(
             project_id=42,
             sheet_layer_id=7,
@@ -292,7 +291,7 @@ def test_snapshot_serializes_exact_contract_from_shuffled_input() -> None:
     assert result == {
         "schema_version": 1,
         "capture_batch_id": "0123456789abcdef0123456789abcdef",
-        "captured_at": "2026-07-16T04:17:58.715Z",
+        "captured_at": "2026-07-16T04:17:58.715000Z",
         "source": {
             "project_id": 42,
             "sheet_layer_id": 7,
@@ -388,7 +387,15 @@ def test_snapshot_serializes_exact_contract_from_shuffled_input() -> None:
         ),
         (
             lambda raw: raw["conditions"][0]["cells"].__setitem__("missing", "1"),
-            UNRESOLVED_PARAMETER_METADATA,
+            INVALID_BACKBONE_SNAPSHOT,
+        ),
+        (
+            lambda raw: raw["columns"][0].pop("category_code"),
+            INVALID_BACKBONE_SNAPSHOT,
+        ),
+        (
+            lambda raw: raw["columns"][0].__setitem__("unexpected", "value"),
+            INVALID_BACKBONE_SNAPSHOT,
         ),
         (
             lambda raw: raw["conditions"].__setitem__(
@@ -494,7 +501,7 @@ def test_snapshot_contract_helpers_and_hashing_are_canonical() -> None:
     ) == datetime(2026, 7, 16, 4, 17, 58, 715000, tzinfo=UTC)
     assert format_captured_at(
         datetime(2026, 7, 16, 4, 17, 58, 715000, tzinfo=UTC)
-    ) == "2026-07-16T04:17:58.715Z"
+    ) == "2026-07-16T04:17:58.715000Z"
 
     with pytest.raises(RuleViolationError):
         normalize_captured_at(
@@ -514,7 +521,7 @@ def test_snapshot_contract_helpers_and_hashing_are_canonical() -> None:
             {
                 "schema_version": 1,
                 "capture_batch_id": "bad",
-                "captured_at": "2026-07-16T04:17:58.715Z",
+                "captured_at": "2026-07-16T04:17:58.715000Z",
                 "source": {},
                 "columns": [],
                 "conditions": [],
