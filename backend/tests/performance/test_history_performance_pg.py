@@ -8,12 +8,12 @@ before timing the planned API surface.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import os
+import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from itertools import cycle
 from typing import Final
-import uuid
 
 import pytest
 import sqlalchemy as sa
