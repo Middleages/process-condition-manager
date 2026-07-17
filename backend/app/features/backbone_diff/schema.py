@@ -55,7 +55,7 @@ class BackboneDiffRootQueryIn(_StrictModel):
         if isinstance(value, str):
             value = [value]
         allowed = {"added", "changed", "cleared", "removed", "unchanged"}
-        items = []
+        items: list[str] = []
         for item in value:  # type: ignore[assignment]
             if not isinstance(item, str):
                 raise ValueError("classification values must be strings")
@@ -63,7 +63,7 @@ class BackboneDiffRootQueryIn(_StrictModel):
             if normalized not in allowed:
                 raise ValueError("classification contains an unsupported value")
             items.append(normalized)
-        return tuple(sorted(dict.fromkeys(items)))  # type: ignore[return-value]
+        return tuple(sorted(set(items)))  # type: ignore[return-value]
 
     @model_validator(mode="after")
     def _validate_include_unchanged(self) -> BackboneDiffRootQueryIn:
