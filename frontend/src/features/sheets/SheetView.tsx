@@ -60,6 +60,7 @@ import {
 import { resolveSheetInteraction } from './sheetInteraction'
 import { SheetFocusFrame } from './SheetFocusFrame'
 import { SheetWorkbenchPanel, SheetWorkbenchToggle, useSheetWorkbenchState } from './SheetWorkbench'
+import { HistoryWorkbench } from './HistoryWorkbench'
 import { ValidationWorkbench } from './ValidationWorkbench'
 import {
   SheetAdapterError,
@@ -82,6 +83,8 @@ import {
   resolveWorkbenchCoordinateNavigation,
   type WorkbenchCoordinate,
 } from './workbenchCoordinateNavigation'
+import { useHistoryWorkbenchController } from './useHistoryWorkbenchController'
+import type { HistoryJumpTargetOut } from '@/api/history'
 
 const COLUMN_SEARCH_STATUS_ID = 'sheet-column-search-status'
 const VALIDATION_DEFINITIONS_STATUS_ID = 'validation-definitions-status'
@@ -356,6 +359,7 @@ function SheetEditor({
     validation.explicitValidationCompleted,
   )
   const workbenchState = useSheetWorkbenchState()
+  const historyWorkbench = useHistoryWorkbenchController(projectId)
   const wasValidationWorkbenchVisibleRef = useRef(false)
 
   useEffect(() => {
@@ -600,6 +604,10 @@ function SheetEditor({
         setStructError(null)
         setActiveRow(payload)
       },
+      onCellHistoryRequest: (payload) => {
+        historyWorkbench.onCellHistoryRequest(payload)
+        workbenchState.selectMode('history')
+      },
     }),
     [
       interaction,
@@ -611,6 +619,8 @@ function SheetEditor({
       projectId,
       setPaste,
       pasteCallbackGeneration,
+      historyWorkbench.onCellHistoryRequest,
+      workbenchState.selectMode,
     ],
   )
 
@@ -694,18 +704,13 @@ function SheetEditor({
     [interaction.canSwitchCategory],
   )
 
-  const activateValidationIssue = useCallback(
-    (issue: ValidationWorkbenchIssue) => {
+  const activateWorkbenchCoordinate = useCallback(
+    (coordinate: WorkbenchCoordinate) => {
       if (!interaction.canSwitchCategory || pasteRef.current !== null) {
         setCoordinateNavigationStatus('붙여넣기를 적용 또는 취소한 뒤 이동해 주세요.')
         return
       }
-      const navigation = resolveWorkbenchCoordinateNavigation(
-        issue,
-        data.columns,
-        displayRows,
-        activeCategory,
-      )
+      const navigation = resolveWorkbenchCoordinateNavigation(coordinate, data.columns, displayRows, activeCategory)
       setPendingColumnJump(null)
       if (navigation.kind === 'missing-target') {
         setCoordinateNavigationStatus('이동할 대상 셀을 찾지 못했습니다.')
@@ -723,6 +728,23 @@ function SheetEditor({
       setCoordinateNavigationStatus('대상 셀로 이동했습니다.')
     },
     [interaction.canSwitchCategory, data.columns, displayRows, activeCategory],
+  )
+
+  const activateValidationIssue = useCallback(
+    (issue: ValidationWorkbenchIssue) => {
+      activateWorkbenchCoordinate(issue)
+    },
+    [activateWorkbenchCoordinate],
+  )
+
+  const activateHistoryJumpTarget = useCallback(
+    (target: HistoryJumpTargetOut) => {
+      activateWorkbenchCoordinate({
+        conditionId: target.condition_id,
+        parameterCode: target.parameter_code,
+      })
+    },
+    [activateWorkbenchCoordinate],
   )
 
   return (
@@ -946,6 +968,28 @@ function SheetEditor({
                 navigationStatus={coordinateNavigationStatus}
                 onIssueActivate={activateValidationIssue}
                 onRetry={() => void validation.retry()}
+              />
+            }
+            historyContent={
+              <HistoryWorkbench
+                projectId={projectId}
+                state={historyWorkbench.state}
+                coverage={historyWorkbench.coverage}
+                cellHistory={historyWorkbench.cellHistory}
+                timelineStatus={historyWorkbench.timelineStatus}
+                timelineError={historyWorkbench.timelineError}
+                nextPageError={historyWorkbench.nextPageError}
+                cellStatus={historyWorkbench.cellStatus}
+                cellError={historyWorkbench.cellError}
+                cellNextPageError={historyWorkbench.cellNextPageError}
+                onFiltersChange={historyWorkbench.onFiltersChange}
+                onModeChange={historyWorkbench.onModeChange}
+                onBatchToggle={historyWorkbench.onBatchToggle}
+                onActivateTarget={activateHistoryJumpTarget}
+                onLoadMoreTimeline={historyWorkbench.onLoadMoreTimeline}
+                onLoadMoreCell={historyWorkbench.onLoadMoreCell}
+                onRetryTimeline={historyWorkbench.onRetryTimeline}
+                onRetryCell={historyWorkbench.onRetryCell}
               />
             }
           />
