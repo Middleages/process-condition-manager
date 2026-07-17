@@ -145,7 +145,9 @@ class BackboneDiffCurrentLayerSource:
         object.__setattr__(self, "layer_key", _require_text(self.layer_key, "layer_key"))
         object.__setattr__(self, "step_seq", _require_text(self.step_seq, "step_seq"))
         object.__setattr__(self, "layer_id", _require_text(self.layer_id, "layer_id"))
-        object.__setattr__(self, "sort_order", _require_non_negative_int(self.sort_order, "sort_order"))
+        object.__setattr__(
+            self, "sort_order", _require_non_negative_int(self.sort_order, "sort_order")
+        )
         if self.source_project_id is not None:
             object.__setattr__(
                 self,
@@ -362,12 +364,18 @@ def compare_backbone_layer(layer_input: BackboneDiffLayerInput) -> BackboneDiffL
     ambiguous_lineage_count = 0
 
     for baseline_condition in baseline_snapshot.conditions:
-        baseline_cells_by_code = {cell.parameter_code: cell.value for cell in baseline_condition.cells}
+        baseline_cells_by_code = {
+            cell.parameter_code: cell.value for cell in baseline_condition.cells
+        }
         candidates = current_candidates.get(baseline_condition.source_condition_id, [])
         if not candidates:
             rows.append(
                 _removed_row(
-                    layer_input.layer_key, baseline_condition, baseline_columns, baseline_universe
+                    layer_input.layer_key,
+                    baseline_condition,
+                    baseline_cells_by_code,
+                    baseline_columns,
+                    baseline_universe,
                 )
             )
             continue
@@ -564,8 +572,8 @@ def _matched_row(
     layer_key: str,
     baseline_condition: Any,
     current_condition: BackboneDiffCurrentCondition,
-    baseline_cells_by_code: dict[str, str | None],
-    current_cells_by_code: dict[str, str | None],
+    baseline_cells_by_code: Mapping[str, str | None],
+    current_cells_by_code: Mapping[str, str | None],
     baseline_columns: dict[str, BackboneSnapshotColumn],
     current_descriptor_by_code: dict[str, BackboneDiffCurrentParameter],
     baseline_universe: set[str],
@@ -614,7 +622,7 @@ def _matched_row(
 def _added_row(
     layer_key: str,
     current_condition: BackboneDiffCurrentCondition,
-    current_cells_by_code: dict[str, str | None],
+    current_cells_by_code: Mapping[str, str | None],
     baseline_columns: dict[str, BackboneSnapshotColumn],
     current_descriptor_by_code: dict[str, BackboneDiffCurrentParameter],
     current_universe: set[str],
@@ -663,7 +671,7 @@ def _added_row(
 def _removed_row(
     layer_key: str,
     baseline_condition: Any,
-    baseline_cells_by_code: dict[str, str | None],
+    baseline_cells_by_code: Mapping[str, str | None],
     baseline_columns: dict[str, BackboneSnapshotColumn],
     baseline_universe: set[str],
 ) -> BackboneDiffRow:
@@ -726,8 +734,8 @@ def _compare_coordinate(
     parameter_code: str,
     baseline_condition: Any,
     current_condition: BackboneDiffCurrentCondition,
-    baseline_cells_by_code: dict[str, str | None],
-    current_cells_by_code: dict[str, str | None],
+    baseline_cells_by_code: Mapping[str, str | None],
+    current_cells_by_code: Mapping[str, str | None],
     baseline_columns: dict[str, BackboneSnapshotColumn],
     current_descriptor_by_code: dict[str, BackboneDiffCurrentParameter],
     baseline_universe: set[str],
@@ -759,13 +767,13 @@ def _compare_coordinate(
             reason="column_added",
             baseline_value=None,
             current_value=_canonical_current_value(
-                descriptor, current_condition.cells_by_code().get(parameter_code), parameter_code
+                descriptor, current_cells_by_code.get(parameter_code), parameter_code
             ),
         )
 
-    baseline_value = _baseline_cell_value(baseline_condition, parameter_code)
+    baseline_value = baseline_cells_by_code.get(parameter_code)
     current_value = _canonical_current_value(
-        descriptor, current_condition.cells_by_code().get(parameter_code), parameter_code
+        descriptor, current_cells_by_code.get(parameter_code), parameter_code
     )
 
     if baseline_value is None and current_value is None:
@@ -873,6 +881,19 @@ def _row_sort_key(row: BackboneDiffRow) -> tuple[Any, ...]:
 
 def _layer_input_sort_key(layer_input: BackboneDiffLayerInput) -> tuple[Any, ...]:
     return (layer_input.layer_sort_order, layer_input.layer_key)
+
+
+def _source_payload(source: BackboneDiffCurrentLayerSource) -> dict[str, Any]:
+    return {
+        "project_id": source.project_id,
+        "sheet_layer_id": source.sheet_layer_id,
+        "layer_key": source.layer_key,
+        "step_seq": source.step_seq,
+        "layer_id": source.layer_id,
+        "sort_order": source.sort_order,
+        "source_project_id": source.source_project_id,
+        "source_layer_key": source.source_layer_key,
+    }
 
 
 def _require_text(value: Any, field_name: str) -> str:

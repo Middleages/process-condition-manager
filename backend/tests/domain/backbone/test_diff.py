@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import replace
-from typing import Callable
 
 import pytest
 
@@ -98,13 +98,17 @@ def _current_source(
     layer_key: str = "L1::PROC_ALPHA::010::ACT",
     step_seq: str = "010",
     layer_id: str = "ACT",
-) -> BackboneSnapshotSource:
-    return BackboneSnapshotSource(
+    sort_order: int = 1,
+) -> BackboneDiffCurrentLayerSource:
+    return BackboneDiffCurrentLayerSource(
         project_id=project_id,
         sheet_layer_id=sheet_layer_id,
         layer_key=layer_key,
         step_seq=step_seq,
         layer_id=layer_id,
+        sort_order=sort_order,
+        source_project_id=9001,
+        source_layer_key="SRC::L1::PROC_ALPHA::010::ACT",
     )
 
 
@@ -112,7 +116,7 @@ def _layer_input(
     *,
     baseline_snapshot: BackboneSnapshot | None,
     current_conditions: tuple[BackboneDiffCurrentCondition, ...],
-    current_source: BackboneSnapshotSource | None = None,
+    current_source: BackboneDiffCurrentLayerSource | None = None,
     include_orphan: bool = False,
 ) -> BackboneDiffLayerInput:
     parameters = [
@@ -152,11 +156,7 @@ def _layer_input(
         )
 
     if current_source is None:
-        current_source = (
-            baseline_snapshot.source
-            if baseline_snapshot is not None
-            else _current_source()
-        )
+        current_source = _current_source()
 
     return BackboneDiffLayerInput(
         layer_key="L1::PROC_ALPHA::010::ACT",
@@ -243,7 +243,7 @@ def test_compare_backbone_layer_classifies_and_orders_all_core_cases() -> None:
     assert result.ambiguous_lineage_count == 1
     assert [row.row_status for row in result.rows] == ["removed", "matched", "added"]
 
-    matched_row = result.rows[0]
+    matched_row = result.rows[1]
     assert [change.field_name for change in matched_row.metadata_changes] == [
         "label",
         "condition_index",
@@ -272,9 +272,17 @@ def test_compare_backbone_layer_classifies_and_orders_all_core_cases() -> None:
         for item in result.preview_items
         if item.row_status == "matched" and item.identity == 101
     ]
-    assert [item.item_kind for item in matched_preview[:2]] == ["row_metadata", "row_metadata"]
-    assert [item.field_name for item in matched_preview[:2]] == ["is_por", "label"]
-    assert [item.parameter_code for item in matched_preview[2:]] == [
+    assert [item.item_kind for item in matched_preview[:3]] == [
+        "row_metadata",
+        "row_metadata",
+        "row_metadata",
+    ]
+    assert [item.field_name for item in matched_preview[:3]] == [
+        "label",
+        "condition_index",
+        "is_por",
+    ]
+    assert [item.parameter_code for item in matched_preview[3:]] == [
         "baseline_only",
         "shared_blank",
         "shared_number_equal",
@@ -368,7 +376,8 @@ def test_compare_backbone_layer_cell_matrix(
     expected_current_value: str | None,
 ) -> None:
     result = compare_backbone_layer(_matched_layer_input())
-    cell = {change.parameter_code: change for change in result.rows[0].cell_changes}[parameter_code]
+    matched_row = next(row for row in result.rows if row.row_status == "matched")
+    cell = {change.parameter_code: change for change in matched_row.cell_changes}[parameter_code]
 
     assert cell.classification == expected_classification
     assert cell.reason == expected_reason
@@ -573,6 +582,7 @@ def test_compare_backbone_orders_layers_and_root_hash_is_stable() -> None:
             layer_key="L2::PROC_BETA::020::ACT",
             step_seq="020",
             layer_id="ACT",
+            sort_order=2,
         ),
         baseline_snapshot=None,
         current_conditions=(_added_current_condition(),),
