@@ -11,10 +11,11 @@ import type {
   HistoryCellHistoryItemOut,
   HistoryCellHistoryOut,
   HistoryCoverageOut,
+  HistoryDetailOut,
   HistoryJumpTargetOut,
   HistoryTimelineItemOut,
 } from '@/api/history'
-import type { HistoryTimelineFilterInput } from '@/api/historyQuery'
+import type { HistoryTimelineFilterInput, HistoryTimelineFilters } from '@/api/historyQuery'
 import { cn } from '@/shared/lib/cn'
 
 import {
@@ -30,7 +31,6 @@ import {
   normalizeHistoryWorkbenchFilters,
   resolveHistoryActorLabel,
   shouldRequestHistoryBatchDetailOnOpen,
-  type HistoryTimelineFilters,
   type HistoryWorkbenchMode,
   type HistoryWorkbenchState,
 } from './historyWorkbenchState'
@@ -162,7 +162,7 @@ export function HistoryWorkbench({
       'origin',
       event.currentTarget.value === ''
         ? null
-        : (event.currentTarget.value as HistoryTimelineFilterInput['origin']),
+        : (event.currentTarget.value as HistoryTimelineFilters['origin']),
     )
   }
 
