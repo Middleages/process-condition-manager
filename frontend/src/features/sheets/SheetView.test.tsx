@@ -242,6 +242,7 @@ function createMockHistoryController(
 }
 
 function createMockBackboneDiffWorkbenchController(): BackboneDiffWorkbenchController {
+  const onClearNavigationAnnouncement = vi.fn()
   return {
     state: {
       filters: {
@@ -304,6 +305,7 @@ function createMockBackboneDiffWorkbenchController(): BackboneDiffWorkbenchContr
     onRetryRoot: () => undefined,
     onRetryBranch: () => undefined,
     onRetryCell: () => undefined,
+    onClearNavigationAnnouncement,
   }
 }
 
@@ -1026,7 +1028,26 @@ describe('SheetView focus shell integration', () => {
   it('passes backbone diff close-navigation callbacks and announcement clear contract to the shared workbench', () => {
     expect(sheetViewSource).toContain('onCloseBranch={backboneDiffWorkbench.onCloseBranch}')
     expect(sheetViewSource).toContain('onCloseCell={backboneDiffWorkbench.onCloseCell}')
-    expect(sheetViewSource).toContain('onClearNavigationAnnouncement?.()')
+    expect(sheetViewSource).toContain('onClearBackboneNavigationAnnouncement?.()')
+  })
+
+  it('resets backbone-diff announcement via a stable clear callback, not full controller object', () => {
+    expect(sheetViewSource).toMatch(
+      /const \{ onClearNavigationAnnouncement: onClearBackboneNavigationAnnouncement \}\s*=\s*backboneDiffWorkbench/,
+    )
+    expect(sheetViewSource).toContain('onClearBackboneNavigationAnnouncement?.()')
+    expect(sheetViewSource).toContain('const onBackboneRefreshAnnouncementReset = useCallback(() => {')
+    const refreshAnnouncementResetStart = sheetViewSource.indexOf(
+      'const onBackboneRefreshAnnouncementReset = useCallback(() => {',
+    )
+    expect(refreshAnnouncementResetStart).toBeGreaterThan(-1)
+    const refreshAnnouncementResetBlock = sheetViewSource.slice(
+      refreshAnnouncementResetStart,
+      refreshAnnouncementResetStart + 220,
+    )
+    expect(refreshAnnouncementResetBlock).toContain('}, [onClearBackboneNavigationAnnouncement])')
+    const fullControllerDependency = /}, \[backboneDiffWorkbench\]\)/.exec(refreshAnnouncementResetBlock)
+    expect(fullControllerDependency).toBeNull()
   })
 
   it('maps backbone diff preview, condition, and cell data fields to the shared contracts', () => {
