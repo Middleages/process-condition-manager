@@ -212,9 +212,12 @@ class BackboneDiffLayerInput:
         object.__setattr__(
             self, "current_conditions", tuple(sorted(conditions, key=_current_condition_sort_key))
         )
-        object.__setattr__(
-            self, "current_parameters", tuple(sorted(parameters, key=_current_parameter_sort_key))
-        )
+        canonical_parameters = tuple(sorted(parameters, key=_current_parameter_sort_key))
+        # A project-level registry is already canonical and immutable. Retain that tuple so
+        # every layer can share one descriptor graph instead of copying it per layer.
+        if parameters == canonical_parameters:
+            canonical_parameters = parameters
+        object.__setattr__(self, "current_parameters", canonical_parameters)
 
 
 @dataclass(frozen=True, slots=True)

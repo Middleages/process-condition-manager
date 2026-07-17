@@ -248,7 +248,10 @@ async def test_load_diff_input_sqlite_freezes_graph_without_lazy_queries(
     assert loaded.line_id == "L1"
     assert loaded.process_id == "PROC_A"
     assert loaded.part_id == "PART_A"
-    assert len(statements) <= 8
+    assert len(statements) == 5
+    assert sum(
+        statement.lstrip().upper().startswith("SELECT") for statement in statements
+    ) == 5
 
     loaded_layer = loaded.layers[0]
     assert loaded_layer.layer_key == layer.layer_key
@@ -305,8 +308,98 @@ async def test_load_diff_input_missing_project_raises_not_found(
     with pytest.raises(NotFoundError) as excinfo:
         await load_diff_input_with_session_factory(999_999, sqlite_factory)
 
-    assert excinfo.value.code == "not_found"
+    assert excinfo.value.code == "project_not_found"
     assert excinfo.value.details == {"project_id": 999_999}
+
+
+async def test_load_diff_input_orders_layers_and_reuses_the_registry_tuple(
+    sqlite_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with sqlite_factory() as session:
+        await _seed_parameters(session)
+        project, _ = await _seed_project(session)
+        session.add_all(
+            [
+                SheetLayer(
+                    project_id=project.id,
+                    layer_key="L1::PROC_A::005::B",
+                    step_seq="005",
+                    layer_id="B",
+                    eqp_type="B",
+                    eqp_type_desc="B",
+                    area_name="PHOTO",
+                    sort_order=0,
+                    source_project_id=None,
+                    source_layer_key=None,
+                ),
+                SheetLayer(
+                    project_id=project.id,
+                    layer_key="L1::PROC_A::005::A",
+                    step_seq="005",
+                    layer_id="A",
+                    eqp_type="A",
+                    eqp_type_desc="A",
+                    area_name="PHOTO",
+                    sort_order=0,
+                    source_project_id=None,
+                    source_layer_key=None,
+                ),
+            ]
+        )
+        await session.commit()
+
+    loaded = await load_diff_input_with_session_factory(project.id, sqlite_factory)
+
+    assert [layer.layer_key for layer in loaded.layers] == [
+        "L1::PROC_A::005::A",
+        "L1::PROC_A::005::B",
+        "L1::PROC_A::010::ACT",
+    ]
+    shared_parameters = loaded.layers[0].current_parameters
+    assert all(layer.current_parameters is shared_parameters for layer in loaded.layers)
+    assert loaded.layers[0].current_source.source_project_id is None
+    assert loaded.layers[0].current_source.source_layer_key is None
+
+
+async def test_load_diff_input_parses_each_baseline_once(
+    sqlite_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async with sqlite_factory() as session:
+        await _seed_parameters(session)
+        project, layer = await _seed_project(session)
+        sibling = SheetLayer(
+            project_id=project.id,
+            layer_key="L1::PROC_A::020::ACT",
+            step_seq="020",
+            layer_id="ACT",
+            eqp_type="ACT",
+            eqp_type_desc="Active",
+            area_name="PHOTO",
+            sort_order=2,
+            source_project_id=None,
+            source_layer_key=None,
+            backbone_snapshot=layer.backbone_snapshot,
+        )
+        session.add(sibling)
+        await session.commit()
+
+    from app.features.backbone_diff import repository as repository_module
+
+    parse_calls: list[dict] = []
+    real_parse = repository_module.parse_backbone_snapshot
+
+    def count_parse(payload: dict):
+        parse_calls.append(payload)
+        return real_parse(payload)
+
+    monkeypatch.setattr(repository_module, "parse_backbone_snapshot", count_parse)
+
+    loaded = await load_diff_input_with_session_factory(project.id, sqlite_factory)
+
+    baseline_count = sum(layer.baseline_snapshot is not None for layer in loaded.layers)
+    assert baseline_count == 2
+    assert len(parse_calls) == baseline_count
 
 
 @pytest.mark.skipif(_PG_URL is None, reason="APP_TEST_DATABASE_URL 미설정")

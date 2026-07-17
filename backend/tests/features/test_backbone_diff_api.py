@@ -1620,7 +1620,7 @@ async def test_backbone_diff_provider_maps_invalid_contracts_to_conflict(
 async def test_backbone_diff_missing_project_returns_404(db_client: AsyncClient) -> None:
     response = await db_client.get("/api/projects/999999/backbone-diff")
     assert response.status_code == 404
-    assert response.json()["code"] == "not_found"
+    assert response.json()["code"] == "project_not_found"
 
 
 @pytest.mark.asyncio
