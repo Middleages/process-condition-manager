@@ -183,7 +183,7 @@ describe('useBackboneDiffWorkbenchController seams', () => {
         issuedToken: 2,
         acceptedToken: 1,
       }),
-    ).toBe(true)
+    ).toBe(false)
   })
 
   it('applies accepted updates through the exported production acceptance helper', () => {
@@ -620,7 +620,8 @@ describe('useBackboneDiffWorkbenchController seams', () => {
       cellDeferredA1.resolve(createCellPage('P-a-1'))
       cellDeferredB.resolve(createCellPage('P-b-1'))
 
-      const [branchAData, branchBData, cellAData, cellBData] = await Promise.all([
+      const [branchAData, branchAReplayData, branchBData, cellAData, cellAReplayData, cellBData] =
+        await Promise.all([
         branchRequestA,
         branchRequestAReplay,
         branchRequestB,
@@ -630,8 +631,10 @@ describe('useBackboneDiffWorkbenchController seams', () => {
       ])
 
       expect(branchAData.pages[0]?.token).toBe(1)
+      expect(branchAReplayData.pages[0]?.token).toBe(1)
       expect(branchBData.pages[0]?.token).toBe(1)
       expect(cellAData.pages[0]?.token).toBe(1)
+      expect(cellAReplayData.pages[0]?.token).toBe(1)
       expect(cellBData.pages[0]?.token).toBe(1)
 
       const branchAKeyFingerprint = JSON.stringify(branchAKey)
@@ -739,6 +742,33 @@ describe('useBackboneDiffWorkbenchController seams', () => {
       cellDeferredA2.reject(new Error('cell-a-2-failed'))
       await expect(branchARefresh).rejects.toThrow('branch-a-2-failed')
       await expect(cellARefresh).rejects.toThrow('cell-a-2-failed')
+
+      const branchARetainedAfterError = queryClient.getQueryData(branchAKey) as
+        | { pages?: Array<{ token?: number }> }
+        | undefined
+      const cellARetainedAfterError = queryClient.getQueryData(cellAKey) as
+        | { pages?: Array<{ token?: number }> }
+        | undefined
+      expect(branchARetainedAfterError?.pages?.[branchARetainedAfterError.pages.length - 1]?.token).toBe(1)
+      expect(cellARetainedAfterError?.pages?.[cellARetainedAfterError.pages.length - 1]?.token).toBe(1)
+      expect(
+        acceptBackboneDiffQueryPage({
+          dataToken: branchARetainedAfterError?.pages?.[branchARetainedAfterError.pages.length - 1]?.token ?? 0,
+          issuedToken: branchIssuedTokenByKeyRef.current[branchAKeyFingerprint] ?? 0,
+          acceptedToken: branchAcceptedTokenByKeyRef.current[branchAKeyFingerprint] ?? 0,
+          acceptedTokenByKeyRef: branchAcceptedTokenByKeyRef,
+          key: branchAKeyFingerprint,
+        }),
+      ).toBe(true)
+      expect(
+        acceptBackboneDiffQueryPage({
+          dataToken: cellARetainedAfterError?.pages?.[cellARetainedAfterError.pages.length - 1]?.token ?? 0,
+          issuedToken: cellIssuedTokenByKeyRef.current[cellAKeyFingerprint] ?? 0,
+          acceptedToken: cellAcceptedTokenByKeyRef.current[cellAKeyFingerprint] ?? 0,
+          acceptedTokenByKeyRef: cellAcceptedTokenByKeyRef,
+          key: cellAKeyFingerprint,
+        }),
+      ).toBe(true)
 
       expect(branchAcceptedTokenByKeyRef.current[branchAKeyFingerprint]).toBe(1)
       expect(branchAcceptedTokenByKeyRef.current[branchBKeyFingerprint]).toBe(1)
@@ -1072,6 +1102,8 @@ describe('useBackboneDiffWorkbenchController seams', () => {
     expect(source).toContain('cellQuery.data === void 0')
     expect(source).not.toContain('!branchQuery.isSuccess')
     expect(source).not.toContain('!cellQuery.isSuccess')
+    expect(source).not.toContain('seedBackboneDiffQueryTokenMapFromCache(queryClient, branchQueryKey, branchQueryAcceptedTokenByKeyRef)')
+    expect(source).not.toContain('seedBackboneDiffQueryTokenMapFromCache(queryClient, cellQueryKey, cellQueryAcceptedTokenByKeyRef)')
   })
 })
 

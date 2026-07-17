@@ -308,7 +308,7 @@ export function shouldAcceptBackboneDiffQueryPage({
   readonly issuedToken: number
   readonly acceptedToken: number
 }): boolean {
-  return dataToken === acceptedToken || dataToken >= issuedToken
+  return dataToken === acceptedToken || dataToken === issuedToken
 }
 
 export function acceptBackboneDiffQueryPage({
