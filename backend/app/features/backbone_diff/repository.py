@@ -29,8 +29,7 @@ class BackboneDiffRepository:
 
     async def load(self, project_id: int) -> BackboneDiffProjectInput:
         project = await self._load_project(project_id)
-        layer_codes, current_codes = self._collect_parameter_codes(project.layers)
-        requested_codes = layer_codes | current_codes
+        requested_codes = self._collect_parameter_codes(project.layers)
         registry = await ProjectRepository(self.session).capture_parameter_registry(requested_codes)
         if registry.unresolved_codes:
             raise ConflictError(
@@ -73,18 +72,18 @@ class BackboneDiffRepository:
         if project is None:
             raise NotFoundError(
                 f"프로젝트를 찾을 수 없다: {project_id}",
-                code="project_not_found",
                 details={"project_id": project_id},
             )
         return project
 
-    def _collect_parameter_codes(self, layers: Iterable[SheetLayer]) -> tuple[set[str], set[str]]:
-        baseline_codes: set[str] = set()
-        current_codes: set[str] = set()
+    def _collect_parameter_codes(self, layers: Iterable[SheetLayer]) -> set[str]:
+        requested_codes: set[str] = set()
         for layer in layers:
             if layer.backbone_snapshot is not None:
                 baseline_snapshot = parse_backbone_snapshot(layer.backbone_snapshot)
-                baseline_codes.update(column.parameter_code for column in baseline_snapshot.columns)
+                requested_codes.update(
+                    column.parameter_code for column in baseline_snapshot.columns
+                )
             for condition in layer.conditions:
                 requested_codes.update(cell.parameter_code for cell in condition.cell_values)
         return requested_codes
@@ -101,23 +100,17 @@ class BackboneDiffRepository:
             if layer.backbone_snapshot is not None
             else None
         )
-        current_codes = {
-            cell.parameter_code
-            for condition in layer.conditions
-            for cell in condition.cell_values
-            if cell.value_text is not None
-        }
-        parameter_lookup = {parameter.parameter_code: parameter for parameter in parameters_by_code}
-        layer_columns = tuple(
-            sorted(
-                (
-                    BackboneSnapshotColumn(
-                        parameter_code=parameter.parameter_code,
-                        value_type=parameter.value_type,
-                        display_name=parameter.display_name,
-                        category_code=parameter.category_code,
-                        sort_order=parameter.sort_order,
-                        active_at_capture=parameter.active_at_capture,
+        current_conditions = tuple(
+            BackboneDiffCurrentCondition(
+                id=condition.id,
+                source_condition_id=condition.source_condition_id,
+                label=condition.label,
+                condition_index=condition.condition_index,
+                is_por=condition.is_por,
+                cells=tuple(
+                    BackboneDiffCurrentCell(
+                        parameter_code=cell.parameter_code,
+                        value=cell.value_text,
                     )
                     for cell in condition.cell_values
                 ),
