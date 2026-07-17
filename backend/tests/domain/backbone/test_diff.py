@@ -895,6 +895,100 @@ def test_backbone_diff_unresolved_metadata_details_are_safe() -> None:
     assert exc_info.value.details == {"parameter_code": "missing_code"}
 
 
+def _unavailable_layer_with_shared_parameters(
+    *,
+    layer_key: str,
+    layer_sort_order: int,
+    parameters: tuple[BackboneDiffCurrentParameter, ...],
+    stored_legacy: bool,
+) -> BackboneDiffLayerInput:
+    return BackboneDiffLayerInput(
+        layer_key=layer_key,
+        layer_sort_order=layer_sort_order,
+        current_source=BackboneDiffCurrentLayerSource(
+            project_id=42,
+            sheet_layer_id=layer_sort_order + 1,
+            layer_key=layer_key,
+            step_seq=str(layer_sort_order),
+            layer_id=layer_key,
+            sort_order=layer_sort_order,
+            source_project_id=None,
+            source_layer_key=None,
+        ),
+        baseline_snapshot=None,
+        current_conditions=(
+            BackboneDiffCurrentCondition(
+                id=layer_sort_order + 1,
+                source_condition_id=None,
+                label="current",
+                condition_index=0,
+                is_por=False,
+                cells=(
+                    (BackboneDiffCurrentCell("legacy", "stored"),)
+                    if stored_legacy
+                    else ()
+                ),
+            ),
+        ),
+        current_parameters=parameters,
+    )
+
+
+def test_backbone_diff_project_cache_separates_layer_specific_stored_parameter_codes() -> None:
+    shared_parameters = (
+        BackboneDiffCurrentParameter("active", ValueType.TEXT, "Active", None, 0, True),
+        BackboneDiffCurrentParameter("legacy", ValueType.TEXT, "Legacy", None, 1, False),
+    )
+    no_legacy_first = _unavailable_layer_with_shared_parameters(
+        layer_key="A",
+        layer_sort_order=0,
+        parameters=shared_parameters,
+        stored_legacy=False,
+    )
+    stored_legacy_second = _unavailable_layer_with_shared_parameters(
+        layer_key="B",
+        layer_sort_order=1,
+        parameters=shared_parameters,
+        stored_legacy=True,
+    )
+
+    result = compare_backbone((no_legacy_first, stored_legacy_second))
+
+    assert [layer.basis_hash for layer in result.layer_results] == [
+        backbone_diff_layer_basis_hash(no_legacy_first),
+        backbone_diff_layer_basis_hash(stored_legacy_second),
+    ]
+
+    stored_legacy_first = replace(
+        stored_legacy_second,
+        layer_key="A",
+        layer_sort_order=0,
+        current_source=replace(
+            stored_legacy_second.current_source,
+            layer_key="A",
+            layer_id="A",
+            sort_order=0,
+        ),
+    )
+    no_legacy_second = replace(
+        no_legacy_first,
+        layer_key="B",
+        layer_sort_order=1,
+        current_source=replace(
+            no_legacy_first.current_source,
+            layer_key="B",
+            layer_id="B",
+            sort_order=1,
+        ),
+    )
+    inverse_result = compare_backbone((stored_legacy_first, no_legacy_second))
+
+    assert [layer.basis_hash for layer in inverse_result.layer_results] == [
+        backbone_diff_layer_basis_hash(stored_legacy_first),
+        backbone_diff_layer_basis_hash(no_legacy_second),
+    ]
+
+
 def test_backbone_diff_layer_input_rejects_contradictory_current_source() -> None:
     with pytest.raises(RuleViolationError) as exc_info:
         BackboneDiffLayerInput(

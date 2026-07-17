@@ -372,8 +372,9 @@ class _PreparedLayer:
 class _PrepareCache:
     baseline_columns_by_snapshot_id: dict[int, dict[str, BackboneSnapshotColumn]]
     baseline_payload_by_snapshot_id: dict[int, dict[str, Any]]
-    current_selected_by_parameters_key: dict[
-        tuple[BackboneDiffCurrentParameter, ...], tuple[BackboneDiffCurrentParameter, ...]
+    current_selected_by_universe_key: dict[
+        tuple[tuple[BackboneDiffCurrentParameter, ...], frozenset[str]],
+        tuple[BackboneDiffCurrentParameter, ...],
     ]
     current_parameter_payload_by_selected_key: dict[
         tuple[BackboneDiffCurrentParameter, ...], tuple[dict[str, Any], ...]
@@ -1194,18 +1195,20 @@ def _selected_current_descriptors(
     cache: _PrepareCache,
 ) -> tuple[BackboneDiffCurrentParameter, ...]:
     parameters_key = layer_input.current_parameters
-    cached = cache.current_selected_by_parameters_key.get(parameters_key)
+    stored_codes = frozenset(
+        cell.parameter_code
+        for condition in layer_input.current_conditions
+        for cell in condition.cells
+    )
+    universe_key = (parameters_key, stored_codes)
+    cached = cache.current_selected_by_universe_key.get(universe_key)
     if cached is not None:
         return cached
     parameter_by_code = {parameter.code: parameter for parameter in layer_input.current_parameters}
     selected_codes = {
         parameter.code for parameter in layer_input.current_parameters if parameter.active
     }
-    selected_codes.update(
-        cell.parameter_code
-        for condition in layer_input.current_conditions
-        for cell in condition.cells
-    )
+    selected_codes.update(stored_codes)
     selected: list[BackboneDiffCurrentParameter] = []
     for code in sorted(selected_codes):
         parameter = parameter_by_code.get(code)
@@ -1216,7 +1219,7 @@ def _selected_current_descriptors(
             )
         selected.append(parameter)
     selected_tuple = tuple(sorted(selected, key=_current_parameter_sort_key))
-    cache.current_selected_by_parameters_key[parameters_key] = selected_tuple
+    cache.current_selected_by_universe_key[universe_key] = selected_tuple
     return selected_tuple
 
 
