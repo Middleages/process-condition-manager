@@ -6,6 +6,7 @@ import {
   historyCellHistoryQueryKey,
   historyDetailQueryKey,
   historyTimelineQueryKey,
+  type HistoryEventType,
   type HistoryCellHistoryQueryOptions,
   type HistoryDetailQueryOptions,
   type HistoryOrigin,
@@ -16,6 +17,7 @@ import {
 export type {
   HistoryCellHistoryQueryOptions,
   HistoryDetailQueryOptions,
+  HistoryEventType,
   HistoryOrigin,
   HistoryTimelineFilterInput,
   HistoryTimelineFilters,
@@ -38,7 +40,7 @@ export interface HistoryJumpTargetOut {
 export interface HistoryTimelineItemOut {
   kind: 'event' | 'batch'
   cursor_id: number
-  event_types: string[]
+  event_types: HistoryEventType[]
   actors: string[]
   origins: HistoryOrigin[]
   started_at: string
