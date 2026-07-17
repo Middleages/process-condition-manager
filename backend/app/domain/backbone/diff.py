@@ -9,9 +9,9 @@ from dataclasses import dataclass
 from typing import Any, Literal, NoReturn
 
 from app.domain.backbone.snapshot import (
+    UNRESOLVED_PARAMETER_METADATA,
     BackboneSnapshot,
     BackboneSnapshotColumn,
-    UNRESOLVED_PARAMETER_METADATA,
     serialize_backbone_snapshot,
 )
 from app.domain.decimal_values import normalize_decimal
@@ -114,7 +114,10 @@ class BackboneDiffCurrentCondition:
                 _diff_basis_invalid("cells must contain BackboneDiffCurrentCell values")
             if cell.parameter_code in seen:
                 _diff_basis_invalid(
-                    f"duplicate current parameter_code in condition {self.id}: {cell.parameter_code}"
+                    (
+                        "duplicate current parameter_code in condition "
+                        f"{self.id}: {cell.parameter_code}"
+                    )
                 )
             seen.add(cell.parameter_code)
             canonical_cells.append(cell)
@@ -873,13 +876,19 @@ def _descriptor_for_code(
             current_type = _coerce_value_type(current_descriptor.value_type)
             if baseline_type is not current_type:
                 _diff_basis_invalid(
-                    f"type mismatch for parameter {parameter_code}: {baseline_type.value} vs {current_type.value}"
+                    (
+                        f"type mismatch for parameter {parameter_code}: "
+                        f"{baseline_type.value} vs {current_type.value}"
+                    )
                 )
         return current_descriptor
     if baseline_column is not None:
         return baseline_column
         _unresolved_parameter_metadata(
-            f"missing current descriptor for parameter {parameter_code} in condition {current_condition.id}"
+            (
+                "missing current descriptor for parameter "
+                f"{parameter_code} in condition {current_condition.id}"
+            )
         )
 
 
