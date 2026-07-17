@@ -16,9 +16,8 @@ export type BackboneDiffLayerStatus = 'available' | 'unavailable'
 
 export type BackboneDiffJumpStatus = 'available' | 'deleted'
 
-export type BackboneDiffActivationStatus = 'available' | 'deleted' | 'removed'
+export type BackboneDiffActivationStatus = 'available' | 'deleted' | 'removed' | 'unavailable'
 
-const DEFAULT_ROOT_CLASSIFICATIONS = ['added', 'changed', 'cleared', 'removed'] as const
 
 export interface BackboneDiffJumpTarget {
   readonly kind: 'condition' | 'cell'
@@ -263,14 +262,6 @@ export function BackboneDiffWorkbench({
       const next = new Set(filters.classification)
       if (!includeUnchanged) {
         next.delete('unchanged')
-      } else {
-        next.add('unchanged')
-
-        if (!Array.from(next).some((classification) => classification !== 'unchanged')) {
-          for (const classification of DEFAULT_ROOT_CLASSIFICATIONS) {
-            next.add(classification)
-          }
-        }
       }
       onFiltersChange({
         ...filters,
@@ -316,17 +307,20 @@ export function BackboneDiffWorkbench({
     (layerKey: string) => {
       setExpandedLayerKey((current) => {
         if (current === layerKey) {
+          if (expandedRowRef !== null) {
+            onCloseCell?.(expandedRowRef)
+          }
           onCloseBranch?.(layerKey)
           setExpandedRowRef(null)
           return null
         }
 
         if (current !== null) {
+          if (expandedRowRef !== null) {
+            onCloseCell?.(expandedRowRef)
+            setExpandedRowRef(null)
+          }
           onCloseBranch?.(current)
-        }
-        if (expandedRowRef !== null && current !== layerKey) {
-          onCloseCell?.(expandedRowRef)
-          setExpandedRowRef(null)
         }
 
         if (layerConditionBranches[layerKey] === undefined) {
@@ -339,8 +333,11 @@ export function BackboneDiffWorkbench({
   )
 
   const toggleRow = useCallback(
-    (rowRef: string) => {
+    (rowRef: string, scopeAvailable: boolean) => {
       if (expandedLayerKey === null) {
+        return
+      }
+      if (!scopeAvailable && expandedRowRef !== rowRef) {
         return
       }
 
@@ -370,8 +367,10 @@ export function BackboneDiffWorkbench({
       if (!activated) {
         if (target.classification === 'removed') {
           emitAnnouncement('삭제된 대상은 이동할 수 없습니다.')
-        } else {
+        } else if (target.jumpStatus === 'deleted') {
           emitAnnouncement('삭제된 대상으로는 위치를 이동할 수 없습니다.')
+        } else if (target.parameterCode === null) {
+          emitAnnouncement('현재 위치로 이동할 수 없습니다.')
         }
       }
       return activated
@@ -382,6 +381,7 @@ export function BackboneDiffWorkbench({
   const renderActivationButtonText = useCallback((state: BackboneDiffActivationStatus) => {
     if (state === 'available') return '위치로 이동'
     if (state === 'removed') return '제거됨'
+    if (state === 'unavailable') return '이동 불가'
     return '삭제됨'
   }, [])
 
@@ -410,7 +410,6 @@ export function BackboneDiffWorkbench({
             <div className="rounded border border-border-subtle bg-canvas px-2 py-1">변경 레이어 <strong>{root.counts.layerCount}</strong></div>
             <div className="rounded border border-border-subtle bg-canvas px-2 py-1">조건 <strong>{root.counts.rowCount}</strong></div>
             <div className="rounded border border-border-subtle bg-canvas px-2 py-1">셀 <strong>{root.counts.cellCount}</strong></div>
-            <div className="rounded border border-border-subtle bg-canvas px-2 py-1">scope <strong>{root.scope}</strong></div>
             <div className="rounded border border-border-subtle bg-canvas px-2 py-1">
               기준 <strong>{root.basisHash.slice(0, 8)}</strong>
             </div>
@@ -423,6 +422,10 @@ export function BackboneDiffWorkbench({
             <div className="rounded border border-border-subtle bg-canvas px-2 py-1">
               불일치 라인 <strong>{root.counts.ambiguousLineageCount}</strong>
             </div>
+            <div className="rounded border border-border-subtle bg-canvas px-2 py-1">추가 <strong>{root.counts.addedCount}</strong></div>
+            <div className="rounded border border-border-subtle bg-canvas px-2 py-1">변경 <strong>{root.counts.changedCount}</strong></div>
+            <div className="rounded border border-border-subtle bg-canvas px-2 py-1">제거 <strong>{root.counts.removedCount}</strong></div>
+            <div className="rounded border border-border-subtle bg-canvas px-2 py-1">미변경 <strong>{root.counts.unchangedCount}</strong></div>
           </div>
         ) : null}
       </div>
@@ -519,7 +522,7 @@ export function BackboneDiffWorkbench({
         {preview.status === 'ready' && preview.items.length === 0 ? (
           <p className="mt-2 text-xs text-muted">미리보기 항목이 없습니다.</p>
         ) : null}
-        {preview.items.length > 0 ? (
+                {preview.items.length > 0 ? (
           <ul className="mt-2 space-y-1 text-xs">
             {preview.items.map((item) => (
               <li
@@ -539,8 +542,6 @@ export function BackboneDiffWorkbench({
                 className="rounded border border-border-subtle bg-canvas px-2 py-1"
               >
                 [{item.classification}] {item.itemKind} · {item.layerKey} · #{item.effectiveConditionIndex}
-                {item.rowRef !== null ? ` · row ${item.rowRef}` : ''}
-                {item.cellScope !== null ? ` · ${item.cellScope}` : ''}
               </li>
             ))}
           </ul>
@@ -589,8 +590,15 @@ export function BackboneDiffWorkbench({
               <article key={layer.layerKey} className="rounded-md border border-border-subtle bg-canvas p-2" data-layer={layer.layerKey}>
                 <div className="flex flex-wrap items-center gap-2">
                   <button
+                    aria-disabled={layer.layerStatus === 'unavailable' && !isExpanded}
                     className="rounded-sm border border-brand-700 px-2 py-1 text-xs font-semibold text-brand-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
-                    onClick={() => toggleLayer(layer.layerKey)}
+                    onClick={() => {
+                      if (layer.layerStatus === 'available' || isExpanded) {
+                        toggleLayer(layer.layerKey)
+                      } else {
+                        emitAnnouncement('현재 레이어는 목록을 조회할 수 없습니다.')
+                      }
+                    }}
                     type="button"
                   >
                     {isExpanded ? '접기' : '열기'}
@@ -638,6 +646,7 @@ export function BackboneDiffWorkbench({
                       const rowActivation = activationStatusFor({
                         classification: condition.rowStatus,
                         jumpStatus: condition.jumpStatus,
+                        hasNavigation: condition.cellScope !== null,
                       })
 
                       return (
@@ -645,11 +654,24 @@ export function BackboneDiffWorkbench({
                           <div className="flex flex-wrap items-center gap-2">
                             <button
                               className="rounded-sm border border-brand-700 px-2 py-1 text-xs font-semibold text-brand-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
-                              onClick={() => toggleRow(condition.rowRef)}
+                              onClick={() => {
+                                if (condition.cellScope === null && !isRowExpanded) {
+                                  emitAnnouncement('현재 위치로 이동할 수 없습니다.')
+                                  return
+                                }
+
+                                toggleRow(condition.rowRef, condition.cellScope !== null)
+                              }}
                               type="button"
+                              aria-disabled={condition.cellScope === null && !isRowExpanded}
                             >
                               {isRowExpanded ? '셀 접기' : '셀 보기'}
                             </button>
+                            <span className="text-muted">
+                              {condition.baselineCondition?.label ?? '기준 없음'}
+                              {' · '}
+                              {condition.currentCondition?.label ?? '현재 없음'}
+                            </span>
                             <span>
                               condition #{condition.effectiveConditionIndex}
                               {condition.filteredCellCount !== condition.fullCellCount
@@ -663,8 +685,19 @@ export function BackboneDiffWorkbench({
                                   ? 'border-brand-700 text-brand-700'
                                   : 'border-border-subtle text-muted',
                               )}
-                              disabled={rowActivation !== 'available'}
-                              onClick={() =>
+                              aria-disabled={rowActivation !== 'available'}
+                              onClick={() => {
+                                if (rowActivation !== 'available') {
+                                  if (rowActivation === 'removed') {
+                                    emitAnnouncement('삭제된 대상은 이동할 수 없습니다.')
+                                  } else if (rowActivation === 'deleted') {
+                                    emitAnnouncement('삭제된 대상으로는 위치를 이동할 수 없습니다.')
+                                  } else {
+                                    emitAnnouncement('현재 위치로 이동할 수 없습니다.')
+                                  }
+                                  return
+                                }
+
                                 activateTarget({
                                   kind: 'condition',
                                   layerKey: layer.layerKey,
@@ -678,7 +711,7 @@ export function BackboneDiffWorkbench({
                                     ?? condition.baselineCondition?.sourceConditionId
                                     ?? null,
                                 })
-                              }
+                              }}
                               type="button"
                             >
                               {renderActivationButtonText(rowActivation)}
@@ -721,7 +754,7 @@ export function BackboneDiffWorkbench({
                                                 ? 'border-brand-700 text-brand-700'
                                                 : 'border-border-subtle text-muted',
                                             )}
-                                            disabled={cellActivation !== 'available'}
+                                            aria-disabled={cellActivation !== 'available'}
                                             onClick={() =>
                                               activateTarget({
                                                 kind: 'cell',
@@ -741,6 +774,9 @@ export function BackboneDiffWorkbench({
                                           >
                                             {renderActivationButtonText(cellActivation)}
                                           </button>
+                                          <span className="text-muted">
+                                            {cell.baselineValue ?? '기준 없음'} → {cell.currentValue ?? '현재 없음'}
+                                          </span>
                                           <span className="text-muted">{cell.reason}</span>
                                         </div>
                                       </li>
@@ -748,7 +784,7 @@ export function BackboneDiffWorkbench({
                                   })}
                                 </ul>
                               ) : null}
-                              {cellBranch?.nextCursor !== null && cellBranch.status === 'ready' ? (
+                              {cellBranch !== undefined && cellBranch.nextCursor !== null && cellBranch.status === 'ready' ? (
                                 <button
                                   className="rounded-sm border border-brand-700 px-2 py-1 text-xs font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
                                   onClick={() => onLoadMoreCells(condition.rowRef, cellBranch.nextCursor)}
@@ -766,17 +802,17 @@ export function BackboneDiffWorkbench({
                       )
                     })}
 
-                    {branch?.nextCursor !== null ? (
+                    {branch !== undefined && branch.nextCursor !== null ? (
                       <button
                         className="rounded-sm border border-brand-700 px-2 py-1 text-xs font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
-                        disabled={branch?.status !== 'ready'}
+                        disabled={branchStatus !== 'ready'}
                         onClick={() => onLoadMoreConditions(layer.layerKey, branch.nextCursor)}
                         type="button"
                       >
                         더 보기
                       </button>
                     ) : null}
-                    {branch?.nextPageError !== null ? <p className="text-xs text-warning">{branch?.nextPageError}</p> : null}
+                    {branch?.nextPageError !== null ? <p className="text-xs text-warning">{branch.nextPageError}</p> : null}
                   </div>
                 ) : null}
               </article>
@@ -813,6 +849,9 @@ export function activateBackboneJumpTarget(
   if (target.jumpStatus === 'deleted') {
     return false
   }
+  if (target.parameterCode === null) {
+    return false
+  }
   onActivateTarget(target)
   return true
 }
@@ -820,11 +859,15 @@ export function activateBackboneJumpTarget(
 function activationStatusFor({
   classification,
   jumpStatus,
+  hasNavigation,
 }: {
   classification: BackboneDiffClassification
   jumpStatus: BackboneDiffJumpStatus
+  hasNavigation?: boolean
 }): BackboneDiffActivationStatus {
+  if (hasNavigation === false) return 'unavailable'
   if (classification === 'removed') return 'removed'
   if (jumpStatus === 'deleted') return 'deleted'
+  if (classification === 'unchanged') return 'unavailable'
   return 'available'
 }

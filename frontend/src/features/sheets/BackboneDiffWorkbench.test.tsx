@@ -94,6 +94,8 @@ function createPreviewState(): PreviewState<{
   readonly itemSortKey: readonly (string | number | null)[]
   readonly rowRef: string | null
   readonly cellScope: string | null
+  readonly rowStatus?: 'added' | 'changed' | 'cleared' | 'removed' | 'unchanged' | null
+  readonly parameterCode?: string | null
 }> {
   return {
     status: 'ready',
@@ -152,6 +154,8 @@ function createPreviewStaticMarkup(root: BackboneDiffRoot, preview: PreviewState
     readonly itemSortKey: readonly (string | number | null)[]
     readonly rowRef: string | null
     readonly cellScope: string | null
+    readonly rowStatus?: 'added' | 'changed' | 'cleared' | 'removed' | 'unchanged' | null
+    readonly parameterCode?: string | null
   }
 >) {
   return renderToStaticMarkup(
@@ -202,35 +206,10 @@ function nextFilterByIncludeUnchanged(current: BackboneDiffFilter, includeUnchan
   const next = new Set(current.classification)
   if (!includeUnchanged) {
     next.delete('unchanged')
-  } else {
-    next.add('unchanged')
-
-    if (!Array.from(next).some((classification) => classification !== 'unchanged')) {
-      next.add('added')
-      next.add('changed')
-      next.add('cleared')
-      next.add('removed')
-    }
   }
   return {
     ...current,
     includeUnchanged,
-    classification: [...next],
-  }
-}
-
-function nextFilterByCloseDefault(current: BackboneDiffFilter) {
-  const next = new Set(current.classification)
-  if (next.size === 0) {
-    next.add('added')
-    next.add('changed')
-    next.add('cleared')
-    next.add('removed')
-  }
-  next.add('unchanged')
-  return {
-    ...current,
-    includeUnchanged: true,
     classification: [...next],
   }
 }
@@ -319,13 +298,15 @@ describe('BackboneDiffWorkbench', () => {
 
     expect(source).toContain('setExpandedLayerKey((current) => {')
     expect(source).toContain('if (current === layerKey) {')
-    expect(source).toContain('if (!isOpen && layerConditionBranches[layerKey] === undefined) {')
+    expect(source).toContain("if (layer.layerStatus === 'available' || isExpanded) {")
+    expect(source).toContain('if (layerConditionBranches[layerKey] === undefined) {')
     expect(source).toContain('onOpenLayer(layerKey)')
     expect(source).toContain('onCloseBranch?.(current)')
 
     expect(source).toContain('setExpandedRowRef((current) => {')
     expect(source).toContain('if (current === rowRef) {')
-    expect(source).toContain('if (!isOpen && cellBranches[rowRef] === undefined) {')
+    expect(source).toContain('if (!scopeAvailable && expandedRowRef !== rowRef) {')
+    expect(source).toContain('if (cellBranches[rowRef] === undefined) {')
     expect(source).toContain('onOpenCells(rowRef)')
   })
 
@@ -378,7 +359,7 @@ describe('BackboneDiffWorkbench', () => {
         jumpStatus: 'available',
         rowRef: 'row-1',
         conditionId: 11,
-        parameterCode: null,
+        parameterCode: 'ETCH_P001',
         sourceConditionId: null,
       },
       onActivateTarget,
@@ -400,6 +381,22 @@ describe('BackboneDiffWorkbench', () => {
       onActivateTarget,
     )
     expect(deletedBlocked).toBe(false)
+    expect(onActivateTarget).toHaveBeenCalledTimes(1)
+
+    const conditionNavigationBlocked = activateBackboneJumpTarget(
+      {
+        kind: 'condition',
+        layerKey: 'L1::10::ETCH',
+        classification: 'changed',
+        jumpStatus: 'available',
+        rowRef: 'row-1',
+        conditionId: 11,
+        parameterCode: null,
+        sourceConditionId: null,
+      },
+      onActivateTarget,
+    )
+    expect(conditionNavigationBlocked).toBe(false)
 
     const removedBlocked = activateBackboneJumpTarget(
       {
@@ -513,9 +510,9 @@ describe('BackboneDiffWorkbench', () => {
       error: '오류 메시지',
     })
 
-    expect(ready).toContain('row-1')
-    expect(loading).toContain('row-1')
-    expect(error).toContain('row-1')
+    expect(ready).toContain('L1::10::ETCH')
+    expect(loading).toContain('L1::10::ETCH')
+    expect(error).toContain('L1::10::ETCH')
     expect(error).toContain('오류 메시지')
     expect(ready).toContain('더 보기')
   })
@@ -545,7 +542,7 @@ describe('BackboneDiffWorkbench', () => {
     expect(includeUnchecked).toEqual({
       ...base,
       includeUnchanged: true,
-      classification: ['added', 'changed', 'unchanged'],
+      classification: ['added', 'changed'],
     })
 
     const includeUncheckedFalse = nextFilterByIncludeUnchanged(
@@ -562,12 +559,8 @@ describe('BackboneDiffWorkbench', () => {
     expect(includeDefaulted).toEqual({
       ...base,
       includeUnchanged: true,
-      classification: ['added', 'changed', 'cleared', 'removed', 'unchanged'],
+      classification: [],
     })
-
-    expect(nextFilterByIncludeUnchanged({ ...base, classification: ['added', 'changed'], includeUnchanged: false }, true)).toEqual(
-      nextFilterByCloseDefault({ ...base, classification: ['added', 'changed'] }),
-    )
 
     expect(source).toContain('handleClassificationToggle')
     expect(source).toContain('handleIncludeUnchanged')
