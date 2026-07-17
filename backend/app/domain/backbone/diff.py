@@ -115,10 +115,8 @@ class BackboneDiffCurrentCondition:
                 _diff_basis_invalid("cells must contain BackboneDiffCurrentCell values")
             if cell.parameter_code in seen:
                 _diff_basis_invalid(
-                    
-                        "duplicate current parameter_code in condition "
-                        f"{self.id}: {cell.parameter_code}"
-                    
+                    "duplicate current parameter_code in condition "
+                    f"{self.id}: {cell.parameter_code}"
                 )
             seen.add(cell.parameter_code)
             canonical_cells.append(cell)
@@ -507,6 +505,11 @@ def _layer_basis_payload(layer_input: BackboneDiffLayerInput) -> dict[str, Any]:
     )
     current_selected = _selected_current_descriptors(layer_input)
     current_descriptor_by_code = {parameter.code: parameter for parameter in current_selected}
+    baseline_columns = (
+        {}
+        if layer_input.baseline_snapshot is None
+        else {column.parameter_code: column for column in layer_input.baseline_snapshot.columns}
+    )
     current_payload = [
         {
             "id": condition.id,
@@ -519,7 +522,10 @@ def _layer_basis_payload(layer_input: BackboneDiffLayerInput) -> dict[str, Any]:
                     "parameter_code": cell.parameter_code,
                     "value": _canonical_current_value(
                         _descriptor_for_code(
-                            layer_input, cell.parameter_code, current_descriptor_by_code
+                            condition,
+                            cell.parameter_code,
+                            baseline_columns,
+                            current_descriptor_by_code,
                         ),
                         cell.value,
                         cell.parameter_code,
@@ -821,7 +827,7 @@ def _row_preview_items(
                 row_status=row.row_status,
                 identity=row.identity,
                 item_kind=ITEM_KIND_ROW_METADATA,
-                item_sort_key=(change.field_name,),
+                item_sort_key=(METADATA_FIELD_ORDER[change.field_name], change.field_name),
                 classification=CLASSIFICATION_CHANGED,
                 reason="row_metadata_changed",
                 field_name=change.field_name,
@@ -929,20 +935,16 @@ def _descriptor_for_code(
             current_type = _coerce_value_type(current_descriptor.value_type)
             if baseline_type is not current_type:
                 _diff_basis_invalid(
-                    
-                        f"type mismatch for parameter {parameter_code}: "
-                        f"{baseline_type.value} vs {current_type.value}"
-                    
+                    f"type mismatch for parameter {parameter_code}: "
+                    f"{baseline_type.value} vs {current_type.value}"
                 )
         return current_descriptor
     if baseline_column is not None:
         return baseline_column
-        _unresolved_parameter_metadata(
-            
-                "missing current descriptor for parameter "
-                f"{parameter_code} in condition {current_condition.id}"
-            
-        )
+    _unresolved_parameter_metadata(
+        "missing current descriptor for parameter "
+        f"{parameter_code} in condition {current_condition.id}"
+    )
 
 
 def _descriptor_for_added_or_removed_code(
@@ -1064,16 +1066,3 @@ def _descriptor_sort_key(
         if isinstance(descriptor, BackboneDiffCurrentParameter)
         else descriptor.parameter_code,
     )
-
-
-def _current_parameter_payload(parameter: BackboneDiffCurrentParameter) -> dict[str, Any]:
-    return {
-        "active": parameter.active,
-        "category_code": parameter.category_code,
-        "code": parameter.code,
-        "display_name": parameter.display_name,
-        "sort_order": parameter.sort_order,
-        "value_type": parameter.value_type.value,
-    }
-
-
