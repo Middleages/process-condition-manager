@@ -8,6 +8,7 @@ import {
   getHistoryTimeline,
   type HistoryCellHistoryOut,
   type HistoryCoverageOut,
+  type HistoryDetailOut,
   type HistoryTimelineItemOut,
   type HistoryTimelineOut,
 } from '@/api/history'
@@ -20,6 +21,7 @@ import {
   historyWorkbenchBatchDetailKey,
   historyWorkbenchCellHistoryKey,
   historyWorkbenchTimelineKey,
+  invalidateHistoryBatchDetailsForMutation,
   openHistoryCellScope,
   storeHistoryBatchDetail,
   toggleHistoryBatchDetail,
@@ -50,10 +52,13 @@ export interface HistoryWorkbenchController {
   cellNextPageError: string | null
   batchDetailStatus: HistoryDetailStatus
   batchDetailError: string | null
+  batchDetailIsFetchingNextPage: boolean
+  batchDetailNextPageError: string | null
   onFiltersChange: (filters: HistoryTimelineFilterInput) => void
   onModeChange: (mode: HistoryWorkbenchMode) => void
   onBatchToggle: (item: HistoryTimelineItemOut, shouldRequestDetail: boolean) => void
   onRetryBatchDetail: (item: HistoryTimelineItemOut) => void
+  onLoadMoreBatchDetail: (item: HistoryTimelineItemOut, cursor: string | null) => void
   onCellHistoryRequest: (target: {
     conditionId: string
     parameterCode: string
@@ -91,6 +96,8 @@ interface HistoryDetailRequestState {
   readonly key: string | null
   readonly status: HistoryDetailStatus
   readonly error: string | null
+  readonly phase: 'root' | 'next' | null
+  readonly cursor: string | null
 }
 
 interface HistoryBatchDetailRequest {
@@ -161,6 +168,17 @@ export function mergeHistoryCellHistoryPages(
   }
 }
 
+export function mergeHistoryBatchDetailPage(
+  current: HistoryDetailOut,
+  page: HistoryDetailOut,
+): HistoryDetailOut {
+  return {
+    ...current,
+    items: [...current.items, ...page.items],
+    next_cursor: page.next_cursor,
+  }
+}
+
 export function historyQueryPresentation(
   input: HistoryQueryPresentationInput,
 ): HistoryQueryPresentation {
@@ -206,19 +224,27 @@ export function isCurrentHistoryDetailAuthority(
 export function useHistoryWorkbenchController(
   projectId: number,
   enabled: boolean,
+  historyMutationRevision = 0,
 ): HistoryWorkbenchController {
   const queryClient = useQueryClient()
   const [state, setState] = useState(() => createHistoryWorkbenchState())
   const stateRef = useRef(state)
   const enabledRef = useRef(enabled)
   const previousEnabledRef = useRef(enabled)
+  const previousMutationRevisionRef = useRef(historyMutationRevision)
   const outerGenerationRef = useRef(0)
   const detailRequestTokenRef = useRef(0)
-  const [detailRequest, setDetailRequest] = useState<HistoryDetailRequestState>({
+  const initialDetailRequest: HistoryDetailRequestState = {
     key: null,
     status: 'idle',
     error: null,
-  })
+    phase: null,
+    cursor: null,
+  }
+  const detailRequestRef = useRef(initialDetailRequest)
+  const [detailRequest, setDetailRequest] = useState<HistoryDetailRequestState>(
+    initialDetailRequest,
+  )
 
   useIsomorphicLayoutEffect(() => {
     stateRef.current = state
@@ -236,13 +262,32 @@ export function useHistoryWorkbenchController(
     [],
   )
 
+  const commitDetailRequest = useCallback((next: HistoryDetailRequestState) => {
+    detailRequestRef.current = next
+    setDetailRequest(next)
+  }, [])
+
   useIsomorphicLayoutEffect(() => {
-    if (previousEnabledRef.current !== enabled) {
-      previousEnabledRef.current = enabled
+    const enabledChanged = previousEnabledRef.current !== enabled
+    const mutationRevisionChanged =
+      previousMutationRevisionRef.current !== historyMutationRevision
+
+    previousEnabledRef.current = enabled
+    previousMutationRevisionRef.current = historyMutationRevision
+
+    if (enabledChanged || mutationRevisionChanged) {
       outerGenerationRef.current += 1
       detailRequestTokenRef.current += 1
-      setDetailRequest({ key: null, status: 'idle', error: null })
-      if (!enabled) {
+      commitDetailRequest({
+        key: null,
+        status: 'idle',
+        error: null,
+        phase: null,
+        cursor: null,
+      })
+      if (mutationRevisionChanged) {
+        commitState((current) => invalidateHistoryBatchDetailsForMutation(current))
+      } else if (!enabled) {
         commitState((current) =>
           current.expandedBatchKey === null
             ? current
@@ -251,7 +296,7 @@ export function useHistoryWorkbenchController(
       }
     }
     enabledRef.current = enabled
-  }, [commitState, enabled])
+  }, [commitDetailRequest, commitState, enabled, historyMutationRevision])
 
   const timelineEnabled = historyTimelineQueryEnabled(enabled, state.mode)
   const timelineQuery = useInfiniteQuery({
@@ -318,9 +363,19 @@ export function useHistoryWorkbenchController(
   })
 
   const requestBatchDetail = useCallback(
-    async (item: HistoryTimelineItemOut): Promise<void> => {
+    async (item: HistoryTimelineItemOut, cursor: string | null): Promise<void> => {
       const request = historyBatchDetailRequest(item)
       if (request === null) return
+      const phase = cursor === null ? 'root' : 'next'
+      const cachedDetail = stateRef.current.batchDetailCache[request.key]
+      if (phase === 'root' && cachedDetail !== undefined) return
+      if (phase === 'next' && cachedDetail?.next_cursor !== cursor) return
+      if (
+        detailRequestRef.current.key === request.key &&
+        detailRequestRef.current.status === 'loading'
+      ) {
+        return
+      }
       const expected = historyDetailAuthority(
         enabledRef.current,
         stateRef.current,
@@ -336,16 +391,26 @@ export function useHistoryWorkbenchController(
       }
 
       const token = ++detailRequestTokenRef.current
-      setDetailRequest({ key: request.key, status: 'loading', error: null })
+      commitDetailRequest({
+        key: request.key,
+        status: 'loading',
+        error: null,
+        phase,
+        cursor,
+      })
       try {
+        const detailQueryKey = historyWorkbenchBatchDetailKey(
+          projectId,
+          request.scope,
+          request.batchId,
+        )
         const detail = await queryClient.fetchQuery({
-          queryKey: historyWorkbenchBatchDetailKey(
-            projectId,
-            request.scope,
-            request.batchId,
-          ),
+          queryKey:
+            phase === 'root'
+              ? detailQueryKey
+              : [...detailQueryKey, 'detail-page', cursor],
           queryFn: () =>
-            getHistoryBatchDetail(projectId, request.scope, request.batchId),
+            getHistoryBatchDetail(projectId, request.scope, request.batchId, { cursor }),
           retry: false,
         })
         const current = historyDetailAuthority(
@@ -360,8 +425,26 @@ export function useHistoryWorkbenchController(
         ) {
           return
         }
-        commitState((latest) => storeHistoryBatchDetail(latest, request.key, detail))
-        setDetailRequest({ key: request.key, status: 'ready', error: null })
+        if (phase === 'next') {
+          const currentDetail = stateRef.current.batchDetailCache[request.key]
+          if (currentDetail === undefined || currentDetail.next_cursor !== cursor) return
+          commitState((latest) =>
+            storeHistoryBatchDetail(
+              latest,
+              request.key,
+              mergeHistoryBatchDetailPage(currentDetail, detail),
+            ),
+          )
+        } else {
+          commitState((latest) => storeHistoryBatchDetail(latest, request.key, detail))
+        }
+        commitDetailRequest({
+          key: request.key,
+          status: 'ready',
+          error: null,
+          phase,
+          cursor,
+        })
       } catch (error) {
         const current = historyDetailAuthority(
           enabledRef.current,
@@ -375,14 +458,16 @@ export function useHistoryWorkbenchController(
         ) {
           return
         }
-        setDetailRequest({
+        commitDetailRequest({
           key: request.key,
           status: 'error',
           error: getApiErrorMessage(error),
+          phase,
+          cursor,
         })
       }
     },
-    [commitState, projectId, queryClient],
+    [commitDetailRequest, commitState, projectId, queryClient],
   )
 
   const onFiltersChange = useCallback(
@@ -391,10 +476,16 @@ export function useHistoryWorkbenchController(
       const next = updateHistoryWorkbenchFilters(current, filters)
       if (next === current) return
       detailRequestTokenRef.current += 1
-      setDetailRequest({ key: null, status: 'idle', error: null })
+      commitDetailRequest({
+        key: null,
+        status: 'idle',
+        error: null,
+        phase: null,
+        cursor: null,
+      })
       commitState(() => next)
     },
-    [commitState],
+    [commitDetailRequest, commitState],
   )
 
   const onModeChange = useCallback(
@@ -402,7 +493,13 @@ export function useHistoryWorkbenchController(
       if (stateRef.current.mode === mode) return
       if (mode === 'cell') {
         detailRequestTokenRef.current += 1
-        setDetailRequest({ key: null, status: 'idle', error: null })
+        commitDetailRequest({
+          key: null,
+          status: 'idle',
+          error: null,
+          phase: null,
+          cursor: null,
+        })
       }
       commitState((current) => ({
         ...current,
@@ -410,7 +507,7 @@ export function useHistoryWorkbenchController(
         expandedBatchKey: mode === 'cell' ? null : current.expandedBatchKey,
       }))
     },
-    [commitState],
+    [commitDetailRequest, commitState],
   )
 
   const onBatchToggle = useCallback(
@@ -422,16 +519,28 @@ export function useHistoryWorkbenchController(
       const next = commitState((current) => toggleHistoryBatchDetail(current, request.key))
       if (!opening) {
         detailRequestTokenRef.current += 1
-        setDetailRequest({ key: null, status: 'idle', error: null })
+        commitDetailRequest({
+          key: null,
+          status: 'idle',
+          error: null,
+          phase: null,
+          cursor: null,
+        })
         return
       }
       if (next.batchDetailCache[request.key] !== undefined) {
-        setDetailRequest({ key: request.key, status: 'ready', error: null })
+        commitDetailRequest({
+          key: request.key,
+          status: 'ready',
+          error: null,
+          phase: 'root',
+          cursor: null,
+        })
         return
       }
-      if (shouldRequestDetail) void requestBatchDetail(item)
+      if (shouldRequestDetail) void requestBatchDetail(item, null)
     },
-    [commitState, requestBatchDetail],
+    [commitDetailRequest, commitState, requestBatchDetail],
   )
 
   const onRetryBatchDetail = useCallback(
@@ -445,7 +554,25 @@ export function useHistoryWorkbenchController(
       ) {
         return
       }
-      void requestBatchDetail(item)
+      void requestBatchDetail(item, null)
+    },
+    [requestBatchDetail],
+  )
+
+  const onLoadMoreBatchDetail = useCallback(
+    (item: HistoryTimelineItemOut, cursor: string | null) => {
+      const request = historyBatchDetailRequest(item)
+      if (
+        request === null ||
+        cursor === null ||
+        !enabledRef.current ||
+        stateRef.current.mode !== 'timeline' ||
+        stateRef.current.expandedBatchKey !== request.key ||
+        stateRef.current.batchDetailCache[request.key]?.next_cursor !== cursor
+      ) {
+        return
+      }
+      void requestBatchDetail(item, cursor)
     },
     [requestBatchDetail],
   )
@@ -455,11 +582,17 @@ export function useHistoryWorkbenchController(
       const scope = parseHistoryCellScope(target)
       if (scope === null) return false
       detailRequestTokenRef.current += 1
-      setDetailRequest({ key: null, status: 'idle', error: null })
+      commitDetailRequest({
+        key: null,
+        status: 'idle',
+        error: null,
+        phase: null,
+        cursor: null,
+      })
       commitState((current) => openHistoryCellScope(current, scope))
       return true
     },
-    [commitState],
+    [commitDetailRequest, commitState],
   )
 
   const onLoadMoreTimeline = useCallback(
@@ -502,7 +635,22 @@ export function useHistoryWorkbenchController(
         ? detailRequest.status
         : 'idle'
   const batchDetailError =
-    batchDetailStatus === 'error' && detailRequest.key === expandedKey
+    cachedDetail === undefined &&
+    batchDetailStatus === 'error' &&
+    detailRequest.key === expandedKey &&
+    detailRequest.phase === 'root'
+      ? detailRequest.error
+      : null
+  const batchDetailIsFetchingNextPage =
+    cachedDetail !== undefined &&
+    detailRequest.key === expandedKey &&
+    detailRequest.phase === 'next' &&
+    detailRequest.status === 'loading'
+  const batchDetailNextPageError =
+    cachedDetail !== undefined &&
+    detailRequest.key === expandedKey &&
+    detailRequest.phase === 'next' &&
+    detailRequest.status === 'error'
       ? detailRequest.error
       : null
 
@@ -518,10 +666,13 @@ export function useHistoryWorkbenchController(
     cellNextPageError: cellPresentation.nextPageError,
     batchDetailStatus,
     batchDetailError,
+    batchDetailIsFetchingNextPage,
+    batchDetailNextPageError,
     onFiltersChange,
     onModeChange,
     onBatchToggle,
     onRetryBatchDetail,
+    onLoadMoreBatchDetail,
     onCellHistoryRequest,
     onLoadMoreTimeline,
     onLoadMoreCell,

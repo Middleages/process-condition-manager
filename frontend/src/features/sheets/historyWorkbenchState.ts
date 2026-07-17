@@ -1,6 +1,7 @@
 import type {
   HistoryCellHistoryItemOut,
   HistoryCoverageOut,
+  HistoryDetailItemOut,
   HistoryDetailOut,
   HistoryJumpTargetOut,
   HistoryTimelineItemOut,
@@ -49,6 +50,7 @@ export type HistoryWorkbenchAction =
       readonly key: string
       readonly detail: HistoryDetailOut
     }
+  | { readonly type: 'invalidate-batch-details-for-mutation' }
   | { readonly type: 'open-cell-scope'; readonly scope: HistoryCellScope }
   | { readonly type: 'close-cell-scope' }
   | { readonly type: 'announce-navigation'; readonly message: string | null }
@@ -120,6 +122,13 @@ export function reduceHistoryWorkbenchState(
           ...state.batchDetailCache,
           [action.key]: action.detail,
         },
+      }
+    case 'invalidate-batch-details-for-mutation':
+      return {
+        ...state,
+        revision: state.revision + 1,
+        expandedBatchKey: null,
+        batchDetailCache: {},
       }
     case 'open-cell-scope':
       return {
@@ -209,6 +218,14 @@ export function storeHistoryBatchDetail(
   return reduceHistoryWorkbenchState(state, { type: 'store-batch-detail', key, detail })
 }
 
+export function invalidateHistoryBatchDetailsForMutation(
+  state: HistoryWorkbenchState,
+): HistoryWorkbenchState {
+  return reduceHistoryWorkbenchState(state, {
+    type: 'invalidate-batch-details-for-mutation',
+  })
+}
+
 export function historyWorkbenchTimelineKey(
   projectId: number,
   filters: HistoryTimelineFilterInput,
@@ -243,6 +260,21 @@ export function getHistoryTimelineItemKey(item: HistoryTimelineItemOut): string 
         item.batch_id ?? String(item.cursor_id),
       )
     : `event::${item.cursor_id}`
+}
+
+export function getHistoryDetailItemKey(item: HistoryDetailItemOut): string {
+  const capture = item.capture_tuple
+  if (capture === null) return `event::${item.event_id}`
+  return `capture::${JSON.stringify([
+    item.event_id,
+    capture.target_layer_sort,
+    capture.target_layer_key,
+    capture.source_condition_index,
+    capture.source_condition_id,
+    capture.parameter_sort,
+    capture.parameter_code,
+    capture.event_id,
+  ])}`
 }
 
 export function hasHistoryBatchDetailCache(
@@ -311,6 +343,31 @@ export function buildHistoryCellActivationTarget(
     parameter_code: scope.parameterCode,
     cell_ref: null,
     jump_status: item.jump_status,
+  }
+}
+
+export function buildHistoryDetailActivationTarget(
+  item: HistoryDetailItemOut,
+): HistoryJumpTargetOut | null {
+  const jumpTarget = item.jump_target
+  if (jumpTarget?.jump_status === 'deleted') return jumpTarget
+  if (
+    jumpTarget !== null &&
+    jumpTarget.condition_id !== null &&
+    jumpTarget.parameter_code !== null
+  ) {
+    return jumpTarget
+  }
+
+  const coordinate = item.domain_coordinate
+  if (coordinate?.condition_id === null || coordinate?.condition_id === undefined) return null
+  if (coordinate.parameter_code === null || coordinate.parameter_code.trim() === '') return null
+  return {
+    layer_key: coordinate.layer_key,
+    condition_id: coordinate.condition_id,
+    parameter_code: coordinate.parameter_code,
+    cell_ref: coordinate.cell_ref,
+    jump_status: 'available',
   }
 }
 

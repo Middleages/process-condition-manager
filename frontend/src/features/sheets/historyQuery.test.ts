@@ -9,6 +9,8 @@ import {
   type HistoryTimelineFilters,
   historyCellHistoryQueryKey,
   historyDetailQueryKey,
+  historyProjectDetailQueryKey,
+  historyProjectQueryKey,
   historyTimelineQueryKey,
   normalizeHistoryTimelineFilters,
 } from '@/api/historyQuery'
@@ -40,6 +42,11 @@ describe('history query helpers', () => {
       'timeline',
       filters,
     ])
+    expect(historyProjectQueryKey(7)).toEqual(['history', 7])
+    expect(historyProjectDetailQueryKey(7)).toEqual(['history', 7, 'detail'])
+    expect(historyTimelineQueryKey(8, filters).slice(0, 2)).toEqual(
+      historyProjectQueryKey(8),
+    )
   })
 
   it('serializes timeline filters with repeated event_type parameters', () => {

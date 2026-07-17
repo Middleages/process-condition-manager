@@ -36,6 +36,7 @@
   - 2026-07-16 사용자 승인: A — 핵심정보 우선 프로젝트 목록·상세 명료화
   - 2026-07-16 사용자 승인: A — 실제 주 제목에 route focus
   - 2026-07-16 실화면 후속 승인: 공통 PageHeader의 h1 focus ring 제거
+  - 2026-07-17 실화면 후속 승인: 조건표 dark Focus Header의 h1 focus ring 제거
 
 이 문서는 PCM UI/UX와 디자인 시스템의 정본이다. 구현 중 충돌이 발견되면 화면별
 임시 예외를 늘리기 전에 이 문서와 상세 스펙을 갱신한다.
@@ -178,8 +179,8 @@
   사용한다. 흰색 본문/작은 글자의 primary background는 `#0F766E`을 사용하며 `#14B8A6`
   위 흰색 글자는 normal text 조합으로 사용하지 않는다. 상호작용 control의 Focus ring은 밝은
   surface에서 `#0F766E`, Ink header에서 `#14B8A6` 또는 white inverse token을 사용한다.
-  route 안내용 공통 PageHeader h1은 programmatic focus semantics만 유지하고 별도 ring을 그리지
-  않으며, 조건표의 dark Focus Header ring은 기존 계약을 유지한다.
+  route 안내용 공통 PageHeader와 조건표 dark Focus Header의 h1은 programmatic focus semantics만
+  유지하고 별도 ring을 그리지 않는다.
 - **Screen-reader semantics:** 저장·잠금·오류에는 적절한 `role="status"`, `role="alert"`,
   `aria-live`를 사용한다. label 없는 입력과 이름 없는 icon button을 허용하지 않는다.
 - **Reduced motion and sensory considerations:** reduced-motion 지원. 깜박임, 색만의 오류 표시,

@@ -1,12 +1,17 @@
 import { describe, expect, it } from 'vitest'
 
-import type { HistoryCellHistoryOut, HistoryTimelineOut } from '@/api/history'
+import type {
+  HistoryCellHistoryOut,
+  HistoryDetailOut,
+  HistoryTimelineOut,
+} from '@/api/history'
 
 import {
   historyCellHistoryQueryEnabled,
   historyQueryPresentation,
   historyTimelineQueryEnabled,
   isCurrentHistoryDetailAuthority,
+  mergeHistoryBatchDetailPage,
   mergeHistoryCellHistoryPages,
   mergeHistoryTimelinePages,
   parseHistoryCellScope,
@@ -33,6 +38,22 @@ describe('useHistoryWorkbenchController seams', () => {
     expect(source).not.toContain('useQuery(')
     expect(source).not.toContain('Number.POSITIVE_INFINITY')
     expect(source).not.toContain('.focus(')
+  })
+
+  it('fences root and next detail requests when the sheet mutation revision changes', () => {
+    expect(source).toMatch(
+      /useHistoryWorkbenchController\(\s*projectId: number,\s*enabled: boolean,\s*historyMutationRevision = 0/,
+    )
+    expect(source).toContain(
+      'const previousMutationRevisionRef = useRef(historyMutationRevision)',
+    )
+    expect(source).toContain(
+      'previousMutationRevisionRef.current !== historyMutationRevision',
+    )
+    expect(source).toMatch(
+      /mutationRevisionChanged[\s\S]*?outerGenerationRef\.current \+= 1[\s\S]*?detailRequestTokenRef\.current \+= 1/,
+    )
+    expect(source).toContain('invalidateHistoryBatchDetailsForMutation(current)')
   })
 
   it('accepts only a safe exact cell-history scope', () => {
@@ -100,6 +121,21 @@ describe('useHistoryWorkbenchController seams', () => {
         error: null,
       }),
     ).toEqual({ status: 'idle', rootError: null, nextPageError: null })
+  })
+
+  it('appends batch-detail pages while preserving the first page and next cursor', () => {
+    const first = detailPage(101, 'detail-next')
+    const second = detailPage(201, null)
+
+    expect(mergeHistoryBatchDetailPage(first, second)).toMatchObject({
+      items: [{ event_id: 101 }, { event_id: 201 }],
+      order_kind: first.order_kind,
+      detail_status: first.detail_status,
+      next_cursor: null,
+    })
+    expect(source).toContain("'detail-page'")
+    expect(source).toContain('batchDetailNextPageError')
+    expect(source).toContain('onLoadMoreBatchDetail')
   })
 
   it('rejects late detail results after filter, key, mode, scope, or outer-mode changes', () => {
@@ -182,6 +218,32 @@ function cellPage(
     baseline_entry: { code: baselineCode, label: null },
     initial_entry: { code: initialCode, label: null },
     initial_state_unavailable: false,
+    next_cursor: nextCursor,
+  }
+}
+
+function detailPage(eventId: number, nextCursor: string | null): HistoryDetailOut {
+  return {
+    order_kind: 'event_desc',
+    detail_status: 'available',
+    items: [
+      {
+        event_id: eventId,
+        old_code: null,
+        new_code: String(eventId),
+        copied_value: null,
+        choice_label: null,
+        actor: 'dev-admin',
+        origin: 'manual',
+        created_at: '2026-07-17T00:00:00Z',
+        layer_key: 'L1::10::ETCH',
+        jump_target: null,
+        domain_coordinate: null,
+        capture_tuple: null,
+        metadata_status: 'complete',
+      },
+    ],
+    reason: null,
     next_cursor: nextCursor,
   }
 }

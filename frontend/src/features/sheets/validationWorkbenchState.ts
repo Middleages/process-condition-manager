@@ -122,6 +122,14 @@ export function shouldMountValidationWorkbench(
   return issues.length > 0 || explicitValidationCompleted
 }
 
+export function shouldAutoOpenValidationWorkbench(
+  previousIssueCount: number,
+  currentIssueCount: number,
+  hasActiveMode: boolean,
+): boolean {
+  return previousIssueCount === 0 && currentIssueCount > 0 && !hasActiveMode
+}
+
 export function filterValidationWorkbenchIssues(
   issues: readonly ValidationWorkbenchIssue[],
   state: Pick<ValidationWorkbenchState, 'showErrors' | 'showWarnings'>,

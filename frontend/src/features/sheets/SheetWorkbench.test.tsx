@@ -1,5 +1,5 @@
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import {
   SheetWorkbenchNavigation,
@@ -36,6 +36,28 @@ describe('sheet workbench host and navigation', () => {
     expect(html).toContain('aria-selected="true"')
     expect(html).toContain('tabindex="0"')
     expect(html).toContain('tabindex="-1"')
+  })
+
+  it('shows a passive validation issue badge without changing the active history mode', () => {
+    const onModeChange = vi.fn()
+    const html = renderToStaticMarkup(
+      <SheetWorkbenchNavigation
+        mode="history"
+        onModeChange={onModeChange}
+        validationIssueCount={3}
+      />,
+    )
+
+    expect(html).toContain('data-testid="sheet-workbench-validation-count"')
+    expect(html).toContain('aria-label="검증 이슈 3건"')
+    expect(html).toContain('>3</span>')
+    expect(html.match(/<button[^>]*id="sheet-workbench-tab-validation"[^>]*>/)?.[0]).toContain(
+      'aria-selected="false"',
+    )
+    expect(html.match(/<button[^>]*id="sheet-workbench-tab-history"[^>]*>/)?.[0]).toContain(
+      'aria-selected="true"',
+    )
+    expect(onModeChange).not.toHaveBeenCalled()
   })
 
   it('renders the compact 워크벤치 toggle with a truthful expanded state', () => {

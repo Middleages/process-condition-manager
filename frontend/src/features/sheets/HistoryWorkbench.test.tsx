@@ -17,6 +17,7 @@ import {
   type HistoryWorkbenchState,
 } from './historyWorkbenchState'
 import {
+  activateHistoryDetailTarget,
   applyHistoryWorkbenchFilterDraft,
   HistoryWorkbench,
   validateHistoryWorkbenchFilterDraft,
@@ -126,6 +127,43 @@ describe('HistoryWorkbench', () => {
     expect(html).not.toContain('상세 이력을 불러오는 중입니다.')
   })
 
+  it('renders detail-cell navigation, disabled deletion, unique capture keys, and detail pagination', () => {
+    const onActivateTarget = vi.fn()
+    const availableTarget = detailFixture().items[0]!.jump_target!
+    const deletedTarget = { ...availableTarget, jump_status: 'deleted' as const }
+    const detail = detailFixture()
+    detail.next_cursor = 'detail-cursor-2'
+    detail.items.push({
+      ...detail.items[0]!,
+      jump_target: deletedTarget,
+      capture_tuple: {
+        target_layer_sort: 1,
+        target_layer_key: 'L1::10::ETCH',
+        source_condition_index: 2,
+        source_condition_id: 31,
+        parameter_sort: 3,
+        parameter_code: 'ETCH_P001',
+        event_id: 21,
+      },
+    })
+    const state = buildTimelineState(detail)
+    const html = render(state, {
+      batchDetailNextPageError: '상세 다음 페이지 실패',
+      onLoadMoreBatchDetail: vi.fn(),
+      onActivateTarget,
+    })
+
+    expect(html).toContain('상세 셀로 이동')
+    expect(html).toContain('상세 다음 페이지 실패')
+    expect(html).toContain('상세 다음 페이지 다시 시도')
+    expect(html).toMatch(/disabled=""[^>]*>삭제됨</)
+    expect(activateHistoryDetailTarget(availableTarget, onActivateTarget)).toBe(true)
+    expect(onActivateTarget).toHaveBeenCalledOnce()
+    expect(activateHistoryDetailTarget(deletedTarget, onActivateTarget)).toBe(false)
+    expect(onActivateTarget).toHaveBeenCalledOnce()
+    expect(source).toContain('getHistoryDetailItemKey(entry)')
+  })
+
   it('rejects invalid source-project and date drafts without broadening applied filters', () => {
     const applied = vi.fn()
     expect(
@@ -199,14 +237,14 @@ function render(
   )
 }
 
-function buildTimelineState(): HistoryWorkbenchState {
+function buildTimelineState(detail: HistoryDetailOut = detailFixture()): HistoryWorkbenchState {
   const initial = createHistoryWorkbenchState({ actor: 'dev-admin' })
   const withPage = appendHistoryWorkbenchPage(initial, {
     items: [createDeletedEvent(), createExpandedBatchItem()],
     nextCursor: 'cursor-2',
   })
   const expanded = toggleHistoryBatchDetail(withPage, getHistoryTimelineItemKey(createExpandedBatchItem()))
-  return storeHistoryBatchDetail(expanded, getHistoryTimelineItemKey(createExpandedBatchItem()), detailFixture())
+  return storeHistoryBatchDetail(expanded, getHistoryTimelineItemKey(createExpandedBatchItem()), detail)
 }
 
 function createDeletedEvent(): HistoryTimelineItemOut {
@@ -252,13 +290,7 @@ function createExpandedBatchItem(): HistoryTimelineItemOut {
     matched_event_count: 2,
     total_event_count: 3,
     summary: 'batch-2',
-    jump_target: {
-      layer_key: 'L1::10::ETCH',
-      condition_id: 11,
-      parameter_code: 'ETCH_P001',
-      cell_ref: 'R11C3',
-      jump_status: 'available',
-    },
+    jump_target: null,
     detail_status: 'available',
     detail_scope: 'scope-2',
     metadata_status: 'legacy_partial',

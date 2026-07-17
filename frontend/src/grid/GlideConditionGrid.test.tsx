@@ -9,6 +9,7 @@ import {
   currentGridSelectionForLayout,
   gridLayoutAuthority,
   isCellHistoryMenuInvocation,
+  resolveCellHistoryMenuPosition,
   resolveCellHistoryRequest,
 } from './GlideConditionGrid'
 import source from './GlideConditionGrid.tsx?raw'
@@ -164,6 +165,30 @@ describe('cell-history context action boundary', () => {
     expect(isCellHistoryMenuInvocation('Enter', false)).toBe(false)
   })
 
+  it('clamps the fixed menu horizontally and flips above a bottom-edge anchor', () => {
+    expect(
+      resolveCellHistoryMenuPosition(
+        { x: 980, y: 730, height: 30 },
+        { width: 1024, height: 768 },
+      ),
+    ).toEqual({ x: 864, y: 682 })
+    expect(
+      resolveCellHistoryMenuPosition(
+        { x: -20, y: 120, height: 28 },
+        { width: 1024, height: 768 },
+      ),
+    ).toEqual({ x: 8, y: 148 })
+  })
+
+  it('clamps vertically when neither the below nor above placement fits', () => {
+    expect(
+      resolveCellHistoryMenuPosition(
+        { x: 20, y: 20, height: 30 },
+        { width: 320, height: 60 },
+      ),
+    ).toEqual({ x: 20, y: 8 })
+  })
+
   it('maps Enter to activation and Escape to one idempotent focus-restoring close', () => {
     expect(cellHistoryMenuActionForKey('Enter')).toBe('activate')
     expect(cellHistoryMenuActionForKey('Escape')).toBe('close')
@@ -194,5 +219,16 @@ describe('cell-history context action boundary', () => {
     expect(source).toContain('callbacks?.onCellHistoryRequest?.(cellHistoryMenu.target)')
     expect(source).toContain("document.addEventListener('pointerdown', handleOutsidePointerDown)")
     expect(source).toContain('closeCellHistoryMenu()')
+    const openMenu = source.slice(
+      source.indexOf('const openCellHistoryMenu = useCallback('),
+      source.indexOf('const layoutAuthority = useMemo('),
+    )
+    expect(openMenu.match(/resolveCellHistoryMenuPosition/g)).toHaveLength(1)
+    expect(source).toMatch(
+      /handleCellContextMenu[\s\S]*?openCellHistoryMenu\(target, event\.bounds\)/,
+    )
+    expect(source).toMatch(
+      /handleGridKeyDown[\s\S]*?openCellHistoryMenu\(target, event\.bounds\)/,
+    )
   })
 })

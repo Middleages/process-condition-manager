@@ -1,5 +1,6 @@
 import { useRef } from 'react'
 
+import { Badge } from '@/shared/components/Badge'
 import { cn } from '@/shared/lib/cn'
 
 import type { SheetWorkbenchMode } from './SheetWorkbench'
@@ -20,10 +21,12 @@ const SHEET_WORKBENCH_MODE_LABELS: Record<Exclude<SheetWorkbenchMode, null>, str
 export function SheetWorkbenchNavigation({
   mode,
   onModeChange,
+  validationIssueCount = 0,
   disabled = false,
 }: {
   mode: Exclude<SheetWorkbenchMode, null>
   onModeChange: (mode: Exclude<SheetWorkbenchMode, null>) => void
+  validationIssueCount?: number
   disabled?: boolean
 }) {
   const buttonsRef = useRef<Array<HTMLButtonElement | null>>([])
@@ -80,6 +83,16 @@ export function SheetWorkbenchNavigation({
             type="button"
           >
             {SHEET_WORKBENCH_MODE_LABELS[candidate]}
+            {candidate === 'validation' && validationIssueCount > 0 ? (
+              <Badge
+                aria-label={`검증 이슈 ${validationIssueCount}건`}
+                className="ml-1.5 min-w-5 justify-center px-1.5 py-0 text-[10px] leading-4"
+                data-testid="sheet-workbench-validation-count"
+                tone="neutral"
+              >
+                {validationIssueCount}
+              </Badge>
+            ) : null}
           </button>
         )
       })}

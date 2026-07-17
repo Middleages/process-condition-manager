@@ -103,11 +103,27 @@ export function normalizeHistoryTimelineFilters(
   }
 }
 
+/** Prefix shared by every history view owned by one project. */
+export function historyProjectQueryKey(projectId: number): readonly ['history', number] {
+  return ['history', projectId]
+}
+
+/** Prefix shared by root and paginated batch-detail queries for one project. */
+export function historyProjectDetailQueryKey(
+  projectId: number,
+): readonly ['history', number, 'detail'] {
+  return [...historyProjectQueryKey(projectId), 'detail']
+}
+
 export function historyTimelineQueryKey(
   projectId: number,
   filters: HistoryTimelineFilterInput,
 ): readonly unknown[] {
-  return ['history', projectId, 'timeline', normalizeHistoryTimelineFilters(filters)]
+  return [
+    ...historyProjectQueryKey(projectId),
+    'timeline',
+    normalizeHistoryTimelineFilters(filters),
+  ]
 }
 
 export function historyDetailQueryKey(
@@ -115,7 +131,11 @@ export function historyDetailQueryKey(
   scope: string,
   batchId: string,
 ): readonly unknown[] {
-  return ['history', projectId, 'detail', normalizeOpaqueToken(scope), normalizePathToken(batchId)]
+  return [
+    ...historyProjectDetailQueryKey(projectId),
+    normalizeOpaqueToken(scope),
+    normalizePathToken(batchId),
+  ]
 }
 
 export function historyCellHistoryQueryKey(
@@ -123,7 +143,12 @@ export function historyCellHistoryQueryKey(
   conditionId: number,
   parameterCode: string,
 ): readonly unknown[] {
-  return ['history', projectId, 'cell-history', conditionId, normalizePathToken(parameterCode)]
+  return [
+    ...historyProjectQueryKey(projectId),
+    'cell-history',
+    conditionId,
+    normalizePathToken(parameterCode),
+  ]
 }
 
 export function buildHistoryTimelineQueryString(

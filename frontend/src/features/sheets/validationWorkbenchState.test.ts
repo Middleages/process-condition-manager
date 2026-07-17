@@ -15,6 +15,7 @@ import {
   reduceValidationWorkbenchState,
   resolveValidationDefinitionAvailability,
   resolveValidationIssueNavigation,
+  shouldAutoOpenValidationWorkbench,
   shouldMountValidationWorkbench,
 } from './validationWorkbenchState'
 
@@ -52,6 +53,13 @@ describe('validation workbench lifecycle and local interaction state', () => {
     expect(shouldMountValidationWorkbench([], false)).toBe(false)
     expect(shouldMountValidationWorkbench([issue('required', 'error')], false)).toBe(true)
     expect(shouldMountValidationWorkbench([], true)).toBe(true)
+  })
+
+  it('auto-opens only for a first issue while no other workbench mode is active', () => {
+    expect(shouldAutoOpenValidationWorkbench(0, 1, false)).toBe(true)
+    expect(shouldAutoOpenValidationWorkbench(0, 1, true)).toBe(false)
+    expect(shouldAutoOpenValidationWorkbench(1, 2, false)).toBe(false)
+    expect(shouldAutoOpenValidationWorkbench(0, 0, false)).toBe(false)
   })
 
   it('toggles error and warning filters independently and reports the truthful subset', () => {

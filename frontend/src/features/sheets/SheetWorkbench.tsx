@@ -102,6 +102,7 @@ export function SheetWorkbenchPanel({
   onModeChange,
   onResizeBy,
   onSetHeight,
+  validationIssueCount = 0,
   validationContent,
   historyContent,
   backboneDiffContent,
@@ -111,6 +112,7 @@ export function SheetWorkbenchPanel({
   onModeChange: (mode: Exclude<SheetWorkbenchMode, null>) => void
   onResizeBy: (delta: -1 | 1) => void
   onSetHeight: (height: number) => void
+  validationIssueCount?: number
   validationContent: ReactNode
   historyContent?: ReactNode
   backboneDiffContent?: ReactNode
@@ -174,7 +176,11 @@ export function SheetWorkbenchPanel({
       />
 
       <div className="border-b border-border-subtle bg-canvas px-3 py-2">
-        <SheetWorkbenchNavigation mode={mode} onModeChange={onModeChange} />
+        <SheetWorkbenchNavigation
+          mode={mode}
+          onModeChange={onModeChange}
+          validationIssueCount={validationIssueCount}
+        />
       </div>
 
       <div className="min-h-0 min-w-0 flex-1 overflow-hidden bg-canvas p-2">

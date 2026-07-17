@@ -154,6 +154,42 @@ export interface CellHistoryMenuState {
   y: number
 }
 
+interface CellHistoryMenuAnchor {
+  x: number
+  y: number
+  height: number
+}
+
+interface CellHistoryMenuViewport {
+  width: number
+  height: number
+}
+
+const CELL_HISTORY_MENU_WIDTH = 152
+const CELL_HISTORY_MENU_HEIGHT = 48
+const CELL_HISTORY_MENU_VIEWPORT_MARGIN = 8
+
+/** Keep the fixed menu visible and prefer a below-anchor placement until it no longer fits. */
+export function resolveCellHistoryMenuPosition(
+  anchor: CellHistoryMenuAnchor,
+  viewport: CellHistoryMenuViewport,
+): Pick<CellHistoryMenuState, 'x' | 'y'> {
+  const margin = CELL_HISTORY_MENU_VIEWPORT_MARGIN
+  const maxX = Math.max(margin, viewport.width - CELL_HISTORY_MENU_WIDTH - margin)
+  const maxY = Math.max(margin, viewport.height - CELL_HISTORY_MENU_HEIGHT - margin)
+  const belowY = anchor.y + Math.max(0, anchor.height)
+  const aboveY = anchor.y - CELL_HISTORY_MENU_HEIGHT
+  const preferredY =
+    belowY + CELL_HISTORY_MENU_HEIGHT <= viewport.height - margin || aboveY < margin
+      ? belowY
+      : aboveY
+
+  return {
+    x: Math.min(Math.max(anchor.x, margin), maxX),
+    y: Math.min(Math.max(preferredY, margin), maxY),
+  }
+}
+
 /** Translate a Glide coordinate to the domain-only history request boundary. */
 export function resolveCellHistoryRequest(
   item: Item,
@@ -298,10 +334,17 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
       target: CellHistoryRequest,
       bounds: { x: number; y: number; height: number } | undefined,
     ) => {
+      const position = resolveCellHistoryMenuPosition(
+        {
+          x: bounds?.x ?? CELL_HISTORY_MENU_VIEWPORT_MARGIN,
+          y: bounds?.y ?? CELL_HISTORY_MENU_VIEWPORT_MARGIN,
+          height: bounds?.height ?? 0,
+        },
+        { width: window.innerWidth, height: window.innerHeight },
+      )
       const menu = {
         target,
-        x: bounds?.x ?? 8,
-        y: bounds === undefined ? 8 : bounds.y + bounds.height,
+        ...position,
       }
       cellHistoryMenuStateRef.current = menu
       setCellHistoryMenu(menu)
@@ -798,7 +841,11 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
             left: cellHistoryMenu.x,
             top: cellHistoryMenu.y,
             zIndex: 60,
-            minWidth: 152,
+            width: CELL_HISTORY_MENU_WIDTH,
+            height: CELL_HISTORY_MENU_HEIGHT,
+            maxWidth: `calc(100vw - ${CELL_HISTORY_MENU_VIEWPORT_MARGIN * 2}px)`,
+            maxHeight: `calc(100vh - ${CELL_HISTORY_MENU_VIEWPORT_MARGIN * 2}px)`,
+            overflow: 'auto',
             border: `1px solid ${GRID_COLORS.border}`,
             borderRadius: 6,
             background: GRID_COLORS.surface,

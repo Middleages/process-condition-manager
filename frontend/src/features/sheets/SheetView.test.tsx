@@ -56,10 +56,13 @@ type MockHistoryController = {
   cellNextPageError: string | null
   batchDetailStatus: 'idle' | 'loading' | 'ready' | 'error'
   batchDetailError: string | null
+  batchDetailIsFetchingNextPage: boolean
+  batchDetailNextPageError: string | null
   onFiltersChange: (filters: unknown) => void
   onModeChange: (mode: 'timeline' | 'cell') => void
   onBatchToggle: (item: HistoryTimelineItemOut, shouldRequestDetail: boolean) => void
   onRetryBatchDetail: (item: HistoryTimelineItemOut) => void
+  onLoadMoreBatchDetail: (item: HistoryTimelineItemOut, cursor: string | null) => void
   onCellHistoryRequest: (target: { conditionId: string; parameterCode: string }) => boolean
   onLoadMoreTimeline: (cursor: string | null) => void
   onLoadMoreCell: (cursor: string | null) => void
@@ -217,10 +220,13 @@ function createMockHistoryController(
     cellNextPageError: null,
     batchDetailStatus: 'ready',
     batchDetailError: null,
+    batchDetailIsFetchingNextPage: false,
+    batchDetailNextPageError: null,
     onFiltersChange: () => undefined,
     onModeChange: () => undefined,
     onBatchToggle: () => undefined,
     onRetryBatchDetail: () => undefined,
+    onLoadMoreBatchDetail: () => undefined,
     onCellHistoryRequest: () => true,
     onLoadMoreTimeline: () => undefined,
     onLoadMoreCell: () => undefined,
@@ -414,6 +420,20 @@ describe('SheetView focus shell integration', () => {
     expect(shouldFocusLiveSheetTitle(body, body)).toBe(true)
     expect(shouldFocusLiveSheetTitle(disconnectedFallback, body)).toBe(true)
     expect(shouldFocusLiveSheetTitle(connectedControl, body)).toBe(false)
+  })
+
+  it('keeps programmatic H1 focus ownership without drawing an outline or ring', () => {
+    const queryClient = client()
+    queryClient.setQueryData(['project', 7], project)
+    queryClient.setQueryData(['sheet', 7], sheet)
+
+    const html = renderSheet(queryClient)
+    const headingTag = html.match(/<h1[^>]*data-page-title[^>]*>/)?.[0]
+
+    expect(headingTag).toBeDefined()
+    expect(headingTag).toContain('tabindex="-1"')
+    expect(headingTag).toContain('focus:outline-none')
+    expect(headingTag).not.toMatch(/focus:(?:outline-(?:2|offset|brand)|ring)/)
   })
 
   it('keeps loading inside the 40px fallback header without mounting an editing session', () => {
@@ -753,6 +773,47 @@ describe('SheetView focus shell integration', () => {
     expect(html).toContain('aria-expanded="true"')
   })
 
+  it('keeps history selected while passively showing a newly available validation issue count', () => {
+    mockSheetWorkbenchState = createMockSheetWorkbenchState('history')
+    const queryClient = client()
+    queryClient.setQueryData(['project', 7], {
+      ...project,
+      layers: [
+        {
+          id: 1,
+          layer_key: 'L1::10::ETCH',
+          step_seq: '10',
+          layer_id: 'ETCH',
+          eqp_type: null,
+          eqp_type_desc: null,
+          area_name: null,
+          sort_order: 0,
+          condition_count: 1,
+          cell_count: 0,
+          source_project_id: null,
+          source_layer_key: null,
+        },
+      ],
+    })
+    queryClient.setQueryData(['sheet', 7], {
+      ...sheet,
+      columns: [{ ...sheet.columns[0], required: true }],
+      rows: [{ ...sheet.rows[0], cells: {} }],
+    })
+
+    const html = renderSheet(queryClient)
+    const validationTab = html.match(
+      /<button[^>]*id="sheet-workbench-tab-validation"[^>]*>/,
+    )?.[0]
+    const historyTab = html.match(/<button[^>]*id="sheet-workbench-tab-history"[^>]*>/)?.[0]
+
+    expect(html).toContain('data-testid="sheet-workbench-validation-count"')
+    expect(html).toContain('aria-label="검증 이슈 1건"')
+    expect(validationTab).toContain('aria-selected="false"')
+    expect(historyTab).toContain('aria-selected="true"')
+    expect(html).toContain('data-history-workbench')
+  })
+
   it('orders hidden validation navigation across a committed category change without timer races', () => {
     const categoryChange = sheetViewSource.indexOf(
       'setActiveCategory(navigation.categoryCode)',
@@ -794,7 +855,7 @@ describe('SheetView focus shell integration', () => {
 
   it('wires the history controller and cell-history grid request into the shared host', () => {
     expect(sheetViewSource).toMatch(
-      /useHistoryWorkbenchController\(\s*projectId,\s*workbenchState\.mode === 'history',\s*\)/,
+      /useHistoryWorkbenchController\(\s*projectId,\s*workbenchState\.mode === 'history',\s*historyMutationRevision,\s*\)/,
     )
     expect(sheetViewSource).toContain('historyContent={')
     expect(sheetViewSource).toContain('<HistoryWorkbench')
@@ -805,6 +866,24 @@ describe('SheetView focus shell integration', () => {
     expect(sheetViewSource).toContain('activateWorkbenchCoordinate')
     expect(sheetViewSource).toContain('onRetryBatchDetail={historyWorkbench.onRetryBatchDetail}')
     expect(sheetViewSource).toContain('navigationStatus={coordinateNavigationStatus}')
+  })
+
+  it('invalidates every same-project history view after cell and structural mutation success', () => {
+    expect(sheetViewSource).toContain(
+      'const [historyMutationRevision, setHistoryMutationRevision] = useState(0)',
+    )
+    expect(sheetViewSource).toContain(
+      'invalidateProjectHistoryAfterMutation(queryClient, projectId)',
+    )
+    expect(sheetViewSource).toContain(
+      'setHistoryMutationRevision((current) => current + 1)',
+    )
+    expect(sheetViewSource).toMatch(
+      /await reconcileSuccessfulPatch\([\s\S]*?invalidateProjectHistory\(\)/,
+    )
+    expect(sheetViewSource).toMatch(
+      /await runStructuralChange\(fn\)[\s\S]*?invalidateProjectHistory\(\)[\s\S]*?return true/,
+    )
   })
 
   it('renders truthful read-only discovery controls with accessible pressed and status semantics', () => {
@@ -866,17 +945,15 @@ describe('SheetView focus shell integration', () => {
     )
   })
 
-  it('keeps the workbench toggle outside validation gating and only auto-opens validation from null', () => {
+  it('keeps the workbench toggle outside validation gating and auto-opens only on a first issue', () => {
     expect(sheetViewSource).toContain('const workbenchState = useSheetWorkbenchState()')
-    expect(sheetViewSource).toContain(
-      'const wasValidationWorkbenchVisibleRef = useRef(false)',
-    )
-    expect(sheetViewSource).toContain('showValidationWorkbench &&')
-    expect(sheetViewSource).toContain('!wasValidationWorkbenchVisibleRef.current')
-    expect(sheetViewSource).toContain('workbenchState.mode === null')
+    expect(sheetViewSource).toContain('const previousValidationIssueCountRef = useRef(0)')
+    expect(sheetViewSource).toContain('shouldAutoOpenValidationWorkbench(')
+    expect(sheetViewSource).toContain('previousValidationIssueCountRef.current,')
+    expect(sheetViewSource).toContain('workbenchState.mode !== null,')
     expect(sheetViewSource).toContain("workbenchState.selectMode('validation')")
     expect(sheetViewSource).toContain(
-      'wasValidationWorkbenchVisibleRef.current = showValidationWorkbench',
+      'previousValidationIssueCountRef.current = issueCount',
     )
     expect(sheetViewSource).toContain('expanded={workbenchState.mode !== null}')
     expect(sheetViewSource).toContain('workbenchState.mode !== null ? (')

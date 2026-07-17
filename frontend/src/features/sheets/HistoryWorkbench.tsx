@@ -19,10 +19,12 @@ import { cn } from '@/shared/lib/cn'
 
 import {
   buildHistoryCellActivationTarget,
+  buildHistoryDetailActivationTarget,
   describeHistoryDetailStatus,
   describeHistoryJumpTarget,
   describeHistoryLegacyCoverage,
   getHistoryTimelineItemKey,
+  getHistoryDetailItemKey,
   historyEventTypeLabel,
   HISTORY_EVENT_TYPES,
   createHistoryWorkbenchState,
@@ -46,11 +48,14 @@ export interface HistoryWorkbenchProps {
   cellNextPageError?: string | null
   batchDetailStatus?: 'idle' | 'loading' | 'ready' | 'error'
   batchDetailError?: string | null
+  batchDetailIsFetchingNextPage?: boolean
+  batchDetailNextPageError?: string | null
   navigationStatus?: string | null
   onFiltersChange?: (filters: HistoryTimelineFilterInput) => void
   onModeChange?: (mode: HistoryWorkbenchMode) => void
   onBatchToggle?: (item: HistoryTimelineItemOut, shouldRequestDetail: boolean) => void
   onRetryBatchDetail?: (item: HistoryTimelineItemOut) => void
+  onLoadMoreBatchDetail?: (item: HistoryTimelineItemOut, cursor: string | null) => void
   onActivateTarget?: (target: HistoryJumpTargetOut) => void
   onLoadMoreTimeline?: (cursor: string | null) => void
   onLoadMoreCell?: (cursor: string | null) => void
@@ -115,11 +120,14 @@ export function HistoryWorkbench({
   cellNextPageError = null,
   batchDetailStatus = 'idle',
   batchDetailError = null,
+  batchDetailIsFetchingNextPage = false,
+  batchDetailNextPageError = null,
   navigationStatus = null,
   onFiltersChange,
   onModeChange,
   onBatchToggle,
   onRetryBatchDetail,
+  onLoadMoreBatchDetail,
   onActivateTarget,
   onLoadMoreTimeline,
   onLoadMoreCell,
@@ -335,7 +343,15 @@ export function HistoryWorkbench({
 
             {isExpanded ? (
               detail !== undefined ? (
-                <HistoryBatchDetailList detail={detail} />
+                <HistoryBatchDetailList
+                  detail={detail}
+                  isFetchingNextPage={batchDetailIsFetchingNextPage}
+                  item={item}
+                  nextPageError={batchDetailNextPageError}
+                  onActivateTarget={onActivateTarget}
+                  onAnnouncement={emitAnnouncement}
+                  onLoadMore={onLoadMoreBatchDetail}
+                />
               ) : batchDetailStatus === 'error' ? (
                 <div
                   className="rounded-md border border-error/40 bg-error/10 p-2 text-xs text-error-700"
@@ -742,7 +758,38 @@ export function HistoryWorkbench({
   )
 }
 
-function HistoryBatchDetailList({ detail }: { detail: HistoryDetailOut }) {
+interface HistoryBatchDetailListProps {
+  readonly detail: HistoryDetailOut
+  readonly isFetchingNextPage: boolean
+  readonly item: HistoryTimelineItemOut
+  readonly nextPageError: string | null
+  readonly onActivateTarget?: (target: HistoryJumpTargetOut) => void
+  readonly onAnnouncement: (message: string | null) => void
+  readonly onLoadMore?: (item: HistoryTimelineItemOut, cursor: string | null) => void
+}
+
+export function activateHistoryDetailTarget(
+  target: HistoryJumpTargetOut,
+  onActivateTarget?: (target: HistoryJumpTargetOut) => void,
+): boolean {
+  if (target.jump_status !== 'available') return false
+  onActivateTarget?.(target)
+  return true
+}
+
+function HistoryBatchDetailList({
+  detail,
+  isFetchingNextPage,
+  item,
+  nextPageError,
+  onActivateTarget,
+  onAnnouncement,
+  onLoadMore,
+}: HistoryBatchDetailListProps) {
+  function handleLoadMore(): void {
+    onLoadMore?.(item, detail.next_cursor)
+  }
+
   return (
     <div className="rounded-md border border-border-subtle bg-canvas p-3 text-xs">
       <div className="flex flex-wrap items-center gap-2 text-muted">
@@ -753,28 +800,99 @@ function HistoryBatchDetailList({ detail }: { detail: HistoryDetailOut }) {
       </div>
       {detail.items.length > 0 ? (
         <ul className="mt-2 space-y-2">
-          {detail.items.map((entry) => (
-            <li key={entry.event_id} className="rounded-sm border border-border-subtle bg-surface p-2">
-              <p className="font-semibold text-foreground">
-                {entry.created_at} · {resolveHistoryActorLabel(entry.actor === null ? [] : [entry.actor])}
-              </p>
-              <p className="mt-1 text-muted">
-                {entry.origin} · {entry.old_code ?? '—'} → {entry.new_code ?? '—'}
-                {entry.copied_value !== null ? ` · copied ${entry.copied_value}` : ''}
-              </p>
-              {entry.domain_coordinate !== null ? (
-                <p className="mt-1 text-muted">
-                  {entry.domain_coordinate.layer_key}
-                  {entry.domain_coordinate.condition_id !== null ? ` / ${entry.domain_coordinate.condition_id}` : ''}
-                  {entry.domain_coordinate.parameter_code !== null ? ` / ${entry.domain_coordinate.parameter_code}` : ''}
+          {detail.items.map((entry) => {
+            const target = buildHistoryDetailActivationTarget(entry)
+            const isDeleted = target?.jump_status === 'deleted'
+
+            function handleActivate(): void {
+              if (target === null) return
+              if (activateHistoryDetailTarget(target, onActivateTarget)) {
+                onAnnouncement(null)
+                return
+              }
+              onAnnouncement('삭제된 대상이라 위치로 이동할 수 없습니다.')
+            }
+
+            return (
+              <li
+                key={getHistoryDetailItemKey(entry)}
+                className="rounded-sm border border-border-subtle bg-surface p-2"
+              >
+                <p className="font-semibold text-foreground">
+                  {entry.created_at} · {resolveHistoryActorLabel(entry.actor === null ? [] : [entry.actor])}
                 </p>
-              ) : null}
-            </li>
-          ))}
+                <p className="mt-1 text-muted">
+                  {entry.origin} · {entry.old_code ?? '—'} → {entry.new_code ?? '—'}
+                  {entry.copied_value !== null ? ` · copied ${entry.copied_value}` : ''}
+                </p>
+                {entry.domain_coordinate !== null ? (
+                  <p className="mt-1 text-muted">
+                    {entry.domain_coordinate.layer_key}
+                    {entry.domain_coordinate.condition_id !== null ? ` / ${entry.domain_coordinate.condition_id}` : ''}
+                    {entry.domain_coordinate.parameter_code !== null ? ` / ${entry.domain_coordinate.parameter_code}` : ''}
+                  </p>
+                ) : null}
+                {target !== null ? (
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <button
+                      className={cn(
+                        'rounded-sm border px-2 py-1 font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700 disabled:cursor-not-allowed',
+                        isDeleted
+                          ? 'border-border-subtle text-muted'
+                          : 'border-brand-700 text-brand-700',
+                      )}
+                      disabled={isDeleted}
+                      onClick={handleActivate}
+                      type="button"
+                    >
+                      {isDeleted ? '삭제됨' : '상세 셀로 이동'}
+                    </button>
+                    {isDeleted ? (
+                      <span aria-live="polite" className="text-xs text-muted" role="status">
+                        삭제된 대상이라 위치로 이동할 수 없습니다.
+                      </span>
+                    ) : null}
+                  </div>
+                ) : null}
+              </li>
+            )
+          })}
         </ul>
       ) : (
         <p className="mt-2 text-muted">상세 항목이 없습니다.</p>
       )}
+      {detail.next_cursor !== null ? (
+        nextPageError !== null ? (
+          <div
+            className="mt-3 rounded-md border border-warning/40 bg-warning/10 p-2 text-warning-700"
+            role="status"
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <span>{nextPageError}</span>
+              {onLoadMore !== undefined ? (
+                <button
+                  className="rounded-sm border border-warning/30 px-2 py-1 font-semibold"
+                  onClick={handleLoadMore}
+                  type="button"
+                >
+                  상세 다음 페이지 다시 시도
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : onLoadMore !== undefined ? (
+          <div className="mt-3 flex justify-center">
+            <button
+              className="rounded-sm border border-border-subtle px-3 py-1 font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700 disabled:cursor-wait"
+              disabled={isFetchingNextPage}
+              onClick={handleLoadMore}
+              type="button"
+            >
+              {isFetchingNextPage ? '상세 다음 페이지를 불러오는 중입니다.' : '상세 더 불러오기'}
+            </button>
+          </div>
+        ) : null
+      ) : null}
     </div>
   )
 }

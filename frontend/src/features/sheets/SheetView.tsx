@@ -12,6 +12,7 @@ import { Link, useParams } from 'react-router-dom'
 
 import { getApiErrorMessage } from '@/api/client'
 import { addCondition, deleteCondition, setConditionPor } from '@/api/conditions'
+import { invalidateProjectHistoryAfterMutation } from '@/api/historyCache'
 import type { HistoryJumpTargetOut } from '@/api/history'
 import { getProject } from '@/api/projects'
 import { getSheet } from '@/api/sheets'
@@ -77,6 +78,7 @@ import { VALIDATION_SERVER_FAILURE } from './validationState'
 import {
   enrichValidationIssues,
   resolveValidationDefinitionAvailability,
+  shouldAutoOpenValidationWorkbench,
   shouldMountValidationWorkbench,
   type ValidationWorkbenchIssue,
 } from './validationWorkbenchState'
@@ -232,6 +234,12 @@ function SheetEditor({
 }) {
   const queryClient = useQueryClient()
   const liveTitleRef = useRef<HTMLHeadingElement>(null)
+  const [historyMutationRevision, setHistoryMutationRevision] = useState(0)
+
+  const invalidateProjectHistory = useCallback(() => {
+    setHistoryMutationRevision((current) => current + 1)
+    void invalidateProjectHistoryAfterMutation(queryClient, projectId)
+  }, [queryClient, projectId])
 
   const choiceResources = useSheetChoiceSets(sheet.columns)
   const dirtyCells = useEditStore(selectDirtyCells)
@@ -250,8 +258,9 @@ function SheetEditor({
         commitSaved,
         (snapshot) => useEditStore.getState().markSaved(snapshot),
       )
+      invalidateProjectHistory()
     },
-    [commitSaved],
+    [commitSaved, invalidateProjectHistory],
   )
 
   const editing = useSheetEditing(projectId, {
@@ -362,19 +371,23 @@ function SheetEditor({
   const historyWorkbench = useHistoryWorkbenchController(
     projectId,
     workbenchState.mode === 'history',
+    historyMutationRevision,
   )
-  const wasValidationWorkbenchVisibleRef = useRef(false)
+  const previousValidationIssueCountRef = useRef(0)
 
   useEffect(() => {
+    const issueCount = validationIssues.length
     if (
-      showValidationWorkbench &&
-      !wasValidationWorkbenchVisibleRef.current &&
-      workbenchState.mode === null
+      shouldAutoOpenValidationWorkbench(
+        previousValidationIssueCountRef.current,
+        issueCount,
+        workbenchState.mode !== null,
+      )
     ) {
       workbenchState.selectMode('validation')
     }
-    wasValidationWorkbenchVisibleRef.current = showValidationWorkbench
-  }, [showValidationWorkbench, workbenchState.mode, workbenchState.selectMode])
+    previousValidationIssueCountRef.current = issueCount
+  }, [validationIssues.length, workbenchState.mode, workbenchState.selectMode])
 
   // 붙여넣기 스테이징(적용 전 미리보기). null = 대기 중인 붙여넣기 없음.
   const [paste, setPasteState] = useState<PasteStagingResult | null>(null)
@@ -513,6 +526,7 @@ function SheetEditor({
       setStructError(null)
       try {
         await runStructuralChange(fn)
+        invalidateProjectHistory()
         refreshSheet()
         return true
       } catch (error) {
@@ -523,7 +537,7 @@ function SheetEditor({
         setStructBusy(false)
       }
     },
-    [runStructuralChange, refreshSheet],
+    [runStructuralChange, invalidateProjectHistory, refreshSheet],
   )
 
   const handleAddEmpty = useCallback(() => {
@@ -967,6 +981,7 @@ function SheetEditor({
             onResizeBy={workbenchState.resizeBy}
             onSetHeight={workbenchState.setHeight}
             panelHeight={workbenchState.panelHeight}
+            validationIssueCount={validationIssues.length}
             validationContent={
               <ValidationWorkbench
                 definitionsPending={validationDefinitionsPending}
@@ -994,11 +1009,14 @@ function SheetEditor({
                 cellNextPageError={historyWorkbench.cellNextPageError}
                 batchDetailStatus={historyWorkbench.batchDetailStatus}
                 batchDetailError={historyWorkbench.batchDetailError}
+                batchDetailIsFetchingNextPage={historyWorkbench.batchDetailIsFetchingNextPage}
+                batchDetailNextPageError={historyWorkbench.batchDetailNextPageError}
                 navigationStatus={coordinateNavigationStatus}
                 onFiltersChange={historyWorkbench.onFiltersChange}
                 onModeChange={historyWorkbench.onModeChange}
                 onBatchToggle={historyWorkbench.onBatchToggle}
                 onRetryBatchDetail={historyWorkbench.onRetryBatchDetail}
+                onLoadMoreBatchDetail={historyWorkbench.onLoadMoreBatchDetail}
                 onActivateTarget={activateHistoryJumpTarget}
                 onLoadMoreTimeline={historyWorkbench.onLoadMoreTimeline}
                 onLoadMoreCell={historyWorkbench.onLoadMoreCell}
@@ -1365,7 +1383,7 @@ function FocusHeader({
         <span aria-hidden="true" className="h-4 w-px shrink-0 bg-white/25" />
         <h1
           ref={titleRef}
-          className="min-w-0 truncate rounded-sm text-sm font-semibold focus:outline-2 focus:outline-offset-2 focus:outline-brand-500"
+          className="min-w-0 truncate text-sm font-semibold focus:outline-none"
           data-page-title
           tabIndex={-1}
           title={title}

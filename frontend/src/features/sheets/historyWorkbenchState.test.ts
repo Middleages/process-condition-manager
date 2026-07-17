@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type {
+  HistoryDetailItemOut,
   HistoryDetailOut,
   HistoryTimelineItemOut,
 } from '@/api/history'
@@ -8,17 +9,20 @@ import type {
 import {
   HISTORY_EVENT_TYPES,
   appendHistoryWorkbenchPage,
+  buildHistoryDetailActivationTarget,
   createHistoryWorkbenchState,
   buildHistoryCellActivationTarget,
   describeHistoryDetailStatus,
   describeHistoryJumpTarget,
   describeHistoryLegacyCoverage,
   getHistoryBatchDetailCacheKey,
+  getHistoryDetailItemKey,
   getHistoryTimelineItemKey,
   historyWorkbenchBatchDetailKey,
   historyWorkbenchCellHistoryKey,
   historyWorkbenchTimelineKey,
   historyEventTypeLabel,
+  invalidateHistoryBatchDetailsForMutation,
   openHistoryCellScope,
   resolveHistoryActorLabel,
   shouldRequestHistoryBatchDetailOnOpen,
@@ -78,6 +82,31 @@ describe('history workbench state', () => {
     expect(detailCalls).toBe(1)
   })
 
+  it('clears only mutable batch detail state and advances authority after a sheet mutation', () => {
+    const scope = { conditionId: 11, parameterCode: 'ETCH_P001' }
+    const initial = createHistoryWorkbenchState({ actor: 'dev-admin' }, scope)
+    const page = appendHistoryWorkbenchPage(initial, {
+      items: [createBatchItem(4)],
+      nextCursor: 'cursor-4',
+    })
+    const expanded = toggleHistoryBatchDetail(page, batchKey(4))
+    const loaded = storeHistoryBatchDetail(expanded, batchKey(4), createDetail(4))
+
+    const invalidated = invalidateHistoryBatchDetailsForMutation(loaded)
+
+    expect(invalidated.revision).toBe(loaded.revision + 1)
+    expect(invalidated.expandedBatchKey).toBeNull()
+    expect(invalidated.batchDetailCache).toEqual({})
+    expect(invalidated.filters).toBe(loaded.filters)
+    expect(invalidated.pages).toBe(loaded.pages)
+    expect(invalidated.nextCursor).toBe('cursor-4')
+    expect(invalidated.cellScope).toBe(loaded.cellScope)
+    expect(invalidated.mode).toBe(loaded.mode)
+
+    const reopened = toggleHistoryBatchDetail(invalidated, batchKey(4))
+    expect(shouldRequestHistoryBatchDetailOnOpen(reopened, createBatchItem(4))).toBe(true)
+  })
+
   it('keeps the literal dev-admin actor and explicit legacy/deleted copy', () => {
     expect(resolveHistoryActorLabel(['dev-admin'])).toBe('dev-admin')
     expect(resolveHistoryActorLabel(['dev-admin'], { engineer: 'Engineer' })).toBe('dev-admin')
@@ -86,6 +115,55 @@ describe('history workbench state', () => {
     expect(describeHistoryJumpTarget({ ...availableJumpTarget(), jump_status: 'deleted' })).toContain('삭제된 대상')
     expect(historyEventTypeLabel('por_change')).toBe('POR 변경')
     expect(HISTORY_EVENT_TYPES).toHaveLength(8)
+  })
+
+  it('derives truthful detail navigation and capture-stable list keys', () => {
+    const available = createDetailItem({
+      jump_target: null,
+      domain_coordinate: {
+        layer_key: 'L1::10::ETCH',
+        condition_id: 11,
+        parameter_code: 'ETCH_P001',
+        cell_ref: 'R11C3',
+      },
+      capture_tuple: {
+        target_layer_sort: 1,
+        target_layer_key: 'L1::10::ETCH',
+        source_condition_index: 2,
+        source_condition_id: 31,
+        parameter_sort: 3,
+        parameter_code: 'ETCH_P001',
+        event_id: 41,
+      },
+    })
+    const sameEventDifferentCapture = createDetailItem({
+      capture_tuple: {
+        ...available.capture_tuple!,
+        source_condition_index: 4,
+      },
+    })
+    const deleted = createDetailItem({
+      jump_target: { ...availableJumpTarget(), jump_status: 'deleted' },
+    })
+
+    expect(buildHistoryDetailActivationTarget(available)).toEqual({
+      layer_key: 'L1::10::ETCH',
+      condition_id: 11,
+      parameter_code: 'ETCH_P001',
+      cell_ref: 'R11C3',
+      jump_status: 'available',
+    })
+    expect(buildHistoryDetailActivationTarget(deleted)?.jump_status).toBe('deleted')
+    expect(
+      buildHistoryDetailActivationTarget(
+        createDetailItem({ jump_target: null, domain_coordinate: null }),
+      ),
+    ).toBeNull()
+    expect(getHistoryDetailItemKey(available)).toContain('capture')
+    expect(getHistoryDetailItemKey(available)).not.toBe(
+      getHistoryDetailItemKey(sameEventDifferentCapture),
+    )
+    expect(getHistoryDetailItemKey(available)).toBe(getHistoryDetailItemKey(available))
   })
 
   it('keeps the history batch and cell history query-key seams aligned to the accepted API contract', () => {
@@ -178,6 +256,27 @@ function createDetail(cursorId: number): HistoryDetailOut {
     ],
     reason: null,
     next_cursor: null,
+  }
+}
+
+function createDetailItem(
+  overrides: Partial<HistoryDetailItemOut> = {},
+): HistoryDetailItemOut {
+  return {
+    event_id: 41,
+    old_code: 'OLD',
+    new_code: 'NEW',
+    copied_value: null,
+    choice_label: 'choice',
+    actor: 'dev-admin',
+    origin: 'manual',
+    created_at: '2026-07-17T00:00:00Z',
+    layer_key: 'L1::10::ETCH',
+    jump_target: availableJumpTarget(),
+    domain_coordinate: null,
+    capture_tuple: null,
+    metadata_status: 'complete',
+    ...overrides,
   }
 }
 

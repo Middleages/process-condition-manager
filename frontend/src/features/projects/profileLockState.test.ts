@@ -12,6 +12,7 @@ import {
   createUnloadReleaseOnce,
   type ProjectProfileLockDependencies,
 } from './profileLockState'
+import useProjectProfileLockSource from './useProjectProfileLock.ts?raw'
 
 function deferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void
@@ -103,6 +104,16 @@ function dependencies(
 }
 
 describe('project Profile lock controller lifecycle', () => {
+  it('invalidates the saved project history prefix with the existing profile caches', () => {
+    const invalidateBody = useProjectProfileLockSource.match(
+      /invalidate: async \(id, profile\) => \{[\s\S]*?await Promise\.all\(\[[\s\S]*?\]\)/,
+    )?.[0]
+
+    expect(invalidateBody).toContain(
+      'invalidateProjectHistoryAfterMutation(queryClient, id)',
+    )
+  })
+
   beforeEach(() => vi.useFakeTimers())
   afterEach(() => vi.useRealTimers())
 
