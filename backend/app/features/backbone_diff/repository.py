@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.errors import ConflictError
+from app.core.errors import ConflictError, NotFoundError
 from app.domain.backbone.snapshot import (
     BackboneSnapshot,
     BackboneSnapshotCell,
@@ -85,9 +85,8 @@ class BackboneDiffRepository:
         )
         project = result.scalar_one_or_none()
         if project is None:
-            raise ConflictError(
+            raise NotFoundError(
                 f"프로젝트를 찾을 수 없다: {project_id}",
-                code="project_not_found",
                 details={"project_id": project_id},
             )
         return project
@@ -160,7 +159,7 @@ class BackboneDiffRepository:
             columns=layer_columns,
             conditions=tuple(
                 BackboneSnapshotCondition(
-                    source_condition_id=condition.id,
+                    source_condition_id=condition.source_condition_id,
                     label=condition.label,
                     condition_index=condition.condition_index,
                     is_por=condition.is_por,
