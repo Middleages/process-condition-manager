@@ -5,6 +5,7 @@ import {
   buildHistoryDetailQueryString,
   buildHistoryTimelineQueryString,
   createHistoryTimelineFilters,
+  type HistoryEventType,
   historyCellHistoryQueryKey,
   historyDetailQueryKey,
   historyTimelineQueryKey,
@@ -17,7 +18,7 @@ describe('history query helpers', () => {
       createdFrom: ' 2026-07-17T00:00:00Z ',
       createdTo: '2026-07-18T00:00:00Z',
       layerKey: ' L1::10::ETCH ',
-      eventTypes: ['cell_update', 'backbone_copy', 'backbone_copy'],
+      eventTypes: ['cell_update', 'backbone_copy', 'backbone_copy'] as readonly HistoryEventType[],
       actor: ' dev-admin ',
       origin: 'manual',
       sourceProjectId: 17,
@@ -46,7 +47,7 @@ describe('history query helpers', () => {
         createdFrom: '2026-07-17T00:00:00Z',
         createdTo: '2026-07-18T00:00:00Z',
         layerKey: 'L1::10::ETCH',
-        eventTypes: ['cell_update', 'backbone_copy'],
+        eventTypes: ['cell_update', 'backbone_copy'] as readonly HistoryEventType[],
         actor: 'dev-admin',
         origin: 'system',
         sourceProjectId: 19,
@@ -92,5 +93,29 @@ describe('history query helpers', () => {
     expect(buildHistoryCellHistoryQueryString(11, 'ETCH_P001', { cursor: 'next' })).toBe(
       'condition_id=11&parameter_code=ETCH_P001&cursor=next&limit=50',
     )
+  })
+
+  it('fails closed on runtime-invalid event types and out-of-range limits', () => {
+    expect(() =>
+      normalizeHistoryTimelineFilters({
+        eventTypes: ['cell_update', 'bad-event'] as unknown as readonly HistoryEventType[],
+      }),
+    ).toThrow(TypeError)
+    expect(() =>
+      buildHistoryTimelineQueryString(
+        {
+          createdFrom: null,
+          createdTo: null,
+          layerKey: null,
+          eventTypes: ['cell_update'] as readonly HistoryEventType[],
+          actor: null,
+          origin: null,
+          sourceProjectId: null,
+        },
+        { limit: 0 },
+      ),
+    ).toThrow(TypeError)
+    expect(() => buildHistoryDetailQueryString('scope', { limit: 0 })).toThrow(TypeError)
+    expect(() => buildHistoryCellHistoryQueryString(0, 'ETCH_P001')).toThrow(TypeError)
   })
 })
