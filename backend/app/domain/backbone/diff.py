@@ -126,9 +126,44 @@ class BackboneDiffCurrentCondition:
 
 
 @dataclass(frozen=True, slots=True)
+class BackboneDiffCurrentLayerSource:
+    project_id: int
+    sheet_layer_id: int
+    layer_key: str
+    step_seq: str
+    layer_id: str
+    sort_order: int
+    source_project_id: int | None
+    source_layer_key: str | None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "project_id", _require_positive_int(self.project_id, "project_id"))
+        object.__setattr__(
+            self, "sheet_layer_id", _require_positive_int(self.sheet_layer_id, "sheet_layer_id")
+        )
+        object.__setattr__(self, "layer_key", _require_text(self.layer_key, "layer_key"))
+        object.__setattr__(self, "step_seq", _require_text(self.step_seq, "step_seq"))
+        object.__setattr__(self, "layer_id", _require_text(self.layer_id, "layer_id"))
+        object.__setattr__(self, "sort_order", _require_non_negative_int(self.sort_order, "sort_order"))
+        if self.source_project_id is not None:
+            object.__setattr__(
+                self,
+                "source_project_id",
+                _require_positive_int(self.source_project_id, "source_project_id"),
+            )
+        if self.source_layer_key is not None:
+            object.__setattr__(
+                self,
+                "source_layer_key",
+                _require_text(self.source_layer_key, "source_layer_key"),
+            )
+
+
+@dataclass(frozen=True, slots=True)
 class BackboneDiffLayerInput:
     layer_key: str
     layer_sort_order: int
+    current_source: BackboneDiffCurrentLayerSource
     baseline_snapshot: BackboneSnapshot | None
     current_conditions: tuple[BackboneDiffCurrentCondition, ...]
     current_parameters: tuple[BackboneDiffCurrentParameter, ...]
@@ -140,6 +175,8 @@ class BackboneDiffLayerInput:
             "layer_sort_order",
             _require_non_negative_int(self.layer_sort_order, "layer_sort_order"),
         )
+        if not isinstance(self.current_source, BackboneDiffCurrentLayerSource):
+            _diff_basis_invalid("current_source must be BackboneDiffCurrentLayerSource")
         if self.baseline_snapshot is not None and not isinstance(
             self.baseline_snapshot, BackboneSnapshot
         ):
@@ -326,11 +363,16 @@ def compare_backbone_layer(layer_input: BackboneDiffLayerInput) -> BackboneDiffL
     ambiguous_lineage_count = 0
 
     for baseline_condition in baseline_snapshot.conditions:
+        baseline_cells_by_code = {cell.parameter_code: cell.value for cell in baseline_condition.cells}
         candidates = current_candidates.get(baseline_condition.source_condition_id, [])
         if not candidates:
             rows.append(
                 _removed_row(
-                    layer_input.layer_key, baseline_condition, baseline_columns, baseline_universe
+                    layer_input.layer_key,
+                    baseline_condition,
+                    baseline_cells_by_code,
+                    baseline_columns,
+                    baseline_universe,
                 )
             )
             continue
@@ -338,11 +380,14 @@ def compare_backbone_layer(layer_input: BackboneDiffLayerInput) -> BackboneDiffL
         ordered_candidates = sorted(candidates, key=_current_condition_sort_key)
         match = ordered_candidates[0]
         emitted_current_ids.add(match.id)
+        match_cells_by_code = match.cells_by_code()
         rows.append(
             _matched_row(
                 layer_input.layer_key,
                 baseline_condition,
                 match,
+                baseline_cells_by_code,
+                match_cells_by_code,
                 baseline_columns,
                 current_descriptor_by_code,
                 baseline_universe,
@@ -354,10 +399,12 @@ def compare_backbone_layer(layer_input: BackboneDiffLayerInput) -> BackboneDiffL
             ambiguous_lineage_count += 1
         for duplicate in ordered_candidates[1:]:
             emitted_current_ids.add(duplicate.id)
+            duplicate_cells_by_code = duplicate.cells_by_code()
             rows.append(
                 _added_row(
                     layer_input.layer_key,
                     duplicate,
+                    duplicate_cells_by_code,
                     baseline_columns,
                     current_descriptor_by_code,
                     current_universe,
@@ -367,10 +414,12 @@ def compare_backbone_layer(layer_input: BackboneDiffLayerInput) -> BackboneDiffL
     for condition in layer_input.current_conditions:
         if condition.id in emitted_current_ids:
             continue
+        current_cells_by_code = condition.cells_by_code()
         rows.append(
             _added_row(
                 layer_input.layer_key,
                 condition,
+                current_cells_by_code,
                 baseline_columns,
                 current_descriptor_by_code,
                 current_universe,
@@ -495,6 +544,7 @@ def _layer_basis_payload(layer_input: BackboneDiffLayerInput) -> dict[str, Any]:
     return {
         "baseline_snapshot": baseline_payload,
         "current_conditions": current_payload,
+        "current_source": _source_payload(layer_input.current_source),
         "current_parameters": [
             _current_parameter_payload(parameter) for parameter in current_selected
         ],
@@ -519,6 +569,8 @@ def _matched_row(
     layer_key: str,
     baseline_condition: Any,
     current_condition: BackboneDiffCurrentCondition,
+    baseline_cells_by_code: dict[str, str | None],
+    current_cells_by_code: dict[str, str | None],
     baseline_columns: dict[str, BackboneSnapshotColumn],
     current_descriptor_by_code: dict[str, BackboneDiffCurrentParameter],
     baseline_universe: set[str],
@@ -530,6 +582,8 @@ def _matched_row(
             parameter_code,
             baseline_condition,
             current_condition,
+            baseline_cells_by_code,
+            current_cells_by_code,
             baseline_columns,
             current_descriptor_by_code,
             baseline_universe,
@@ -565,6 +619,7 @@ def _matched_row(
 def _added_row(
     layer_key: str,
     current_condition: BackboneDiffCurrentCondition,
+    current_cells_by_code: dict[str, str | None],
     baseline_columns: dict[str, BackboneSnapshotColumn],
     current_descriptor_by_code: dict[str, BackboneDiffCurrentParameter],
     current_universe: set[str],
@@ -584,7 +639,7 @@ def _added_row(
                 _descriptor_for_added_or_removed_code(
                     parameter_code, baseline_columns, current_descriptor_by_code
                 ),
-                current_condition.cells_by_code().get(parameter_code),
+                current_cells_by_code.get(parameter_code),
                 parameter_code,
             ),
         )
@@ -613,6 +668,7 @@ def _added_row(
 def _removed_row(
     layer_key: str,
     baseline_condition: Any,
+    baseline_cells_by_code: dict[str, str | None],
     baseline_columns: dict[str, BackboneSnapshotColumn],
     baseline_universe: set[str],
 ) -> BackboneDiffRow:
@@ -622,7 +678,7 @@ def _removed_row(
             sort_order=baseline_columns[parameter_code].sort_order,
             classification=CLASSIFICATION_REMOVED,
             reason="row_removed",
-            baseline_value=_baseline_cell_value(baseline_condition, parameter_code),
+            baseline_value=baseline_cells_by_code.get(parameter_code),
             current_value=None,
         )
         for parameter_code in _ordered_baseline_row_codes(baseline_universe, baseline_columns)
@@ -675,6 +731,8 @@ def _compare_coordinate(
     parameter_code: str,
     baseline_condition: Any,
     current_condition: BackboneDiffCurrentCondition,
+    baseline_cells_by_code: dict[str, str | None],
+    current_cells_by_code: dict[str, str | None],
     baseline_columns: dict[str, BackboneSnapshotColumn],
     current_descriptor_by_code: dict[str, BackboneDiffCurrentParameter],
     baseline_universe: set[str],
@@ -695,7 +753,7 @@ def _compare_coordinate(
             sort_order=baseline_columns[parameter_code].sort_order,
             classification=CLASSIFICATION_REMOVED,
             reason="column_removed",
-            baseline_value=_baseline_cell_value(baseline_condition, parameter_code),
+            baseline_value=baseline_cells_by_code.get(parameter_code),
             current_value=None,
         )
     if current_has_column and not baseline_has_column:
@@ -706,14 +764,12 @@ def _compare_coordinate(
             reason="column_added",
             baseline_value=None,
             current_value=_canonical_current_value(
-                descriptor, current_condition.cells_by_code().get(parameter_code), parameter_code
+                descriptor, current_cells_by_code.get(parameter_code), parameter_code
             ),
         )
 
-    baseline_value = _baseline_cell_value(baseline_condition, parameter_code)
-    current_value = _canonical_current_value(
-        descriptor, current_condition.cells_by_code().get(parameter_code), parameter_code
-    )
+    baseline_value = baseline_cells_by_code.get(parameter_code)
+    current_value = _canonical_current_value(descriptor, current_cells_by_code.get(parameter_code), parameter_code)
 
     if baseline_value is None and current_value is None:
         return BackboneDiffCellChange(
@@ -774,7 +830,7 @@ def _row_preview_items(
                 row_status=row.row_status,
                 identity=row.identity,
                 item_kind=ITEM_KIND_ROW_METADATA,
-                item_sort_key=(METADATA_FIELD_ORDER[change.field_name], change.field_name),
+                item_sort_key=(change.field_name,),
                 classification=CLASSIFICATION_CHANGED,
                 reason="row_metadata_changed",
                 field_name=change.field_name,
@@ -820,6 +876,19 @@ def _row_sort_key(row: BackboneDiffRow) -> tuple[Any, ...]:
 
 def _layer_input_sort_key(layer_input: BackboneDiffLayerInput) -> tuple[Any, ...]:
     return (layer_input.layer_sort_order, layer_input.layer_key)
+
+
+def _source_payload(source: BackboneSnapshotSource) -> dict[str, Any]:
+    return {
+        "project_id": source.project_id,
+        "sheet_layer_id": source.sheet_layer_id,
+        "layer_key": source.layer_key,
+        "step_seq": source.step_seq,
+        "layer_id": source.layer_id,
+        "sort_order": source.sort_order,
+        "source_project_id": source.source_project_id,
+        "source_layer_key": source.source_layer_key,
+    }
 
 
 def _require_text(value: Any, field_name: str) -> str:

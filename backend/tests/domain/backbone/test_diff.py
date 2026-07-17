@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from dataclasses import replace
+from typing import Callable
+
 import pytest
 
 from app.domain.backbone.diff import (
@@ -87,10 +90,28 @@ def _baseline_snapshot() -> BackboneSnapshot:
     )
 
 
+def _current_source(
+    *,
+    project_id: int = 42,
+    sheet_layer_id: int = 7,
+    layer_key: str = "L1::PROC_ALPHA::010::ACT",
+    step_seq: str = "010",
+    layer_id: str = "ACT",
+) -> BackboneSnapshotSource:
+    return BackboneSnapshotSource(
+        project_id=project_id,
+        sheet_layer_id=sheet_layer_id,
+        layer_key=layer_key,
+        step_seq=step_seq,
+        layer_id=layer_id,
+    )
+
+
 def _layer_input(
     *,
     baseline_snapshot: BackboneSnapshot | None,
     current_conditions: tuple[BackboneDiffCurrentCondition, ...],
+    current_source: BackboneSnapshotSource | None = None,
     include_orphan: bool = False,
 ) -> BackboneDiffLayerInput:
     parameters = [
@@ -129,9 +150,17 @@ def _layer_input(
             )
         )
 
+    if current_source is None:
+        current_source = (
+            baseline_snapshot.source
+            if baseline_snapshot is not None
+            else _current_source()
+        )
+
     return BackboneDiffLayerInput(
         layer_key="L1::PROC_ALPHA::010::ACT",
         layer_sort_order=1,
+        current_source=current_source,
         baseline_snapshot=baseline_snapshot,
         current_conditions=current_conditions,
         current_parameters=tuple(parameters),
@@ -186,16 +215,28 @@ def _added_current_condition() -> BackboneDiffCurrentCondition:
     )
 
 
-def test_compare_backbone_layer_classifies_and_orders_all_core_cases() -> None:
-    layer = _layer_input(
-        baseline_snapshot=_baseline_snapshot(),
-        current_conditions=(
+def _matched_layer_input(
+    *,
+    baseline_snapshot: BackboneSnapshot | None = None,
+    current_conditions: tuple[BackboneDiffCurrentCondition, ...] | None = None,
+    include_orphan: bool = False,
+) -> BackboneDiffLayerInput:
+    if baseline_snapshot is None:
+        baseline_snapshot = _baseline_snapshot()
+    if current_conditions is None:
+        current_conditions = (
             _matched_current_condition(),
             _duplicate_current_condition(),
-        ),
+        )
+    return _layer_input(
+        baseline_snapshot=baseline_snapshot,
+        current_conditions=current_conditions,
+        include_orphan=include_orphan,
     )
 
-    result = compare_backbone_layer(layer)
+
+def test_compare_backbone_layer_classifies_and_orders_all_core_cases() -> None:
+    result = compare_backbone_layer(_matched_layer_input())
 
     assert result.baseline_unavailable is False
     assert result.ambiguous_lineage_count == 1
@@ -230,7 +271,7 @@ def test_compare_backbone_layer_classifies_and_orders_all_core_cases() -> None:
         if item.row_status == "matched" and item.identity == 101
     ]
     assert [item.item_kind for item in matched_preview[:2]] == ["row_metadata", "row_metadata"]
-    assert [item.field_name for item in matched_preview[:2]] == ["label", "is_por"]
+    assert [item.field_name for item in matched_preview[:2]] == ["is_por", "label"]
     assert [item.parameter_code for item in matched_preview[2:]] == [
         "baseline_only",
         "shared_blank",
@@ -272,13 +313,73 @@ def test_compare_backbone_layer_is_stable_and_ignores_orphan_params() -> None:
     )
 
 
-def test_compare_backbone_layer_fails_closed_on_type_mismatch_and_missing_descriptor() -> None:
-    baseline = _baseline_snapshot()
+def test_compare_backbone_layer_null_source_condition_is_added() -> None:
+    layer = _layer_input(
+        baseline_snapshot=_baseline_snapshot(),
+        current_conditions=(
+            BackboneDiffCurrentCondition(
+                id=301,
+                source_condition_id=None,
+                label="Orphan",
+                condition_index=4,
+                is_por=False,
+                cells=(BackboneDiffCurrentCell("current_only", "fresh"),),
+            ),
+        ),
+    )
 
-    mismatch_layer = BackboneDiffLayerInput(
+    result = compare_backbone_layer(layer)
+
+    assert [row.row_status for row in result.rows] == ["removed", "removed", "added"]
+    assert result.added_row_count == 1
+    assert result.rows[-1].current_id == 301
+    assert result.rows[-1].baseline_source_condition_id is None
+
+
+@pytest.mark.parametrize(
+    (
+        "parameter_code",
+        "expected_classification",
+        "expected_reason",
+        "expected_baseline_value",
+        "expected_current_value",
+    ),
+    [
+        ("baseline_only", "removed", "column_removed", "legacy", None),
+        ("shared_blank", "unchanged", "null_equal", None, None),
+        ("shared_number_equal", "unchanged", "value_equal", "1", "1"),
+        ("shared_number_changed", "changed", "value_changed", "2", "3.5"),
+        ("shared_text_equal", "unchanged", "value_equal", "same", "same"),
+        ("shared_text_changed", "changed", "value_changed", "old", "new"),
+        ("shared_choice_equal", "unchanged", "value_equal", "CHOICE_A", "CHOICE_A"),
+        ("shared_choice_changed", "changed", "value_changed", "CHOICE_X", "CHOICE_Y"),
+        ("shared_cleared", "cleared", "value_cleared", "to-clear", None),
+        ("shared_added", "added", "value_added", None, "created"),
+        ("current_only", "added", "column_added", None, "fresh"),
+    ],
+)
+def test_compare_backbone_layer_cell_matrix(
+    parameter_code: str,
+    expected_classification: str,
+    expected_reason: str,
+    expected_baseline_value: str | None,
+    expected_current_value: str | None,
+) -> None:
+    result = compare_backbone_layer(_matched_layer_input())
+    cell = {change.parameter_code: change for change in result.rows[0].cell_changes}[parameter_code]
+
+    assert cell.classification == expected_classification
+    assert cell.reason == expected_reason
+    assert cell.baseline_value == expected_baseline_value
+    assert cell.current_value == expected_current_value
+
+
+def _mismatch_layer() -> BackboneDiffLayerInput:
+    return BackboneDiffLayerInput(
         layer_key="L1::PROC_ALPHA::010::ACT",
         layer_sort_order=1,
-        baseline_snapshot=baseline,
+        current_source=_current_source(),
+        baseline_snapshot=_baseline_snapshot(),
         current_conditions=(
             BackboneDiffCurrentCondition(
                 id=101,
@@ -295,14 +396,38 @@ def test_compare_backbone_layer_fails_closed_on_type_mismatch_and_missing_descri
             ),
         ),
     )
-    with pytest.raises(RuleViolationError) as exc_info:
-        compare_backbone_layer(mismatch_layer)
-    assert exc_info.value.code == DIFF_BASIS_INVALID
 
-    missing_descriptor_layer = BackboneDiffLayerInput(
+
+def _invalid_decimal_layer() -> BackboneDiffLayerInput:
+    return BackboneDiffLayerInput(
         layer_key="L1::PROC_ALPHA::010::ACT",
         layer_sort_order=1,
-        baseline_snapshot=baseline,
+        current_source=_current_source(),
+        baseline_snapshot=_baseline_snapshot(),
+        current_conditions=(
+            BackboneDiffCurrentCondition(
+                id=101,
+                source_condition_id=10,
+                label="Line A",
+                condition_index=0,
+                is_por=True,
+                cells=(BackboneDiffCurrentCell("shared_number_equal", "not-a-number"),),
+            ),
+        ),
+        current_parameters=(
+            BackboneDiffCurrentParameter(
+                "shared_number_equal", ValueType.NUMBER, "Number equal", None, 2, True
+            ),
+        ),
+    )
+
+
+def _missing_descriptor_layer() -> BackboneDiffLayerInput:
+    return BackboneDiffLayerInput(
+        layer_key="L1::PROC_ALPHA::010::ACT",
+        layer_sort_order=1,
+        current_source=_current_source(),
+        baseline_snapshot=_baseline_snapshot(),
         current_conditions=(
             BackboneDiffCurrentCondition(
                 id=201,
@@ -319,9 +444,94 @@ def test_compare_backbone_layer_fails_closed_on_type_mismatch_and_missing_descri
             ),
         ),
     )
+
+
+@pytest.mark.parametrize(
+    ("layer_factory", "expected_code"),
+    [
+        (_mismatch_layer, DIFF_BASIS_INVALID),
+        (_invalid_decimal_layer, DIFF_BASIS_INVALID),
+        (_missing_descriptor_layer, UNRESOLVED_PARAMETER_METADATA),
+    ],
+)
+def test_compare_backbone_layer_fails_closed(
+    layer_factory: Callable[[], BackboneDiffLayerInput], expected_code: str
+) -> None:
     with pytest.raises(RuleViolationError) as exc_info:
-        compare_backbone_layer(missing_descriptor_layer)
-    assert exc_info.value.code == UNRESOLVED_PARAMETER_METADATA
+        compare_backbone_layer(layer_factory())
+    assert exc_info.value.code == expected_code
+
+
+def _mutated_layer_parameter_display_name(layer: BackboneDiffLayerInput) -> BackboneDiffLayerInput:
+    parameters = list(layer.current_parameters)
+    parameters[0] = replace(parameters[0], display_name="Blank v2")
+    return replace(layer, current_parameters=tuple(parameters))
+
+
+def _mutated_layer_parameter_sort_order(layer: BackboneDiffLayerInput) -> BackboneDiffLayerInput:
+    parameters = list(layer.current_parameters)
+    parameters[0] = replace(parameters[0], sort_order=99)
+    return replace(layer, current_parameters=tuple(parameters))
+
+
+def _mutated_layer_parameter_active(layer: BackboneDiffLayerInput) -> BackboneDiffLayerInput:
+    parameters = list(layer.current_parameters)
+    parameters[0] = replace(parameters[0], active=False)
+    return replace(layer, current_parameters=tuple(parameters))
+
+
+def _mutated_layer_baseline_label(layer: BackboneDiffLayerInput) -> BackboneDiffLayerInput:
+    baseline = layer.baseline_snapshot
+    assert baseline is not None
+    conditions = list(baseline.conditions)
+    conditions[0] = replace(conditions[0], label="Line A v2")
+    return replace(layer, baseline_snapshot=replace(baseline, conditions=tuple(conditions)))
+
+
+def _mutated_current_source_project_id(layer: BackboneDiffLayerInput) -> BackboneDiffLayerInput:
+    return replace(layer, current_source=replace(layer.current_source, project_id=99))
+
+
+def _mutated_current_source_sheet_layer_id(layer: BackboneDiffLayerInput) -> BackboneDiffLayerInput:
+    return replace(layer, current_source=replace(layer.current_source, sheet_layer_id=88))
+
+
+def _mutated_current_source_layer_key(layer: BackboneDiffLayerInput) -> BackboneDiffLayerInput:
+    return replace(
+        layer,
+        current_source=replace(layer.current_source, layer_key="L1::PROC_ALPHA::010::ALT"),
+    )
+
+
+def _mutated_current_source_step_seq(layer: BackboneDiffLayerInput) -> BackboneDiffLayerInput:
+    return replace(layer, current_source=replace(layer.current_source, step_seq="999"))
+
+
+def _mutated_current_source_layer_id(layer: BackboneDiffLayerInput) -> BackboneDiffLayerInput:
+    return replace(layer, current_source=replace(layer.current_source, layer_id="ALT"))
+
+
+@pytest.mark.parametrize(
+    "mutator",
+    [
+        _mutated_layer_parameter_display_name,
+        _mutated_layer_parameter_sort_order,
+        _mutated_layer_parameter_active,
+        _mutated_layer_baseline_label,
+        _mutated_current_source_project_id,
+        _mutated_current_source_sheet_layer_id,
+        _mutated_current_source_layer_key,
+        _mutated_current_source_step_seq,
+        _mutated_current_source_layer_id,
+    ],
+)
+def test_backbone_diff_layer_basis_hash_changes_with_authority(
+    mutator: Callable[[BackboneDiffLayerInput], BackboneDiffLayerInput],
+) -> None:
+    base = _matched_layer_input()
+    mutated = mutator(base)
+
+    assert backbone_diff_layer_basis_hash(base) != backbone_diff_layer_basis_hash(mutated)
 
 
 def test_compare_backbone_layer_baseline_unavailable_has_no_diff_items() -> None:
@@ -355,6 +565,13 @@ def test_compare_backbone_orders_layers_and_root_hash_is_stable() -> None:
     layer_b = BackboneDiffLayerInput(
         layer_key="L2::PROC_BETA::020::ACT",
         layer_sort_order=0,
+        current_source=_current_source(
+            project_id=42,
+            sheet_layer_id=8,
+            layer_key="L2::PROC_BETA::020::ACT",
+            step_seq="020",
+            layer_id="ACT",
+        ),
         baseline_snapshot=None,
         current_conditions=(_added_current_condition(),),
         current_parameters=(
