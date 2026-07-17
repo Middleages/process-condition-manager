@@ -476,6 +476,79 @@ describe('useBackboneDiffWorkbenchController seams', () => {
     expect(queryClient.getQueryData(rootKey)).toEqual({ pages: [] })
   })
 
+  it('clears stale in-flight branch/cell query work when filters are replaced', async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+      },
+    })
+    const branchRequest = deferred<BackboneDiffConditionPageOut[]>()
+    const cellRequest = deferred<BackboneDiffCellPageOut[]>()
+    const branchKey = createBackboneDiffWorkbenchBranchQueryKey(
+      7,
+      'root-s',
+      'hash-1',
+      {
+        classification: [],
+        layerKey: null,
+        categoryCode: null,
+        parameterCode: null,
+        includeUnchanged: false,
+        previewLimit: 20,
+      },
+      'L1::10::ETCH',
+      'scope-x',
+    )
+    const cellKey = createBackboneDiffWorkbenchCellQueryKey(
+      7,
+      'root-s',
+      'hash-1',
+      {
+        classification: [],
+        layerKey: null,
+        categoryCode: null,
+        parameterCode: null,
+        includeUnchanged: false,
+        previewLimit: 20,
+      },
+      'L1::10::ETCH',
+      'R1',
+      'scope-x',
+    )
+    const rootKey = createBackboneDiffWorkbenchRootQueryKey(7, { previewLimit: 20 })
+
+    void queryClient
+      .fetchQuery({
+        queryKey: branchKey,
+        queryFn: () => branchRequest.promise,
+      })
+      .catch(() => undefined)
+    void queryClient
+      .fetchQuery({
+        queryKey: cellKey,
+        queryFn: () => cellRequest.promise,
+      })
+      .catch(() => undefined)
+    queryClient.setQueryData(rootKey, { pages: [] })
+
+    expect(queryClient.getQueryState(branchKey)?.status).toBe('pending')
+    expect(queryClient.getQueryState(cellKey)?.status).toBe('pending')
+
+    clearBackboneDiffBranchAndCellQueries(queryClient, 7)
+
+    expect(queryClient.getQueryState(branchKey)).toBeUndefined()
+    expect(queryClient.getQueryState(cellKey)).toBeUndefined()
+    expect(queryClient.getQueryData(rootKey)).toEqual({ pages: [] })
+
+    branchRequest.resolve([])
+    cellRequest.resolve([])
+    await Promise.resolve()
+
+    expect(queryClient.getQueryState(branchKey)).toBeUndefined()
+    expect(queryClient.getQueryState(cellKey)).toBeUndefined()
+    expect(queryClient.getQueryData(rootKey)).toBeDefined()
+  })
+
   it('keeps query-key contracts for branch/cell key generation', () => {
     expect(backboneDiffBranchQueryKey(7, 'L1::10::ETCH', { scope: 'scope-x' })).toEqual([
       'backboneDiff',
@@ -665,4 +738,14 @@ function createCellPage(parameterCode: string): BackboneDiffCellPageOut {
     ],
     next_cursor: null,
   }
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (error: unknown) => void
+  const promise = new Promise<T>((resolveFn, rejectFn) => {
+    resolve = resolveFn
+    reject = rejectFn
+  })
+  return { promise, resolve, reject }
 }

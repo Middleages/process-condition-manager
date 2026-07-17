@@ -934,10 +934,12 @@ export function useBackboneDiffWorkbenchController(
     (filters: BackboneDiffRootQueryInput) => {
       const next = replaceBackboneDiffFilters(stateRef.current, filters)
       if (next === stateRef.current) return
+
+      clearBackboneDiffBranchAndCellQueries(queryClient, projectId)
       commitState(() => next)
       rootQueryTokenRef.current += 1
     },
-    [commitState],
+    [commitState, queryClient, projectId],
   )
 
   const onModeChange = useCallback(
