@@ -314,18 +314,6 @@ export function buildHistoryCellActivationTarget(
   }
 }
 
-export function handleHistoryWorkbenchItemActivationKey(
-  key: string,
-  repeat: boolean,
-  preventDefault: () => void,
-  onActivate: () => void,
-): void {
-  if (repeat) return
-  if (key !== 'Enter' && key !== ' ' && key !== 'Spacebar') return
-  preventDefault()
-  onActivate()
-}
-
 export function historyEventTypeLabel(eventType: HistoryEventType): string {
   return HISTORY_EVENT_TYPE_LABELS[eventType]
 }

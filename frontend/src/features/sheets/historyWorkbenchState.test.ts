@@ -15,7 +15,6 @@ import {
   describeHistoryLegacyCoverage,
   getHistoryBatchDetailCacheKey,
   getHistoryTimelineItemKey,
-  handleHistoryWorkbenchItemActivationKey,
   historyWorkbenchBatchDetailKey,
   historyWorkbenchCellHistoryKey,
   historyWorkbenchTimelineKey,
@@ -58,9 +57,15 @@ describe('history workbench state', () => {
     const initial = createHistoryWorkbenchState()
     const page = appendHistoryWorkbenchPage(initial, { items: [createBatchItem(2)], nextCursor: null })
     const key = getHistoryTimelineItemKey(createBatchItem(2))
+    let detailCalls = 0
+
+    expect(page.expandedBatchKey).toBeNull()
+    expect(detailCalls).toBe(0)
     const expanded = toggleHistoryBatchDetail(page, key)
 
     expect(shouldRequestHistoryBatchDetailOnOpen(expanded, createBatchItem(2))).toBe(true)
+    if (shouldRequestHistoryBatchDetailOnOpen(expanded, createBatchItem(2))) detailCalls += 1
+    expect(detailCalls).toBe(1)
 
     const loaded = storeHistoryBatchDetail(expanded, key, createDetail(2))
     expect(shouldRequestHistoryBatchDetailOnOpen(loaded, createBatchItem(2))).toBe(false)
@@ -69,6 +74,8 @@ describe('history workbench state', () => {
     const reopened = toggleHistoryBatchDetail(collapsed, key)
 
     expect(shouldRequestHistoryBatchDetailOnOpen(reopened, createBatchItem(2))).toBe(false)
+    if (shouldRequestHistoryBatchDetailOnOpen(reopened, createBatchItem(2))) detailCalls += 1
+    expect(detailCalls).toBe(1)
   })
 
   it('keeps the literal dev-admin actor and explicit legacy/deleted copy', () => {
@@ -79,18 +86,6 @@ describe('history workbench state', () => {
     expect(describeHistoryJumpTarget({ ...availableJumpTarget(), jump_status: 'deleted' })).toContain('삭제된 대상')
     expect(historyEventTypeLabel('por_change')).toBe('POR 변경')
     expect(HISTORY_EVENT_TYPES).toHaveLength(8)
-  })
-
-  it('handles Enter and Space activations without repeating', () => {
-    const activated: string[] = []
-    const preventDefault = () => activated.push('prevented')
-
-    handleHistoryWorkbenchItemActivationKey('Enter', false, preventDefault, () => activated.push('enter'))
-    handleHistoryWorkbenchItemActivationKey(' ', false, preventDefault, () => activated.push('space'))
-    handleHistoryWorkbenchItemActivationKey('Enter', true, preventDefault, () => activated.push('repeat'))
-    handleHistoryWorkbenchItemActivationKey('Escape', false, preventDefault, () => activated.push('escape'))
-
-    expect(activated).toEqual(['prevented', 'enter', 'prevented', 'space'])
   })
 
   it('keeps the history batch and cell history query-key seams aligned to the accepted API contract', () => {

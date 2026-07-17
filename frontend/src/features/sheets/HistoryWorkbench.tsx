@@ -3,7 +3,6 @@ import {
   useMemo,
   useState,
   type ChangeEvent,
-  type KeyboardEvent,
   type ReactNode,
 } from 'react'
 
@@ -24,7 +23,6 @@ import {
   describeHistoryJumpTarget,
   describeHistoryLegacyCoverage,
   getHistoryTimelineItemKey,
-  handleHistoryWorkbenchItemActivationKey,
   historyEventTypeLabel,
   HISTORY_EVENT_TYPES,
   createHistoryWorkbenchState,
@@ -46,9 +44,13 @@ export interface HistoryWorkbenchProps {
   cellStatus?: 'idle' | 'loading' | 'ready' | 'error'
   cellError?: string | null
   cellNextPageError?: string | null
+  batchDetailStatus?: 'idle' | 'loading' | 'ready' | 'error'
+  batchDetailError?: string | null
+  navigationStatus?: string | null
   onFiltersChange?: (filters: HistoryTimelineFilterInput) => void
   onModeChange?: (mode: HistoryWorkbenchMode) => void
   onBatchToggle?: (item: HistoryTimelineItemOut, shouldRequestDetail: boolean) => void
+  onRetryBatchDetail?: (item: HistoryTimelineItemOut) => void
   onActivateTarget?: (target: HistoryJumpTargetOut) => void
   onLoadMoreTimeline?: (cursor: string | null) => void
   onLoadMoreCell?: (cursor: string | null) => void
@@ -57,6 +59,48 @@ export interface HistoryWorkbenchProps {
 }
 
 const HISTORY_ORIGIN_OPTIONS = ['manual', 'paste', 'backbone', 'system'] as const
+
+export type HistoryFilterDraftValidation =
+  | { readonly ok: true; readonly filters: HistoryTimelineFilters }
+  | { readonly ok: false; readonly message: string }
+
+export function validateHistoryWorkbenchFilterDraft(
+  draft: HistoryTimelineFilterInput,
+  sourceProjectIdText: string,
+): HistoryFilterDraftValidation {
+  const sourceText = sourceProjectIdText.trim()
+  const sourceProjectId = parsePositiveIntegerText(sourceText)
+  if (sourceText !== '' && sourceProjectId === null) {
+    return { ok: false, message: 'Source project는 1 이상의 정수로 입력해 주세요.' }
+  }
+  try {
+    return {
+      ok: true,
+      filters: normalizeHistoryWorkbenchFilters({ ...draft, sourceProjectId }),
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : ''
+    if (
+      message.includes('createdFrom') ||
+      message.includes('createdTo') ||
+      message.includes('earlier than')
+    ) {
+      return { ok: false, message: '기간은 유효한 ISO 날짜/시간으로 입력해 주세요.' }
+    }
+    return { ok: false, message: '필터 값을 확인해 주세요.' }
+  }
+}
+
+export function applyHistoryWorkbenchFilterDraft(
+  draft: HistoryTimelineFilterInput,
+  sourceProjectIdText: string,
+  onApply: (filters: HistoryTimelineFilters) => void,
+): string | null {
+  const result = validateHistoryWorkbenchFilterDraft(draft, sourceProjectIdText)
+  if (!result.ok) return result.message
+  onApply(result.filters)
+  return null
+}
 
 export function HistoryWorkbench({
   projectId,
@@ -69,9 +113,13 @@ export function HistoryWorkbench({
   cellStatus = 'ready',
   cellError = null,
   cellNextPageError = null,
+  batchDetailStatus = 'idle',
+  batchDetailError = null,
+  navigationStatus = null,
   onFiltersChange,
   onModeChange,
   onBatchToggle,
+  onRetryBatchDetail,
   onActivateTarget,
   onLoadMoreTimeline,
   onLoadMoreCell,
@@ -92,33 +140,33 @@ export function HistoryWorkbench({
   const [draftSourceProjectIdText, setDraftSourceProjectIdText] = useState(
     state.filters.sourceProjectId === null ? '' : String(state.filters.sourceProjectId),
   )
+  const [filterError, setFilterError] = useState<string | null>(null)
 
   useEffect(() => {
     setDraft(createHistoryWorkbenchState(state.filters).filters)
     setDraftSourceProjectIdText(
       state.filters.sourceProjectId === null ? '' : String(state.filters.sourceProjectId),
     )
+    setFilterError(null)
   }, [state.filters, state.revision])
 
   function emitAnnouncement(message: string | null): void {
     setAnnouncement(message)
   }
 
-  function commitFilters(nextFilters: HistoryTimelineFilterInput): void {
-    onFiltersChange?.(normalizeHistoryWorkbenchFilters(nextFilters))
-  }
-
   function handleApplyFilters(): void {
-    commitFilters({
-      ...draft,
-      sourceProjectId: parsePositiveIntegerText(draftSourceProjectIdText),
-    })
+    setFilterError(
+      applyHistoryWorkbenchFilterDraft(draft, draftSourceProjectIdText, (filters) => {
+        onFiltersChange?.(filters)
+      }),
+    )
   }
 
   function handleResetFilters(): void {
     const reset = normalizeHistoryWorkbenchFilters({})
     setDraft(createHistoryWorkbenchState().filters)
     setDraftSourceProjectIdText('')
+    setFilterError(null)
     onFiltersChange?.(reset)
   }
 
@@ -198,20 +246,11 @@ export function HistoryWorkbench({
     function handleJumpTargetActivate(): void {
       if (jumpTarget === null) return
       if (jumpTarget.jump_status === 'available') {
-        emitAnnouncement(`위치로 이동합니다. ${item.summary}`)
+        emitAnnouncement(null)
         onActivateTarget?.(jumpTarget)
         return
       }
       emitAnnouncement('삭제된 대상이라 위치로 이동할 수 없습니다.')
-    }
-
-    function handleJumpTargetKeyDown(event: KeyboardEvent<HTMLButtonElement>): void {
-      handleHistoryWorkbenchItemActivationKey(
-        event.key,
-        event.repeat,
-        () => event.preventDefault(),
-        handleJumpTargetActivate,
-      )
     }
 
     return (
@@ -251,7 +290,6 @@ export function HistoryWorkbench({
                   : 'border-brand-700 text-brand-700',
               )}
               onClick={handleJumpTargetActivate}
-              onKeyDown={handleJumpTargetKeyDown}
               type="button"
             >
               {jumpTarget.jump_status === 'deleted' ? '삭제됨' : '위치로 이동'}
@@ -298,9 +336,31 @@ export function HistoryWorkbench({
             {isExpanded ? (
               detail !== undefined ? (
                 <HistoryBatchDetailList detail={detail} />
-              ) : canToggleBatch ? (
+              ) : batchDetailStatus === 'error' ? (
+                <div
+                  className="rounded-md border border-error/40 bg-error/10 p-2 text-xs text-error-700"
+                  role="alert"
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span>{batchDetailError ?? '상세 이력을 불러오지 못했습니다.'}</span>
+                    {onRetryBatchDetail !== undefined ? (
+                      <button
+                        className="rounded-sm border border-error/30 px-2 py-1 font-semibold"
+                        onClick={() => onRetryBatchDetail(item)}
+                        type="button"
+                      >
+                        상세 다시 시도
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              ) : batchDetailStatus === 'loading' ? (
                 <p className="rounded-md border border-border-subtle bg-canvas p-2 text-xs text-muted">
                   상세 이력을 불러오는 중입니다.
+                </p>
+              ) : canToggleBatch ? (
+                <p className="rounded-md border border-border-subtle bg-canvas p-2 text-xs text-muted">
+                  상세 이력을 아직 불러오지 않았습니다.
                 </p>
               ) : null
             ) : null}
@@ -315,7 +375,7 @@ export function HistoryWorkbench({
     function handleActivate(): void {
       if (target === null) return
       if (target.jump_status === 'available') {
-        emitAnnouncement('셀 이력 위치로 이동합니다.')
+        emitAnnouncement(null)
         onActivateTarget?.(target)
         return
       }
@@ -343,14 +403,6 @@ export function HistoryWorkbench({
                 : 'border-brand-700 text-brand-700',
             )}
             onClick={handleActivate}
-            onKeyDown={(event) =>
-              handleHistoryWorkbenchItemActivationKey(
-                event.key,
-                event.repeat,
-                () => event.preventDefault(),
-                handleActivate,
-              )
-            }
             type="button"
             >
               {item.jump_status === 'deleted' ? '삭제됨' : '위치로 이동'}
@@ -396,7 +448,7 @@ export function HistoryWorkbench({
       </div>
 
       <p aria-live="polite" aria-atomic="true" className="sr-only" role="status">
-        {announcement ?? ''}
+        {announcement ?? navigationStatus ?? ''}
       </p>
 
       {legacyCoverageMessage !== null ? (
@@ -507,6 +559,14 @@ export function HistoryWorkbench({
                 {timelineItems.length}개 항목 · {state.nextCursor === null ? '마지막 페이지' : '다음 페이지 있음'}
               </span>
             </div>
+            {filterError !== null ? (
+              <p
+                className="rounded-sm border border-error/40 bg-error/10 px-2 py-1 text-error-700"
+                role="alert"
+              >
+                {filterError}
+              </p>
+            ) : null}
           </form>
 
           {timelineStatus === 'loading' ? (

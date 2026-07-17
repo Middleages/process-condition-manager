@@ -16,7 +16,11 @@ import {
   toggleHistoryBatchDetail,
   type HistoryWorkbenchState,
 } from './historyWorkbenchState'
-import { HistoryWorkbench } from './HistoryWorkbench'
+import {
+  applyHistoryWorkbenchFilterDraft,
+  HistoryWorkbench,
+  validateHistoryWorkbenchFilterDraft,
+} from './HistoryWorkbench'
 import source from './HistoryWorkbench.tsx?raw'
 
 describe('HistoryWorkbench', () => {
@@ -55,7 +59,8 @@ describe('HistoryWorkbench', () => {
     expect(html).toContain('서버에서 이력 목록을 불러오지 못했습니다.')
     expect(html).toContain('2개 항목')
     expect(html).toContain('aria-live="polite"')
-    expect(source).toContain('handleHistoryWorkbenchItemActivationKey(')
+    expect(source).not.toContain('handleHistoryWorkbenchItemActivationKey(')
+    expect(source).not.toMatch(/onClick=\{handleJumpTargetActivate\}[\s\S]{0,100}onKeyDown=/)
     expect(source).toContain('shouldRequestHistoryBatchDetailOnOpen(')
     expect(source).toContain('onBatchToggle?.(item, shouldRequestDetail)')
     expect(source).toContain('parsePositiveIntegerText(')
@@ -101,6 +106,77 @@ describe('HistoryWorkbench', () => {
 
     expect(loaded.batchDetailCache[batchKey]).toBeDefined()
     expect(reopened.batchDetailCache[batchKey]).toBeDefined()
+  })
+
+  it('renders truthful batch-detail failure and retry instead of permanent fake loading', () => {
+    const item = createExpandedBatchItem()
+    const page = appendHistoryWorkbenchPage(createHistoryWorkbenchState(), {
+      items: [item],
+      nextCursor: null,
+    })
+    const expanded = toggleHistoryBatchDetail(page, getHistoryTimelineItemKey(item))
+    const html = render(expanded, {
+      batchDetailStatus: 'error',
+      batchDetailError: '상세 조회 실패',
+      onRetryBatchDetail: vi.fn(),
+    })
+
+    expect(html).toContain('상세 조회 실패')
+    expect(html).toContain('상세 다시 시도')
+    expect(html).not.toContain('상세 이력을 불러오는 중입니다.')
+  })
+
+  it('rejects invalid source-project and date drafts without broadening applied filters', () => {
+    const applied = vi.fn()
+    expect(
+      applyHistoryWorkbenchFilterDraft(
+        createHistoryWorkbenchState({ actor: 'dev-admin' }).filters,
+        'not-a-project',
+        applied,
+      ),
+    ).toBe('Source project는 1 이상의 정수로 입력해 주세요.')
+    expect(applied).not.toHaveBeenCalled()
+
+    expect(
+      validateHistoryWorkbenchFilterDraft(
+        createHistoryWorkbenchState({ actor: 'dev-admin' }).filters,
+        'not-a-project',
+      ),
+    ).toEqual({
+      ok: false,
+      message: 'Source project는 1 이상의 정수로 입력해 주세요.',
+    })
+    expect(
+      validateHistoryWorkbenchFilterDraft(
+        { ...createHistoryWorkbenchState().filters, createdFrom: 'not-a-date' },
+        '',
+      ),
+    ).toEqual({
+      ok: false,
+      message: '기간은 유효한 ISO 날짜/시간으로 입력해 주세요.',
+    })
+    expect(
+      validateHistoryWorkbenchFilterDraft(
+        createHistoryWorkbenchState({ actor: 'dev-admin' }).filters,
+        '17',
+      ),
+    ).toMatchObject({
+      ok: true,
+      filters: { actor: 'dev-admin', sourceProjectId: 17 },
+    })
+    expect(
+      applyHistoryWorkbenchFilterDraft(
+        createHistoryWorkbenchState({ actor: 'dev-admin' }).filters,
+        '17',
+        applied,
+      ),
+    ).toBeNull()
+    expect(applied).toHaveBeenCalledOnce()
+    expect(applied).toHaveBeenCalledWith(
+      expect.objectContaining({ actor: 'dev-admin', sourceProjectId: 17 }),
+    )
+    expect(source).toContain('role="alert"')
+    expect(source).toContain('setFilterError(null)')
   })
 })
 

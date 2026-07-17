@@ -12,6 +12,7 @@ import { Link, useParams } from 'react-router-dom'
 
 import { getApiErrorMessage } from '@/api/client'
 import { addCondition, deleteCondition, setConditionPor } from '@/api/conditions'
+import type { HistoryJumpTargetOut } from '@/api/history'
 import { getProject } from '@/api/projects'
 import { getSheet } from '@/api/sheets'
 import type { CellsPatchOut, ProjectOut, SheetOut } from '@/api/types'
@@ -84,7 +85,6 @@ import {
   type WorkbenchCoordinate,
 } from './workbenchCoordinateNavigation'
 import { useHistoryWorkbenchController } from './useHistoryWorkbenchController'
-import type { HistoryJumpTargetOut } from '@/api/history'
 
 const COLUMN_SEARCH_STATUS_ID = 'sheet-column-search-status'
 const VALIDATION_DEFINITIONS_STATUS_ID = 'validation-definitions-status'
@@ -359,7 +359,10 @@ function SheetEditor({
     validation.explicitValidationCompleted,
   )
   const workbenchState = useSheetWorkbenchState()
-  const historyWorkbench = useHistoryWorkbenchController(projectId)
+  const historyWorkbench = useHistoryWorkbenchController(
+    projectId,
+    workbenchState.mode === 'history',
+  )
   const wasValidationWorkbenchVisibleRef = useRef(false)
 
   useEffect(() => {
@@ -605,8 +608,9 @@ function SheetEditor({
         setActiveRow(payload)
       },
       onCellHistoryRequest: (payload) => {
-        historyWorkbench.onCellHistoryRequest(payload)
-        workbenchState.selectMode('history')
+        if (historyWorkbench.onCellHistoryRequest(payload)) {
+          workbenchState.selectMode('history')
+        }
       },
     }),
     [
@@ -710,8 +714,14 @@ function SheetEditor({
         setCoordinateNavigationStatus('붙여넣기를 적용 또는 취소한 뒤 이동해 주세요.')
         return
       }
-      const navigation = resolveWorkbenchCoordinateNavigation(coordinate, data.columns, displayRows, activeCategory)
+      const navigation = resolveWorkbenchCoordinateNavigation(
+        coordinate,
+        data.columns,
+        displayRows,
+        activeCategory,
+      )
       setPendingColumnJump(null)
+      setPendingCoordinateJump(null)
       if (navigation.kind === 'missing-target') {
         setCoordinateNavigationStatus('이동할 대상 셀을 찾지 못했습니다.')
         return
@@ -982,9 +992,13 @@ function SheetEditor({
                 cellStatus={historyWorkbench.cellStatus}
                 cellError={historyWorkbench.cellError}
                 cellNextPageError={historyWorkbench.cellNextPageError}
+                batchDetailStatus={historyWorkbench.batchDetailStatus}
+                batchDetailError={historyWorkbench.batchDetailError}
+                navigationStatus={coordinateNavigationStatus}
                 onFiltersChange={historyWorkbench.onFiltersChange}
                 onModeChange={historyWorkbench.onModeChange}
                 onBatchToggle={historyWorkbench.onBatchToggle}
+                onRetryBatchDetail={historyWorkbench.onRetryBatchDetail}
                 onActivateTarget={activateHistoryJumpTarget}
                 onLoadMoreTimeline={historyWorkbench.onLoadMoreTimeline}
                 onLoadMoreCell={historyWorkbench.onLoadMoreCell}

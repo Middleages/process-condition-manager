@@ -54,10 +54,13 @@ type MockHistoryController = {
   cellStatus: 'idle' | 'loading' | 'ready' | 'error'
   cellError: string | null
   cellNextPageError: string | null
+  batchDetailStatus: 'idle' | 'loading' | 'ready' | 'error'
+  batchDetailError: string | null
   onFiltersChange: (filters: unknown) => void
   onModeChange: (mode: 'timeline' | 'cell') => void
   onBatchToggle: (item: HistoryTimelineItemOut, shouldRequestDetail: boolean) => void
-  onCellHistoryRequest: (target: { conditionId: string; parameterCode: string }) => void
+  onRetryBatchDetail: (item: HistoryTimelineItemOut) => void
+  onCellHistoryRequest: (target: { conditionId: string; parameterCode: string }) => boolean
   onLoadMoreTimeline: (cursor: string | null) => void
   onLoadMoreCell: (cursor: string | null) => void
   onRetryTimeline: () => void
@@ -212,10 +215,13 @@ function createMockHistoryController(
     cellStatus: 'ready',
     cellError: null,
     cellNextPageError: null,
+    batchDetailStatus: 'ready',
+    batchDetailError: null,
     onFiltersChange: () => undefined,
     onModeChange: () => undefined,
     onBatchToggle: () => undefined,
-    onCellHistoryRequest: () => undefined,
+    onRetryBatchDetail: () => undefined,
+    onCellHistoryRequest: () => true,
     onLoadMoreTimeline: () => undefined,
     onLoadMoreCell: () => undefined,
     onRetryTimeline: () => undefined,
@@ -769,13 +775,36 @@ describe('SheetView focus shell integration', () => {
     expect(sheetViewSource).not.toMatch(/setTimeout\([\s\S]*?scrollToCell/)
   })
 
+  it('uses one navigation path with zero missing calls and one direct or committed-hidden call', () => {
+    const start = sheetViewSource.indexOf('const activateWorkbenchCoordinate = useCallback(')
+    const end = sheetViewSource.indexOf('const activateValidationIssue = useCallback(', start)
+    const navigationBody = sheetViewSource.slice(start, end)
+
+    expect(start).toBeGreaterThan(-1)
+    expect(end).toBeGreaterThan(start)
+    expect(navigationBody.match(/gridRef\.current\?\.scrollToCell/g)).toHaveLength(1)
+    expect(navigationBody).toMatch(
+      /setPendingCoordinateJump\(null\)[\s\S]*?navigation\.kind === 'missing-target'[\s\S]*?setCoordinateNavigationStatus\('이동할 대상 셀을 찾지 못했습니다\.'\)[\s\S]*?return/,
+    )
+    expect(navigationBody).toMatch(
+      /navigation\.kind === 'reveal-category'[\s\S]*?setActiveCategory\(navigation\.categoryCode\)[\s\S]*?setPendingCoordinateJump\(navigation\.target\)[\s\S]*?return/,
+    )
+    expect(sheetViewSource.match(/gridRef\.current\?\.scrollToCell/g)).toHaveLength(2)
+  })
+
   it('wires the history controller and cell-history grid request into the shared host', () => {
-    expect(sheetViewSource).toContain('useHistoryWorkbenchController(projectId)')
+    expect(sheetViewSource).toMatch(
+      /useHistoryWorkbenchController\(\s*projectId,\s*workbenchState\.mode === 'history',\s*\)/,
+    )
     expect(sheetViewSource).toContain('historyContent={')
     expect(sheetViewSource).toContain('<HistoryWorkbench')
     expect(sheetViewSource).toContain('onCellHistoryRequest: (payload) => {')
-    expect(sheetViewSource).toContain("workbenchState.selectMode('history')")
-    expect(sheetViewSource).toContain('activateHistoryJumpTarget')
+    expect(sheetViewSource).toMatch(
+      /if \(historyWorkbench\.onCellHistoryRequest\(payload\)\) \{\s*workbenchState\.selectMode\('history'\)/,
+    )
+    expect(sheetViewSource).toContain('activateWorkbenchCoordinate')
+    expect(sheetViewSource).toContain('onRetryBatchDetail={historyWorkbench.onRetryBatchDetail}')
+    expect(sheetViewSource).toContain('navigationStatus={coordinateNavigationStatus}')
   })
 
   it('renders truthful read-only discovery controls with accessible pressed and status semantics', () => {
