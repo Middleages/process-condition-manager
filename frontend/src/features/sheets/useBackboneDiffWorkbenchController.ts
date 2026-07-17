@@ -68,6 +68,7 @@ export interface BackboneDiffWorkbenchController {
   onRetryRoot: () => void
   onRetryBranch: () => void
   onRetryCell: () => void
+  onClearNavigationAnnouncement?: () => void
 }
 
 export interface BackboneDiffMergedRoot {
@@ -294,6 +295,13 @@ export function shouldHandleDiffBasisChangedQueryError(
   )
 }
 
+export function isBackboneDiffQueryPageCurrent(input: {
+  dataToken: number
+  latestToken: number
+}): boolean {
+  return input.dataToken >= input.latestToken
+}
+
 export function backboneDiffRootAuthority(
   input: {
     enabled: boolean
@@ -469,6 +477,8 @@ export function useBackboneDiffWorkbenchController(
   const rootQueryTokenRef = useRef(0)
   const branchQueryTokenRef = useRef(0)
   const cellQueryTokenRef = useRef(0)
+  const rootQueryTokenByKeyRef = useRef<Record<string, number>>({})
+  const rootQueryKeyFingerprintRef = useRef('')
   const branchQueryKeyRef = useRef('')
   const cellQueryKeyRef = useRef('')
   const rootBasisTokenRef = useRef(0)
@@ -490,25 +500,38 @@ export function useBackboneDiffWorkbenchController(
     [],
   )
 
+  const onClearNavigationAnnouncement = useCallback(() => {
+    commitState((current) => announceBackboneDiffNavigation(current, null))
+  }, [commitState])
+
+  const normalizedFilters = useMemo(() => createBackboneDiffRootQueryOptions(state.filters), [state.filters])
+  const rootQueryKey = useMemo(
+    () => createBackboneDiffWorkbenchRootQueryKey(projectId, normalizedFilters),
+    [normalizedFilters, projectId],
+  )
+  const rootQueryKeyFingerprint = useMemo(() => JSON.stringify(rootQueryKey), [rootQueryKey])
+
+  useIsomorphicLayoutEffect(() => {
+    rootQueryKeyFingerprintRef.current = rootQueryKeyFingerprint
+    if (rootQueryTokenByKeyRef.current[rootQueryKeyFingerprint] === undefined) {
+      rootQueryTokenByKeyRef.current[rootQueryKeyFingerprint] = 0
+    }
+  }, [rootQueryKeyFingerprint])
+
   const handleBasisChanged = useCallback(() => {
     rootBasisTokenRef.current += 1
     setOuterGeneration((current) => current + 1)
-    const current = stateRef.current
-    const withAnnouncementCleared =
-      current.navigationAnnouncement === BASIS_CHANGED_MESSAGE
-        ? announceBackboneDiffNavigation(current, null)
-        : current
     commitState((latest) =>
-      announceBackboneDiffNavigation(clearBackboneDiffOpenScopes(withAnnouncementCleared), BASIS_CHANGED_MESSAGE),
+      announceBackboneDiffNavigation(clearBackboneDiffOpenScopes(latest), BASIS_CHANGED_MESSAGE),
     )
     clearBackboneDiffBranchAndCellQueries(queryClient, projectId)
+    rootQueryTokenByKeyRef.current[rootQueryKeyFingerprintRef.current] = rootQueryTokenRef.current
     void queryClient.invalidateQueries({
-      queryKey: createBackboneDiffWorkbenchRootQueryKey(projectId, current.filters),
+      queryKey: rootQueryKey,
     })
     branchBasisFailureCountRef.current = 0
     cellBasisFailureCountRef.current = 0
-  }, [commitState, queryClient, projectId])
-
+  }, [commitState, queryClient, rootQueryKey, projectId])
   useIsomorphicLayoutEffect(() => {
     const enabledChanged = previousEnabledRef.current !== enabled
     const revisionChanged = previousRevisionRef.current !== revision
@@ -530,11 +553,19 @@ export function useBackboneDiffWorkbenchController(
 
     if (revisionChanged) {
       rootQueryTokenRef.current += 1
+      rootQueryTokenByKeyRef.current[rootQueryKeyFingerprintRef.current] = rootQueryTokenRef.current
+      rootBasisTokenRef.current += 1
+      commitState((latest) =>
+        announceBackboneDiffNavigation(clearBackboneDiffOpenScopes(latest), BASIS_CHANGED_MESSAGE),
+      )
+      clearBackboneDiffBranchAndCellQueries(queryClient, projectId)
+      void queryClient.invalidateQueries({ queryKey: rootQueryKey })
+      branchBasisFailureCountRef.current = 0
+      cellBasisFailureCountRef.current = 0
     }
-  }, [commitState, enabled, revision])
+  }, [commitState, enabled, revision, queryClient, rootQueryKey, projectId])
 
   const rootEnabled = backboneDiffRootQueryEnabled(enabled)
-  const normalizedFilters = useMemo(() => createBackboneDiffRootQueryOptions(state.filters), [state.filters])
   const rootAuthority = useMemo(
     () =>
       backboneDiffRootAuthority({
@@ -552,7 +583,7 @@ export function useBackboneDiffWorkbenchController(
     BackboneDiffQueryKey,
     BackboneDiffPageParam
   >({
-    queryKey: createBackboneDiffWorkbenchRootQueryKey(projectId, normalizedFilters),
+    queryKey: rootQueryKey,
     initialPageParam: null as string | null,
     enabled: rootEnabled,
     queryFn: async () => {
@@ -585,7 +616,8 @@ export function useBackboneDiffWorkbenchController(
     const latest =
       rootQuery.data === undefined ? undefined : rootQuery.data.pages[rootQuery.data.pages.length - 1]
     if (latest === undefined) return
-    if (latest.token !== rootQueryTokenRef.current) return
+    const acceptedToken = rootQueryTokenByKeyRef.current[rootQueryKeyFingerprintRef.current] ?? 0
+    if (!isBackboneDiffQueryPageCurrent({ dataToken: latest.token, latestToken: acceptedToken })) return
 
     commitState((current) =>
       setBackboneDiffRootResult(current, {
@@ -596,6 +628,7 @@ export function useBackboneDiffWorkbenchController(
         changed_preview: latest.result.changed_preview,
       }),
     )
+    rootQueryTokenByKeyRef.current[rootQueryKeyFingerprintRef.current] = latest.token
   }, [commitState, rootAuthority, rootEnabled, rootQuery.isSuccess, rootQuery.data])
 
   const branchEnabled = backboneDiffBranchQueryEnabled(
@@ -1001,6 +1034,7 @@ export function useBackboneDiffWorkbenchController(
     onRetryRoot,
     onRetryBranch,
     onRetryCell,
+    onClearNavigationAnnouncement,
   }
 }
 
