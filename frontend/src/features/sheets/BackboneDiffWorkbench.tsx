@@ -187,10 +187,6 @@ const CLASSIFICATIONS: readonly BackboneDiffClassification[] = [
   'unchanged',
 ]
 
-function formatNullableText(value: string | null | undefined): string {
-  return value === null || value === undefined ? '미지정' : value
-}
-
 function formatFactValue(value: string | number | boolean | null | undefined): string {
   if (value === null || value === undefined) {
     return '미지정'
@@ -237,14 +233,22 @@ function shouldShowRowFactDiff(rowStatus: BackboneDiffRowStatus, hasChanged: boo
   return rowStatus === 'added' || rowStatus === 'removed' || hasChanged === true
 }
 
-function formatDefaultForRowSide(rowStatus: BackboneDiffRowStatus, side: 'baseline' | 'current'): string {
+function formatDefaultForRowSide({
+  rowStatus,
+  side,
+  hasCondition,
+}: {
+  rowStatus: BackboneDiffRowStatus
+  side: 'baseline' | 'current'
+  hasCondition: boolean
+}): string {
   if (side === 'baseline' && rowStatus === 'added') {
-    return '기준 없음'
+    return hasCondition ? '미지정' : '기준 없음'
   }
   if (side === 'current' && rowStatus === 'removed') {
-    return '현재 없음'
+    return hasCondition ? '미지정' : '현재 없음'
   }
-  return side === 'baseline' ? '기준 없음' : '현재 없음'
+  return '미지정'
 }
 
 export interface BackboneDiffConditionFactDiff {
@@ -266,6 +270,8 @@ export function formatBackboneDiffConditionFacts(params: {
     readonly indexChanged: boolean
     readonly porChanged: boolean
   }
+  hasBaselineCondition?: boolean
+  hasCurrentCondition?: boolean
 }): BackboneDiffConditionFactDiff {
   const baselineLabel = params.baselineConditionLabel
   const currentLabel = params.currentConditionLabel
@@ -278,8 +284,16 @@ export function formatBackboneDiffConditionFacts(params: {
     baselineToCurrentLabel: formatRowFactDiff({
       baselineValue: baselineLabel,
       currentValue: currentLabel,
-      defaultBaselineValue: formatDefaultForRowSide(params.rowStatus, 'baseline'),
-      defaultCurrentValue: formatDefaultForRowSide(params.rowStatus, 'current'),
+      defaultBaselineValue: formatDefaultForRowSide({
+        rowStatus: params.rowStatus,
+        side: 'baseline',
+        hasCondition: params.hasBaselineCondition ?? true,
+      }),
+      defaultCurrentValue: formatDefaultForRowSide({
+        rowStatus: params.rowStatus,
+        side: 'current',
+        hasCondition: params.hasCurrentCondition ?? true,
+      }),
       showDiff: shouldShowRowFactDiff(
         params.rowStatus,
         params.rowMetadata?.labelChanged,
@@ -288,8 +302,16 @@ export function formatBackboneDiffConditionFacts(params: {
     baselineToCurrentIndex: formatRowFactDiff({
       baselineValue: baselineConditionIndex,
       currentValue: currentConditionIndex,
-      defaultBaselineValue: formatDefaultForRowSide(params.rowStatus, 'baseline'),
-      defaultCurrentValue: formatDefaultForRowSide(params.rowStatus, 'current'),
+      defaultBaselineValue: formatDefaultForRowSide({
+        rowStatus: params.rowStatus,
+        side: 'baseline',
+        hasCondition: params.hasBaselineCondition ?? true,
+      }),
+      defaultCurrentValue: formatDefaultForRowSide({
+        rowStatus: params.rowStatus,
+        side: 'current',
+        hasCondition: params.hasCurrentCondition ?? true,
+      }),
       showDiff: shouldShowRowFactDiff(
         params.rowStatus,
         params.rowMetadata?.indexChanged,
@@ -298,14 +320,37 @@ export function formatBackboneDiffConditionFacts(params: {
     baselineToCurrentPor: formatRowFactDiff({
       baselineValue: baselinePor,
       currentValue: currentPor,
-      defaultBaselineValue: formatDefaultForRowSide(params.rowStatus, 'baseline'),
-      defaultCurrentValue: formatDefaultForRowSide(params.rowStatus, 'current'),
+      defaultBaselineValue: formatDefaultForRowSide({
+        rowStatus: params.rowStatus,
+        side: 'baseline',
+        hasCondition: params.hasBaselineCondition ?? true,
+      }),
+      defaultCurrentValue: formatDefaultForRowSide({
+        rowStatus: params.rowStatus,
+        side: 'current',
+        hasCondition: params.hasCurrentCondition ?? true,
+      }),
       showDiff: shouldShowRowFactDiff(
         params.rowStatus,
         params.rowMetadata?.porChanged,
       ),
     }),
   }
+}
+
+export function formatBackboneDiffConditionItemFacts(condition: BackboneDiffConditionItem): BackboneDiffConditionFactDiff {
+  return formatBackboneDiffConditionFacts({
+    rowStatus: condition.rowStatus,
+    baselineConditionLabel: condition.baselineCondition?.label,
+    currentConditionLabel: condition.currentCondition?.label,
+    baselineConditionIndex: condition.baselineCondition?.conditionIndex,
+    currentConditionIndex: condition.currentCondition?.conditionIndex,
+    baselineConditionPor: condition.baselineCondition?.isPor,
+    currentConditionPor: condition.currentCondition?.isPor,
+    rowMetadata: condition.rowMetadata,
+    hasBaselineCondition: condition.baselineCondition !== null,
+    hasCurrentCondition: condition.currentCondition !== null,
+  })
 }
 
 export function BackboneDiffWorkbench({
@@ -781,20 +826,7 @@ export function BackboneDiffWorkbench({
                       const isRowExpanded = expandedLayerKey === layer.layerKey && expandedRowRef === condition.rowRef
                       const cellBranch = cellBranches[condition.rowRef]
                       const cells = cellBranch?.items ?? []
-                      const baselineConditionIndex = condition.baselineCondition?.conditionIndex
-                      const currentConditionIndex = condition.currentCondition?.conditionIndex
-                      const baselineLabel = formatNullableText(condition.baselineCondition?.label)
-                      const currentLabel = formatNullableText(condition.currentCondition?.label)
-                      const rowFacts = formatBackboneDiffConditionFacts({
-                        rowStatus: condition.rowStatus,
-                        baselineConditionLabel: baselineLabel,
-                        currentConditionLabel: currentLabel,
-                        baselineConditionIndex,
-                        currentConditionIndex,
-                        baselineConditionPor: condition.baselineCondition?.isPor,
-                        currentConditionPor: condition.currentCondition?.isPor,
-                        rowMetadata: condition.rowMetadata,
-                      })
+                      const rowFacts = formatBackboneDiffConditionItemFacts(condition)
                       const hasConditionNavigation =
                         condition.cellScope !== null
                         && ((condition.currentCondition?.conditionId ?? null) !== null

@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   BackboneDiffWorkbench,
   activateBackboneJumpTarget,
+  formatBackboneDiffConditionItemFacts,
   formatBackboneDiffConditionFacts,
   type BackboneDiffCellItem,
   type BackboneDiffConditionItem,
@@ -574,6 +575,8 @@ describe('BackboneDiffWorkbench', () => {
       currentConditionIndex: 3,
       baselineConditionPor: null,
       currentConditionPor: true,
+      hasBaselineCondition: false,
+      hasCurrentCondition: true,
     })
 
     expect(addedRow.baselineToCurrentLabel).toEqual('기준 없음 → current')
@@ -588,11 +591,74 @@ describe('BackboneDiffWorkbench', () => {
       currentConditionIndex: undefined,
       baselineConditionPor: false,
       currentConditionPor: null,
+      hasBaselineCondition: true,
+      hasCurrentCondition: false,
     })
 
     expect(removedRow.baselineToCurrentLabel).toEqual('baseline → 현재 없음')
     expect(removedRow.baselineToCurrentIndex).toEqual('5 → 현재 없음')
     expect(removedRow.baselineToCurrentPor).toEqual('X → 현재 없음')
+  })
+
+  it('formats matched/add/removed null metadata through the item fact adapter', () => {
+    const fullItem = createCondition()
+    const matched = formatBackboneDiffConditionItemFacts({
+      ...fullItem,
+      rowStatus: 'matched',
+      baselineCondition: {
+        ...fullItem.baselineCondition!,
+        conditionIndex: null,
+        isPor: null,
+        label: null,
+      },
+      currentCondition: {
+        ...fullItem.currentCondition!,
+        conditionIndex: null,
+        isPor: null,
+        label: null,
+      },
+      rowMetadata: {
+        labelChanged: true,
+        indexChanged: true,
+        porChanged: true,
+      },
+    })
+
+    expect(matched.baselineToCurrentLabel).toEqual('미지정 → 미지정')
+    expect(matched.baselineToCurrentIndex).toEqual('미지정 → 미지정')
+    expect(matched.baselineToCurrentPor).toEqual('미지정 → 미지정')
+
+    const added = formatBackboneDiffConditionItemFacts({
+      ...fullItem,
+      rowStatus: 'added',
+      baselineCondition: null,
+      currentCondition: {
+        ...fullItem.currentCondition!,
+        conditionIndex: null,
+        isPor: null,
+        label: null,
+      },
+    })
+
+    expect(added.baselineToCurrentLabel).toEqual('기준 없음 → 미지정')
+    expect(added.baselineToCurrentIndex).toEqual('기준 없음 → 미지정')
+    expect(added.baselineToCurrentPor).toEqual('기준 없음 → 미지정')
+
+    const removed = formatBackboneDiffConditionItemFacts({
+      ...fullItem,
+      rowStatus: 'removed',
+      baselineCondition: {
+        ...fullItem.baselineCondition!,
+        conditionIndex: null,
+        isPor: null,
+        label: null,
+      },
+      currentCondition: null,
+    })
+
+    expect(removed.baselineToCurrentLabel).toEqual('미지정 → 현재 없음')
+    expect(removed.baselineToCurrentIndex).toEqual('미지정 → 현재 없음')
+    expect(removed.baselineToCurrentPor).toEqual('미지정 → 현재 없음')
   })
 
   it('marks unavailable rows when row-level navigation parameters are missing', () => {
@@ -657,6 +723,7 @@ describe('BackboneDiffWorkbench', () => {
     expect(source).toContain('baselineToCurrentIndex')
     expect(source).toContain('baselineToCurrentPor')
     expect(source).toContain('hasConditionNavigation')
+    expect(source).toContain('formatBackboneDiffConditionItemFacts(condition)')
   })
 
   it('keeps layout classes for long layer keys and row metadata facts', () => {
