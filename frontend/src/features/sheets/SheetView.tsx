@@ -106,22 +106,6 @@ type BackboneDiffFilterPayload = Omit<BackboneDiffFilter, 'layerKey' | 'category
 
 const BACKBONE_DIFF_ROOT_UNAVAILABLE_MESSAGE = '백본 비교 기준 중 기준 백본이 더 이상 존재하지 않아 일부 데이터는 표시되지 않습니다.'
 
-const BACKBONE_DIFF_EMPTY_COUNTS: BackboneDiffRoot['counts'] = {
-  layerCount: 0,
-  availableLayerCount: 0,
-  unavailableLayerCount: 0,
-  rowCount: 0,
-  cellCount: 0,
-  fullRowCount: 0,
-  fullCellCount: 0,
-  ambiguousLineageCount: 0,
-  addedCount: 0,
-  changedCount: 0,
-  clearedCount: 0,
-  removedCount: 0,
-  unchangedCount: 0,
-}
-
 function mapBackboneDiffConditionClassification(
   status: 'added' | 'removed' | 'matched',
 ): 'added' | 'changed' | 'cleared' | 'removed' | 'unchanged' {
@@ -878,7 +862,11 @@ function SheetEditor({
 
   const backboneDiffWorkbenchState = backboneDiffWorkbench.state
   const backboneDiffRoot = useMemo<BackboneDiffRoot | null>(() => {
-    if (backboneDiffWorkbenchState.rootScope === null || backboneDiffWorkbenchState.rootBasisHash === null) {
+    if (
+      backboneDiffWorkbenchState.rootScope === null ||
+      backboneDiffWorkbenchState.rootBasisHash === null ||
+      backboneDiffWorkbenchState.rootCounts === null
+    ) {
       return null
     }
     const rootCounts = backboneDiffWorkbenchState.rootCounts
@@ -1104,9 +1092,14 @@ function SheetEditor({
     [backboneDiffWorkbenchState.filters],
   )
   const backboneDiffRootUnavailableCopy = useMemo(() => {
-    if (backboneDiffWorkbenchState.rootCounts.unavailable_layer_count <= 0) return null
+    if (
+      backboneDiffWorkbenchState.rootCounts === null ||
+      backboneDiffWorkbenchState.rootCounts.unavailable_layer_count <= 0
+    ) {
+      return null
+    }
     return BACKBONE_DIFF_ROOT_UNAVAILABLE_MESSAGE
-  }, [backboneDiffWorkbenchState.rootCounts.unavailable_layer_count])
+  }, [backboneDiffWorkbenchState.rootCounts])
 
   return (
     <SheetFocusFrame
