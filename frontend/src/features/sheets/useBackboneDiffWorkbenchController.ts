@@ -132,7 +132,8 @@ interface BackboneDiffQueryAuthorityLane {
 
 interface BackboneDiffRootQueryAuthorityLane extends BackboneDiffQueryAuthorityLane {
   sequence: number
-  fencedByProjectId: Record<number, string>
+  revisionFenceByProjectId: Record<number, number>
+  basisFenceMarkerByProjectId: Map<number, unknown>
 }
 
 export interface BackboneDiffAuthorityLedger {
@@ -207,7 +208,8 @@ function createBackboneDiffAuthorityLedger(): BackboneDiffAuthorityLedger {
       sequence: 0,
       issuedByKey: {},
       acceptedByKey: {},
-      fencedByProjectId: {},
+      revisionFenceByProjectId: {},
+      basisFenceMarkerByProjectId: new Map<number, unknown>(),
     },
     branch: {
       issuedByKey: {},
@@ -276,16 +278,32 @@ function clearBackboneDiffAuthorityEntriesForRemovedQuery(
   } catch {}
 }
 
+type BackboneDiffRootFence =
+  | {
+      readonly kind: 'revision'
+      readonly revision: number
+    }
+  | {
+      readonly kind: 'basis-error'
+      readonly marker: unknown
+    }
+
 export function fenceBackboneDiffRootAuthorityLedger(
   ledger: BackboneDiffAuthorityLedger,
   projectId: number,
-  marker: string,
+  fence: BackboneDiffRootFence,
 ): boolean {
-  if (ledger.root.fencedByProjectId[projectId] === marker) {
-    return false
+  if (fence.kind === 'revision') {
+    if (ledger.root.revisionFenceByProjectId[projectId] === fence.revision) {
+      return false
+    }
+    ledger.root.revisionFenceByProjectId[projectId] = fence.revision
+  } else {
+    if (ledger.root.basisFenceMarkerByProjectId.get(projectId) === fence.marker) {
+      return false
+    }
+    ledger.root.basisFenceMarkerByProjectId.set(projectId, fence.marker)
   }
-
-  ledger.root.fencedByProjectId[projectId] = marker
 
   const rootKeys = new Set<string>()
   let nextIssuedToken = ledger.root.sequence
@@ -930,33 +948,33 @@ export function useBackboneDiffWorkbenchController(
   }, [rootQueryKeyFingerprint])
 
   const handleBasisChanged = useCallback(
-    (marker: string) => {
-      if (!fenceBackboneDiffRootAuthorityLedger(authorityLedger, projectId, marker)) {
-        return
-      }
-
+    (fence: BackboneDiffRootFence) => {
+      const didFence = fenceBackboneDiffRootAuthorityLedger(authorityLedger, projectId, fence)
       rootBasisTokenRef.current += 1
       setOuterGeneration((current) => current + 1)
       commitState((latest) =>
         announceBackboneDiffNavigation(clearBackboneDiffOpenScopes(latest), BASIS_CHANGED_MESSAGE),
       )
+      branchBasisFailureCountRef.current = 0
+      cellBasisFailureCountRef.current = 0
+      if (!didFence) {
+        return
+      }
       clearBackboneDiffBranchAndCellQueries(queryClient, projectId)
       void queryClient.invalidateQueries({
         queryKey: rootQueryKey,
       })
-      branchBasisFailureCountRef.current = 0
-      cellBasisFailureCountRef.current = 0
     },
     [authorityLedger, commitState, projectId, queryClient, rootQueryKey],
   )
 
-  const handleBasisChangedFromError = useCallback(() => {
-    handleBasisChanged(`basis:${stateRef.current.revision}`)
+  const handleBasisChangedFromError = useCallback((error: unknown) => {
+    handleBasisChanged({ kind: 'basis-error', marker: error })
   }, [handleBasisChanged])
 
   const handleBasisChangedFromRevision = useCallback(
     (nextRevision: number) => {
-      handleBasisChanged(`revision:${nextRevision}`)
+      handleBasisChanged({ kind: 'revision', revision: nextRevision })
     },
     [handleBasisChanged],
   )
@@ -1127,7 +1145,7 @@ export function useBackboneDiffWorkbenchController(
       return
     }
     branchBasisFailureCountRef.current = branchQuery.failureCount
-    handleBasisChangedFromError()
+    handleBasisChangedFromError(branchQuery.error)
   }, [branchQuery.error, branchQuery.failureCount, branchQuery.isError, handleBasisChangedFromError])
 
   const branchAuthority = useMemo(
@@ -1257,7 +1275,7 @@ export function useBackboneDiffWorkbenchController(
       return
     }
     cellBasisFailureCountRef.current = cellQuery.failureCount
-    handleBasisChangedFromError()
+    handleBasisChangedFromError(cellQuery.error)
   }, [cellQuery.error, cellQuery.failureCount, cellQuery.isError, handleBasisChangedFromError])
 
   const cellAuthority = useMemo(

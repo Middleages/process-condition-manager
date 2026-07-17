@@ -215,7 +215,7 @@ describe('useBackboneDiffWorkbenchController seams', () => {
     expect(acceptedTokenByKeyRef.current[key]).toBe(2)
   })
 
-  it('fences all root keys for a project exactly once per marker', () => {
+  it('fences all root keys for a project exactly once per revision and basis marker', () => {
     const queryClient = new QueryClient()
     const authorityLedger = getBackboneDiffAuthorityLedger(queryClient)
 
@@ -256,7 +256,14 @@ describe('useBackboneDiffWorkbenchController seams', () => {
     authorityLedger.root.issuedByKey[otherProjectFingerprint] = 2
     authorityLedger.root.acceptedByKey[otherProjectFingerprint] = 2
 
-    expect(fenceBackboneDiffRootAuthorityLedger(authorityLedger, 7, 'revision:3')).toBe(true)
+    const basisMarker = new Error('basis-changed')
+
+    expect(
+      fenceBackboneDiffRootAuthorityLedger(authorityLedger, 7, {
+        kind: 'revision',
+        revision: 3,
+      }),
+    ).toBe(true)
     expect(authorityLedger.root.sequence).toBe(9)
     expect(authorityLedger.root.issuedByKey[rootAFingerprint]).toBe(9)
     expect(authorityLedger.root.issuedByKey[rootBFingerprint]).toBe(9)
@@ -265,9 +272,32 @@ describe('useBackboneDiffWorkbenchController seams', () => {
     expect(authorityLedger.root.issuedByKey[otherProjectFingerprint]).toBe(2)
     expect(authorityLedger.root.acceptedByKey[otherProjectFingerprint]).toBe(2)
 
-    expect(fenceBackboneDiffRootAuthorityLedger(authorityLedger, 7, 'revision:3')).toBe(false)
+    expect(
+      fenceBackboneDiffRootAuthorityLedger(authorityLedger, 7, {
+        kind: 'revision',
+        revision: 3,
+      }),
+    ).toBe(false)
     expect(authorityLedger.root.sequence).toBe(9)
     expect(authorityLedger.root.issuedByKey[rootAFingerprint]).toBe(9)
+
+    expect(
+      fenceBackboneDiffRootAuthorityLedger(authorityLedger, 7, {
+        kind: 'basis-error',
+        marker: basisMarker,
+      }),
+    ).toBe(true)
+    expect(authorityLedger.root.sequence).toBe(10)
+    expect(authorityLedger.root.issuedByKey[rootAFingerprint]).toBe(10)
+    expect(authorityLedger.root.issuedByKey[rootBFingerprint]).toBe(10)
+
+    expect(
+      fenceBackboneDiffRootAuthorityLedger(authorityLedger, 7, {
+        kind: 'basis-error',
+        marker: basisMarker,
+      }),
+    ).toBe(false)
+    expect(authorityLedger.root.sequence).toBe(10)
   })
 
   it('keeps retry handlers refetch-only and lets same-key query intents dedupe to one issuance', async () => {
@@ -1337,7 +1367,8 @@ describe('useBackboneDiffWorkbenchController seams', () => {
     expect(source).toContain('authorityLedger.branch')
     expect(source).toContain('authorityLedger.cell')
     expect(source).toContain('handleBasisChangedFromRevision(revision)')
-    expect(source).toContain('handleBasisChangedFromError()')
+    expect(source).toContain('handleBasisChangedFromError(branchQuery.error)')
+    expect(source).toContain('handleBasisChangedFromError(cellQuery.error)')
     expect(source).toContain('void rootQuery.refetch()')
     expect(source).toContain('void branchQuery.refetch()')
     expect(source).toContain('void cellQuery.refetch()')
@@ -1354,6 +1385,7 @@ describe('useBackboneDiffWorkbenchController seams', () => {
     expect(source).not.toContain('!cellQuery.isSuccess')
     expect(source).not.toContain('acceptedByKey[rootQueryKeyFingerprintRef.current] = 0')
     expect(source).not.toContain('authorityLedger.root.sequence = Math.max')
+    expect(source).not.toContain('fencedByProjectId')
     expect(source).not.toContain('authorityLedger.branch.issuedByKey[key] = (authorityLedger.branch.issuedByKey[key] ?? 0) + 1')
     expect(source).not.toContain('authorityLedger.cell.issuedByKey[key] = (authorityLedger.cell.issuedByKey[key] ?? 0) + 1')
   })
