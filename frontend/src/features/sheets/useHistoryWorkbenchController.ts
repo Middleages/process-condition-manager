@@ -117,7 +117,7 @@ export function useHistoryWorkbenchController(projectId: number): HistoryWorkben
     staleTime: Number.POSITIVE_INFINITY,
   })
 
-  const cellHistoryQuery = useQuery({
+  const cellHistoryQuery = useInfiniteQuery({
     queryKey:
       state.cellScope !== null
         ? historyWorkbenchCellHistoryKey(
@@ -137,6 +137,8 @@ export function useHistoryWorkbenchController(projectId: number): HistoryWorkben
       )
     },
     enabled: state.cellScope !== null,
+    initialPageParam: null as string | null,
+    getNextPageParam: (page) => page.next_cursor,
     retry: false,
     staleTime: Number.POSITIVE_INFINITY,
   })
@@ -166,7 +168,7 @@ export function useHistoryWorkbenchController(projectId: number): HistoryWorkben
     () => ({
       ...state,
       pages: timelinePages,
-      nextCursor: timelinePages.at(-1)?.nextCursor ?? null,
+      nextCursor: timelinePages.length === 0 ? null : timelinePages[timelinePages.length - 1].nextCursor,
       batchDetailCache,
     }),
     [batchDetailCache, state, timelinePages],
@@ -238,7 +240,19 @@ export function useHistoryWorkbenchController(projectId: number): HistoryWorkben
     timelineStatus,
     timelineError: timelineQuery.isError ? getErrorMessage(timelineQuery.error) : null,
     nextPageError,
-    cellHistory: cellHistoryQuery.data ?? null,
+    cellHistory:
+      cellHistoryQuery.data === undefined
+        ? null
+        : {
+            items: cellHistoryQuery.data.pages.flatMap((page) => page.items),
+            baseline_entry: cellHistoryQuery.data.pages[0]?.baseline_entry ?? null,
+            initial_entry: cellHistoryQuery.data.pages[0]?.initial_entry ?? null,
+            initial_state_unavailable:
+              cellHistoryQuery.data.pages[0]?.initial_state_unavailable ?? false,
+            next_cursor:
+              cellHistoryQuery.data.pages[cellHistoryQuery.data.pages.length - 1]?.next_cursor ??
+              null,
+          },
     cellStatus,
     cellError: cellHistoryQuery.isError ? getErrorMessage(cellHistoryQuery.error) : null,
     cellNextPageError,

@@ -9,7 +9,6 @@ import type {
   HistoryCoverageOut,
   HistoryDetailOut,
   HistoryTimelineItemOut,
-  HistoryWorkbenchState,
 } from '@/api/history'
 import type { ProjectOut, SheetOut } from '@/api/types'
 import type { ConditionGridProps } from '@/grid'
@@ -88,6 +87,7 @@ import {
   openHistoryCellScope,
   storeHistoryBatchDetail,
   toggleHistoryBatchDetail,
+  type HistoryWorkbenchState,
 } from './historyWorkbenchState'
 import sheetViewSource from './SheetView.tsx?raw'
 
@@ -723,7 +723,12 @@ describe('SheetView focus shell integration', () => {
 
   it('renders the history workbench host from the shared controller when history scope is opened', () => {
     mockSheetWorkbenchState = createMockSheetWorkbenchState('history')
-    mockHistoryWorkbenchController = createMockHistoryController(buildHistoryState())
+    mockHistoryWorkbenchController = createMockHistoryController(
+      openHistoryCellScope(createHistoryWorkbenchState({ actor: 'dev-admin' }), {
+        conditionId: 11,
+        parameterCode: 'ETCH_P001',
+      }),
+    )
 
     const queryClient = client()
     queryClient.setQueryData(['project', 7], project)
@@ -738,7 +743,7 @@ describe('SheetView focus shell integration', () => {
     expect(html).toContain('초기 상태')
     expect(html).toContain('상세')
     expect(html).toContain('삭제된 대상이라 위치로 이동할 수 없습니다.')
-    expect(html).toContain('다음 페이지 불러오기')
+    expect(html).toContain('더 보기')
     expect(html).toContain('aria-expanded="true"')
   })
 
