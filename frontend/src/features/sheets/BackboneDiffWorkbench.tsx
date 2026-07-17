@@ -491,31 +491,33 @@ export function BackboneDiffWorkbench({
 
   const toggleLayer = useCallback(
     (layerKey: string) => {
-      setExpandedLayerKey((current) => {
-        if (current === layerKey) {
-          if (expandedRowRef !== null) {
-            onCloseCell?.(expandedRowRef)
-          }
-          onCloseBranch?.(layerKey)
-          setExpandedRowRef(null)
-          return null
-        }
+      const currentlyExpandedLayer = expandedLayerKey
+      const hasExpandedRow = expandedRowRef !== null
 
-        if (current !== null) {
-          if (expandedRowRef !== null) {
-            onCloseCell?.(expandedRowRef)
-            setExpandedRowRef(null)
-          }
-          onCloseBranch?.(current)
+      if (currentlyExpandedLayer === layerKey) {
+        if (hasExpandedRow) {
+          onCloseCell?.(expandedRowRef)
         }
+        onCloseBranch?.(currentlyExpandedLayer)
+        setExpandedLayerKey(null)
+        setExpandedRowRef(null)
+        return
+      }
 
-        if (layerConditionBranches[layerKey] === undefined) {
-          onOpenLayer(layerKey)
+      if (currentlyExpandedLayer !== null) {
+        if (hasExpandedRow) {
+          onCloseCell?.(expandedRowRef)
         }
-        return layerKey
-      })
+        onCloseBranch?.(currentlyExpandedLayer)
+      }
+
+      if (layerConditionBranches[layerKey] === undefined) {
+        onOpenLayer(layerKey)
+      }
+      setExpandedLayerKey(layerKey)
+      setExpandedRowRef(null)
     },
-    [layerConditionBranches, onCloseBranch, onCloseCell, onOpenLayer, expandedRowRef],
+    [expandedLayerKey, expandedRowRef, layerConditionBranches, onCloseBranch, onCloseCell, onOpenLayer],
   )
 
   const toggleRow = useCallback(
@@ -527,24 +529,25 @@ export function BackboneDiffWorkbench({
         return
       }
 
-      setExpandedRowRef((current) => {
-        if (current === rowRef) {
-          onCloseCell?.(rowRef)
-          return null
-        }
+      const isCurrentRowExpanded = expandedRowRef === rowRef
 
-        if (current !== null) {
-          onCloseCell?.(current)
-        }
+      if (isCurrentRowExpanded) {
+        onCloseCell?.(rowRef)
+        setExpandedRowRef(null)
+        return
+      }
 
-        if (cellBranches[rowRef] === undefined) {
-          onOpenCells(rowRef)
-        }
+      if (expandedRowRef !== null) {
+        onCloseCell?.(expandedRowRef)
+      }
 
-        return rowRef
-      })
+      if (cellBranches[rowRef] === undefined) {
+        onOpenCells(rowRef)
+      }
+
+      setExpandedRowRef(rowRef)
     },
-    [cellBranches, expandedLayerKey, onCloseCell, onOpenCells],
+    [cellBranches, expandedLayerKey, expandedRowRef, onCloseCell, onOpenCells],
   )
 
   const activateTarget = useCallback(
@@ -907,7 +910,9 @@ export function BackboneDiffWorkbench({
                                   </button>
                                 </div>
                               ) : null}
-                              {cells.length === 0 && cellBranch !== undefined ? <p className="text-xs text-muted">셀 항목이 없습니다.</p> : null}
+                              {cellBranch?.status === 'ready' && cells.length === 0 ? (
+                                <p className="text-xs text-muted">셀 항목이 없습니다.</p>
+                              ) : null}
                               {cells.length > 0 ? (
                                 <ul className="space-y-1">
                                   {cells.map((cell) => {
@@ -978,7 +983,7 @@ export function BackboneDiffWorkbench({
                                   더 보기
                                 </button>
                               ) : null}
-                              {cellBranch?.nextPageError !== null ? (
+                              {cellBranch !== undefined && cellBranch.nextPageError !== null ? (
                                 <p className="text-xs text-warning">{cellBranch.nextPageError}</p>
                               ) : null}
                             </div>
@@ -997,7 +1002,9 @@ export function BackboneDiffWorkbench({
                         더 보기
                       </button>
                     ) : null}
-                    {branch?.nextPageError !== null ? <p className="text-xs text-warning">{branch.nextPageError}</p> : null}
+                    {branch !== undefined && branch.nextPageError !== null ? (
+                      <p className="text-xs text-warning">{branch.nextPageError}</p>
+                    ) : null}
                   </div>
                 ) : null}
               </article>

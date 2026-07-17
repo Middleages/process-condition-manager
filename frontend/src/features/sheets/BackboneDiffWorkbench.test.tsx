@@ -286,18 +286,36 @@ describe('BackboneDiffWorkbench', () => {
     expect(openThenClose('row-1', 'row-1')).toEqual(null)
     expect(openThenClose('row-2', 'row-1')).toEqual('row-1')
 
-    expect(source).toContain('setExpandedLayerKey((current) => {')
-    expect(source).toContain('if (current === layerKey) {')
     expect(source).toContain("if (layer.layerStatus === 'available' || isExpanded) {")
     expect(source).toContain('if (layerConditionBranches[layerKey] === undefined) {')
     expect(source).toContain('onOpenLayer(layerKey)')
-    expect(source).toContain('onCloseBranch?.(current)')
+    expect(source).toContain('onCloseBranch?.(currentlyExpandedLayer)')
 
-    expect(source).toContain('setExpandedRowRef((current) => {')
-    expect(source).toContain('if (current === rowRef) {')
+    expect(source).toContain('if (isCurrentRowExpanded) {')
     expect(source).toContain('if (!scopeAvailable && expandedRowRef !== rowRef) {')
     expect(source).toContain('if (cellBranches[rowRef] === undefined) {')
     expect(source).toContain('onOpenCells(rowRef)')
+  })
+
+  it('keeps disclosure callbacks outside functional updaters to avoid StrictMode double effects', () => {
+    expect(source).not.toContain('setExpandedLayerKey((current) => {')
+    expect(source).not.toContain('setExpandedRowRef((current) => {')
+    expect(source).toContain('const currentlyExpandedLayer = expandedLayerKey')
+    expect(source).toContain('const isCurrentRowExpanded = expandedRowRef === rowRef')
+    expect(source).toContain('setExpandedLayerKey(null)')
+    expect(source).toContain('setExpandedLayerKey(layerKey)')
+    expect(source).toContain('setExpandedRowRef(null)')
+    expect(source).toContain('setExpandedRowRef(rowRef)')
+    expect(source).toContain('[cellBranches, expandedLayerKey, expandedRowRef, onCloseCell, onOpenCells]')
+  })
+
+  it('guards empty-cell rendering to ready status via source contract', () => {
+    expect(source).toContain("cellBranch?.status === 'ready' && cells.length === 0")
+  })
+
+  it('guards next-page error rendering on branch presence before dereferencing', () => {
+    expect(source).toContain('cellBranch !== undefined && cellBranch.nextPageError !== null')
+    expect(source).toContain('branch !== undefined && branch.nextPageError !== null')
   })
 
   it('prevents preview key collisions by including kind/status/index and optional payload fields', () => {
