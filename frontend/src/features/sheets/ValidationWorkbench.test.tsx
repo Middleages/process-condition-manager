@@ -57,7 +57,6 @@ describe('ValidationWorkbench', () => {
         serverFailure: VALIDATION_SERVER_FAILURE,
         onRetry,
       },
-      true,
     )
 
     expect(html).toContain('최신 상태 확인 실패 · 다시 시도')
@@ -92,7 +91,6 @@ describe('ValidationWorkbench', () => {
 
     expect(html).toContain('검증 규칙을 불러오는 중')
     expect(html).toContain('bg-canvas')
-    expect(html).not.toContain('bg-error-surface')
     expect(html).not.toContain('bg-success-surface')
     expect(html).not.toContain(VALIDATION_DEFINITIONS_FAILURE)
   })

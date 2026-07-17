@@ -57,7 +57,7 @@ describe('sheet workbench host and navigation', () => {
   it('keeps host height and tabpanel ownership outside validation content', () => {
     const html = renderToStaticMarkup(
       <SheetWorkbenchPanel
-        mode="validation"
+        mode="history"
         panelHeight={312}
         onModeChange={() => undefined}
         onResizeBy={() => undefined}
@@ -75,11 +75,11 @@ describe('sheet workbench host and navigation', () => {
     expect(html).toContain('aria-valuemax="520"')
     expect(html).toContain('aria-valuenow="312"')
     expect(html).toContain('id="sheet-workbench-panel-validation"')
-    expect(html).toContain('validation content')
     expect(html).toContain('id="sheet-workbench-panel-history"')
     expect(html).toContain('history content')
     expect(html).toContain('id="sheet-workbench-panel-backbone-diff"')
-    expect(html).toContain('backbone diff content')
     expect(html).toContain('hidden=""')
+    expect(html).not.toContain('validation content')
+    expect(html).not.toContain('backbone diff content')
   })
 })

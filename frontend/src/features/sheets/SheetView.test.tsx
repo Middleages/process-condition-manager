@@ -413,6 +413,41 @@ describe('SheetView focus shell integration', () => {
     expect(html).toContain('&quot;dirty&quot;:false')
   })
 
+  it('shows the compact 워크벤치 toggle for real validation issues without server-rendering the panel', () => {
+    const queryClient = client()
+    queryClient.setQueryData(['project', 7], {
+      ...project,
+      layers: [
+        {
+          id: 1,
+          layer_key: 'L1::10::ETCH',
+          step_seq: '10',
+          layer_id: 'ETCH',
+          eqp_type: null,
+          eqp_type_desc: null,
+          area_name: null,
+          sort_order: 0,
+          condition_count: 1,
+          cell_count: 0,
+          source_project_id: null,
+          source_layer_key: null,
+        },
+      ],
+    })
+    queryClient.setQueryData(['sheet', 7], {
+      ...sheet,
+      columns: [{ ...sheet.columns[0], required: true }],
+      rows: [{ ...sheet.rows[0], cells: {} }],
+    })
+
+    const html = renderSheet(queryClient)
+
+    expect(html).toContain('data-testid="sheet-workbench-toggle"')
+    expect(html).toContain('aria-expanded="false"')
+    expect(html).toContain('워크벤치')
+    expect(html).not.toContain('data-sheet-workbench')
+  })
+
   it('keeps the workbench host absent before issues or explicit completion while exposing 검증 outside it', () => {
     const queryClient = client()
     queryClient.setQueryData(['project', 7], {

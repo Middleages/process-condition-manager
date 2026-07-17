@@ -34,6 +34,7 @@ import { Badge } from '@/shared/components/Badge'
 import { Button } from '@/shared/components/Button'
 import { InlineAlert } from '@/shared/components/InlineAlert'
 import { ErrorMessage, LoadingMessage } from '@/shared/components/StatusMessage'
+import { cn } from '@/shared/lib/cn'
 import { useIsomorphicLayoutEffect } from '@/shared/lib/useIsomorphicLayoutEffect'
 import { parsePositiveInt } from '@/shared/navigation/routeState'
 
@@ -1047,6 +1048,36 @@ function ConditionRowManager({
         </InlineAlert>
       ) : null}
     </div>
+  )
+}
+
+function CategoryTab({
+  active,
+  disabled,
+  onClick,
+  children,
+}: {
+  active: boolean
+  disabled: boolean
+  onClick: () => void
+  children: ReactNode
+}) {
+  return (
+    <button
+      aria-pressed={active}
+      className={cn(
+        'inline-flex shrink-0 items-center justify-center rounded-md border px-3 font-semibold transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-60',
+        'h-[34px] text-xs',
+        active
+          ? 'border-brand-700 bg-brand-700 text-white hover:bg-ink-950'
+          : 'border-border-control bg-surface text-ink-950 hover:bg-canvas',
+      )}
+      disabled={disabled}
+      onClick={onClick}
+      type="button"
+    >
+      {children}
+    </button>
   )
 }
 
