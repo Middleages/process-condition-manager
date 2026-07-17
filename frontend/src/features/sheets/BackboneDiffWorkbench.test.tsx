@@ -87,7 +87,17 @@ function createRootData(): BackboneDiffRoot {
   }
 }
 
-function createPreviewState(): PreviewState<BackboneDiffPreviewItem> {
+function createPreviewState(): PreviewState<{
+  readonly itemKind: 'row' | 'cell'
+  readonly classification: 'added' | 'changed' | 'cleared' | 'removed' | 'unchanged'
+  readonly layerKey: string
+  readonly effectiveConditionIndex: number
+  readonly itemSortKey: readonly (string | number | null)[]
+  readonly rowRef: string | null
+  readonly cellScope: string | null
+  readonly rowStatus?: 'added' | 'changed' | 'cleared' | 'removed' | 'unchanged' | null
+  readonly parameterCode?: string | null
+}> {
   return {
     status: 'ready',
     items: [],
@@ -142,7 +152,17 @@ function createCell(): BackboneDiffCellItem {
 }
 
 function createPreviewStaticMarkup(root: BackboneDiffRoot, preview: PreviewState<
-  BackboneDiffPreviewItem
+  {
+    readonly itemKind: 'row' | 'cell'
+    readonly classification: 'added' | 'changed' | 'cleared' | 'removed' | 'unchanged'
+    readonly layerKey: string
+    readonly effectiveConditionIndex: number
+    readonly itemSortKey: readonly (string | number | null)[]
+    readonly rowRef: string | null
+    readonly cellScope: string | null
+    readonly rowStatus?: 'added' | 'changed' | 'cleared' | 'removed' | 'unchanged' | null
+    readonly parameterCode?: string | null
+  }
 >) {
   return renderToStaticMarkup(
     <BackboneDiffWorkbench
@@ -386,7 +406,7 @@ describe('BackboneDiffWorkbench', () => {
       onActivateTarget,
     )
     expect(deletedBlocked).toBe(false)
-    expect(onActivateTarget).toHaveBeenCalledTimes(2)
+    expect(onActivateTarget).toHaveBeenCalledTimes(1)
 
     const conditionNavigationBlocked = activateBackboneJumpTarget(
       {

@@ -431,7 +431,6 @@ export function BackboneDiffWorkbench({
             </div>
             <div className="rounded border border-border-subtle bg-canvas px-2 py-1">추가 <strong>{root.counts.addedCount}</strong></div>
             <div className="rounded border border-border-subtle bg-canvas px-2 py-1">변경 <strong>{root.counts.changedCount}</strong></div>
-            <div className="rounded border border-border-subtle bg-canvas px-2 py-1">비움 <strong>{root.counts.clearedCount}</strong></div>
             <div className="rounded border border-border-subtle bg-canvas px-2 py-1">제거 <strong>{root.counts.removedCount}</strong></div>
             <div className="rounded border border-border-subtle bg-canvas px-2 py-1">미변경 <strong>{root.counts.unchangedCount}</strong></div>
           </div>
@@ -530,7 +529,7 @@ export function BackboneDiffWorkbench({
           {preview.status === 'ready' && preview.items.length === 0 ? (
           <p className="mt-2 text-xs text-muted">미리보기 항목이 없습니다.</p>
         ) : null}
-        {preview.items.length > 0 ? (
+                {preview.items.length > 0 ? (
           <ul className="mt-2 space-y-1 text-xs">
             {preview.items.map((item) => (
               <li
@@ -549,17 +548,7 @@ export function BackboneDiffWorkbench({
                 }
                 className="rounded border border-border-subtle bg-canvas px-2 py-1"
               >
-                <p>
-                  [{item.classification}] {item.itemKind} · {item.layerKey} · #{item.effectiveConditionIndex}
-                </p>
-                <p className="text-muted mt-1">
-                  {item.rowStatus !== undefined && item.rowStatus !== null
-                    ? `상태: ${item.rowStatus}`
-                    : '상태: 미지정'}
-                  {item.parameterCode !== undefined && item.parameterCode !== null
-                    ? ` · 파라미터: ${item.parameterCode}`
-                    : ''}
-                </p>
+                [{item.classification}] {item.itemKind} · {item.layerKey} · #{item.effectiveConditionIndex}
               </li>
             ))}
           </ul>
@@ -692,7 +681,11 @@ export function BackboneDiffWorkbench({
                         && ((condition.currentCondition?.conditionId ?? null) !== null
                         || (condition.baselineCondition?.conditionId ?? null) !== null)
 
-                      const isRowJumpAvailable = false
+                      const rowActivation = activationStatusFor({
+                        classification: condition.rowStatus,
+                        jumpStatus: condition.jumpStatus,
+                        hasNavigation: condition.cellScope !== null,
+                      })
 
                       return (
                         <div key={condition.rowRef} className="rounded border border-border-subtle bg-surface p-2 text-xs">
@@ -700,20 +693,22 @@ export function BackboneDiffWorkbench({
                             <button
                               className="rounded-sm border border-brand-700 px-2 py-1 text-xs font-semibold text-brand-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
                               onClick={() => {
-                                if (!hasConditionNavigation && !isRowExpanded) {
+                                if (condition.cellScope === null && !isRowExpanded) {
                                   emitAnnouncement('현재 위치로 이동할 수 없습니다.')
                                   return
                                 }
 
-                                toggleRow(condition.rowRef, hasConditionNavigation)
+                                toggleRow(condition.rowRef, condition.cellScope !== null)
                               }}
                               type="button"
-                              aria-disabled={!hasConditionNavigation && !isRowExpanded}
+                              aria-disabled={condition.cellScope === null && !isRowExpanded}
                             >
                               {isRowExpanded ? '셀 접기' : hasConditionNavigation ? '셀 보기' : '셀 조회 불가'}
                             </button>
                             <span className="text-muted">
-                              {baselineToCurrentLabel}
+                              {condition.baselineCondition?.label ?? '기준 없음'}
+                              {' · '}
+                              {condition.currentCondition?.label ?? '현재 없음'}
                             </span>
                             <span>
                               condition #{condition.effectiveConditionIndex}
@@ -730,10 +725,33 @@ export function BackboneDiffWorkbench({
                                   ? 'border-brand-700 text-brand-700'
                                   : 'border-border-subtle text-muted',
                               )}
-                              aria-disabled={!isRowJumpAvailable}
+                              aria-disabled={rowActivation !== 'available'}
                               onClick={() => {
-                                emitAnnouncement('현재 위치로 이동할 수 없습니다.')
-                                }}
+                                if (rowActivation !== 'available') {
+                                  if (rowActivation === 'removed') {
+                                    emitAnnouncement('삭제된 대상은 이동할 수 없습니다.')
+                                  } else if (rowActivation === 'deleted') {
+                                    emitAnnouncement('삭제된 대상으로는 위치를 이동할 수 없습니다.')
+                                  } else {
+                                    emitAnnouncement('현재 위치로 이동할 수 없습니다.')
+                                  }
+                                  return
+                                }
+
+                                activateTarget({
+                                  kind: 'condition',
+                                  layerKey: layer.layerKey,
+                                  classification: condition.rowStatus,
+                                  jumpStatus: condition.jumpStatus,
+                                  rowRef: condition.rowRef,
+                                  conditionId: condition.identity,
+                                  parameterCode: null,
+                                  sourceConditionId:
+                                    condition.currentCondition?.sourceConditionId
+                                    ?? condition.baselineCondition?.sourceConditionId
+                                    ?? null,
+                                })
+                              }}
                               type="button"
                             >
                               {renderActivationButtonText('unavailable')}
@@ -777,18 +795,7 @@ export function BackboneDiffWorkbench({
                                                 : 'border-border-subtle text-muted',
                                             )}
                                             aria-disabled={cellActivation !== 'available'}
-                                            onClick={() => {
-                                              if (cellActivation !== 'available') {
-                                                if (cellActivation === 'removed') {
-                                                  emitAnnouncement('삭제된 대상은 이동할 수 없습니다.')
-                                                } else if (cellActivation === 'deleted') {
-                                                  emitAnnouncement('삭제된 대상으로는 위치를 이동할 수 없습니다.')
-                                                } else {
-                                                  emitAnnouncement('현재 위치로 이동할 수 없습니다.')
-                                                }
-                                                return
-                                              }
-
+                                            onClick={() =>
                                               activateTarget({
                                                 kind: 'cell',
                                                 layerKey: layer.layerKey,
@@ -901,5 +908,6 @@ function activationStatusFor({
   if (hasNavigation === false) return 'unavailable'
   if (classification === 'removed') return 'removed'
   if (jumpStatus === 'deleted') return 'deleted'
+  if (classification === 'unchanged') return 'unavailable'
   return 'available'
 }
