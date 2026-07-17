@@ -356,9 +356,17 @@ function SheetEditor({
     validation.explicitValidationCompleted,
   )
   const workbenchState = useSheetWorkbenchState()
+  const validationAutoOpenRef = useRef(false)
 
   useEffect(() => {
-    if (!showValidationWorkbench || workbenchState.mode !== null) return
+    if (
+      !showValidationWorkbench ||
+      workbenchState.mode !== null ||
+      validationAutoOpenRef.current
+    ) {
+      return
+    }
+    validationAutoOpenRef.current = true
     workbenchState.selectMode('validation')
   }, [showValidationWorkbench, workbenchState.mode, workbenchState.selectMode])
 

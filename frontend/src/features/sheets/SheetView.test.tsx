@@ -564,8 +564,9 @@ describe('SheetView focus shell integration', () => {
 
   it('keeps the workbench toggle outside validation gating and only auto-opens validation from null', () => {
     expect(sheetViewSource).toContain('const workbenchState = useSheetWorkbenchState()')
-    expect(sheetViewSource).toContain(
-      'if (!showValidationWorkbench || workbenchState.mode !== null) return',
+    expect(sheetViewSource).toContain('const validationAutoOpenRef = useRef(false)')
+    expect(sheetViewSource).toMatch(
+      /if \([\s\S]*?showValidationWorkbench[\s\S]*?workbenchState\.mode !== null[\s\S]*?validationAutoOpenRef\.current[\s\S]*?\)\s*\{[\s\S]*?return/,
     )
     expect(sheetViewSource).toContain("workbenchState.selectMode('validation')")
     expect(sheetViewSource).toContain('expanded={workbenchState.mode !== null}')
