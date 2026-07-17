@@ -34,6 +34,7 @@ import { Badge } from '@/shared/components/Badge'
 import { Button } from '@/shared/components/Button'
 import { InlineAlert } from '@/shared/components/InlineAlert'
 import { ErrorMessage, LoadingMessage } from '@/shared/components/StatusMessage'
+import { cn } from '@/shared/lib/cn'
 import { useIsomorphicLayoutEffect } from '@/shared/lib/useIsomorphicLayoutEffect'
 import { parsePositiveInt } from '@/shared/navigation/routeState'
 
@@ -58,6 +59,7 @@ import {
 } from './persistenceReconciliation'
 import { resolveSheetInteraction } from './sheetInteraction'
 import { SheetFocusFrame } from './SheetFocusFrame'
+import { SheetWorkbenchPanel, SheetWorkbenchToggle, useSheetWorkbenchState } from './SheetWorkbench'
 import { ValidationWorkbench } from './ValidationWorkbench'
 import {
   SheetAdapterError,
@@ -73,10 +75,13 @@ import { VALIDATION_SERVER_FAILURE } from './validationState'
 import {
   enrichValidationIssues,
   resolveValidationDefinitionAvailability,
-  resolveValidationIssueNavigation,
   shouldMountValidationWorkbench,
   type ValidationWorkbenchIssue,
 } from './validationWorkbenchState'
+import {
+  resolveWorkbenchCoordinateNavigation,
+  type WorkbenchCoordinate,
+} from './workbenchCoordinateNavigation'
 
 const COLUMN_SEARCH_STATUS_ID = 'sheet-column-search-status'
 const VALIDATION_DEFINITIONS_STATUS_ID = 'validation-definitions-status'
@@ -273,11 +278,10 @@ function SheetEditor({
   const [columnQuery, setColumnQuery] = useState('')
   const [columnSearchStatus, setColumnSearchStatus] = useState('')
   const [pendingColumnJump, setPendingColumnJump] = useState<string | null>(null)
-  const [pendingValidationJump, setPendingValidationJump] = useState<{
-    conditionId: string
-    parameterCode: string
-  } | null>(null)
-  const [validationNavigationStatus, setValidationNavigationStatus] = useState<string | null>(null)
+  const [pendingCoordinateJump, setPendingCoordinateJump] = useState<WorkbenchCoordinate | null>(
+    null,
+  )
+  const [coordinateNavigationStatus, setCoordinateNavigationStatus] = useState<string | null>(null)
 
   // 서버 행 위에 더티 값을 얹어 표시(편집값 즉시 반영) + 더티 셀 상태 오버레이.
   const displayRows = useMemo(() => applyDirtyToRows(data.rows, dirtyCells), [data.rows, dirtyCells])
@@ -351,6 +355,19 @@ function SheetEditor({
     validation.issues,
     validation.explicitValidationCompleted,
   )
+  const workbenchState = useSheetWorkbenchState()
+  const wasValidationWorkbenchVisibleRef = useRef(false)
+
+  useEffect(() => {
+    if (
+      showValidationWorkbench &&
+      !wasValidationWorkbenchVisibleRef.current &&
+      workbenchState.mode === null
+    ) {
+      workbenchState.selectMode('validation')
+    }
+    wasValidationWorkbenchVisibleRef.current = showValidationWorkbench
+  }, [showValidationWorkbench, workbenchState.mode, workbenchState.selectMode])
 
   // 붙여넣기 스테이징(적용 전 미리보기). null = 대기 중인 붙여넣기 없음.
   const [paste, setPasteState] = useState<PasteStagingResult | null>(null)
@@ -430,17 +447,19 @@ function SheetEditor({
   // A hidden validation target is published only after its category state is requested. This
   // effect observes committed visibleColumns and then crosses the domain-only grid adapter once.
   useEffect(() => {
-    if (pendingValidationJump === null) return
-    if (!visibleColumns.some((column) => column.key === pendingValidationJump.parameterCode)) return
-    if (!displayRows.some((row) => row.id === pendingValidationJump.conditionId)) {
-      setValidationNavigationStatus('이동할 검증 대상 셀을 찾지 못했습니다.')
-      setPendingValidationJump(null)
+    if (pendingCoordinateJump === null) return
+    if (!visibleColumns.some((column) => column.key === pendingCoordinateJump.parameterCode)) return
+    const conditionId = String(pendingCoordinateJump.conditionId)
+    const parameterCode = String(pendingCoordinateJump.parameterCode)
+    if (!displayRows.some((row) => row.id === conditionId)) {
+      setCoordinateNavigationStatus('이동할 대상 셀을 찾지 못했습니다.')
+      setPendingCoordinateJump(null)
       return
     }
-    gridRef.current?.scrollToCell(pendingValidationJump.conditionId, pendingValidationJump.parameterCode)
-    setValidationNavigationStatus('검증 대상 셀로 이동했습니다.')
-    setPendingValidationJump(null)
-  }, [pendingValidationJump, visibleColumns, displayRows])
+    gridRef.current?.scrollToCell(conditionId, parameterCode)
+    setCoordinateNavigationStatus('대상 셀로 이동했습니다.')
+    setPendingCoordinateJump(null)
+  }, [pendingCoordinateJump, visibleColumns, displayRows])
 
   // 조건 행 관리(T7): 추가/복제/삭제 대상은 좌측 식별 컬럼 클릭으로 활성화한 행 하나다.
   // POR 이양은 활성 행과 무관하게 POR 컬럼 클릭으로 바로 실행한다. 구조 변경은 더티 셀 버퍼와
@@ -656,7 +675,7 @@ function SheetEditor({
     const match = data.columns.find((column) => column.key === result.parameterCode)
     setColumnSearchStatus(`${match?.headerName ?? result.parameterCode} 컬럼으로 이동했습니다.`)
     if (result.requiresCategoryChange) {
-      setPendingValidationJump(null)
+      setPendingCoordinateJump(null)
       setPendingColumnJump(result.parameterCode)
       setActiveCategory(result.categoryCode)
       return
@@ -668,7 +687,7 @@ function SheetEditor({
     (category: string | null) => {
       if (!interaction.canSwitchCategory || pasteRef.current !== null) return
       setPendingColumnJump(null)
-      setPendingValidationJump(null)
+      setPendingCoordinateJump(null)
       setColumnSearchStatus('')
       setActiveCategory(category)
     },
@@ -678,10 +697,10 @@ function SheetEditor({
   const activateValidationIssue = useCallback(
     (issue: ValidationWorkbenchIssue) => {
       if (!interaction.canSwitchCategory || pasteRef.current !== null) {
-        setValidationNavigationStatus('붙여넣기를 적용 또는 취소한 뒤 이동해 주세요.')
+        setCoordinateNavigationStatus('붙여넣기를 적용 또는 취소한 뒤 이동해 주세요.')
         return
       }
-      const navigation = resolveValidationIssueNavigation(
+      const navigation = resolveWorkbenchCoordinateNavigation(
         issue,
         data.columns,
         displayRows,
@@ -689,16 +708,19 @@ function SheetEditor({
       )
       setPendingColumnJump(null)
       if (navigation.kind === 'missing-target') {
-        setValidationNavigationStatus('이동할 검증 대상 셀을 찾지 못했습니다.')
+        setCoordinateNavigationStatus('이동할 대상 셀을 찾지 못했습니다.')
         return
       }
       if (navigation.kind === 'reveal-category') {
         setActiveCategory(navigation.categoryCode)
-        setPendingValidationJump(navigation.target)
+        setPendingCoordinateJump(navigation.target)
         return
       }
-      gridRef.current?.scrollToCell(navigation.target.conditionId, navigation.target.parameterCode)
-      setValidationNavigationStatus('검증 대상 셀로 이동했습니다.')
+      gridRef.current?.scrollToCell(
+        String(navigation.target.conditionId),
+        String(navigation.target.parameterCode),
+      )
+      setCoordinateNavigationStatus('대상 셀로 이동했습니다.')
     },
     [interaction.canSwitchCategory, data.columns, displayRows, activeCategory],
   )
@@ -832,6 +854,10 @@ function SheetEditor({
               >
                 검증
               </Button>
+              <SheetWorkbenchToggle
+                expanded={workbenchState.mode !== null}
+                onToggle={workbenchState.toggle}
+              />
               <label
                 className="shrink-0 text-xs font-semibold text-ink-950"
                 htmlFor="sheet-column-search"
@@ -902,17 +928,26 @@ function SheetEditor({
         </div>
       }
       workbench={
-        showValidationWorkbench ? (
-          <ValidationWorkbench
-            definitionsPending={validationDefinitionsPending}
-            issues={validationIssues}
-            summary={validation.summary}
-            issueAuthority={validation.issueAuthority}
-            serverConfirmation={validation.serverConfirmation}
-            serverFailure={validation.serverFailure}
-            navigationStatus={validationNavigationStatus}
-            onIssueActivate={activateValidationIssue}
-            onRetry={() => void validation.retry()}
+        workbenchState.mode !== null ? (
+          <SheetWorkbenchPanel
+            mode={workbenchState.mode}
+            onModeChange={workbenchState.selectMode}
+            onResizeBy={workbenchState.resizeBy}
+            onSetHeight={workbenchState.setHeight}
+            panelHeight={workbenchState.panelHeight}
+            validationContent={
+              <ValidationWorkbench
+                definitionsPending={validationDefinitionsPending}
+                issues={validationIssues}
+                summary={validation.summary}
+                issueAuthority={validation.issueAuthority}
+                serverConfirmation={validation.serverConfirmation}
+                serverFailure={validation.serverFailure}
+                navigationStatus={coordinateNavigationStatus}
+                onIssueActivate={activateValidationIssue}
+                onRetry={() => void validation.retry()}
+              />
+            }
           />
         ) : undefined
       }
@@ -1029,6 +1064,36 @@ function ConditionRowManager({
         </InlineAlert>
       ) : null}
     </div>
+  )
+}
+
+function CategoryTab({
+  active,
+  disabled,
+  onClick,
+  children,
+}: {
+  active: boolean
+  disabled: boolean
+  onClick: () => void
+  children: ReactNode
+}) {
+  return (
+    <button
+      aria-pressed={active}
+      className={cn(
+        'inline-flex shrink-0 items-center justify-center rounded-md border px-3 font-semibold transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-60',
+        'h-[34px] text-xs',
+        active
+          ? 'border-brand-700 bg-brand-700 text-white hover:bg-ink-950'
+          : 'border-border-control bg-surface text-ink-950 hover:bg-canvas',
+      )}
+      disabled={disabled}
+      onClick={onClick}
+      type="button"
+    >
+      {children}
+    </button>
   )
 }
 
@@ -1381,33 +1446,6 @@ function SaveStatus({ editing }: { editing: SheetEditing }) {
         </button>
       ) : null}
     </span>
-  )
-}
-
-/** 카테고리 필터 탭 버튼(전체 + 카테고리별). GridDemoPage의 동일 패턴을 실제 시트 화면에 이식. */
-function CategoryTab({
-  active,
-  disabled,
-  onClick,
-  children,
-}: {
-  active: boolean
-  disabled: boolean
-  onClick: () => void
-  children: ReactNode
-}) {
-  return (
-    <Button
-      aria-pressed={active}
-      className="shrink-0"
-      disabled={disabled}
-      type="button"
-      onClick={onClick}
-      size="compact"
-      variant={active ? 'primary' : 'secondary'}
-    >
-      {children}
-    </Button>
   )
 }
 

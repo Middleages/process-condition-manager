@@ -23,7 +23,7 @@ describe('ValidationWorkbench', () => {
   })
 
   it('exposes full tile descriptions, non-color severity, keyboard semantics, and 3/4/5 columns', () => {
-    const html = render({ issues: [workbenchIssue('error')] }, true)
+    const html = render({ issues: [workbenchIssue('error')] })
 
     expect(html).toContain('aria-label="오류. ETCH (10) POR. 노광량. 현재 값 7. 노광량 값을 입력해 주세요."')
     expect(html).toContain('>오류<')
@@ -37,18 +37,15 @@ describe('ValidationWorkbench', () => {
     expect(source).toContain('onKeyDown={activateWithKeyboard}')
     expect(source).toContain('handleValidationTileActivationKey(')
     expect(source).toContain("selected ? 'h-auto' : 'h-[50px]'")
-    expect(source).toContain('onPointerMove={continueResize}')
   })
 
-  it('renders an expanded horizontal separator with bounded current-value semantics', () => {
-    const html = render({ issues: [workbenchIssue('error')], defaultExpanded: true }, true)
+  it('renders only validation content and no longer owns the host resize affordances', () => {
+    const html = render({ issues: [workbenchIssue('error')] })
 
-    expect(html).toContain('role="separator"')
-    expect(html).toContain('aria-orientation="horizontal"')
-    expect(html).toContain('aria-valuemin="180"')
-    expect(html).toContain('aria-valuemax="520"')
-    expect(html).toContain('aria-valuenow="300"')
-    expect(html).toContain('aria-expanded="true"')
+    expect(html).not.toContain('role="separator"')
+    expect(html).not.toContain('aria-orientation="horizontal"')
+    expect(html).not.toContain('aria-valuenow="300"')
+    expect(source).not.toContain('onPointerMove={continueResize}')
   })
 
   it('keeps the latest issues visible on failure and exposes the exact retry affordance', () => {
@@ -60,7 +57,6 @@ describe('ValidationWorkbench', () => {
         serverFailure: VALIDATION_SERVER_FAILURE,
         onRetry,
       },
-      true,
     )
 
     expect(html).toContain('최신 상태 확인 실패 · 다시 시도')
@@ -95,7 +91,6 @@ describe('ValidationWorkbench', () => {
 
     expect(html).toContain('검증 규칙을 불러오는 중')
     expect(html).toContain('bg-canvas')
-    expect(html).not.toContain('bg-error-surface')
     expect(html).not.toContain('bg-success-surface')
     expect(html).not.toContain(VALIDATION_DEFINITIONS_FAILURE)
   })
@@ -122,7 +117,6 @@ describe('ValidationWorkbench', () => {
 
 function render(
   overrides: Partial<Parameters<typeof ValidationWorkbench>[0]> = {},
-  expanded = false,
 ): string {
   return renderToStaticMarkup(
     <ValidationWorkbench
@@ -133,7 +127,6 @@ function render(
       serverFailure={null}
       onIssueActivate={vi.fn()}
       onRetry={vi.fn()}
-      defaultExpanded={expanded}
       {...overrides}
     />,
   )

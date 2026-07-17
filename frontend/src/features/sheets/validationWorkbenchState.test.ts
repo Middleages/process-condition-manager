@@ -6,7 +6,7 @@ import {
   VALIDATION_WORKBENCH_DEFAULT_HEIGHT,
   VALIDATION_WORKBENCH_MAX_HEIGHT,
   VALIDATION_WORKBENCH_MIN_HEIGHT,
-  VALIDATION_WORKBENCH_RESIZE_STEP,
+  clampValidationWorkbenchHeight,
   createValidationWorkbenchState,
   enrichValidationIssues,
   filterValidationWorkbenchIssues,
@@ -74,20 +74,19 @@ describe('validation workbench lifecycle and local interaction state', () => {
     expect(filterValidationWorkbenchIssues(issues, withoutEither)).toEqual([])
   })
 
-  it('resizes by a deterministic keyboard step and clamps to the declared bounds', () => {
+  it('clamps the shared workbench height constants to the declared bounds', () => {
     const initial = createValidationWorkbenchState()
-    expect(initial.panelHeight).toBe(VALIDATION_WORKBENCH_DEFAULT_HEIGHT)
 
-    const taller = reduceValidationWorkbenchState(initial, { type: 'resize-by', delta: 1 })
-    expect(taller.panelHeight).toBe(
-      VALIDATION_WORKBENCH_DEFAULT_HEIGHT + VALIDATION_WORKBENCH_RESIZE_STEP,
+    expect(initial).toEqual({
+      showErrors: true,
+      showWarnings: true,
+      selectedIssueKey: null,
+    })
+    expect(clampValidationWorkbenchHeight(VALIDATION_WORKBENCH_DEFAULT_HEIGHT)).toBe(
+      VALIDATION_WORKBENCH_DEFAULT_HEIGHT,
     )
-    expect(
-      reduceValidationWorkbenchState(taller, { type: 'set-height', height: 100_000 }).panelHeight,
-    ).toBe(VALIDATION_WORKBENCH_MAX_HEIGHT)
-    expect(
-      reduceValidationWorkbenchState(taller, { type: 'set-height', height: -100_000 }).panelHeight,
-    ).toBe(VALIDATION_WORKBENCH_MIN_HEIGHT)
+    expect(clampValidationWorkbenchHeight(100_000)).toBe(VALIDATION_WORKBENCH_MAX_HEIGHT)
+    expect(clampValidationWorkbenchHeight(-100_000)).toBe(VALIDATION_WORKBENCH_MIN_HEIGHT)
   })
 
   it('recognizes only Enter and Space as explicit tile activation keys', () => {

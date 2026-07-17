@@ -1,9 +1,7 @@
 import {
   useMemo,
   useReducer,
-  useRef,
   type KeyboardEvent,
-  type PointerEvent,
 } from 'react'
 
 import type { ValidationSummaryOut } from '@/api/types'
@@ -16,8 +14,6 @@ import {
 } from './validationState'
 import type { ServerConfirmation } from './useSheetValidation'
 import {
-  VALIDATION_WORKBENCH_MAX_HEIGHT,
-  VALIDATION_WORKBENCH_MIN_HEIGHT,
   createValidationWorkbenchState,
   filterValidationWorkbenchIssues,
   handleValidationTileActivationKey,
@@ -35,8 +31,6 @@ export interface ValidationWorkbenchProps {
   navigationStatus?: string | null
   onIssueActivate: (issue: ValidationWorkbenchIssue) => void
   onRetry: () => void
-  defaultExpanded?: boolean
-  defaultHeight?: number
 }
 
 export function ValidationWorkbench({
@@ -49,23 +43,10 @@ export function ValidationWorkbench({
   navigationStatus = null,
   onIssueActivate,
   onRetry,
-  defaultExpanded = false,
-  defaultHeight,
 }: ValidationWorkbenchProps) {
-  const [state, dispatch] = useReducer(
-    reduceValidationWorkbenchState,
-    { expanded: defaultExpanded, panelHeight: defaultHeight },
-    (initial) =>
-      createValidationWorkbenchState({
-        expanded: initial.expanded,
-        ...(initial.panelHeight === undefined ? {} : { panelHeight: initial.panelHeight }),
-      }),
+  const [state, dispatch] = useReducer(reduceValidationWorkbenchState, {}, () =>
+    createValidationWorkbenchState(),
   )
-  const dragRef = useRef<{
-    pointerId: number
-    startY: number
-    startHeight: number
-  } | null>(null)
   const filteredIssues = useMemo(
     () => filterValidationWorkbenchIssues(issues, state),
     [issues, state],
@@ -87,66 +68,12 @@ export function ValidationWorkbench({
     serverConfirmation === 'failed' &&
     serverFailure === VALIDATION_SERVER_FAILURE
 
-  function resizeWithKeyboard(event: KeyboardEvent<HTMLDivElement>): void {
-    if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return
-    event.preventDefault()
-    dispatch({ type: 'resize-by', delta: event.key === 'ArrowUp' ? 1 : -1 })
-  }
-
-  function beginResize(event: PointerEvent<HTMLDivElement>): void {
-    dragRef.current = {
-      pointerId: event.pointerId,
-      startY: event.clientY,
-      startHeight: state.panelHeight,
-    }
-    event.currentTarget.setPointerCapture(event.pointerId)
-  }
-
-  function continueResize(event: PointerEvent<HTMLDivElement>): void {
-    const drag = dragRef.current
-    if (drag === null || drag.pointerId !== event.pointerId) return
-    dispatch({
-      type: 'set-height',
-      height: drag.startHeight + drag.startY - event.clientY,
-    })
-  }
-
-  function finishResize(event: PointerEvent<HTMLDivElement>): void {
-    if (dragRef.current?.pointerId !== event.pointerId) return
-    dragRef.current = null
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId)
-    }
-  }
-
   return (
-    <section
+    <div
       aria-label="검증 결과"
-      className={cn(
-        'flex min-h-0 min-w-0 flex-col overflow-hidden border-t border-border-subtle bg-surface',
-        state.expanded ? null : 'h-[30px]',
-      )}
+      className={cn('flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-canvas p-2')}
       data-validation-workbench
-      style={state.expanded ? { height: state.panelHeight } : undefined}
     >
-      {state.expanded ? (
-        <div
-          aria-label="검증 패널 높이 조절"
-          aria-orientation="horizontal"
-          aria-valuemax={VALIDATION_WORKBENCH_MAX_HEIGHT}
-          aria-valuemin={VALIDATION_WORKBENCH_MIN_HEIGHT}
-          aria-valuenow={state.panelHeight}
-          className="h-2 shrink-0 cursor-row-resize bg-border-subtle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-brand-700"
-          onKeyDown={resizeWithKeyboard}
-          onPointerCancel={finishResize}
-          onPointerDown={beginResize}
-          onPointerMove={continueResize}
-          onPointerUp={finishResize}
-          role="separator"
-          tabIndex={0}
-        />
-      ) : null}
-
       <div
         className={cn(
           'flex h-[30px] min-w-0 shrink-0 items-center gap-2 px-3 text-xs',
@@ -168,74 +95,62 @@ export function ValidationWorkbench({
             다시 시도
           </button>
         ) : null}
-        <button
-          aria-expanded={state.expanded}
-          className="shrink-0 rounded-sm px-1.5 py-0.5 font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
-          onClick={() => dispatch({ type: 'toggle-expanded' })}
-          type="button"
-        >
-          {state.expanded ? '접기' : '펼치기'}
-        </button>
       </div>
 
-      {state.expanded ? (
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col border-t border-border-subtle bg-canvas p-2">
-          <div className="mb-2 flex shrink-0 flex-wrap items-center gap-2">
-            <button
-              aria-pressed={state.showErrors}
-              className={filterClass(state.showErrors, 'error')}
-              onClick={() => dispatch({ type: 'toggle-severity', severity: 'error' })}
-              type="button"
-            >
-              오류 {actualErrorCount}
-            </button>
-            <button
-              aria-pressed={state.showWarnings}
-              className={filterClass(state.showWarnings, 'warning')}
-              onClick={() => dispatch({ type: 'toggle-severity', severity: 'warning' })}
-              type="button"
-            >
-              경고 {actualWarningCount}
-            </button>
-            <span aria-live="polite" className="ml-auto text-xs text-muted" role="status">
-              표시 {filteredIssues.length} / 전체 {issues.length}
-            </span>
-          </div>
-
-          {navigationStatus !== null ? (
-            <p aria-live="polite" className="mb-2 shrink-0 text-xs text-muted" role="status">
-              {navigationStatus}
-            </p>
-          ) : null}
-
-          <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
-            {filteredIssues.length > 0 ? (
-              <div
-                className="grid min-w-0 grid-cols-1 gap-2 min-[640px]:grid-cols-2 min-[1024px]:grid-cols-3 min-[1440px]:grid-cols-4 min-[1920px]:grid-cols-5"
-              >
-                {filteredIssues.map((issue) => (
-                  <ValidationIssueTile
-                    key={issue.key}
-                    issue={issue}
-                    selected={state.selectedIssueKey === issue.key}
-                    onActivate={() => {
-                      dispatch({ type: 'select-issue', key: issue.key })
-                      onIssueActivate(issue)
-                    }}
-                  />
-                ))}
-              </div>
-            ) : (
-              <p className="rounded-md border border-border-subtle bg-surface p-3 text-sm text-muted">
-                {issues.length === 0
-                  ? stripStatus.message
-                  : '선택한 필터에 표시할 검증 항목이 없습니다.'}
-              </p>
-            )}
-          </div>
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col border-t border-border-subtle bg-canvas p-2">
+        <div className="mb-2 flex shrink-0 flex-wrap items-center gap-2">
+          <button
+            aria-pressed={state.showErrors}
+            className={filterClass(state.showErrors, 'error')}
+            onClick={() => dispatch({ type: 'toggle-severity', severity: 'error' })}
+            type="button"
+          >
+            오류 {actualErrorCount}
+          </button>
+          <button
+            aria-pressed={state.showWarnings}
+            className={filterClass(state.showWarnings, 'warning')}
+            onClick={() => dispatch({ type: 'toggle-severity', severity: 'warning' })}
+            type="button"
+          >
+            경고 {actualWarningCount}
+          </button>
+          <span aria-live="polite" className="ml-auto text-xs text-muted" role="status">
+            표시 {filteredIssues.length} / 전체 {issues.length}
+          </span>
         </div>
-      ) : null}
-    </section>
+
+        {navigationStatus !== null ? (
+          <p aria-live="polite" className="mb-2 shrink-0 text-xs text-muted" role="status">
+            {navigationStatus}
+          </p>
+        ) : null}
+
+        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
+          {filteredIssues.length > 0 ? (
+            <div className="grid min-w-0 grid-cols-1 gap-2 min-[640px]:grid-cols-2 min-[1024px]:grid-cols-3 min-[1440px]:grid-cols-4 min-[1920px]:grid-cols-5">
+              {filteredIssues.map((issue) => (
+                <ValidationIssueTile
+                  key={issue.key}
+                  issue={issue}
+                  selected={state.selectedIssueKey === issue.key}
+                  onActivate={() => {
+                    dispatch({ type: 'select-issue', key: issue.key })
+                    onIssueActivate(issue)
+                  }}
+                />
+              ))}
+            </div>
+          ) : (
+            <p className="rounded-md border border-border-subtle bg-surface p-3 text-sm text-muted">
+              {issues.length === 0
+                ? stripStatus.message
+                : '선택한 필터에 표시할 검증 항목이 없습니다.'}
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
   )
 }
 
