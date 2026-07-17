@@ -1,0 +1,231 @@
+"""Backbone diff snapshot loader contracts."""
+
+from __future__ import annotations
+
+import os
+from collections.abc import AsyncIterator
+
+import pytest
+from sqlalchemy import event, text
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import StaticPool
+
+import app.models  # noqa: F401 -- register all models for metadata
+from app.core.db import Base
+from app.domain.backbone.snapshot import (
+    BackboneSnapshot,
+    BackboneSnapshotCell,
+    BackboneSnapshotColumn,
+    BackboneSnapshotCondition,
+    BackboneSnapshotSource,
+    serialize_backbone_snapshot,
+)
+from app.domain.parameters.types import ValueType
+from app.features.backbone_diff.read_snapshot import load_diff_input
+from app.models.parameter import Parameter, ParameterCategory
+from app.models.project import CellValue, LayerCondition, Project, SheetLayer
+from tests.factories import make_project_profile
+from tests.postgres_database import temporary_postgres_database
+
+_PG_URL = os.environ.get("APP_TEST_DATABASE_URL")
+
+
+@pytest.fixture
+async def sqlite_engine() -> AsyncIterator[AsyncEngine]:
+    engine = create_async_engine(
+        "sqlite+aiosqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    try:
+        yield engine
+    finally:
+        async with engine.begin() as connection:
+            await connection.run_sync(Base.metadata.drop_all)
+        await engine.dispose()
+
+
+@pytest.fixture
+def sqlite_factory(sqlite_engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
+    return async_sessionmaker(sqlite_engine, expire_on_commit=False, class_=AsyncSession)
+
+
+@pytest.fixture
+async def pg_engine() -> AsyncIterator[AsyncEngine]:
+    assert _PG_URL is not None
+    with temporary_postgres_database() as database:
+        engine = create_async_engine(database.async_url)
+        async with engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+        try:
+            yield engine
+        finally:
+            await engine.dispose()
+
+
+@pytest.fixture
+def pg_factory(pg_engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
+    return async_sessionmaker(pg_engine, expire_on_commit=False, class_=AsyncSession)
+
+
+async def _seed_parameters(session: AsyncSession) -> None:
+    photo = ParameterCategory(code="photo", display_name="Photo", sort_order=1)
+    session.add_all(
+        [
+            Parameter(
+                code="alpha",
+                display_name="Alpha",
+                value_type=ValueType.TEXT,
+                sort_order=1,
+                category=None,
+                is_active=True,
+            ),
+            Parameter(
+                code="beta",
+                display_name="Beta",
+                value_type=ValueType.NUMBER,
+                sort_order=1,
+                category=photo,
+                is_active=True,
+            ),
+            Parameter(
+                code="legacy",
+                display_name="Legacy",
+                value_type=ValueType.TEXT,
+                sort_order=2,
+                category=photo,
+                is_active=False,
+            ),
+        ]
+    )
+    await session.commit()
+
+
+async def _seed_project(session: AsyncSession) -> Project:
+    project = Project(
+        line_id="L1",
+        process_id="PROC_A",
+        part_id="PART_A",
+        name="Project A",
+        profile=make_project_profile(process_name="PROC_A"),
+    )
+    layer = SheetLayer(
+        layer_key="L1::PROC_A::010::ACT",
+        step_seq="010",
+        layer_id="ACT",
+        eqp_type="ACT",
+        eqp_type_desc="Active",
+        area_name="PHOTO",
+        sort_order=1,
+        source_project_id=1,
+        source_layer_key="L1::PROC_A::010::ACT",
+        backbone_snapshot=serialize_backbone_snapshot(
+            BackboneSnapshot(
+                capture_batch_id="0123456789abcdef0123456789abcdef",
+                source=BackboneSnapshotSource(
+                    project_id=1,
+                    sheet_layer_id=11,
+                    layer_key="L1::PROC_A::010::ACT",
+                    step_seq="010",
+                    layer_id="ACT",
+                ),
+                columns=(
+                    BackboneSnapshotColumn(
+                        parameter_code="alpha",
+                        value_type=ValueType.TEXT,
+                        display_name="Alpha",
+                        category_code=None,
+                        sort_order=1,
+                        active_at_capture=True,
+                    ),
+                ),
+                conditions=(
+                    BackboneSnapshotCondition(
+                        source_condition_id=101,
+                        label="base",
+                        condition_index=0,
+                        is_por=True,
+                        cells=(BackboneSnapshotCell(parameter_code="alpha", value="old"),),
+                    ),
+                ),
+            )
+        ),
+    )
+    condition = LayerCondition(
+        label="base",
+        condition_index=0,
+        is_por=True,
+        source_condition_id=101,
+    )
+    condition.cell_values.extend(
+        [
+            CellValue(parameter_code="alpha", value_text="new"),
+            CellValue(parameter_code="beta", value_text="1.00"),
+            CellValue(parameter_code="legacy", value_text="legacy"),
+        ]
+    )
+    layer.conditions.append(condition)
+    project.layers.append(layer)
+    session.add(project)
+    await session.commit()
+    return project
+
+
+async def test_load_diff_input_sqlite_freezes_graph_without_lazy_queries(
+    sqlite_factory: async_sessionmaker[AsyncSession], sqlite_engine: AsyncEngine
+) -> None:
+    async with sqlite_factory() as session:
+        await _seed_parameters(session)
+        project = await _seed_project(session)
+
+    statements: list[str] = []
+
+    def capture_sql(
+        _conn: object,
+        _cursor: object,
+        statement: str,
+        _parameters: object,
+        _context: object,
+        _executemany: bool,
+    ) -> None:
+        statements.append(statement)
+
+    event.listen(sqlite_engine.sync_engine, "before_cursor_execute", capture_sql)
+    try:
+        loaded = await load_diff_input(project.id)
+    finally:
+        event.remove(sqlite_engine.sync_engine, "before_cursor_execute", capture_sql)
+
+    assert loaded.project_id == project.id
+    assert loaded.layers[0].current_snapshot.source is not None
+    assert loaded.layers[0].baseline_snapshot is not None
+    assert [parameter.parameter_code for parameter in loaded.parameters] == [
+        "alpha",
+        "beta",
+        "legacy",
+    ]
+    statements.clear()
+    assert loaded.layers[0].current_snapshot.conditions[0].cells[0].value == "new"
+    assert statements == []
+
+
+@pytest.mark.skipif(_PG_URL is None, reason="APP_TEST_DATABASE_URL 미설정")
+async def test_load_diff_input_postgres_is_repeatable_read_and_read_only(
+    pg_factory: async_sessionmaker[AsyncSession],
+    pg_engine: AsyncEngine,
+) -> None:
+    async with pg_factory() as session:
+        await _seed_parameters(session)
+        project = await _seed_project(session)
+
+    loaded = await load_diff_input(project.id)
+
+    async with pg_factory() as session:
+        isolation = await session.scalar(text("SHOW transaction_isolation"))
+        read_only = await session.scalar(text("SHOW transaction_read_only"))
+
+    assert isolation == "repeatable read"
+    assert read_only == "on"
+    assert loaded.layers[0].baseline_snapshot is not None
