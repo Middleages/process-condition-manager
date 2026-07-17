@@ -41,7 +41,7 @@ import {
 } from './backboneDiffState'
 
 export interface BackboneDiffRootPage {
-  readonly items: readonly BackboneDiffRootOut['changed_preview']
+  readonly items: readonly BackboneDiffRootOut['changed_preview'][number][]
   readonly nextCursor: string | null
 }
 
@@ -70,7 +70,7 @@ export interface BackboneDiffWorkbenchController {
 }
 
 export interface BackboneDiffMergedRoot {
-  readonly rootItems: readonly BackboneDiffRootOut['changed_preview']
+  readonly rootItems: readonly BackboneDiffRootOut['changed_preview'][number][]
   readonly counts: BackboneDiffRootOut['counts']
   readonly layerSummaries: BackboneDiffRootOut['layer_summaries']
   readonly nextCursor: string | null
@@ -438,6 +438,8 @@ export function useBackboneDiffWorkbenchController(
   const branchQueryTokenRef = useRef(0)
   const cellQueryTokenRef = useRef(0)
   const rootBasisTokenRef = useRef(0)
+  const branchBasisFailureCountRef = useRef(0)
+  const cellBasisFailureCountRef = useRef(0)
 
   useIsomorphicLayoutEffect(() => {
     stateRef.current = state
@@ -598,7 +600,13 @@ export function useBackboneDiffWorkbenchController(
     state.rootBasisHash,
     state.branchScope,
   )
-  const branchQuery = useInfiniteQuery({
+  const branchQuery = useInfiniteQuery<
+    BackboneDiffConditionQueryPage,
+    Error,
+    InfiniteData<BackboneDiffConditionQueryPage, BackboneDiffPageParam>,
+    BackboneDiffQueryKey,
+    BackboneDiffPageParam
+  >({
     queryKey:
       branchEnabled && state.openLayerKey !== null && state.branchScope !== null && state.rootScope !== null
         ? createBackboneDiffWorkbenchBranchQueryKey(
@@ -625,22 +633,24 @@ export function useBackboneDiffWorkbenchController(
       const result = await getBackboneDiffConditions(
         projectId,
         openLayerKey,
-        normalized.scope,
-        {
-          cursor: normalized.cursor,
-          limit: normalized.limit,
-        },
+        normalized,
       )
       return { token: ++branchQueryTokenRef.current, result }
     },
     getNextPageParam: (page) => page.result.next_cursor,
-    onError: (error) => {
-      if (!isDiffBasisChanged(error)) return
-      const current = stateRef.current
-      if (current.mode !== 'branch' && current.mode !== 'cell') return
-      handleBasisChanged()
-    },
   })
+
+  useIsomorphicLayoutEffect(() => {
+    if (!branchQuery.isError || branchQuery.failureCount <= 0 || branchBasisFailureCountRef.current === branchQuery.failureCount) {
+      return
+    }
+    if (!isDiffBasisChanged(branchQuery.error)) return
+    branchBasisFailureCountRef.current = branchQuery.failureCount
+    const current = stateRef.current
+    if (current.mode === 'branch' || current.mode === 'cell') {
+      handleBasisChanged()
+    }
+  }, [branchQuery.error, branchQuery.failureCount, branchQuery.isError, handleBasisChanged])
 
   const branchAuthority = useMemo(
     () =>
@@ -662,7 +672,7 @@ export function useBackboneDiffWorkbenchController(
 
   useIsomorphicLayoutEffect(() => {
     if (!branchQuery.isSuccess || branchAuthority === null) return
-    const latest = branchQuery.data?.pages.at(-1)
+    const latest = branchQuery.data?.pages[branchQuery.data.pages.length - 1]
     if (latest === undefined) return
     const authority = backboneDiffBranchAuthority({
       enabled: branchEnabled,
@@ -686,7 +696,13 @@ export function useBackboneDiffWorkbenchController(
     state.openCellScope,
     state.openCellRowRef,
   )
-  const cellQuery = useInfiniteQuery({
+  const cellQuery = useInfiniteQuery<
+    BackboneDiffCellQueryPage,
+    Error,
+    InfiniteData<BackboneDiffCellQueryPage, BackboneDiffPageParam>,
+    BackboneDiffQueryKey,
+    BackboneDiffPageParam
+  >({
     queryKey:
       cellEnabled &&
       state.openLayerKey !== null &&
@@ -725,22 +741,23 @@ export function useBackboneDiffWorkbenchController(
         projectId,
         openLayerKey,
         openCellRowRef,
-        normalized.scope,
-        {
-          cursor: normalized.cursor,
-          limit: normalized.limit,
-        },
+        normalized,
       )
       return { token: ++cellQueryTokenRef.current, result }
     },
     getNextPageParam: (page) => page.result.next_cursor,
-    onError: (error) => {
-      if (!isDiffBasisChanged(error)) return
-      const current = stateRef.current
-      if (current.mode !== 'cell') return
-      handleBasisChanged()
-    },
   })
+
+  useIsomorphicLayoutEffect(() => {
+    if (!cellQuery.isError || cellQuery.failureCount <= 0 || cellBasisFailureCountRef.current === cellQuery.failureCount) {
+      return
+    }
+    if (!isDiffBasisChanged(cellQuery.error)) return
+    cellBasisFailureCountRef.current = cellQuery.failureCount
+    if (stateRef.current.mode === 'cell') {
+      handleBasisChanged()
+    }
+  }, [cellQuery.error, cellQuery.failureCount, cellQuery.isError, handleBasisChanged])
 
   const cellAuthority = useMemo(
     () =>
@@ -762,7 +779,7 @@ export function useBackboneDiffWorkbenchController(
 
   useIsomorphicLayoutEffect(() => {
     if (!cellQuery.isSuccess || cellAuthority === null) return
-    const latest = cellQuery.data?.pages.at(-1)
+    const latest = cellQuery.data?.pages[cellQuery.data.pages.length - 1]
     if (latest === undefined) return
     const authority = backboneDiffCellAuthority({
       enabled: cellEnabled,
@@ -857,7 +874,7 @@ export function useBackboneDiffWorkbenchController(
         !branchEnabled ||
         !branchQuery.hasNextPage ||
         branchQuery.isFetchingNextPage ||
-        branchQuery.status === 'loading'
+        branchQuery.fetchStatus === 'fetching'
       ) {
         return
       }
@@ -872,7 +889,7 @@ export function useBackboneDiffWorkbenchController(
         !cellEnabled ||
         !cellQuery.hasNextPage ||
         cellQuery.isFetchingNextPage ||
-        cellQuery.status === 'loading'
+        cellQuery.fetchStatus === 'fetching'
       ) {
         return
       }

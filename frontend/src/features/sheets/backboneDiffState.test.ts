@@ -3,9 +3,7 @@ import { describe, expect, it } from 'vitest'
 import type {
   BackboneDiffCellItemOut,
   BackboneDiffConditionItemOut,
-  BackboneDiffConditionPage,
   BackboneDiffCountsOut,
-  BackboneDiffCellPage,
   BackboneDiffRootOut,
 } from '@/api/backboneDiff'
 
@@ -18,8 +16,9 @@ import {
   replaceBackboneDiffFilters,
   setBackboneDiffBranchPages,
   setBackboneDiffCellPages,
+  type BackboneDiffCellPage,
+  type BackboneDiffConditionPage,
   setBackboneDiffRootResult,
-  type BackboneDiffWorkbenchState,
 } from './backboneDiffState'
 
 describe('backbone diff workbench state', () => {
@@ -208,7 +207,7 @@ function createConditionPage(): BackboneDiffConditionPage {
         cell_scope: null,
       } as BackboneDiffConditionItemOut,
     ],
-    next_cursor: null,
+    nextCursor: null,
   }
 }
 
@@ -227,6 +226,6 @@ function createCellPage(): BackboneDiffCellPage {
         jump_status: 'deleted',
       } as BackboneDiffCellItemOut,
     ],
-    next_cursor: null,
+    nextCursor: null,
   }
 }

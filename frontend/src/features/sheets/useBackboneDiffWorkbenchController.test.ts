@@ -30,12 +30,8 @@ import {
   mergeBackboneDiffConditionPages,
   mergeBackboneDiffCellPages,
   mergeBackboneDiffRootPages,
-  type BackboneDiffBranchAuthority,
-  type BackboneDiffCellAuthority,
-  type BackboneDiffRootAuthority,
-  type BackboneDiffWorkbenchMode,
-  type BackboneDiffWorkbenchState,
 } from './useBackboneDiffWorkbenchController'
+import { type BackboneDiffWorkbenchMode, type BackboneDiffWorkbenchState } from './backboneDiffState'
 import source from './useBackboneDiffWorkbenchController.ts?raw'
 
 describe('useBackboneDiffWorkbenchController seams', () => {
@@ -208,8 +204,10 @@ describe('useBackboneDiffWorkbenchController seams', () => {
   })
 
   it('contains three query hooks and basis-changed guards in implementation', () => {
-    expect(source.match(/useInfiniteQuery\s*\(/g)).toHaveLength(3)
-    expect(source).toContain('isDiffBasisChanged(error)')
+    expect(source).toContain('const rootQuery = useInfiniteQuery<')
+    expect(source).toContain('const branchQuery = useInfiniteQuery<')
+    expect(source).toContain('const cellQuery = useInfiniteQuery<')
+    expect(source).toContain('isDiffBasisChanged(')
     expect(source).toContain('handleBasisChanged()')
     expect(source).toContain('isCurrentBackboneDiffRootAuthority')
     expect(source).toContain('isCurrentBackboneDiffBranchAuthority(branchAuthority, authority)')
@@ -240,7 +238,7 @@ function makeRootAuthority(
   state: BackboneDiffWorkbenchState,
   outerGeneration: number,
   rootBasisToken: number,
-): BackboneDiffRootAuthority {
+): ReturnType<typeof backboneDiffRootAuthority> {
   return backboneDiffRootAuthority({
     enabled: true,
     outerGeneration,
@@ -253,7 +251,7 @@ function makeBranchAuthority(
   state: BackboneDiffWorkbenchState,
   outerGeneration: number,
   rootBasisToken: number,
-): BackboneDiffBranchAuthority {
+): ReturnType<typeof backboneDiffBranchAuthority> {
   return backboneDiffBranchAuthority({
     enabled: true,
     outerGeneration,
@@ -266,7 +264,7 @@ function makeCellAuthority(
   state: BackboneDiffWorkbenchState,
   outerGeneration: number,
   rootBasisToken: number,
-): BackboneDiffCellAuthority {
+): ReturnType<typeof backboneDiffCellAuthority> {
   return backboneDiffCellAuthority({
     enabled: true,
     outerGeneration,
