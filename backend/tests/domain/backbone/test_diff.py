@@ -246,7 +246,7 @@ def test_compare_backbone_layer_classifies_and_orders_all_core_cases() -> None:
     ]
 
 
-def test_compare_backbone_layer_is_stable_under_input_shuffling_and_ignores_orphan_inactive_parameters() -> None:
+def test_compare_backbone_layer_is_stable_and_ignores_orphan_params() -> None:
     current_conditions = (
         _duplicate_current_condition(),
         _matched_current_condition(),
