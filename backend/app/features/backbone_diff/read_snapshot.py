@@ -28,3 +28,13 @@ async def load_diff_input(project_id: int) -> DiffInput:
         if session.bind is not None and session.bind.dialect.name == "postgresql":
             await session.execute(text("SET TRANSACTION READ ONLY"))
         return await BackboneDiffRepository(session).load(project_id)
+
+
+async def load_diff_input_with_session_factory(
+    project_id: int,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> DiffInput:
+    async with session_factory() as session:
+        if session.bind is not None and session.bind.dialect.name == "postgresql":
+            await session.execute(text("SET TRANSACTION READ ONLY"))
+        return await BackboneDiffRepository(session).load(project_id)

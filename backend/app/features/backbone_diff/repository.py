@@ -19,7 +19,7 @@ from app.domain.backbone.snapshot import (
     parse_backbone_snapshot,
 )
 from app.features.backbone_diff.contracts import DiffInput, DiffLayerInput, DiffParameterInput
-from app.features.projects.repository import ProjectRepository
+from app.features.projects.repository import CapturedParameter, ProjectRepository
 from app.models.project import LayerCondition, Project, SheetLayer
 
 
@@ -113,7 +113,7 @@ class BackboneDiffRepository:
         self,
         layer: SheetLayer,
         *,
-        parameters_by_code: Iterable[DiffParameterInput],
+        parameters_by_code: Iterable[CapturedParameter],
         captured_at: datetime,
     ) -> DiffLayerInput:
         baseline_snapshot = (

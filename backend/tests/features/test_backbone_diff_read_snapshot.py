@@ -6,8 +6,13 @@ import os
 from collections.abc import AsyncIterator
 
 import pytest
-from sqlalchemy import event, text
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy import event
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlalchemy.pool import StaticPool
 
 import app.models  # noqa: F401 -- register all models for metadata
@@ -21,7 +26,7 @@ from app.domain.backbone.snapshot import (
     serialize_backbone_snapshot,
 )
 from app.domain.parameters.types import ValueType
-from app.features.backbone_diff.read_snapshot import load_diff_input
+from app.features.backbone_diff.read_snapshot import load_diff_input_with_session_factory
 from app.models.parameter import Parameter, ParameterCategory
 from app.models.project import CellValue, LayerCondition, Project, SheetLayer
 from tests.factories import make_project_profile
@@ -194,11 +199,12 @@ async def test_load_diff_input_sqlite_freezes_graph_without_lazy_queries(
 
     event.listen(sqlite_engine.sync_engine, "before_cursor_execute", capture_sql)
     try:
-        loaded = await load_diff_input(project.id)
+        loaded = await load_diff_input_with_session_factory(project.id, sqlite_factory)
     finally:
         event.remove(sqlite_engine.sync_engine, "before_cursor_execute", capture_sql)
 
     assert loaded.project_id == project.id
+    assert len(statements) <= 8
     assert loaded.layers[0].current_snapshot.source is not None
     assert loaded.layers[0].baseline_snapshot is not None
     assert [parameter.parameter_code for parameter in loaded.parameters] == [
@@ -220,12 +226,27 @@ async def test_load_diff_input_postgres_is_repeatable_read_and_read_only(
         await _seed_parameters(session)
         project = await _seed_project(session)
 
-    loaded = await load_diff_input(project.id)
+    statements: list[str] = []
+    observed_isolation: list[str] = []
 
-    async with pg_factory() as session:
-        isolation = await session.scalar(text("SHOW transaction_isolation"))
-        read_only = await session.scalar(text("SHOW transaction_read_only"))
+    def capture_sql(
+        conn,
+        _cursor: object,
+        statement: str,
+        _parameters: object,
+        _context: object,
+        _executemany: bool,
+    ) -> None:
+        statements.append(statement)
+        if statement.lstrip().upper().startswith("SELECT") and not observed_isolation:
+            observed_isolation.append(conn.get_isolation_level())
 
-    assert isolation == "repeatable read"
-    assert read_only == "on"
+    event.listen(pg_engine.sync_engine, "before_cursor_execute", capture_sql)
+    try:
+        loaded = await load_diff_input_with_session_factory(project.id, pg_factory)
+    finally:
+        event.remove(pg_engine.sync_engine, "before_cursor_execute", capture_sql)
+
+    assert statements[0].lstrip().upper().startswith("SET TRANSACTION READ ONLY")
+    assert observed_isolation and observed_isolation[0].upper() == "REPEATABLE READ"
     assert loaded.layers[0].baseline_snapshot is not None
