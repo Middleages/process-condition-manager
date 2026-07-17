@@ -188,6 +188,16 @@ interface BackboneDiffCellAuthority {
   readonly rootBasisToken: number
 }
 
+export interface BackboneDiffProjectRevisionFenceSeen {
+  readonly projectId: number
+  readonly revision: number
+}
+
+export interface BackboneDiffProjectBasisFenceSeen {
+  readonly projectId: number
+  readonly marker: unknown
+}
+
 interface BackboneDiffWorkbenchRootQueryDescriptor {
   readonly projectId: number
   readonly queryOptions: BackboneDiffRootQueryOptions
@@ -353,10 +363,19 @@ export function broadcastBackboneDiffProjectFence(
   if (listeners === undefined || listeners.size === 0) return false
 
   let handledAny = false
-  for (const listener of listeners) {
+  for (const listener of [...listeners]) {
     handledAny = listener.applyFence(fence) || handledAny
   }
   return handledAny
+}
+
+export async function cancelAndInvalidateBackboneDiffProjectRoots(
+  queryClient: QueryClient,
+  projectId: number,
+): Promise<void> {
+  const queryKey = ['backboneDiff', projectId, 'root'] as const
+  await queryClient.cancelQueries({ queryKey, exact: false })
+  await queryClient.invalidateQueries({ queryKey, exact: false })
 }
 
 type BackboneDiffRootFence =
@@ -410,6 +429,22 @@ export function fenceBackboneDiffRootAuthorityLedger(
   }
 
   return true
+}
+
+export function isCurrentBackboneDiffProjectRevisionFence(
+  seen: BackboneDiffProjectRevisionFenceSeen | null,
+  projectId: number,
+  revision: number,
+): boolean {
+  return seen !== null && seen.projectId === projectId && seen.revision === revision
+}
+
+export function isCurrentBackboneDiffProjectBasisFence(
+  seen: BackboneDiffProjectBasisFenceSeen | null,
+  projectId: number,
+  marker: unknown,
+): boolean {
+  return seen !== null && seen.projectId === projectId && seen.marker === marker
 }
 
 function subscribeBackboneDiffAuthorityLedgerToQueryCache(
@@ -991,8 +1026,8 @@ export function useBackboneDiffWorkbenchController(
   const branchQueryKeyFingerprintRef = useRef('')
   const cellQueryKeyFingerprintRef = useRef('')
   const rootBasisTokenRef = useRef(0)
-  const lastRevisionFenceRef = useRef<number | null>(null)
-  const lastBasisFenceMarkerRef = useRef<unknown>(Symbol('backbone-diff-no-basis-marker'))
+  const lastRevisionFenceRef = useRef<BackboneDiffProjectRevisionFenceSeen | null>(null)
+  const lastBasisFenceMarkerRef = useRef<BackboneDiffProjectBasisFenceSeen | null>(null)
   const branchBasisFailureCountRef = useRef(0)
   const cellBasisFailureCountRef = useRef(0)
 
@@ -1034,14 +1069,14 @@ export function useBackboneDiffWorkbenchController(
     (fence: BackboneDiffRootFence) => {
       const hasSeenFence =
         fence.kind === 'revision'
-          ? lastRevisionFenceRef.current === fence.revision
-          : lastBasisFenceMarkerRef.current === fence.marker
+          ? isCurrentBackboneDiffProjectRevisionFence(lastRevisionFenceRef.current, projectId, fence.revision)
+          : isCurrentBackboneDiffProjectBasisFence(lastBasisFenceMarkerRef.current, projectId, fence.marker)
       if (hasSeenFence) return false
 
       if (fence.kind === 'revision') {
-        lastRevisionFenceRef.current = fence.revision
+        lastRevisionFenceRef.current = { projectId, revision: fence.revision }
       } else {
-        lastBasisFenceMarkerRef.current = fence.marker
+        lastBasisFenceMarkerRef.current = { projectId, marker: fence.marker }
       }
 
       rootBasisTokenRef.current += 1
@@ -1063,10 +1098,7 @@ export function useBackboneDiffWorkbenchController(
       if (didFence) {
         broadcastBackboneDiffProjectFence(queryClient, projectId, fence)
         clearBackboneDiffBranchAndCellQueries(queryClient, projectId)
-        void queryClient.invalidateQueries({
-          queryKey: ['backboneDiff', projectId, 'root'],
-          exact: false,
-        })
+        void cancelAndInvalidateBackboneDiffProjectRoots(queryClient, projectId)
       }
     },
     [authorityLedger, applyProjectFence, projectId, queryClient],

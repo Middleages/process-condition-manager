@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+
 import { InfiniteQueryObserver, QueryClient, onlineManager } from '@tanstack/react-query'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -40,8 +42,10 @@ import {
   createBackboneDiffWorkbenchCellQueryFn,
   createBackboneDiffWorkbenchRootQueryFn,
   broadcastBackboneDiffProjectFence,
+  cancelAndInvalidateBackboneDiffProjectRoots,
+  isCurrentBackboneDiffProjectBasisFence,
+  isCurrentBackboneDiffProjectRevisionFence,
   registerBackboneDiffProjectFenceListener,
-  useBackboneDiffWorkbenchController,
   acceptBackboneDiffQueryPage,
   shouldAcceptBackboneDiffQueryPage,
   shouldHandleDiffBasisChangedQueryError,
@@ -53,6 +57,11 @@ import {
   type BackboneDiffWorkbenchMode,
   type BackboneDiffWorkbenchState,
 } from './backboneDiffState'
+
+type BackboneDiffRootQueryPage = {
+  readonly token: number
+  readonly result: BackboneDiffRootOut
+}
 
 describe('useBackboneDiffWorkbenchController seams', () => {
   it('gates root/branch/cell queries by mode and outer enabled flag', () => {
@@ -302,6 +311,24 @@ describe('useBackboneDiffWorkbenchController seams', () => {
     expect(authorityLedger.root.sequence).toBe(10)
   })
 
+  it('keeps project-specific seen fence markers isolated across project switches', () => {
+    const revisionSeen = { projectId: 7, revision: 3 } as const
+    const basisMarker = new Error('basis-changed')
+    const basisSeen = { projectId: 7, marker: basisMarker } as const
+
+    expect(isCurrentBackboneDiffProjectRevisionFence(null, 7, 3)).toBe(false)
+    expect(isCurrentBackboneDiffProjectRevisionFence(revisionSeen, 7, 3)).toBe(true)
+    expect(isCurrentBackboneDiffProjectRevisionFence(revisionSeen, 8, 3)).toBe(false)
+    expect(isCurrentBackboneDiffProjectRevisionFence({ projectId: 7, revision: 4 }, 7, 3)).toBe(false)
+
+    expect(isCurrentBackboneDiffProjectBasisFence(null, 7, basisMarker)).toBe(false)
+    expect(isCurrentBackboneDiffProjectBasisFence(basisSeen, 7, basisMarker)).toBe(true)
+    expect(isCurrentBackboneDiffProjectBasisFence(basisSeen, 8, basisMarker)).toBe(false)
+    expect(
+      isCurrentBackboneDiffProjectBasisFence({ projectId: 7, marker: new Error('basis-changed') }, 7, basisMarker),
+    ).toBe(false)
+  })
+
   it('broadcasts project root fences across mounted controllers and refetches every active filter root once', async () => {
     const queryClient = new QueryClient({
       defaultOptions: {
@@ -487,6 +514,126 @@ describe('useBackboneDiffWorkbenchController seams', () => {
       otherQueryClient.clear()
       queryClient.unmount()
       otherQueryClient.unmount()
+    }
+  })
+
+  it('keeps project fence broadcasts safe when a listener self-unsubscribes mid-iteration', () => {
+    const queryClient = new QueryClient()
+    const events: string[] = []
+    let unregisterFirst: (() => void) | undefined
+
+    unregisterFirst = registerBackboneDiffProjectFenceListener(queryClient, 7, {
+      applyFence() {
+        events.push('first')
+        unregisterFirst?.()
+        return true
+      },
+    })
+    const unregisterSecond = registerBackboneDiffProjectFenceListener(queryClient, 7, {
+      applyFence() {
+        events.push('second')
+        return true
+      },
+    })
+
+    try {
+      expect(
+        broadcastBackboneDiffProjectFence(queryClient, 7, { kind: 'revision', revision: 11 }),
+      ).toBe(true)
+      expect(events).toEqual(['first', 'second'])
+    } finally {
+      unregisterSecond()
+      unregisterFirst?.()
+    }
+  })
+
+  it('cancels an in-flight project root request before invalidating so a newer token wins', async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, staleTime: 0 },
+      },
+    })
+    const rootKey = createBackboneDiffWorkbenchRootQueryKey(7, {
+      previewLimit: 20,
+      classification: ['added'],
+      layerKey: null,
+      categoryCode: null,
+      parameterCode: null,
+      includeUnchanged: false,
+    })
+    const firstRequest = deferred<BackboneDiffRootQueryPage>()
+    const secondRequest = deferred<BackboneDiffRootQueryPage>()
+    const requestSignals: AbortSignal[] = []
+    let requestCount = 0
+    const abortableRootQueryFn = async ({ signal }: { signal: AbortSignal }) => {
+      requestCount += 1
+      const currentCount = requestCount
+      const request = currentCount === 1 ? firstRequest : currentCount === 2 ? secondRequest : undefined
+      if (request === undefined) {
+        throw new Error('unexpected extra root request')
+      }
+
+      requestSignals.push(signal)
+      const abortPromise = new Promise<never>((_, reject) => {
+        if (signal.aborted) {
+          reject(new Error('aborted'))
+          return
+        }
+
+        signal.addEventListener(
+          'abort',
+          () => {
+            reject(new Error('aborted'))
+          },
+          { once: true },
+        )
+      })
+
+      return Promise.race([request.promise, abortPromise])
+    }
+
+    try {
+      const first = queryClient.fetchInfiniteQuery({
+        queryKey: rootKey,
+        initialPageParam: null as string | null,
+        queryFn: abortableRootQueryFn,
+        getNextPageParam: () => null,
+      })
+      void first.catch(() => undefined)
+
+      await vi.waitFor(() => expect(requestCount).toBe(1))
+      expect(requestSignals[0]?.aborted).toBe(false)
+
+      await cancelAndInvalidateBackboneDiffProjectRoots(queryClient, 7)
+
+      expect(requestSignals[0]?.aborted).toBe(true)
+
+      const second = queryClient.fetchInfiniteQuery({
+        queryKey: rootKey,
+        initialPageParam: null as string | null,
+        queryFn: abortableRootQueryFn,
+        getNextPageParam: () => null,
+      })
+      void second.catch(() => undefined)
+
+      await vi.waitFor(() => expect(requestCount).toBe(2))
+      expect(requestSignals[0]?.aborted).toBe(true)
+      expect(requestSignals[1]?.aborted).toBe(false)
+
+      secondRequest.resolve({ token: 2, result: createRootOut('scope-refetched', 'basis-refetched') })
+      await expect(second).resolves.toMatchObject({
+        pages: [{ token: 2 }],
+      })
+
+      firstRequest.resolve({ token: 1, result: createRootOut('scope-stale', 'basis-stale') })
+      await Promise.resolve()
+      expect(queryClient.getQueryData(rootKey)).toMatchObject({
+        pages: [{ token: 2 }],
+      })
+    } finally {
+      firstRequest.resolve({ token: 1, result: createRootOut('scope-stale-cleanup', 'basis-stale-cleanup') })
+      secondRequest.resolve({ token: 2, result: createRootOut('scope-stale-cleanup', 'basis-stale-cleanup') })
+      queryClient.clear()
     }
   })
 
@@ -1597,7 +1744,7 @@ describe('useBackboneDiffWorkbenchController seams', () => {
   })
 
   it('keeps the controller source wired to the exported production query factories', () => {
-    const source = String(useBackboneDiffWorkbenchController)
+    const source = readFileSync(new URL('./useBackboneDiffWorkbenchController.ts', import.meta.url), 'utf8')
     expect(source).toContain('getBackboneDiffAuthorityLedger(queryClient)')
     expect(source).toContain('createBackboneDiffWorkbenchRootQueryFn')
     expect(source).toContain('createBackboneDiffWorkbenchBranchQueryFn')
@@ -1608,7 +1755,11 @@ describe('useBackboneDiffWorkbenchController seams', () => {
     expect(source).toContain('authorityLedger.cell')
     expect(source).toContain('registerBackboneDiffProjectFenceListener(queryClient, projectId, {')
     expect(source).toContain('broadcastBackboneDiffProjectFence(queryClient, projectId, fence)')
-    expect(source).toContain('queryKey: ["backboneDiff", projectId, "root"]')
+    expect(source).toContain('cancelAndInvalidateBackboneDiffProjectRoots(queryClient, projectId)')
+    expect(source).toContain("const queryKey = ['backboneDiff', projectId, 'root'] as const")
+    expect(source).toContain('for (const listener of [...listeners])')
+    expect(source).toContain('lastRevisionFenceRef.current = { projectId, revision: fence.revision }')
+    expect(source).toContain('lastBasisFenceMarkerRef.current = { projectId, marker: fence.marker }')
     expect(source).toContain('exact: false')
     expect(source).toContain('handleBasisChangedFromRevision(revision)')
     expect(source).toContain('handleBasisChangedFromError(branchQuery.error)')
@@ -1616,8 +1767,8 @@ describe('useBackboneDiffWorkbenchController seams', () => {
     expect(source).toContain('void rootQuery.refetch()')
     expect(source).toContain('void branchQuery.refetch()')
     expect(source).toContain('void cellQuery.refetch()')
-    expect(source).toContain('branchQuery.data === void 0')
-    expect(source).toContain('cellQuery.data === void 0')
+    expect(source).toContain('branchQuery.data === undefined')
+    expect(source).toContain('cellQuery.data === undefined')
     expect(source).not.toContain('rootQueryTokenRef')
     expect(source).not.toContain('branchQueryIssuedTokenByKeyRef')
     expect(source).not.toContain('branchQueryAcceptedTokenByKeyRef')
