@@ -28,13 +28,19 @@ import {
   isCurrentBackboneDiffBranchAuthority,
   isCurrentBackboneDiffCellAuthority,
   isCurrentBackboneDiffRootAuthority,
+  isBackboneDiffQueryPageCurrent,
   mergeBackboneDiffConditionPages,
   mergeBackboneDiffCellPages,
   mergeBackboneDiffRootPages,
   clearBackboneDiffBranchAndCellQueries,
   shouldHandleDiffBasisChangedQueryError,
 } from './useBackboneDiffWorkbenchController'
-import { type BackboneDiffWorkbenchMode, type BackboneDiffWorkbenchState } from './backboneDiffState'
+import {
+  announceBackboneDiffNavigation,
+  createBackboneDiffWorkbenchState,
+  type BackboneDiffWorkbenchMode,
+  type BackboneDiffWorkbenchState,
+} from './backboneDiffState'
 
 describe('useBackboneDiffWorkbenchController seams', () => {
   it('gates root/branch/cell queries by mode and outer enabled flag', () => {
@@ -218,8 +224,86 @@ describe('useBackboneDiffWorkbenchController seams', () => {
     ).toEqual({ status: 'idle', rootError: null, nextPageError: null })
   })
 
+  it('keeps root query pages per-key and fences stale data while allowing A-B-A cache reuse', () => {
+    const rootA = createBackboneDiffWorkbenchRootQueryKey(7, {
+      previewLimit: 20,
+      classification: ['added'],
+      layerKey: null,
+      categoryCode: null,
+      parameterCode: null,
+      includeUnchanged: false,
+    })
+    const rootB = createBackboneDiffWorkbenchRootQueryKey(7, {
+      previewLimit: 20,
+      classification: ['removed'],
+      layerKey: null,
+      categoryCode: null,
+      parameterCode: null,
+      includeUnchanged: false,
+    })
+    const latestTokenByKey: Record<string, number> = {
+      [JSON.stringify(rootA)]: 0,
+      [JSON.stringify(rootB)]: 0,
+    }
+
+    expect(
+      isBackboneDiffQueryPageCurrent({
+        dataToken: 3,
+        latestToken: latestTokenByKey[JSON.stringify(rootA)] ?? 0,
+      }),
+    ).toBe(true)
+    latestTokenByKey[JSON.stringify(rootA)] = 3
+
+    expect(
+      isBackboneDiffQueryPageCurrent({
+        dataToken: 4,
+        latestToken: latestTokenByKey[JSON.stringify(rootB)] ?? 0,
+      }),
+    ).toBe(true)
+    latestTokenByKey[JSON.stringify(rootB)] = 4
+
+    expect(
+      isBackboneDiffQueryPageCurrent({
+        dataToken: 3,
+        latestToken: latestTokenByKey[JSON.stringify(rootA)] ?? 0,
+      }),
+    ).toBe(true)
+
+    latestTokenByKey[JSON.stringify(rootA)] = 6
+    expect(
+      isBackboneDiffQueryPageCurrent({
+        dataToken: 3,
+        latestToken: latestTokenByKey[JSON.stringify(rootA)] ?? 0,
+      }),
+    ).toBe(false)
+    expect(
+      isBackboneDiffQueryPageCurrent({
+        dataToken: 7,
+        latestToken: latestTokenByKey[JSON.stringify(rootA)] ?? 0,
+      }),
+    ).toBe(true)
+  })
+
+  it('requires explicit announcement clear before emitting the same refresh message again', () => {
+    const baseline = createBackboneDiffWorkbenchState()
+    const announced = announceBackboneDiffNavigation(baseline, '백본 비교 기준이 변경되어 새로고침합니다.')
+    const unchanged = announceBackboneDiffNavigation(
+      announced,
+      '백본 비교 기준이 변경되어 새로고침합니다.',
+    )
+    expect(unchanged).toBe(announced)
+
+    const cleared = announceBackboneDiffNavigation(announced, null)
+    const reannounced = announceBackboneDiffNavigation(
+      cleared,
+      '백본 비교 기준이 변경되어 새로고침합니다.',
+    )
+    expect(reannounced.navigationAnnouncement).toBe('백본 비교 기준이 변경되어 새로고침합니다.')
+  })
+
   it('only handles basis-change errors once per observed failure count and only after reset', () => {
     const basisError = {
+      isAxiosError: true,
       response: {
         status: 409,
         data: {
@@ -246,7 +330,10 @@ describe('useBackboneDiffWorkbenchController seams', () => {
       }),
     ).toBe(false)
 
-    const nonBasisError = { response: { status: 409, data: { code: 'other' } } } as const
+    const nonBasisError = {
+      isAxiosError: true,
+      response: { status: 409, data: { code: 'other' } },
+    } as const
     expect(
       shouldHandleDiffBasisChangedQueryError({
         error: nonBasisError,
