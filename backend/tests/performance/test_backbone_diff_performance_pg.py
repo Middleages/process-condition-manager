@@ -61,6 +61,7 @@ async def pg_engine() -> AsyncIterator[AsyncEngine]:
 
 
 @pytest.fixture
+
 def pg_factory(pg_engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
     return async_sessionmaker(pg_engine, expire_on_commit=False, class_=AsyncSession)
 
@@ -207,9 +208,10 @@ async def test_backbone_diff_loader_pg_gate_bounded_queries_and_memory(
 
     assert loaded.project_id == project.id
     assert len(loaded.layers) == _LAYER_COUNT
-    assert len(loaded.parameters) == _PARAMETER_COUNT
-    assert loaded.layers[0].current_snapshot.conditions[0].source_condition_id == 10_000
-    assert loaded.layers[0].current_snapshot.conditions[0].cells[0].value == "v-000-0000"
+    assert len(loaded.layers[0].current_parameters) == _PARAMETER_COUNT
+    assert loaded.layers[0].current_parameters[7].active is False
+    assert loaded.layers[0].current_conditions[0].source_condition_id == 10_000
+    assert loaded.layers[0].current_conditions[0].cells[0].value == "v-000-0000"
     statements.clear()
-    _ = loaded.layers[0].current_snapshot.conditions[0].cells[0].value
+    _ = loaded.layers[0].current_conditions[0].cells[0].value
     assert statements == []

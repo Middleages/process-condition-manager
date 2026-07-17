@@ -178,6 +178,12 @@ class BackboneDiffLayerInput:
             "layer_sort_order",
             _require_non_negative_int(self.layer_sort_order, "layer_sort_order"),
         )
+        if not isinstance(self.current_source, BackboneDiffCurrentLayerSource):
+            _diff_basis_invalid("current_source must be BackboneDiffCurrentLayerSource")
+        if self.current_source.layer_key != self.layer_key:
+            _diff_basis_invalid("current_source.layer_key must match layer_key")
+        if self.current_source.sort_order != self.layer_sort_order:
+            _diff_basis_invalid("current_source.sort_order must match layer_sort_order")
         if self.baseline_snapshot is not None and not isinstance(
             self.baseline_snapshot, BackboneSnapshot
         ):
@@ -642,7 +648,7 @@ def _added_row(
                 _descriptor_for_added_or_removed_code(
                     parameter_code, baseline_columns, current_descriptor_by_code
                 ),
-                current_condition.cells_by_code().get(parameter_code),
+                current_cells_by_code.get(parameter_code),
                 parameter_code,
             ),
         )
@@ -835,7 +841,7 @@ def _row_preview_items(
                 row_status=row.row_status,
                 identity=row.identity,
                 item_kind=ITEM_KIND_ROW_METADATA,
-                item_sort_key=(METADATA_FIELD_ORDER[change.field_name], change.field_name),
+                item_sort_key=(change.field_name,),
                 classification=CLASSIFICATION_CHANGED,
                 reason="row_metadata_changed",
                 field_name=change.field_name,

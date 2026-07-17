@@ -6,7 +6,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app.core.db import app_engine
-from app.features.backbone_diff.contracts import DiffInput
+from app.features.backbone_diff.contracts import BackboneDiffProjectInput
 from app.features.backbone_diff.repository import BackboneDiffRepository
 
 
@@ -30,7 +30,7 @@ def build_read_only_sessionmaker(
 ReadOnlySessionLocal = build_read_only_sessionmaker(app_engine)
 
 
-async def load_diff_input(project_id: int) -> DiffInput:
+async def load_diff_input(project_id: int) -> BackboneDiffProjectInput:
     async with ReadOnlySessionLocal() as session:
         if session.bind is not None and session.bind.dialect.name == "postgresql":
             await session.execute(text("SET TRANSACTION READ ONLY"))
@@ -40,7 +40,7 @@ async def load_diff_input(project_id: int) -> DiffInput:
 async def load_diff_input_with_session_factory(
     project_id: int,
     session_factory: async_sessionmaker[AsyncSession],
-) -> DiffInput:
+) -> BackboneDiffProjectInput:
     async with session_factory() as session:
         if session.bind is not None and session.bind.dialect.name == "postgresql":
             await session.execute(text("SET TRANSACTION READ ONLY"))

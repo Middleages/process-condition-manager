@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import AsyncIterator
+from dataclasses import replace
 
 import pytest
 from sqlalchemy import event, text
@@ -37,6 +38,20 @@ from tests.postgres_database import temporary_postgres_database
 _PG_URL = os.environ.get("APP_TEST_DATABASE_URL")
 
 
+def _source_fingerprint(source) -> tuple[object | None, ...]:
+    return (
+        source.project_id,
+        source.sheet_layer_id,
+        source.layer_key,
+        source.step_seq,
+        source.layer_id,
+        source.sort_order,
+        source.source_project_id,
+        source.source_layer_key,
+    )
+
+
+
 @pytest.fixture
 async def sqlite_engine() -> AsyncIterator[AsyncEngine]:
     engine = create_async_engine(
@@ -55,6 +70,7 @@ async def sqlite_engine() -> AsyncIterator[AsyncEngine]:
 
 
 @pytest.fixture
+
 def sqlite_factory(sqlite_engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
     return async_sessionmaker(sqlite_engine, expire_on_commit=False, class_=AsyncSession)
 
@@ -73,6 +89,7 @@ async def pg_engine() -> AsyncIterator[AsyncEngine]:
 
 
 @pytest.fixture
+
 def pg_factory(pg_engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
     return async_sessionmaker(pg_engine, expire_on_commit=False, class_=AsyncSession)
 
@@ -87,14 +104,6 @@ async def _seed_parameters(session: AsyncSession) -> None:
                 value_type=ValueType.TEXT,
                 sort_order=1,
                 category=None,
-                is_active=True,
-            ),
-            Parameter(
-                code="beta",
-                display_name="Beta",
-                value_type=ValueType.NUMBER,
-                sort_order=1,
-                category=photo,
                 is_active=True,
             ),
             Parameter(
@@ -118,7 +127,7 @@ async def _seed_parameters(session: AsyncSession) -> None:
     await session.commit()
 
 
-async def _seed_project(session: AsyncSession) -> Project:
+async def _seed_project(session: AsyncSession) -> tuple[Project, SheetLayer]:
     project = Project(
         line_id="L1",
         process_id="PROC_A",
@@ -134,7 +143,7 @@ async def _seed_project(session: AsyncSession) -> Project:
         eqp_type_desc="Active",
         area_name="PHOTO",
         sort_order=1,
-        source_project_id=1,
+        source_project_id=7,
         source_layer_key="L1::PROC_A::010::ACT",
         backbone_snapshot=serialize_backbone_snapshot(
             BackboneSnapshot(
@@ -168,24 +177,46 @@ async def _seed_project(session: AsyncSession) -> Project:
             )
         ),
     )
-    condition = LayerCondition(
-        label="base",
-        condition_index=0,
-        is_por=True,
-        source_condition_id=101,
-    )
-    condition.cell_values.extend(
+    layer.conditions.extend(
         [
-            CellValue(parameter_code="alpha", value_text="new"),
-            CellValue(parameter_code="beta", value_text="1.00"),
-            CellValue(parameter_code="legacy", value_text="legacy"),
+            LayerCondition(
+                label="base",
+                condition_index=0,
+                is_por=True,
+                source_condition_id=101,
+            ),
+            LayerCondition(
+                label="base-dup",
+                condition_index=1,
+                is_por=False,
+                source_condition_id=101,
+            ),
+            LayerCondition(
+                label="orphan",
+                condition_index=2,
+                is_por=False,
+                source_condition_id=None,
+            ),
+            LayerCondition(
+                label="blank",
+                condition_index=3,
+                is_por=False,
+                source_condition_id=303,
+            ),
         ]
     )
-    layer.conditions.append(condition)
+    layer.conditions[0].cell_values.extend(
+        [
+            CellValue(parameter_code="alpha", value_text="new"),
+            CellValue(parameter_code="legacy", value_text="stored"),
+        ]
+    )
+    layer.conditions[1].cell_values.append(CellValue(parameter_code="alpha", value_text="dup"))
+    layer.conditions[2].cell_values.append(CellValue(parameter_code="alpha", value_text="orphan"))
     project.layers.append(layer)
     session.add(project)
     await session.commit()
-    return project
+    return project, layer
 
 
 async def test_load_diff_input_sqlite_freezes_graph_without_lazy_queries(
@@ -193,7 +224,7 @@ async def test_load_diff_input_sqlite_freezes_graph_without_lazy_queries(
 ) -> None:
     async with sqlite_factory() as session:
         await _seed_parameters(session)
-        project = await _seed_project(session)
+        project, layer = await _seed_project(session)
 
     statements: list[str] = []
 
@@ -214,27 +245,55 @@ async def test_load_diff_input_sqlite_freezes_graph_without_lazy_queries(
         event.remove(sqlite_engine.sync_engine, "before_cursor_execute", capture_sql)
 
     assert loaded.project_id == project.id
+    assert loaded.line_id == "L1"
+    assert loaded.process_id == "PROC_A"
+    assert loaded.part_id == "PART_A"
     assert len(statements) <= 8
-    assert loaded.layers[0].current_snapshot.source is not None
-    assert loaded.layers[0].baseline_snapshot is not None
-    assert [parameter.parameter_code for parameter in loaded.parameters] == [
+
+    loaded_layer = loaded.layers[0]
+    assert loaded_layer.layer_key == layer.layer_key
+    assert loaded_layer.current_source.project_id == project.id
+    assert loaded_layer.current_source.sheet_layer_id == layer.id
+    assert loaded_layer.current_source.layer_key == layer.layer_key
+    assert loaded_layer.current_source.step_seq == layer.step_seq
+    assert loaded_layer.current_source.layer_id == layer.layer_id
+    assert loaded_layer.current_source.sort_order == layer.sort_order
+    assert loaded_layer.current_source.source_project_id == layer.source_project_id
+    assert loaded_layer.current_source.source_layer_key == layer.source_layer_key
+    assert not hasattr(loaded_layer.current_source, "capture_batch_id")
+    assert not hasattr(loaded_layer.current_source, "captured_at")
+    assert [parameter.code for parameter in loaded_layer.current_parameters] == [
         "alpha",
-        "beta",
         "legacy",
         "gamma",
     ]
+    assert [parameter.active for parameter in loaded_layer.current_parameters] == [
+        True,
+        False,
+        True,
+    ]
+
+    assert loaded_layer.current_conditions[0].source_condition_id == 101
+    assert loaded_layer.current_conditions[1].source_condition_id == 101
+    assert loaded_layer.current_conditions[2].source_condition_id is None
+    assert loaded_layer.current_conditions[3].source_condition_id == 303
+    assert loaded_layer.current_conditions[0].cells_by_code()["alpha"] == "new"
+    assert loaded_layer.current_conditions[0].cells_by_code()["legacy"] == "stored"
+    assert loaded_layer.current_conditions[1].cells_by_code()["alpha"] == "dup"
+    assert loaded_layer.current_conditions[2].cells_by_code()["alpha"] == "orphan"
+    assert loaded_layer.current_conditions[3].cells == ()
+
     statements.clear()
-    assert loaded.layers[0].current_snapshot.conditions[0].cells[0].value == "new"
+    assert loaded_layer.current_conditions[0].cells[0].value == "new"
     assert statements == []
-    assert loaded.layers[0].baseline_snapshot is not None
-    assert loaded.layers[0].baseline_snapshot.conditions[0].source_condition_id == 101
-    assert loaded.layers[0].current_snapshot.conditions[0].source_condition_id == 101
-    assert [column.parameter_code for column in loaded.layers[0].current_snapshot.columns] == [
-        "alpha",
-        "beta",
-        "legacy",
-        "gamma",
-    ]
+
+    mutated = replace(
+        loaded_layer,
+        current_source=replace(loaded_layer.current_source, layer_id="010-ALT"),
+    )
+    assert _source_fingerprint(loaded_layer.current_source) != _source_fingerprint(
+        mutated.current_source
+    )
 
 
 async def test_load_diff_input_missing_project_raises_not_found(
@@ -246,7 +305,7 @@ async def test_load_diff_input_missing_project_raises_not_found(
     with pytest.raises(NotFoundError) as excinfo:
         await load_diff_input_with_session_factory(999_999, sqlite_factory)
 
-    assert excinfo.value.code == "project_not_found"
+    assert excinfo.value.code == "not_found"
     assert excinfo.value.details == {"project_id": 999_999}
 
 
@@ -261,7 +320,7 @@ async def test_load_diff_input_postgres_is_repeatable_read_and_read_only(
     )
     async with pg_factory() as session:
         await _seed_parameters(session)
-        project = await _seed_project(session)
+        project, layer = await _seed_project(session)
 
     statements: list[str] = []
 
@@ -285,14 +344,19 @@ async def test_load_diff_input_postgres_is_repeatable_read_and_read_only(
     async with read_only_factory() as session:
         isolation = (await session.execute(text("SHOW transaction_isolation"))).scalar_one()
     assert isolation.upper() == "REPEATABLE READ"
-    assert loaded.layers[0].baseline_snapshot is not None
-    assert loaded.layers[0].baseline_snapshot.conditions[0].source_condition_id == 101
-    assert loaded.layers[0].current_snapshot.conditions[0].source_condition_id == 101
-    assert [parameter.parameter_code for parameter in loaded.parameters] == [
+    assert loaded.layers[0].current_source.project_id == project.id
+    assert loaded.layers[0].current_source.sheet_layer_id == layer.id
+    assert loaded.layers[0].current_source.source_project_id == layer.source_project_id
+    assert loaded.layers[0].current_source.source_layer_key == layer.source_layer_key
+    assert [parameter.code for parameter in loaded.layers[0].current_parameters] == [
         "alpha",
-        "beta",
         "legacy",
         "gamma",
+    ]
+    assert [parameter.active for parameter in loaded.layers[0].current_parameters] == [
+        True,
+        False,
+        True,
     ]
 
 
@@ -307,16 +371,16 @@ async def test_load_diff_input_postgres_rejects_writes_in_read_only_transaction(
     )
     async with pg_factory() as session:
         await _seed_parameters(session)
-        project = await _seed_project(session)
+        project, _ = await _seed_project(session)
 
     async with read_only_factory() as session:
         await session.execute(text("SET TRANSACTION READ ONLY"))
         session.add(
             Parameter(
-                code="gamma",
-                display_name="Gamma",
+                code="omega",
+                display_name="Omega",
                 value_type=ValueType.TEXT,
-                sort_order=3,
+                sort_order=4,
                 category=None,
                 is_active=True,
             )
