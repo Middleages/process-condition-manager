@@ -1,6 +1,6 @@
 import { useMemo, useRef } from 'react'
 
-import { Button } from '@/shared/components/Button'
+import { cn } from '@/shared/lib/cn'
 
 import { resolveWorkbenchRovingIndex } from './sheetWorkbenchNavigation'
 
@@ -38,9 +38,15 @@ export function SheetWorkbenchCategoryTabs({
       {tabs.map((category, index) => {
         const isActive = index === activeIndex
         return (
-          <Button
+          <button
             aria-selected={isActive}
-            className="shrink-0"
+            className={cn(
+              'inline-flex shrink-0 items-center justify-center rounded-md border px-3 font-semibold transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-60',
+              'h-[34px] text-xs',
+              isActive
+                ? 'border-brand-700 bg-brand-700 text-white hover:bg-ink-950'
+                : 'border-border-control bg-surface text-ink-950 hover:bg-canvas',
+            )}
             disabled={disabled}
             key={category ?? 'all'}
             onClick={() => selectTab(index)}
@@ -54,13 +60,11 @@ export function SheetWorkbenchCategoryTabs({
               buttonsRef.current[index] = button
             }}
             role="tab"
-            size="compact"
             tabIndex={isActive ? 0 : -1}
             type="button"
-            variant={isActive ? 'primary' : 'secondary'}
           >
             {category ?? '전체'}
-          </Button>
+          </button>
         )
       })}
     </div>
