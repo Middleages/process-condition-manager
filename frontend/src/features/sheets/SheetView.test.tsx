@@ -473,6 +473,8 @@ describe('SheetView focus shell integration', () => {
 
     const html = renderSheet(queryClient)
 
+    expect(html).toContain('data-testid="sheet-workbench-toggle"')
+    expect(html).toContain('aria-expanded="false"')
     expect(html).toContain('data-testid="sheet-explicit-validation"')
     expect(html).toContain('>검증<')
     expect(html).not.toContain('data-sheet-workbench')
@@ -484,19 +486,19 @@ describe('SheetView focus shell integration', () => {
       'setActiveCategory(navigation.categoryCode)',
     )
     const pendingPublication = sheetViewSource.indexOf(
-      'setPendingValidationJump(navigation.target)',
+      'setPendingCoordinateJump(navigation.target)',
     )
     const committedJump = sheetViewSource.indexOf(
-      'gridRef.current?.scrollToCell(pendingValidationJump.conditionId',
+      'gridRef.current?.scrollToCell(pendingCoordinateJump.conditionId',
     )
 
     expect(categoryChange).toBeGreaterThan(-1)
     expect(pendingPublication).toBeGreaterThan(categoryChange)
     expect(committedJump).toBeGreaterThan(-1)
     expect(sheetViewSource).toMatch(
-      /useEffect\(\(\) => \{[\s\S]*?pendingValidationJump[\s\S]*?visibleColumns\.some\([\s\S]*?scrollToCell\(pendingValidationJump\.conditionId/,
+      /useEffect\(\(\) => \{[\s\S]*?pendingCoordinateJump[\s\S]*?visibleColumns\.some\([\s\S]*?scrollToCell\(pendingCoordinateJump\.conditionId/,
     )
-    expect(sheetViewSource).toContain('resolveValidationIssueNavigation(')
+    expect(sheetViewSource).toContain('resolveWorkbenchCoordinateNavigation(')
     expect(sheetViewSource).toContain('visibleColumns.some(')
     expect(sheetViewSource).not.toMatch(/setTimeout\([\s\S]*?scrollToCell/)
   })
@@ -558,5 +560,17 @@ describe('SheetView focus shell integration', () => {
     expect(sheetViewSource).not.toMatch(
       /(?:cyan|slate|emerald|amber|rose|blue)-(?:[1-9]00|50)/,
     )
+  })
+
+  it('keeps the workbench toggle outside validation gating and only auto-opens validation from null', () => {
+    expect(sheetViewSource).toContain('const workbenchState = useSheetWorkbenchState()')
+    expect(sheetViewSource).toContain(
+      'if (!showValidationWorkbench || workbenchState.mode !== null) return',
+    )
+    expect(sheetViewSource).toContain("workbenchState.selectMode('validation')")
+    expect(sheetViewSource).toContain('expanded={workbenchState.mode !== null}')
+    expect(sheetViewSource).toContain('workbenchState.mode !== null ? (')
+    expect(sheetViewSource).not.toContain('workbenchState.visible')
+    expect(sheetViewSource).not.toContain('showValidationWorkbench ? (')
   })
 })
