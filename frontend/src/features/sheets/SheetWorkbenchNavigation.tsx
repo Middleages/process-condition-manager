@@ -1,44 +1,55 @@
-import { useMemo, useRef } from 'react'
+import { useRef } from 'react'
 
 import { cn } from '@/shared/lib/cn'
 
+import type { SheetWorkbenchMode } from './SheetWorkbench'
 import { resolveWorkbenchRovingIndex } from './sheetWorkbenchNavigation'
 
-export function SheetWorkbenchCategoryTabs({
-  categories,
-  activeCategory,
-  disabled = false,
-  onSelectCategory,
-}: {
-  categories: readonly string[]
-  activeCategory: string | null
-  disabled?: boolean
-  onSelectCategory: (category: string | null) => void
-}) {
-  const tabs = useMemo(() => [null, ...categories], [categories])
-  const buttonsRef = useRef<Array<HTMLButtonElement | null>>([])
-  const activeIndex = Math.max(
-    0,
-    tabs.findIndex((category) => category === activeCategory),
-  )
+export const SHEET_WORKBENCH_MODES: readonly Exclude<SheetWorkbenchMode, null>[] = [
+  'validation',
+  'history',
+  'backbone-diff',
+] as const
 
-  function selectTab(index: number): void {
-    const nextCategory = tabs[index] ?? null
-    onSelectCategory(nextCategory)
+const SHEET_WORKBENCH_MODE_LABELS: Record<Exclude<SheetWorkbenchMode, null>, string> = {
+  validation: '검증',
+  history: '이력',
+  'backbone-diff': '백본 비교',
+}
+
+export function SheetWorkbenchNavigation({
+  mode,
+  onModeChange,
+  disabled = false,
+}: {
+  mode: Exclude<SheetWorkbenchMode, null>
+  onModeChange: (mode: Exclude<SheetWorkbenchMode, null>) => void
+  disabled?: boolean
+}) {
+  const buttonsRef = useRef<Array<HTMLButtonElement | null>>([])
+  const activeIndex = SHEET_WORKBENCH_MODES.findIndex((candidate) => candidate === mode)
+
+  function selectMode(index: number): void {
+    const nextMode = SHEET_WORKBENCH_MODES[index]
+    if (nextMode === undefined) return
+    onModeChange(nextMode)
     buttonsRef.current[index]?.focus()
   }
 
   return (
     <div
-      aria-label="카테고리 탭"
+      aria-label="워크벤치 모드"
       className="flex min-w-0 flex-wrap items-center gap-2"
-      data-testid="sheet-category-tabs"
+      data-testid="sheet-workbench-tabs"
       role="tablist"
     >
-      {tabs.map((category, index) => {
+      {SHEET_WORKBENCH_MODES.map((candidate, index) => {
         const isActive = index === activeIndex
+        const tabId = `sheet-workbench-tab-${candidate}`
+        const panelId = `sheet-workbench-panel-${candidate}`
         return (
           <button
+            aria-controls={panelId}
             aria-selected={isActive}
             className={cn(
               'inline-flex shrink-0 items-center justify-center rounded-md border px-3 font-semibold transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-60',
@@ -48,13 +59,18 @@ export function SheetWorkbenchCategoryTabs({
                 : 'border-border-control bg-surface text-ink-950 hover:bg-canvas',
             )}
             disabled={disabled}
-            key={category ?? 'all'}
-            onClick={() => selectTab(index)}
+            id={tabId}
+            key={candidate}
+            onClick={() => selectMode(index)}
             onKeyDown={(event) => {
-              const nextIndex = resolveWorkbenchRovingIndex(event.key, index, tabs.length)
+              const nextIndex = resolveWorkbenchRovingIndex(
+                event.key,
+                index,
+                SHEET_WORKBENCH_MODES.length,
+              )
               if (nextIndex === null) return
               event.preventDefault()
-              selectTab(nextIndex)
+              selectMode(nextIndex)
             }}
             ref={(button) => {
               buttonsRef.current[index] = button
@@ -63,7 +79,7 @@ export function SheetWorkbenchCategoryTabs({
             tabIndex={isActive ? 0 : -1}
             type="button"
           >
-            {category ?? '전체'}
+            {SHEET_WORKBENCH_MODE_LABELS[candidate]}
           </button>
         )
       })}

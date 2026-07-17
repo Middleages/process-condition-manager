@@ -58,6 +58,8 @@ import {
 } from './persistenceReconciliation'
 import { resolveSheetInteraction } from './sheetInteraction'
 import { SheetFocusFrame } from './SheetFocusFrame'
+import { useSheetWorkbenchMode, SheetWorkbenchToggle } from './SheetWorkbench'
+import { SheetWorkbenchCategoryTabs } from './SheetWorkbenchNavigation'
 import { ValidationWorkbench } from './ValidationWorkbench'
 import {
   SheetAdapterError,
@@ -351,6 +353,7 @@ function SheetEditor({
     validation.issues,
     validation.explicitValidationCompleted,
   )
+  const workbenchMode = useSheetWorkbenchMode(showValidationWorkbench)
 
   // 붙여넣기 스테이징(적용 전 미리보기). null = 대기 중인 붙여넣기 없음.
   const [paste, setPasteState] = useState<PasteStagingResult | null>(null)
@@ -794,25 +797,12 @@ function SheetEditor({
           <div className="flex min-w-0 flex-wrap items-center gap-2" data-testid="sheet-category-tabs">
             <SheetMetrics rowCount={data.rows.length} colCount={data.columns.length} />
             {categories.length > 0 ? (
-              <>
-                <CategoryTab
-                  active={activeCategory === null}
-                  disabled={!interaction.canSwitchCategory}
-                  onClick={() => selectCategory(null)}
-                >
-                  전체
-                </CategoryTab>
-                {categories.map((category) => (
-                  <CategoryTab
-                    key={category}
-                    active={activeCategory === category}
-                    disabled={!interaction.canSwitchCategory}
-                    onClick={() => selectCategory(category)}
-                  >
-                    {category}
-                  </CategoryTab>
-                ))}
-              </>
+              <SheetWorkbenchCategoryTabs
+                activeCategory={activeCategory}
+                categories={categories}
+                disabled={!interaction.canSwitchCategory}
+                onSelectCategory={selectCategory}
+              />
             ) : null}
             <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2">
               <Button
@@ -829,9 +819,16 @@ function SheetEditor({
                 onClick={() => void validation.explicitlyValidate()}
                 size="compact"
                 type="button"
-              >
-                검증
-              </Button>
+                >
+                  검증
+                </Button>
+              {showValidationWorkbench ? (
+                <SheetWorkbenchToggle
+                  expanded={workbenchMode.visible}
+                  onToggle={workbenchMode.toggle}
+                  disabled={!showValidationWorkbench}
+                />
+              ) : null}
               <label
                 className="shrink-0 text-xs font-semibold text-ink-950"
                 htmlFor="sheet-column-search"
@@ -902,7 +899,7 @@ function SheetEditor({
         </div>
       }
       workbench={
-        showValidationWorkbench ? (
+        workbenchMode.visible && showValidationWorkbench ? (
           <ValidationWorkbench
             definitionsPending={validationDefinitionsPending}
             issues={validationIssues}
@@ -1381,33 +1378,6 @@ function SaveStatus({ editing }: { editing: SheetEditing }) {
         </button>
       ) : null}
     </span>
-  )
-}
-
-/** 카테고리 필터 탭 버튼(전체 + 카테고리별). GridDemoPage의 동일 패턴을 실제 시트 화면에 이식. */
-function CategoryTab({
-  active,
-  disabled,
-  onClick,
-  children,
-}: {
-  active: boolean
-  disabled: boolean
-  onClick: () => void
-  children: ReactNode
-}) {
-  return (
-    <Button
-      aria-pressed={active}
-      className="shrink-0"
-      disabled={disabled}
-      type="button"
-      onClick={onClick}
-      size="compact"
-      variant={active ? 'primary' : 'secondary'}
-    >
-      {children}
-    </Button>
   )
 }
 

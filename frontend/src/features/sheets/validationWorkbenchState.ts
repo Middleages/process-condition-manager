@@ -73,7 +73,6 @@ export interface ValidationWorkbenchIssue {
 }
 
 export interface ValidationWorkbenchState {
-  readonly expanded: boolean
   readonly panelHeight: number
   readonly showErrors: boolean
   readonly showWarnings: boolean
@@ -81,21 +80,17 @@ export interface ValidationWorkbenchState {
 }
 
 export type ValidationWorkbenchAction =
-  | { readonly type: 'toggle-expanded' }
   | { readonly type: 'toggle-severity'; readonly severity: ValidationSeverity }
   | { readonly type: 'select-issue'; readonly key: string }
   | { readonly type: 'resize-by'; readonly delta: -1 | 1 }
   | { readonly type: 'set-height'; readonly height: number }
 
 export function createValidationWorkbenchState({
-  expanded = false,
   panelHeight = VALIDATION_WORKBENCH_DEFAULT_HEIGHT,
 }: {
-  expanded?: boolean
   panelHeight?: number
 } = {}): ValidationWorkbenchState {
   return {
-    expanded,
     panelHeight: clampValidationWorkbenchHeight(panelHeight),
     showErrors: true,
     showWarnings: true,
@@ -108,8 +103,6 @@ export function reduceValidationWorkbenchState(
   action: ValidationWorkbenchAction,
 ): ValidationWorkbenchState {
   switch (action.type) {
-    case 'toggle-expanded':
-      return { ...state, expanded: !state.expanded }
     case 'toggle-severity':
       return action.severity === 'error'
         ? { ...state, showErrors: !state.showErrors }
