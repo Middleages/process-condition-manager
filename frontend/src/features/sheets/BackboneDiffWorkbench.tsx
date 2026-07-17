@@ -466,7 +466,7 @@ export function BackboneDiffWorkbench({
       <section className="mb-3 rounded-md border border-border-subtle bg-surface p-2">
         <h3 className="font-semibold">변경 미리보기 (최대 {previewCards.length > 0 ? previewCards.length : 20})</h3>
         {preview.status === 'loading' ? <LoadingMessage>미리보기 로드 중...</LoadingMessage> : null}
-        {preview.status === 'error' && preview.error !== null ? (
+        {preview.status === 'error' && preview.error !== null && preview.items.length === 0 ? (
           <>
             <ErrorMessage message={preview.error} />
             <button
@@ -481,7 +481,7 @@ export function BackboneDiffWorkbench({
         {preview.status === 'ready' && preview.items.length === 0 ? (
           <p className="mt-2 text-xs text-muted">미리보기 항목이 없습니다.</p>
         ) : null}
-        {preview.status === 'ready' ? (
+        {preview.items.length > 0 ? (
           <ul className="mt-2 space-y-1 text-xs">
             {preview.items.map((item) => (
               <li
@@ -494,6 +494,18 @@ export function BackboneDiffWorkbench({
               </li>
             ))}
           </ul>
+        ) : null}
+        {preview.status === 'error' && preview.error !== null && preview.items.length > 0 ? (
+          <>
+            <ErrorMessage message={preview.error} />
+            <button
+              className="mt-2 rounded-sm border border-brand-700 px-2 py-1 text-xs font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
+              onClick={onRetry}
+              type="button"
+            >
+              미리보기 다시 시도
+            </button>
+          </>
         ) : null}
         {preview.nextCursor !== null ? (
           <button

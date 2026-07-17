@@ -496,4 +496,176 @@ describe('BackboneDiffWorkbench', () => {
       rootRender.unmount()
     })
   })
+
+  it('preserves preview items across loading and keeps content visible on page errors', () => {
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const rootRender = createRoot(container)
+
+    const previewItem = createRootData().changedPreview[0]
+
+    act(() => {
+      rootRender.render(
+        <BackboneDiffWorkbench
+          root={createRootData()}
+          rootStatus="ready"
+          rootError={null}
+          onRetryRoot={vi.fn()}
+          onRefreshAnnouncementReset={vi.fn()}
+          refreshAnnouncement={null}
+          filters={createBaseFilter()}
+          onFiltersChange={vi.fn()}
+          preview={{ ...createPreviewState(), status: 'ready', items: [previewItem], nextCursor: 'cursor-2' }}
+          onLoadMorePreview={vi.fn()}
+          onRetry={vi.fn()}
+          layerConditionBranches={{}}
+          onOpenLayer={vi.fn()}
+          onLoadMoreConditions={vi.fn()}
+          onRetryConditions={vi.fn()}
+          cellBranches={{}}
+          onOpenCells={vi.fn()}
+          onLoadMoreCells={vi.fn()}
+          onRetryCells={vi.fn()}
+          onActivateTarget={vi.fn()}
+          baselineUnavailableCopy={null}
+        />
+      )
+    })
+
+    expect(container.textContent).toContain('row-1')
+    expect(container.querySelector('button[type="button"]')?.textContent).toContain('더 보기')
+
+    act(() => {
+      rootRender.render(
+        <BackboneDiffWorkbench
+          root={createRootData()}
+          rootStatus="ready"
+          rootError={null}
+          onRetryRoot={vi.fn()}
+          onRefreshAnnouncementReset={vi.fn()}
+          refreshAnnouncement={null}
+          filters={createBaseFilter()}
+          onFiltersChange={vi.fn()}
+          preview={{ ...createPreviewState(), status: 'loading', items: [previewItem], nextCursor: 'cursor-2' }}
+          onLoadMorePreview={vi.fn()}
+          onRetry={vi.fn()}
+          layerConditionBranches={{}}
+          onOpenLayer={vi.fn()}
+          onLoadMoreConditions={vi.fn()}
+          onRetryConditions={vi.fn()}
+          cellBranches={{}}
+          onOpenCells={vi.fn()}
+          onLoadMoreCells={vi.fn()}
+          onRetryCells={vi.fn()}
+          onActivateTarget={vi.fn()}
+          baselineUnavailableCopy={null}
+        />
+      )
+    })
+
+    expect(container.textContent).toContain('row-1')
+
+    act(() => {
+      rootRender.render(
+        <BackboneDiffWorkbench
+          root={createRootData()}
+          rootStatus="ready"
+          rootError={null}
+          onRetryRoot={vi.fn()}
+          onRefreshAnnouncementReset={vi.fn()}
+          refreshAnnouncement={null}
+          filters={createBaseFilter()}
+          onFiltersChange={vi.fn()}
+          preview={{
+            ...createPreviewState(),
+            status: 'error',
+            items: [previewItem],
+            error: '오류 메시지',
+            nextCursor: 'cursor-2',
+          }}
+          onLoadMorePreview={vi.fn()}
+          onRetry={vi.fn()}
+          layerConditionBranches={{}}
+          onOpenLayer={vi.fn()}
+          onLoadMoreConditions={vi.fn()}
+          onRetryConditions={vi.fn()}
+          cellBranches={{}}
+          onOpenCells={vi.fn()}
+          onLoadMoreCells={vi.fn()}
+          onRetryCells={vi.fn()}
+          onActivateTarget={vi.fn()}
+          baselineUnavailableCopy={null}
+        />
+      )
+    })
+
+    expect(container.textContent).toContain('오류 메시지')
+    expect(container.textContent).toContain('row-1')
+
+    act(() => {
+      rootRender.unmount()
+    })
+  })
+
+  it('calls filter callback for classification/unchanged controls', () => {
+    const onFiltersChange = vi.fn()
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const rootRender = createRoot(container)
+
+    act(() => {
+      rootRender.render(
+        <BackboneDiffWorkbench
+          root={createRootData()}
+          rootStatus="ready"
+          rootError={null}
+          onRetryRoot={vi.fn()}
+          onRefreshAnnouncementReset={vi.fn()}
+          refreshAnnouncement={null}
+          filters={createBaseFilter()}
+          onFiltersChange={onFiltersChange}
+          preview={createPreviewState()}
+          onLoadMorePreview={vi.fn()}
+          onRetry={vi.fn()}
+          layerConditionBranches={{}}
+          onOpenLayer={vi.fn()}
+          onLoadMoreConditions={vi.fn()}
+          onRetryConditions={vi.fn()}
+          cellBranches={{}}
+          onOpenCells={vi.fn()}
+          onLoadMoreCells={vi.fn()}
+          onRetryCells={vi.fn()}
+          onActivateTarget={vi.fn()}
+          baselineUnavailableCopy={null}
+        />
+      )
+    })
+
+    const allCheckboxes = Array.from(container.querySelectorAll('input[type="checkbox"]'))
+    const includeUnchangedInput = allCheckboxes[5] as HTMLInputElement
+    const removedInput = allCheckboxes[3] as HTMLInputElement
+
+    act(() => {
+      includeUnchangedInput.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+
+    act(() => {
+      removedInput.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+
+    expect(onFiltersChange).toHaveBeenCalledTimes(2)
+    expect(onFiltersChange).toHaveBeenCalledWith({
+      ...createBaseFilter(),
+      includeUnchanged: true,
+      classification: [...createBaseFilter().classification, 'unchanged'],
+    })
+    expect(onFiltersChange).toHaveBeenCalledWith({
+      ...createBaseFilter(),
+      classification: [...createBaseFilter().classification, 'removed'],
+    })
+
+    act(() => {
+      rootRender.unmount()
+    })
+  })
 })
