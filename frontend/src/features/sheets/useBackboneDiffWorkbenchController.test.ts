@@ -1182,9 +1182,25 @@ describe('useBackboneDiffWorkbenchController seams', () => {
     const ledgerA = getBackboneDiffAuthorityLedger(clientA)
     const ledgerB = getBackboneDiffAuthorityLedger(clientB)
 
-    const rootKey = createBackboneDiffWorkbenchRootQueryKey(7, {
+    const rootKeyA = createBackboneDiffWorkbenchRootQueryKey(7, {
       previewLimit: 20,
       classification: ['added'],
+      layerKey: null,
+      categoryCode: null,
+      parameterCode: null,
+      includeUnchanged: false,
+    })
+    const rootKeyA2 = createBackboneDiffWorkbenchRootQueryKey(7, {
+      previewLimit: 20,
+      classification: ['removed'],
+      layerKey: null,
+      categoryCode: null,
+      parameterCode: null,
+      includeUnchanged: false,
+    })
+    const otherProjectRootKey = createBackboneDiffWorkbenchRootQueryKey(8, {
+      previewLimit: 20,
+      classification: ['changed'],
       layerKey: null,
       categoryCode: null,
       parameterCode: null,
@@ -1222,36 +1238,66 @@ describe('useBackboneDiffWorkbenchController seams', () => {
       'scope-x',
     )
 
-    const rootFingerprint = JSON.stringify(rootKey)
+    const rootFingerprintA = JSON.stringify(rootKeyA)
+    const rootFingerprintA2 = JSON.stringify(rootKeyA2)
+    const otherProjectRootFingerprint = JSON.stringify(otherProjectRootKey)
     const branchFingerprint = JSON.stringify(branchKey)
     const cellFingerprint = JSON.stringify(cellKey)
 
-    ledgerA.root.issuedByKey[rootFingerprint] = 1
-    ledgerA.root.acceptedByKey[rootFingerprint] = 1
+    ledgerA.root.revisionFenceByProjectId[7] = 3
+    ledgerA.root.basisFenceMarkerByProjectId.set(7, { marker: 'basis-a' })
+    ledgerA.root.issuedByKey[rootFingerprintA] = 1
+    ledgerA.root.acceptedByKey[rootFingerprintA] = 1
+    ledgerA.root.issuedByKey[rootFingerprintA2] = 2
+    ledgerA.root.acceptedByKey[rootFingerprintA2] = 2
     ledgerA.branch.issuedByKey[branchFingerprint] = 2
     ledgerA.branch.acceptedByKey[branchFingerprint] = 2
     ledgerA.cell.issuedByKey[cellFingerprint] = 3
     ledgerA.cell.acceptedByKey[cellFingerprint] = 3
 
-    ledgerB.root.issuedByKey[rootFingerprint] = 11
-    ledgerB.root.acceptedByKey[rootFingerprint] = 11
+    ledgerB.root.revisionFenceByProjectId[7] = 13
+    ledgerB.root.basisFenceMarkerByProjectId.set(7, { marker: 'basis-b' })
+    ledgerB.root.revisionFenceByProjectId[8] = 21
+    ledgerB.root.basisFenceMarkerByProjectId.set(8, { marker: 'basis-c' })
+    ledgerB.root.issuedByKey[rootFingerprintA] = 11
+    ledgerB.root.acceptedByKey[rootFingerprintA] = 11
+    ledgerB.root.issuedByKey[otherProjectRootFingerprint] = 12
+    ledgerB.root.acceptedByKey[otherProjectRootFingerprint] = 12
     ledgerB.branch.issuedByKey[branchFingerprint] = 12
     ledgerB.branch.acceptedByKey[branchFingerprint] = 12
     ledgerB.cell.issuedByKey[cellFingerprint] = 13
     ledgerB.cell.acceptedByKey[cellFingerprint] = 13
 
-    clientA.setQueryData(rootKey, { pages: [] })
+    clientA.setQueryData(rootKeyA, { pages: [] })
+    clientA.setQueryData(rootKeyA2, { pages: [] })
     clientA.setQueryData(branchKey, { pages: [] })
     clientA.setQueryData(cellKey, { pages: [] })
-    clientB.setQueryData(rootKey, { pages: [] })
+    clientB.setQueryData(rootKeyA, { pages: [] })
+    clientB.setQueryData(otherProjectRootKey, { pages: [] })
     clientB.setQueryData(branchKey, { pages: [] })
     clientB.setQueryData(cellKey, { pages: [] })
 
-    clientA.removeQueries({ queryKey: rootKey, exact: true })
-    expect(ledgerA.root.issuedByKey[rootFingerprint]).toBeUndefined()
-    expect(ledgerA.root.acceptedByKey[rootFingerprint]).toBeUndefined()
-    expect(ledgerB.root.issuedByKey[rootFingerprint]).toBe(11)
-    expect(ledgerB.root.acceptedByKey[rootFingerprint]).toBe(11)
+    clientA.removeQueries({ queryKey: rootKeyA, exact: true })
+    expect(ledgerA.root.issuedByKey[rootFingerprintA]).toBeUndefined()
+    expect(ledgerA.root.acceptedByKey[rootFingerprintA]).toBeUndefined()
+    expect(ledgerA.root.issuedByKey[rootFingerprintA2]).toBe(2)
+    expect(ledgerA.root.acceptedByKey[rootFingerprintA2]).toBe(2)
+    expect(ledgerA.root.revisionFenceByProjectId[7]).toBe(3)
+    expect(ledgerA.root.basisFenceMarkerByProjectId.get(7)).toEqual({ marker: 'basis-a' })
+    expect(ledgerB.root.issuedByKey[rootFingerprintA]).toBe(11)
+    expect(ledgerB.root.acceptedByKey[rootFingerprintA]).toBe(11)
+    expect(ledgerB.root.issuedByKey[otherProjectRootFingerprint]).toBe(12)
+    expect(ledgerB.root.acceptedByKey[otherProjectRootFingerprint]).toBe(12)
+    expect(ledgerB.root.revisionFenceByProjectId[7]).toBe(13)
+    expect(ledgerB.root.basisFenceMarkerByProjectId.get(7)).toEqual({ marker: 'basis-b' })
+    expect(ledgerB.root.revisionFenceByProjectId[8]).toBe(21)
+    expect(ledgerB.root.basisFenceMarkerByProjectId.get(8)).toEqual({ marker: 'basis-c' })
+
+    clientA.removeQueries({ queryKey: rootKeyA2, exact: true })
+    expect(ledgerA.root.issuedByKey[rootFingerprintA2]).toBeUndefined()
+    expect(ledgerA.root.acceptedByKey[rootFingerprintA2]).toBeUndefined()
+    expect(ledgerA.root.revisionFenceByProjectId[7]).toBeUndefined()
+    expect(ledgerA.root.basisFenceMarkerByProjectId.get(7)).toBeUndefined()
 
     clientA.clear()
     expect(ledgerA.branch.issuedByKey[branchFingerprint]).toBeUndefined()
@@ -1260,6 +1306,10 @@ describe('useBackboneDiffWorkbenchController seams', () => {
     expect(ledgerA.cell.acceptedByKey[cellFingerprint]).toBeUndefined()
     expect(ledgerB.branch.issuedByKey[branchFingerprint]).toBe(12)
     expect(ledgerB.cell.acceptedByKey[cellFingerprint]).toBe(13)
+    expect(ledgerB.root.revisionFenceByProjectId[7]).toBe(13)
+    expect(ledgerB.root.basisFenceMarkerByProjectId.get(7)).toEqual({ marker: 'basis-b' })
+    expect(ledgerB.root.revisionFenceByProjectId[8]).toBe(21)
+    expect(ledgerB.root.basisFenceMarkerByProjectId.get(8)).toEqual({ marker: 'basis-c' })
 
     clientB.clear()
   })

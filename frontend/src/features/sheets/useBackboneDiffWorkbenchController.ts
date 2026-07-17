@@ -255,14 +255,35 @@ function clearBackboneDiffAuthorityEntryForKey(
   delete authorityLane.acceptedByKey[keyFingerprint]
 }
 
+function clearBackboneDiffRootFenceMarkersIfIdle(
+  ledger: BackboneDiffAuthorityLedger,
+  projectId: number,
+): void {
+  for (const keyFingerprint of Object.keys(ledger.root.issuedByKey)) {
+    if (isBackboneDiffRootQueryKeyForProject(keyFingerprint, projectId)) {
+      return
+    }
+  }
+
+  for (const keyFingerprint of Object.keys(ledger.root.acceptedByKey)) {
+    if (isBackboneDiffRootQueryKeyForProject(keyFingerprint, projectId)) {
+      return
+    }
+  }
+
+  delete ledger.root.revisionFenceByProjectId[projectId]
+  ledger.root.basisFenceMarkerByProjectId.delete(projectId)
+}
+
 function clearBackboneDiffAuthorityEntriesForRemovedQuery(
   ledger: BackboneDiffAuthorityLedger,
   queryKey: readonly unknown[],
 ): void {
   const keyFingerprint = JSON.stringify(queryKey)
   try {
-    parseBackboneDiffWorkbenchRootQueryKey(queryKey)
+    const { projectId } = parseBackboneDiffWorkbenchRootQueryKey(queryKey)
     clearBackboneDiffAuthorityEntryForKey(ledger.root, keyFingerprint)
+    clearBackboneDiffRootFenceMarkersIfIdle(ledger, projectId)
     return
   } catch {}
 
