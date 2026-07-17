@@ -40,10 +40,13 @@ import {
   createBackboneDiffWorkbenchBranchQueryFn,
   createBackboneDiffWorkbenchCellQueryFn,
   createBackboneDiffWorkbenchRootQueryFn,
+  seedBackboneDiffAuthorityFromCache,
   broadcastBackboneDiffProjectFence,
   cancelAndInvalidateBackboneDiffProjectRoots,
   isCurrentBackboneDiffProjectBasisFence,
   isCurrentBackboneDiffProjectRevisionFence,
+  parseBackboneDiffWorkbenchBranchQueryKey,
+  parseBackboneDiffWorkbenchCellQueryKey,
   registerBackboneDiffProjectFenceListener,
   acceptBackboneDiffQueryPage,
   shouldAcceptBackboneDiffQueryPage,
@@ -1650,6 +1653,166 @@ describe('useBackboneDiffWorkbenchController seams', () => {
     clientB.clear()
   })
 
+  it('seeds branch and cell authority only from enabled parseable keys and preserves real tokens', () => {
+    const queryClient = new QueryClient()
+    const authorityLedger = getBackboneDiffAuthorityLedger(queryClient)
+
+    const branchDisabledKey = ['backbone-diff', 7, 'branch', 'disabled'] as const
+    const cellDisabledKey = ['backbone-diff', 7, 'cell', 'disabled'] as const
+    const branchKey = createBackboneDiffWorkbenchBranchQueryKey(
+      7,
+      'root-s',
+      'hash-1',
+      {
+        classification: ['added'],
+        layerKey: null,
+        categoryCode: null,
+        parameterCode: null,
+        includeUnchanged: false,
+        previewLimit: 20,
+      },
+      'L1::10::ETCH',
+      'scope-x',
+    )
+    const cellKey = createBackboneDiffWorkbenchCellQueryKey(
+      7,
+      'root-s',
+      'hash-1',
+      {
+        classification: ['added'],
+        layerKey: null,
+        categoryCode: null,
+        parameterCode: null,
+        includeUnchanged: false,
+        previewLimit: 20,
+      },
+      'L1::10::ETCH',
+      'R1',
+      'scope-x',
+    )
+    const branchDisabledFingerprint = JSON.stringify(branchDisabledKey)
+    const cellDisabledFingerprint = JSON.stringify(cellDisabledKey)
+    const branchFingerprint = JSON.stringify(branchKey)
+    const cellFingerprint = JSON.stringify(cellKey)
+
+    authorityLedger.branch.issuedByKey[branchDisabledFingerprint] = 3
+    authorityLedger.branch.acceptedByKey[branchDisabledFingerprint] = 3
+    authorityLedger.cell.issuedByKey[cellDisabledFingerprint] = 4
+    authorityLedger.cell.acceptedByKey[cellDisabledFingerprint] = 4
+    queryClient.setQueryData(branchKey, { pages: [{ token: 5, result: createConditionPage('R1') }], pageParams: [null] })
+    queryClient.setQueryData(cellKey, { pages: [{ token: 6, result: createCellPage('P1') }], pageParams: [null] })
+
+    seedBackboneDiffAuthorityFromCache({
+      authorityLane: authorityLedger.branch,
+      enabled: false,
+      parseQueryKey: parseBackboneDiffWorkbenchBranchQueryKey,
+      queryClient,
+      queryKey: branchDisabledKey,
+    })
+    seedBackboneDiffAuthorityFromCache({
+      authorityLane: authorityLedger.cell,
+      enabled: false,
+      parseQueryKey: parseBackboneDiffWorkbenchCellQueryKey,
+      queryClient,
+      queryKey: cellDisabledKey,
+    })
+    expect(authorityLedger.branch.issuedByKey[branchDisabledFingerprint]).toBeUndefined()
+    expect(authorityLedger.branch.acceptedByKey[branchDisabledFingerprint]).toBeUndefined()
+    expect(authorityLedger.cell.issuedByKey[cellDisabledFingerprint]).toBeUndefined()
+    expect(authorityLedger.cell.acceptedByKey[cellDisabledFingerprint]).toBeUndefined()
+
+    seedBackboneDiffAuthorityFromCache({
+      authorityLane: authorityLedger.branch,
+      enabled: true,
+      parseQueryKey: parseBackboneDiffWorkbenchBranchQueryKey,
+      queryClient,
+      queryKey: branchKey,
+    })
+    seedBackboneDiffAuthorityFromCache({
+      authorityLane: authorityLedger.cell,
+      enabled: true,
+      parseQueryKey: parseBackboneDiffWorkbenchCellQueryKey,
+      queryClient,
+      queryKey: cellKey,
+    })
+    expect(authorityLedger.branch.issuedByKey[branchFingerprint]).toBe(5)
+    expect(authorityLedger.cell.issuedByKey[cellFingerprint]).toBe(6)
+    expect(authorityLedger.branch.acceptedByKey[branchFingerprint]).toBeUndefined()
+    expect(authorityLedger.cell.acceptedByKey[cellFingerprint]).toBeUndefined()
+
+    queryClient.removeQueries({ queryKey: branchKey, exact: true })
+    queryClient.removeQueries({ queryKey: cellKey, exact: true })
+    expect(authorityLedger.branch.issuedByKey[branchFingerprint]).toBeUndefined()
+    expect(authorityLedger.branch.acceptedByKey[branchFingerprint]).toBeUndefined()
+    expect(authorityLedger.cell.issuedByKey[cellFingerprint]).toBeUndefined()
+    expect(authorityLedger.cell.acceptedByKey[cellFingerprint]).toBeUndefined()
+
+    queryClient.clear()
+    expect(authorityLedger.branch.issuedByKey[branchDisabledFingerprint]).toBeUndefined()
+    expect(authorityLedger.branch.acceptedByKey[branchDisabledFingerprint]).toBeUndefined()
+    expect(authorityLedger.cell.issuedByKey[cellDisabledFingerprint]).toBeUndefined()
+    expect(authorityLedger.cell.acceptedByKey[cellDisabledFingerprint]).toBeUndefined()
+
+    authorityLedger.branch.issuedByKey[branchDisabledFingerprint] = 8
+    authorityLedger.branch.acceptedByKey[branchDisabledFingerprint] = 8
+    authorityLedger.cell.issuedByKey[cellDisabledFingerprint] = 9
+    authorityLedger.cell.acceptedByKey[cellDisabledFingerprint] = 9
+    seedBackboneDiffAuthorityFromCache({
+      authorityLane: authorityLedger.branch,
+      enabled: true,
+      parseQueryKey: parseBackboneDiffWorkbenchBranchQueryKey,
+      queryClient,
+      queryKey: branchDisabledKey,
+    })
+    seedBackboneDiffAuthorityFromCache({
+      authorityLane: authorityLedger.cell,
+      enabled: true,
+      parseQueryKey: parseBackboneDiffWorkbenchCellQueryKey,
+      queryClient,
+      queryKey: cellDisabledKey,
+    })
+    expect(authorityLedger.branch.issuedByKey[branchDisabledFingerprint]).toBeUndefined()
+    expect(authorityLedger.branch.acceptedByKey[branchDisabledFingerprint]).toBeUndefined()
+    expect(authorityLedger.cell.issuedByKey[cellDisabledFingerprint]).toBeUndefined()
+    expect(authorityLedger.cell.acceptedByKey[cellDisabledFingerprint]).toBeUndefined()
+
+    const branchNoCacheKey = createBackboneDiffWorkbenchBranchQueryKey(
+      7,
+      'root-s',
+      'hash-2',
+      {
+        classification: ['removed'],
+        layerKey: null,
+        categoryCode: null,
+        parameterCode: null,
+        includeUnchanged: false,
+        previewLimit: 20,
+      },
+      'L1::10::ETCH',
+      'scope-y',
+    )
+    const branchNoCacheFingerprint = JSON.stringify(branchNoCacheKey)
+    seedBackboneDiffAuthorityFromCache({
+      authorityLane: authorityLedger.branch,
+      enabled: true,
+      parseQueryKey: parseBackboneDiffWorkbenchBranchQueryKey,
+      queryClient,
+      queryKey: branchNoCacheKey,
+    })
+    expect(authorityLedger.branch.issuedByKey[branchNoCacheFingerprint]).toBeUndefined()
+    expect(authorityLedger.branch.acceptedByKey[branchNoCacheFingerprint]).toBeUndefined()
+
+    authorityLedger.branch.issuedByKey[branchFingerprint] = 9
+    seedBackboneDiffAuthorityFromCache({
+      authorityLane: authorityLedger.branch,
+      enabled: true,
+      parseQueryKey: parseBackboneDiffWorkbenchBranchQueryKey,
+      queryClient,
+      queryKey: branchKey,
+    })
+    expect(authorityLedger.branch.issuedByKey[branchFingerprint]).toBe(9)
+  })
+
   it('clears stale in-flight branch/cell query work when filters are replaced', async () => {
     const queryClient = new QueryClient({
       defaultOptions: {
@@ -1754,6 +1917,7 @@ describe('useBackboneDiffWorkbenchController seams', () => {
     expect(controllerSource).toContain('registerBackboneDiffProjectFenceListener(queryClient, projectId, {')
     expect(controllerSource).toContain('broadcastBackboneDiffProjectFence(queryClient, projectId, fence)')
     expect(controllerSource).toContain('cancelAndInvalidateBackboneDiffProjectRoots(queryClient, projectId)')
+    expect(controllerSource).toContain('seedBackboneDiffAuthorityFromCache({')
     expect(controllerSource).toContain("const queryKey = ['backboneDiff', projectId, 'root'] as const")
     expect(controllerSource).toContain('for (const listener of [...listeners])')
     expect(controllerSource).toContain('lastRevisionFenceRef.current = { projectId, revision: fence.revision }')
@@ -1773,6 +1937,8 @@ describe('useBackboneDiffWorkbenchController seams', () => {
     expect(controllerSource).not.toContain('branchQueryAcceptedTokenByKeyRef')
     expect(controllerSource).not.toContain('cellQueryIssuedTokenByKeyRef')
     expect(controllerSource).not.toContain('cellQueryAcceptedTokenByKeyRef')
+    expect(controllerSource).not.toContain('authorityLedger.branch.issuedByKey[key] = Math.max(currentIssuedToken, cachedToken)')
+    expect(controllerSource).not.toContain('authorityLedger.cell.issuedByKey[key] = Math.max(currentIssuedToken, cachedToken)')
     expect(controllerSource).not.toContain('rootQueryTokenByKeyRef')
     expect(controllerSource).not.toContain('!rootQuery.isSuccess')
     expect(controllerSource).not.toContain('!branchQuery.isSuccess')
