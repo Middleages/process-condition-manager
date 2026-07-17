@@ -6,6 +6,7 @@ import {
   activateBackboneJumpTarget,
   formatBackboneDiffConditionItemFacts,
   formatBackboneDiffConditionFacts,
+  formatBackboneDiffCellValue,
   type BackboneDiffCellItem,
   type BackboneDiffConditionItem,
   type BackboneDiffPreviewItem,
@@ -701,6 +702,17 @@ describe('BackboneDiffWorkbench', () => {
     expect(matchedEmptyCurrentUnchanged.baselineToCurrentLabel).toEqual('비움')
   })
 
+  it('formats null and empty backbone cell values by side with stable defaults', () => {
+    expect(formatBackboneDiffCellValue(null, 'baseline')).toEqual('기준 없음')
+    expect(formatBackboneDiffCellValue(null, 'current')).toEqual('현재 없음')
+
+    expect(formatBackboneDiffCellValue('', 'baseline')).toEqual('비움')
+    expect(formatBackboneDiffCellValue('', 'current')).toEqual('비움')
+
+    expect(formatBackboneDiffCellValue('baseline', 'baseline')).toEqual('baseline')
+    expect(formatBackboneDiffCellValue('current', 'current')).toEqual('current')
+  })
+
   it('marks unavailable rows when row-level navigation parameters are missing', () => {
     renderToStaticMarkup(
       <BackboneDiffWorkbench
@@ -764,6 +776,8 @@ describe('BackboneDiffWorkbench', () => {
     expect(source).toContain('baselineToCurrentPor')
     expect(source).toContain('hasConditionNavigation')
     expect(source).toContain('formatBackboneDiffConditionItemFacts(condition)')
+    expect(source).toContain('formatBackboneDiffCellValue(cell.baselineValue,')
+    expect(source).toContain('formatBackboneDiffCellValue(cell.currentValue,')
   })
 
   it('keeps layout classes for long layer keys and row metadata facts', () => {
