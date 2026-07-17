@@ -299,6 +299,39 @@ function seedBackboneDiffQueryTokenMapFromCache(
   return nextToken
 }
 
+export function shouldAcceptBackboneDiffQueryPage({
+  dataToken,
+  issuedToken,
+  acceptedToken,
+}: {
+  readonly dataToken: number
+  readonly issuedToken: number
+  readonly acceptedToken: number
+}): boolean {
+  return dataToken === acceptedToken || dataToken >= issuedToken
+}
+
+export function acceptBackboneDiffQueryPage({
+  dataToken,
+  issuedToken,
+  acceptedToken,
+  acceptedTokenByKeyRef,
+  key,
+}: {
+  readonly dataToken: number
+  readonly issuedToken: number
+  readonly acceptedToken: number
+  readonly acceptedTokenByKeyRef: { current: BackboneDiffQueryTokenMap }
+  readonly key: string
+}): boolean {
+  if (!shouldAcceptBackboneDiffQueryPage({ dataToken, issuedToken, acceptedToken })) {
+    return false
+  }
+
+  acceptedTokenByKeyRef.current[key] = dataToken
+  return true
+}
+
 export function createBackboneDiffWorkbenchRootQueryFn(
   queryClient: QueryClient,
   rootQueryTokenRef: { current: number },
@@ -709,8 +742,10 @@ export function useBackboneDiffWorkbenchController(
   const previousRevisionRef = useRef(revision)
   const [outerGeneration, setOuterGeneration] = useState(0)
   const rootQueryTokenRef = useRef(0)
-  const branchQueryTokenByKeyRef = useRef<BackboneDiffQueryTokenMap>({})
-  const cellQueryTokenByKeyRef = useRef<BackboneDiffQueryTokenMap>({})
+  const branchQueryIssuedTokenByKeyRef = useRef<BackboneDiffQueryTokenMap>({})
+  const branchQueryAcceptedTokenByKeyRef = useRef<BackboneDiffQueryTokenMap>({})
+  const cellQueryIssuedTokenByKeyRef = useRef<BackboneDiffQueryTokenMap>({})
+  const cellQueryAcceptedTokenByKeyRef = useRef<BackboneDiffQueryTokenMap>({})
   const rootQueryTokenByKeyRef = useRef<BackboneDiffQueryTokenMap>({})
   const rootQueryKeyFingerprintRef = useRef('')
   const branchQueryKeyFingerprintRef = useRef('')
@@ -902,7 +937,7 @@ export function useBackboneDiffWorkbenchController(
     initialPageParam: null as string | null,
     enabled: branchEnabled,
     retry: false,
-    queryFn: createBackboneDiffWorkbenchBranchQueryFn(queryClient, branchQueryTokenByKeyRef),
+    queryFn: createBackboneDiffWorkbenchBranchQueryFn(queryClient, branchQueryIssuedTokenByKeyRef),
     getNextPageParam: (page) => page.result.next_cursor,
   })
 
@@ -913,7 +948,7 @@ export function useBackboneDiffWorkbenchController(
       branchQueryKeyFingerprintRef.current = branchQueryKeyFingerprint
       branchBasisFailureCountRef.current = 0
     }
-    seedBackboneDiffQueryTokenMapFromCache(queryClient, branchQueryKey, branchQueryTokenByKeyRef)
+    seedBackboneDiffQueryTokenMapFromCache(queryClient, branchQueryKey, branchQueryIssuedTokenByKeyRef)
   }, [branchQueryKeyFingerprint])
 
   useIsomorphicLayoutEffect(() => {
@@ -952,7 +987,7 @@ export function useBackboneDiffWorkbenchController(
   )
 
   useIsomorphicLayoutEffect(() => {
-    if (!branchQuery.isSuccess || branchAuthority === null) return
+    if (branchAuthority === null || branchQuery.data === undefined) return
     const latest = branchQuery.data?.pages[branchQuery.data.pages.length - 1]
     if (latest === undefined) return
     const authority = backboneDiffBranchAuthority({
@@ -962,14 +997,25 @@ export function useBackboneDiffWorkbenchController(
       rootBasisToken: rootBasisTokenRef.current,
     })
     if (!isCurrentBackboneDiffBranchAuthority(branchAuthority, authority)) return
-    const acceptedToken = branchQueryTokenByKeyRef.current[branchQueryKeyFingerprintRef.current] ?? 0
-    if (!isBackboneDiffQueryPageCurrent({ dataToken: latest.token, latestToken: acceptedToken })) return
+    const key = branchQueryKeyFingerprintRef.current
+    const issuedToken = branchQueryIssuedTokenByKeyRef.current[key] ?? 0
+    const acceptedToken = branchQueryAcceptedTokenByKeyRef.current[key] ?? 0
+    if (
+      !acceptBackboneDiffQueryPage({
+        dataToken: latest.token,
+        issuedToken,
+        acceptedToken,
+        acceptedTokenByKeyRef: branchQueryAcceptedTokenByKeyRef,
+        key,
+      })
+    ) {
+      return
+    }
 
     commitState((current) =>
       setBackboneDiffBranchPages(current, mergedBranch.pages, mergedBranch.nextCursor),
     )
-    branchQueryTokenByKeyRef.current[branchQueryKeyFingerprintRef.current] = latest.token
-  }, [branchAuthority, branchEnabled, branchQuery.data, branchQuery.isSuccess, commitState, mergedBranch])
+  }, [branchAuthority, branchEnabled, branchQuery.data, commitState, mergedBranch])
 
   const cellEnabled = backboneDiffCellQueryEnabled(
     enabled,
@@ -1018,7 +1064,7 @@ export function useBackboneDiffWorkbenchController(
     initialPageParam: null as string | null,
     enabled: cellEnabled,
     retry: false,
-    queryFn: createBackboneDiffWorkbenchCellQueryFn(queryClient, cellQueryTokenByKeyRef),
+    queryFn: createBackboneDiffWorkbenchCellQueryFn(queryClient, cellQueryIssuedTokenByKeyRef),
     getNextPageParam: (page) => page.result.next_cursor,
   })
 
@@ -1029,7 +1075,7 @@ export function useBackboneDiffWorkbenchController(
       cellQueryKeyFingerprintRef.current = cellQueryKeyFingerprint
       cellBasisFailureCountRef.current = 0
     }
-    seedBackboneDiffQueryTokenMapFromCache(queryClient, cellQueryKey, cellQueryTokenByKeyRef)
+    seedBackboneDiffQueryTokenMapFromCache(queryClient, cellQueryKey, cellQueryIssuedTokenByKeyRef)
   }, [cellQueryKeyFingerprint])
 
   useIsomorphicLayoutEffect(() => {
@@ -1068,7 +1114,7 @@ export function useBackboneDiffWorkbenchController(
   )
 
   useIsomorphicLayoutEffect(() => {
-    if (!cellQuery.isSuccess || cellAuthority === null) return
+    if (cellAuthority === null || cellQuery.data === undefined) return
     const latest = cellQuery.data?.pages[cellQuery.data.pages.length - 1]
     if (latest === undefined) return
     const authority = backboneDiffCellAuthority({
@@ -1078,12 +1124,23 @@ export function useBackboneDiffWorkbenchController(
       rootBasisToken: rootBasisTokenRef.current,
     })
     if (!isCurrentBackboneDiffCellAuthority(cellAuthority, authority)) return
-    const acceptedToken = cellQueryTokenByKeyRef.current[cellQueryKeyFingerprintRef.current] ?? 0
-    if (!isBackboneDiffQueryPageCurrent({ dataToken: latest.token, latestToken: acceptedToken })) return
+    const key = cellQueryKeyFingerprintRef.current
+    const issuedToken = cellQueryIssuedTokenByKeyRef.current[key] ?? 0
+    const acceptedToken = cellQueryAcceptedTokenByKeyRef.current[key] ?? 0
+    if (
+      !acceptBackboneDiffQueryPage({
+        dataToken: latest.token,
+        issuedToken,
+        acceptedToken,
+        acceptedTokenByKeyRef: cellQueryAcceptedTokenByKeyRef,
+        key,
+      })
+    ) {
+      return
+    }
 
     commitState((current) => setBackboneDiffCellPages(current, mergedCell.pages, mergedCell.nextCursor))
-    cellQueryTokenByKeyRef.current[cellQueryKeyFingerprintRef.current] = latest.token
-  }, [cellAuthority, cellEnabled, cellQuery.data, cellQuery.isSuccess, commitState, mergedCell])
+  }, [cellAuthority, cellEnabled, cellQuery.data, commitState, mergedCell])
 
   const branchPresentation = backboneDiffQueryPresentation({
     enabled: branchEnabled,
@@ -1203,7 +1260,7 @@ export function useBackboneDiffWorkbenchController(
   const onRetryBranch = useCallback(() => {
     if (branchEnabled) {
       const key = branchQueryKeyFingerprintRef.current
-      branchQueryTokenByKeyRef.current[key] = (branchQueryTokenByKeyRef.current[key] ?? 0) + 1
+      branchQueryIssuedTokenByKeyRef.current[key] = (branchQueryIssuedTokenByKeyRef.current[key] ?? 0) + 1
       void branchQuery.refetch()
     }
   }, [branchEnabled, branchQuery])
@@ -1211,7 +1268,7 @@ export function useBackboneDiffWorkbenchController(
   const onRetryCell = useCallback(() => {
     if (cellEnabled) {
       const key = cellQueryKeyFingerprintRef.current
-      cellQueryTokenByKeyRef.current[key] = (cellQueryTokenByKeyRef.current[key] ?? 0) + 1
+      cellQueryIssuedTokenByKeyRef.current[key] = (cellQueryIssuedTokenByKeyRef.current[key] ?? 0) + 1
       void cellQuery.refetch()
     }
   }, [cellEnabled, cellQuery])
