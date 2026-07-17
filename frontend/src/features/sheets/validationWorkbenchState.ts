@@ -73,7 +73,6 @@ export interface ValidationWorkbenchIssue {
 }
 
 export interface ValidationWorkbenchState {
-  readonly panelHeight: number
   readonly showErrors: boolean
   readonly showWarnings: boolean
   readonly selectedIssueKey: string | null
@@ -82,20 +81,9 @@ export interface ValidationWorkbenchState {
 export type ValidationWorkbenchAction =
   | { readonly type: 'toggle-severity'; readonly severity: ValidationSeverity }
   | { readonly type: 'select-issue'; readonly key: string }
-  | { readonly type: 'resize-by'; readonly delta: -1 | 1 }
-  | { readonly type: 'set-height'; readonly height: number }
 
-export function createValidationWorkbenchState({
-  panelHeight = VALIDATION_WORKBENCH_DEFAULT_HEIGHT,
-}: {
-  panelHeight?: number
-} = {}): ValidationWorkbenchState {
-  return {
-    panelHeight: clampValidationWorkbenchHeight(panelHeight),
-    showErrors: true,
-    showWarnings: true,
-    selectedIssueKey: null,
-  }
+export function createValidationWorkbenchState(): ValidationWorkbenchState {
+  return { showErrors: true, showWarnings: true, selectedIssueKey: null }
 }
 
 export function reduceValidationWorkbenchState(
@@ -112,15 +100,6 @@ export function reduceValidationWorkbenchState(
         ...state,
         selectedIssueKey: state.selectedIssueKey === action.key ? null : action.key,
       }
-    case 'resize-by':
-      return {
-        ...state,
-        panelHeight: clampValidationWorkbenchHeight(
-          state.panelHeight + action.delta * VALIDATION_WORKBENCH_RESIZE_STEP,
-        ),
-      }
-    case 'set-height':
-      return { ...state, panelHeight: clampValidationWorkbenchHeight(action.height) }
   }
 }
 
