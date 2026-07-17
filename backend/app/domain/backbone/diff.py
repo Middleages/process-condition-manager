@@ -115,10 +115,10 @@ class BackboneDiffCurrentCondition:
                 _diff_basis_invalid("cells must contain BackboneDiffCurrentCell values")
             if cell.parameter_code in seen:
                 _diff_basis_invalid(
-                    (
+                    
                         "duplicate current parameter_code in condition "
                         f"{self.id}: {cell.parameter_code}"
-                    )
+                    
                 )
             seen.add(cell.parameter_code)
             canonical_cells.append(cell)
@@ -929,19 +929,19 @@ def _descriptor_for_code(
             current_type = _coerce_value_type(current_descriptor.value_type)
             if baseline_type is not current_type:
                 _diff_basis_invalid(
-                    (
+                    
                         f"type mismatch for parameter {parameter_code}: "
                         f"{baseline_type.value} vs {current_type.value}"
-                    )
+                    
                 )
         return current_descriptor
     if baseline_column is not None:
         return baseline_column
         _unresolved_parameter_metadata(
-            (
+            
                 "missing current descriptor for parameter "
                 f"{parameter_code} in condition {current_condition.id}"
-            )
+            
         )
 
 
@@ -1077,55 +1077,3 @@ def _current_parameter_payload(parameter: BackboneDiffCurrentParameter) -> dict[
     }
 
 
-def _layer_basis_payload(layer_input: BackboneDiffLayerInput) -> dict[str, Any]:
-    baseline_payload = (
-        None
-        if layer_input.baseline_snapshot is None
-        else serialize_backbone_snapshot(layer_input.baseline_snapshot)
-    )
-    current_selected = _selected_current_descriptors(layer_input)
-    current_by_code = {parameter.code: parameter for parameter in current_selected}
-    baseline_columns = (
-        {}
-        if layer_input.baseline_snapshot is None
-        else {column.parameter_code: column for column in layer_input.baseline_snapshot.columns}
-    )
-    current_payload = [
-        {
-            "id": condition.id,
-            "source_condition_id": condition.source_condition_id,
-            "label": condition.label,
-            "condition_index": condition.condition_index,
-            "is_por": condition.is_por,
-            "cells": [
-                {
-                    "parameter_code": cell.parameter_code,
-                    "value": _canonical_current_value(
-                        _descriptor_for_code(
-                            condition,
-                            cell.parameter_code,
-                            baseline_columns,
-                            current_by_code,
-                        ),
-                        cell.value,
-                        cell.parameter_code,
-                    ),
-                }
-                for cell in condition.cells
-            ],
-        }
-        for condition in layer_input.current_conditions
-    ]
-    return {
-        "baseline_snapshot": baseline_payload,
-        "current_conditions": current_payload,
-        "current_parameters": [
-            _current_parameter_payload(parameter) for parameter in current_selected
-        ],
-        "layer_key": layer_input.layer_key,
-        "layer_sort_order": layer_input.layer_sort_order,
-    }
-
-
-def _row_sort_key(row: BackboneDiffRow) -> tuple[Any, ...]:
-    return (row.effective_condition_index, STATUS_RANK[row.row_status], row.identity)
