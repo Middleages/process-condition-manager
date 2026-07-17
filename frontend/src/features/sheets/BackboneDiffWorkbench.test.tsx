@@ -250,6 +250,7 @@ describe('BackboneDiffWorkbench', () => {
     expect(html).toContain('baseline is unavailable for one deleted layer')
     expect(html).toContain('classification')
     expect(html).toContain('#1')
+    expect(html).toContain('삭제 <strong>0</strong>')
   })
 
   it('renders root and preview errors with retry actions', () => {
@@ -346,6 +347,8 @@ describe('BackboneDiffWorkbench', () => {
     expect(source).toContain('item.effectiveConditionIndex')
     expect(source).toContain('item.rowRef ??')
     expect(source).toContain('item.parameterCode ??')
+    expect(html).toContain('파라미터: ETCH_P001')
+    expect(html).toContain('상태: added')
   })
 
   it('dispatches activation through one callback and blocks unavailable targets', () => {
@@ -484,6 +487,104 @@ describe('BackboneDiffWorkbench', () => {
     expect(source).toContain('제거됨')
     expect(source).toContain('삭제됨')
     expect(html).toContain('L1::10::ETCH')
+    expect(source).toContain('조건 인덱스')
+    expect(source).toContain('POR')
+    expect(source).toContain('hasConditionNavigation')
+    expect(source).toContain('if (!hasConditionNavigation && !isRowExpanded)')
+  })
+
+  it('hides implementation refs from preview UI rendering', () => {
+    const root = createRootData()
+
+    const html = createPreviewStaticMarkup(root, {
+      ...createPreviewState(),
+      items: [
+        {
+          itemKind: 'cell',
+          classification: 'changed',
+          layerKey: 'L1::10::ETCH',
+          effectiveConditionIndex: 3,
+          itemSortKey: ['secret'],
+          rowRef: 'row-secret',
+          cellScope: 'secret-scope',
+          rowStatus: 'changed',
+          parameterCode: 'ETCH_P999',
+        },
+      ],
+      status: 'ready',
+      nextCursor: null,
+      error: null,
+      nextPageError: null,
+    })
+
+    expect(html).toContain('L1::10::ETCH')
+    expect(html).not.toContain('row-secret')
+    expect(html).not.toContain('secret-scope')
+    expect(html).toContain('상태: changed')
+    expect(html).toContain('파라미터: ETCH_P999')
+  })
+
+  it('marks unavailable rows when row-level navigation parameters are missing', () => {
+    renderToStaticMarkup(
+      <BackboneDiffWorkbench
+        root={createRootData()}
+        rootStatus="ready"
+        rootError={null}
+        onRetryRoot={vi.fn()}
+        onRefreshAnnouncementReset={vi.fn()}
+        refreshAnnouncement={null}
+        filters={createBaseFilter()}
+        onFiltersChange={vi.fn()}
+        preview={createPreviewState()}
+        onLoadMorePreview={vi.fn()}
+        onRetry={vi.fn()}
+        layerConditionBranches={{
+          'L1::10::ETCH': {
+            status: 'ready',
+            basisHash: 'scope-1',
+            scope: 'scope-1',
+            items: [
+              {
+                ...createCondition(),
+                baselineCondition: null,
+                currentCondition: null,
+              },
+            ],
+            nextCursor: null,
+            error: null,
+            nextPageError: null,
+          },
+        }}
+        onOpenLayer={vi.fn()}
+        onLoadMoreConditions={vi.fn()}
+        onRetryConditions={vi.fn()}
+        cellBranches={{
+          'row-1': {
+            status: 'ready',
+            basisHash: 'scope-1',
+            scope: 'scope-1',
+            items: [
+              {
+                ...createCell(),
+                jumpStatus: 'available',
+              },
+            ],
+            nextCursor: null,
+            error: null,
+            nextPageError: null,
+          },
+        }}
+        onOpenCells={vi.fn()}
+        onLoadMoreCells={vi.fn()}
+        onRetryCells={vi.fn()}
+        onActivateTarget={vi.fn()}
+        baselineUnavailableCopy={null}
+      />,
+    )
+
+    expect(source).toContain('const conditionIndex')
+    expect(source).toContain('isPor')
+    expect(source).toContain('hasConditionNavigation')
   })
 
   it('keeps preview rows visible during loading and error states', () => {
