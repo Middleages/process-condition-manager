@@ -42,12 +42,24 @@ def _baseline_snapshot() -> BackboneSnapshot:
         columns=(
             BackboneSnapshotColumn("baseline_only", ValueType.TEXT, "Baseline only", None, 0, True),
             BackboneSnapshotColumn("shared_blank", ValueType.TEXT, "Blank", None, 1, True),
-            BackboneSnapshotColumn("shared_number_equal", ValueType.NUMBER, "Number equal", None, 2, True),
-            BackboneSnapshotColumn("shared_number_changed", ValueType.NUMBER, "Number changed", None, 3, True),
-            BackboneSnapshotColumn("shared_text_equal", ValueType.TEXT, "Text equal", None, 4, True),
-            BackboneSnapshotColumn("shared_text_changed", ValueType.TEXT, "Text changed", None, 5, True),
-            BackboneSnapshotColumn("shared_choice_equal", ValueType.CHOICE, "Choice equal", None, 6, True),
-            BackboneSnapshotColumn("shared_choice_changed", ValueType.CHOICE, "Choice changed", None, 7, True),
+            BackboneSnapshotColumn(
+                "shared_number_equal", ValueType.NUMBER, "Number equal", None, 2, True
+            ),
+            BackboneSnapshotColumn(
+                "shared_number_changed", ValueType.NUMBER, "Number changed", None, 3, True
+            ),
+            BackboneSnapshotColumn(
+                "shared_text_equal", ValueType.TEXT, "Text equal", None, 4, True
+            ),
+            BackboneSnapshotColumn(
+                "shared_text_changed", ValueType.TEXT, "Text changed", None, 5, True
+            ),
+            BackboneSnapshotColumn(
+                "shared_choice_equal", ValueType.CHOICE, "Choice equal", None, 6, True
+            ),
+            BackboneSnapshotColumn(
+                "shared_choice_changed", ValueType.CHOICE, "Choice changed", None, 7, True
+            ),
             BackboneSnapshotColumn("shared_cleared", ValueType.TEXT, "Cleared", None, 8, True),
             BackboneSnapshotColumn("shared_added", ValueType.TEXT, "Added", None, 9, True),
         ),
@@ -105,20 +117,38 @@ def _layer_input(
 ) -> BackboneDiffLayerInput:
     parameters = [
         BackboneDiffCurrentParameter("shared_blank", ValueType.TEXT, "Blank", None, 1, True),
-        BackboneDiffCurrentParameter("shared_number_equal", ValueType.NUMBER, "Number equal", None, 2, True),
-        BackboneDiffCurrentParameter("shared_number_changed", ValueType.NUMBER, "Number changed", None, 3, True),
-        BackboneDiffCurrentParameter("shared_text_equal", ValueType.TEXT, "Text equal", None, 4, True),
-        BackboneDiffCurrentParameter("shared_text_changed", ValueType.TEXT, "Text changed", None, 5, True),
-        BackboneDiffCurrentParameter("shared_choice_equal", ValueType.CHOICE, "Choice equal", None, 6, True),
-        BackboneDiffCurrentParameter("shared_choice_changed", ValueType.CHOICE, "Choice changed", None, 7, True),
+        BackboneDiffCurrentParameter(
+            "shared_number_equal", ValueType.NUMBER, "Number equal", None, 2, True
+        ),
+        BackboneDiffCurrentParameter(
+            "shared_number_changed", ValueType.NUMBER, "Number changed", None, 3, True
+        ),
+        BackboneDiffCurrentParameter(
+            "shared_text_equal", ValueType.TEXT, "Text equal", None, 4, True
+        ),
+        BackboneDiffCurrentParameter(
+            "shared_text_changed", ValueType.TEXT, "Text changed", None, 5, True
+        ),
+        BackboneDiffCurrentParameter(
+            "shared_choice_equal", ValueType.CHOICE, "Choice equal", None, 6, True
+        ),
+        BackboneDiffCurrentParameter(
+            "shared_choice_changed", ValueType.CHOICE, "Choice changed", None, 7, True
+        ),
         BackboneDiffCurrentParameter("shared_cleared", ValueType.TEXT, "Cleared", None, 8, True),
         BackboneDiffCurrentParameter("shared_added", ValueType.TEXT, "Added", None, 9, True),
-        BackboneDiffCurrentParameter("current_only", ValueType.TEXT, "Current only", None, 10, True),
-        BackboneDiffCurrentParameter("baseline_only", ValueType.TEXT, "Baseline only", None, 11, False),
+        BackboneDiffCurrentParameter(
+            "current_only", ValueType.TEXT, "Current only", None, 10, True
+        ),
+        BackboneDiffCurrentParameter(
+            "baseline_only", ValueType.TEXT, "Baseline only", None, 11, False
+        ),
     ]
     if include_orphan:
         parameters.append(
-            BackboneDiffCurrentParameter("orphan_inactive", ValueType.TEXT, "Orphan", None, 99, False)
+            BackboneDiffCurrentParameter(
+                "orphan_inactive", ValueType.TEXT, "Orphan", None, 99, False
+            )
         )
 
     if current_source is None:
@@ -258,7 +288,9 @@ def test_compare_backbone_layer_classifies_and_orders_all_core_cases() -> None:
     ]
 
 
-def test_compare_backbone_layer_is_stable_under_input_shuffling_and_ignores_orphan_inactive_parameters() -> None:
+def test_compare_backbone_layer_is_stable_under_input_shuffling_and_ignores_orphan_inactive_parameters() -> (
+    None
+):
     current_conditions = (
         _duplicate_current_condition(),
         _matched_current_condition(),
@@ -279,7 +311,9 @@ def test_compare_backbone_layer_is_stable_under_input_shuffling_and_ignores_orph
 
     assert result_a.basis_hash == result_b.basis_hash
     assert result_a.preview_items == result_b.preview_items
-    assert backbone_diff_layer_basis_hash(shuffled) == backbone_diff_layer_basis_hash(shuffled_with_orphan)
+    assert backbone_diff_layer_basis_hash(shuffled) == backbone_diff_layer_basis_hash(
+        shuffled_with_orphan
+    )
 
 
 def test_compare_backbone_layer_null_source_condition_is_added() -> None:
@@ -360,7 +394,9 @@ def _mismatch_layer() -> BackboneDiffLayerInput:
             ),
         ),
         current_parameters=(
-            BackboneDiffCurrentParameter("shared_number_equal", ValueType.TEXT, "Number equal", None, 2, True),
+            BackboneDiffCurrentParameter(
+                "shared_number_equal", ValueType.TEXT, "Number equal", None, 2, True
+            ),
         ),
     )
 
@@ -406,7 +442,9 @@ def _missing_descriptor_layer() -> BackboneDiffLayerInput:
             ),
         ),
         current_parameters=(
-            BackboneDiffCurrentParameter("current_only", ValueType.TEXT, "Current only", None, 10, True),
+            BackboneDiffCurrentParameter(
+                "current_only", ValueType.TEXT, "Current only", None, 10, True
+            ),
         ),
     )
 
@@ -538,11 +576,11 @@ def test_compare_backbone_orders_layers_and_root_hash_is_stable() -> None:
             layer_id="ACT",
         ),
         baseline_snapshot=None,
-        current_conditions=(
-            _added_current_condition(),
-        ),
+        current_conditions=(_added_current_condition(),),
         current_parameters=(
-            BackboneDiffCurrentParameter("current_only", ValueType.TEXT, "Current only", None, 10, True),
+            BackboneDiffCurrentParameter(
+                "current_only", ValueType.TEXT, "Current only", None, 10, True
+            ),
         ),
     )
 

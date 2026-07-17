@@ -60,8 +60,12 @@ class BackboneDiffCurrentParameter:
         object.__setattr__(self, "value_type", _coerce_value_type(self.value_type))
         object.__setattr__(self, "display_name", _require_text(self.display_name, "display_name"))
         if self.category_code is not None:
-            object.__setattr__(self, "category_code", _require_text(self.category_code, "category_code"))
-        object.__setattr__(self, "sort_order", _require_non_negative_int(self.sort_order, "sort_order"))
+            object.__setattr__(
+                self, "category_code", _require_text(self.category_code, "category_code")
+            )
+        object.__setattr__(
+            self, "sort_order", _require_non_negative_int(self.sort_order, "sort_order")
+        )
         object.__setattr__(self, "active", _require_bool(self.active, "active"))
 
 
@@ -71,7 +75,9 @@ class BackboneDiffCurrentCell:
     value: str | None
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "parameter_code", _require_text(self.parameter_code, "parameter_code"))
+        object.__setattr__(
+            self, "parameter_code", _require_text(self.parameter_code, "parameter_code")
+        )
         if self.value is not None and not isinstance(self.value, str):
             _diff_basis_invalid("current cell value must be a string or null")
 
@@ -168,23 +174,33 @@ class BackboneDiffLayerInput:
             "layer_sort_order",
             _require_non_negative_int(self.layer_sort_order, "layer_sort_order"),
         )
-        if self.baseline_snapshot is not None and not isinstance(self.baseline_snapshot, BackboneSnapshot):
+        if self.baseline_snapshot is not None and not isinstance(
+            self.baseline_snapshot, BackboneSnapshot
+        ):
             _diff_basis_invalid("baseline_snapshot must be BackboneSnapshot or null")
         conditions = tuple(self.current_conditions)
         parameters = tuple(self.current_parameters)
         for condition in conditions:
             if not isinstance(condition, BackboneDiffCurrentCondition):
-                _diff_basis_invalid("current_conditions must contain BackboneDiffCurrentCondition values")
+                _diff_basis_invalid(
+                    "current_conditions must contain BackboneDiffCurrentCondition values"
+                )
         for parameter in parameters:
             if not isinstance(parameter, BackboneDiffCurrentParameter):
-                _diff_basis_invalid("current_parameters must contain BackboneDiffCurrentParameter values")
+                _diff_basis_invalid(
+                    "current_parameters must contain BackboneDiffCurrentParameter values"
+                )
         if len({condition.id for condition in conditions}) != len(conditions):
             _diff_basis_invalid("duplicate current condition id")
         parameter_by_code = {parameter.code: parameter for parameter in parameters}
         if len(parameter_by_code) != len(parameters):
             _diff_basis_invalid("duplicate current parameter code")
-        object.__setattr__(self, "current_conditions", tuple(sorted(conditions, key=_current_condition_sort_key)))
-        object.__setattr__(self, "current_parameters", tuple(sorted(parameters, key=_current_parameter_sort_key)))
+        object.__setattr__(
+            self, "current_conditions", tuple(sorted(conditions, key=_current_condition_sort_key))
+        )
+        object.__setattr__(
+            self, "current_parameters", tuple(sorted(parameters, key=_current_parameter_sort_key))
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -264,9 +280,7 @@ class BackboneDiffLayerResult:
     @property
     def preview_items(self) -> tuple[BackboneDiffPreviewItem, ...]:
         items = [
-            item
-            for row in self.rows
-            for item in _row_preview_items(self.layer_sort_order, row)
+            item for row in self.rows for item in _row_preview_items(self.layer_sort_order, row)
         ]
         return tuple(sorted(items, key=_preview_item_sort_key))
 
@@ -350,7 +364,9 @@ def compare_backbone_layer(layer_input: BackboneDiffLayerInput) -> BackboneDiffL
         candidates = current_candidates.get(baseline_condition.source_condition_id, [])
         if not candidates:
             rows.append(
-                _removed_row(layer_input.layer_key, baseline_condition, baseline_columns, baseline_universe)
+                _removed_row(
+                    layer_input.layer_key, baseline_condition, baseline_columns, baseline_universe
+                )
             )
             continue
 
@@ -416,29 +432,43 @@ def compare_backbone_layer(layer_input: BackboneDiffLayerInput) -> BackboneDiffL
         removed_row_count=sum(row.row_status == ROW_STATUS_REMOVED for row in rows),
         row_metadata_change_count=sum(len(row.metadata_changes) for row in rows),
         added_cell_count=sum(
-            change.classification == CLASSIFICATION_ADDED for row in rows for change in row.cell_changes
+            change.classification == CLASSIFICATION_ADDED
+            for row in rows
+            for change in row.cell_changes
         ),
         removed_cell_count=sum(
-            change.classification == CLASSIFICATION_REMOVED for row in rows for change in row.cell_changes
+            change.classification == CLASSIFICATION_REMOVED
+            for row in rows
+            for change in row.cell_changes
         ),
         cleared_cell_count=sum(
-            change.classification == CLASSIFICATION_CLEARED for row in rows for change in row.cell_changes
+            change.classification == CLASSIFICATION_CLEARED
+            for row in rows
+            for change in row.cell_changes
         ),
         changed_cell_count=sum(
-            change.classification == CLASSIFICATION_CHANGED for row in rows for change in row.cell_changes
+            change.classification == CLASSIFICATION_CHANGED
+            for row in rows
+            for change in row.cell_changes
         ),
         unchanged_cell_count=sum(
-            change.classification == CLASSIFICATION_UNCHANGED for row in rows for change in row.cell_changes
+            change.classification == CLASSIFICATION_UNCHANGED
+            for row in rows
+            for change in row.cell_changes
         ),
         rows=tuple(rows),
     )
 
 
-def compare_backbone(layer_inputs: tuple[BackboneDiffLayerInput, ...] | list[BackboneDiffLayerInput]) -> BackboneDiffResult:
+def compare_backbone(
+    layer_inputs: tuple[BackboneDiffLayerInput, ...] | list[BackboneDiffLayerInput],
+) -> BackboneDiffResult:
     canonical_layers = tuple(sorted(layer_inputs, key=_layer_input_sort_key))
     return BackboneDiffResult(
         basis_hash=backbone_diff_basis_hash(canonical_layers),
-        layer_results=tuple(compare_backbone_layer(layer_input) for layer_input in canonical_layers),
+        layer_results=tuple(
+            compare_backbone_layer(layer_input) for layer_input in canonical_layers
+        ),
     )
 
 
@@ -452,7 +482,9 @@ def backbone_diff_layer_basis_hash(layer_input: BackboneDiffLayerInput) -> str:
     return f"sha256:{hashlib.sha256(canonical_json.encode('utf-8')).hexdigest()}"
 
 
-def backbone_diff_basis_hash(layer_inputs: tuple[BackboneDiffLayerInput, ...] | list[BackboneDiffLayerInput]) -> str:
+def backbone_diff_basis_hash(
+    layer_inputs: tuple[BackboneDiffLayerInput, ...] | list[BackboneDiffLayerInput],
+) -> str:
     canonical_layers = tuple(sorted(layer_inputs, key=_layer_input_sort_key))
     canonical_json = json.dumps(
         [_layer_basis_payload(layer_input) for layer_input in canonical_layers],
@@ -465,7 +497,9 @@ def backbone_diff_basis_hash(layer_inputs: tuple[BackboneDiffLayerInput, ...] | 
 
 def _layer_basis_payload(layer_input: BackboneDiffLayerInput) -> dict[str, Any]:
     baseline_payload = (
-        None if layer_input.baseline_snapshot is None else serialize_backbone_snapshot(layer_input.baseline_snapshot)
+        None
+        if layer_input.baseline_snapshot is None
+        else serialize_backbone_snapshot(layer_input.baseline_snapshot)
     )
     current_selected = _selected_current_descriptors(layer_input)
     current_descriptor_by_code = {parameter.code: parameter for parameter in current_selected}
@@ -480,7 +514,9 @@ def _layer_basis_payload(layer_input: BackboneDiffLayerInput) -> dict[str, Any]:
                 {
                     "parameter_code": cell.parameter_code,
                     "value": _canonical_current_value(
-                        _descriptor_for_code(layer_input, cell.parameter_code, current_descriptor_by_code),
+                        _descriptor_for_code(
+                            layer_input, cell.parameter_code, current_descriptor_by_code
+                        ),
                         cell.value,
                         cell.parameter_code,
                     ),
@@ -495,8 +531,7 @@ def _layer_basis_payload(layer_input: BackboneDiffLayerInput) -> dict[str, Any]:
         "current_conditions": current_payload,
         "current_source": _source_payload(layer_input.current_source),
         "current_parameters": [
-            _current_parameter_payload(parameter)
-            for parameter in current_selected
+            _current_parameter_payload(parameter) for parameter in current_selected
         ],
         "layer_key": layer_input.layer_key,
         "layer_sort_order": layer_input.layer_sort_order,
@@ -540,6 +575,7 @@ def _matched_row(
             current_universe,
         )
         for parameter_code in _ordered_coordinate_codes(
+            baseline_condition,
             current_condition,
             baseline_columns,
             current_descriptor_by_code,
@@ -585,12 +621,16 @@ def _added_row(
             reason="row_added",
             baseline_value=None,
             current_value=_canonical_current_value(
-                _descriptor_for_added_or_removed_code(parameter_code, baseline_columns, current_descriptor_by_code),
+                _descriptor_for_added_or_removed_code(
+                    parameter_code, baseline_columns, current_descriptor_by_code
+                ),
                 current_condition.cells_by_code().get(parameter_code),
                 parameter_code,
             ),
         )
-        for parameter_code in _ordered_added_row_codes(current_universe, current_descriptor_by_code, baseline_columns)
+        for parameter_code in _ordered_added_row_codes(
+            current_universe, current_descriptor_by_code, baseline_columns
+        )
     )
     return BackboneDiffRow(
         layer_key=layer_key,
@@ -652,7 +692,9 @@ def _metadata_changes(
 ) -> list[BackboneDiffMetadataChange]:
     changes: list[BackboneDiffMetadataChange] = []
     if baseline_condition.label != current_condition.label:
-        changes.append(BackboneDiffMetadataChange("label", baseline_condition.label, current_condition.label))
+        changes.append(
+            BackboneDiffMetadataChange("label", baseline_condition.label, current_condition.label)
+        )
     if baseline_condition.condition_index != current_condition.condition_index:
         changes.append(
             BackboneDiffMetadataChange(
@@ -662,7 +704,11 @@ def _metadata_changes(
             )
         )
     if baseline_condition.is_por != current_condition.is_por:
-        changes.append(BackboneDiffMetadataChange("is_por", baseline_condition.is_por, current_condition.is_por))
+        changes.append(
+            BackboneDiffMetadataChange(
+                "is_por", baseline_condition.is_por, current_condition.is_por
+            )
+        )
     return sorted(changes, key=lambda change: METADATA_FIELD_ORDER[change.field_name])
 
 
@@ -702,11 +748,15 @@ def _compare_coordinate(
             classification=CLASSIFICATION_ADDED,
             reason="column_added",
             baseline_value=None,
-            current_value=_canonical_current_value(descriptor, current_condition.cells_by_code().get(parameter_code), parameter_code),
+            current_value=_canonical_current_value(
+                descriptor, current_condition.cells_by_code().get(parameter_code), parameter_code
+            ),
         )
 
     baseline_value = _baseline_cell_value(baseline_condition, parameter_code)
-    current_value = _canonical_current_value(descriptor, current_condition.cells_by_code().get(parameter_code), parameter_code)
+    current_value = _canonical_current_value(
+        descriptor, current_condition.cells_by_code().get(parameter_code), parameter_code
+    )
 
     if baseline_value is None and current_value is None:
         return BackboneDiffCellChange(
@@ -754,7 +804,9 @@ def _compare_coordinate(
     )
 
 
-def _row_preview_items(layer_sort_order: int, row: BackboneDiffRow) -> list[BackboneDiffPreviewItem]:
+def _row_preview_items(
+    layer_sort_order: int, row: BackboneDiffRow
+) -> list[BackboneDiffPreviewItem]:
     items: list[BackboneDiffPreviewItem] = []
     for change in row.metadata_changes:
         items.append(
@@ -897,12 +949,12 @@ def _descriptor_for_added_or_removed_code(
     _unresolved_parameter_metadata(f"missing descriptor for parameter {parameter_code}")
 
 
-def _selected_current_descriptors(layer_input: BackboneDiffLayerInput) -> tuple[BackboneDiffCurrentParameter, ...]:
+def _selected_current_descriptors(
+    layer_input: BackboneDiffLayerInput,
+) -> tuple[BackboneDiffCurrentParameter, ...]:
     parameter_by_code = {parameter.code: parameter for parameter in layer_input.current_parameters}
     selected_codes = {
-        parameter.code
-        for parameter in layer_input.current_parameters
-        if parameter.active
+        parameter.code for parameter in layer_input.current_parameters if parameter.active
     }
     selected_codes.update(
         cell.parameter_code
@@ -951,9 +1003,7 @@ def _ordered_added_row_codes(
     codes = sorted(current_universe)
     codes.sort(
         key=lambda code: (
-            _descriptor_sort_key(
-                current_descriptor_by_code.get(code) or baseline_columns[code]
-            ),
+            _descriptor_sort_key(current_descriptor_by_code.get(code) or baseline_columns[code]),
             code,
         )
     )
@@ -1002,10 +1052,14 @@ def _canonical_current_value(
     return value
 
 
-def _descriptor_sort_key(descriptor: BackboneDiffCurrentParameter | BackboneSnapshotColumn) -> tuple[int, str]:
+def _descriptor_sort_key(
+    descriptor: BackboneDiffCurrentParameter | BackboneSnapshotColumn,
+) -> tuple[int, str]:
     return (
         descriptor.sort_order,
-        descriptor.code if isinstance(descriptor, BackboneDiffCurrentParameter) else descriptor.parameter_code,
+        descriptor.code
+        if isinstance(descriptor, BackboneDiffCurrentParameter)
+        else descriptor.parameter_code,
     )
 
 
@@ -1022,7 +1076,9 @@ def _current_parameter_payload(parameter: BackboneDiffCurrentParameter) -> dict[
 
 def _layer_basis_payload(layer_input: BackboneDiffLayerInput) -> dict[str, Any]:
     baseline_payload = (
-        None if layer_input.baseline_snapshot is None else serialize_backbone_snapshot(layer_input.baseline_snapshot)
+        None
+        if layer_input.baseline_snapshot is None
+        else serialize_backbone_snapshot(layer_input.baseline_snapshot)
     )
     current_selected = _selected_current_descriptors(layer_input)
     current_by_code = {parameter.code: parameter for parameter in current_selected}
@@ -1060,7 +1116,9 @@ def _layer_basis_payload(layer_input: BackboneDiffLayerInput) -> dict[str, Any]:
     return {
         "baseline_snapshot": baseline_payload,
         "current_conditions": current_payload,
-        "current_parameters": [_current_parameter_payload(parameter) for parameter in current_selected],
+        "current_parameters": [
+            _current_parameter_payload(parameter) for parameter in current_selected
+        ],
         "layer_key": layer_input.layer_key,
         "layer_sort_order": layer_input.layer_sort_order,
     }
@@ -1068,444 +1126,3 @@ def _layer_basis_payload(layer_input: BackboneDiffLayerInput) -> dict[str, Any]:
 
 def _row_sort_key(row: BackboneDiffRow) -> tuple[Any, ...]:
     return (row.effective_condition_index, STATUS_RANK[row.row_status], row.identity)
-
-
-def compare_backbone(layer_inputs: tuple[BackboneDiffLayerInput, ...] | list[BackboneDiffLayerInput]) -> BackboneDiffResult:
-    canonical_layers = tuple(sorted(layer_inputs, key=_layer_input_sort_key))
-    return BackboneDiffResult(
-        basis_hash=backbone_diff_basis_hash(canonical_layers),
-        layer_results=tuple(compare_backbone_layer(layer_input) for layer_input in canonical_layers),
-    )
-
-
-def backbone_diff_layer_basis_hash(layer_input: BackboneDiffLayerInput) -> str:
-    canonical_json = json.dumps(
-        _layer_basis_payload(layer_input),
-        ensure_ascii=False,
-        separators=(",", ":"),
-        sort_keys=True,
-    )
-    return f"sha256:{hashlib.sha256(canonical_json.encode('utf-8')).hexdigest()}"
-
-
-def backbone_diff_basis_hash(layer_inputs: tuple[BackboneDiffLayerInput, ...] | list[BackboneDiffLayerInput]) -> str:
-    canonical_layers = tuple(sorted(layer_inputs, key=_layer_input_sort_key))
-    canonical_json = json.dumps(
-        [_layer_basis_payload(layer_input) for layer_input in canonical_layers],
-        ensure_ascii=False,
-        separators=(",", ":"),
-        sort_keys=True,
-    )
-    return f"sha256:{hashlib.sha256(canonical_json.encode('utf-8')).hexdigest()}"
-
-
-def compare_backbone_layer(layer_input: BackboneDiffLayerInput) -> BackboneDiffLayerResult:
-    if layer_input.baseline_snapshot is None:
-        return BackboneDiffLayerResult(
-            layer_key=layer_input.layer_key,
-            layer_sort_order=layer_input.layer_sort_order,
-            basis_hash=backbone_diff_layer_basis_hash(layer_input),
-            baseline_unavailable=True,
-            ambiguous_lineage_count=0,
-            matched_row_count=0,
-            added_row_count=0,
-            removed_row_count=0,
-            row_metadata_change_count=0,
-            added_cell_count=0,
-            removed_cell_count=0,
-            cleared_cell_count=0,
-            changed_cell_count=0,
-            unchanged_cell_count=0,
-            rows=(),
-        )
-
-    baseline_snapshot = layer_input.baseline_snapshot
-    assert baseline_snapshot is not None
-
-    baseline_columns = {column.parameter_code: column for column in baseline_snapshot.columns}
-    baseline_universe = set(baseline_columns)
-
-    current_descriptors = _selected_current_descriptors(layer_input)
-    current_descriptor_by_code = {parameter.code: parameter for parameter in current_descriptors}
-    current_universe = set(current_descriptor_by_code)
-
-    current_candidates: dict[int, list[BackboneDiffCurrentCondition]] = defaultdict(list)
-    for condition in layer_input.current_conditions:
-        if condition.source_condition_id is not None:
-            current_candidates[condition.source_condition_id].append(condition)
-
-    rows: list[BackboneDiffRow] = []
-    emitted_current_ids: set[int] = set()
-    ambiguous_lineage_count = 0
-
-    for baseline_condition in baseline_snapshot.conditions:
-        candidates = current_candidates.get(baseline_condition.source_condition_id, [])
-        if not candidates:
-            rows.append(
-                _removed_row(layer_input.layer_key, baseline_condition, baseline_columns, baseline_universe)
-            )
-            continue
-
-        ordered_candidates = sorted(candidates, key=_current_condition_sort_key)
-        match = ordered_candidates[0]
-        emitted_current_ids.add(match.id)
-        rows.append(
-            _matched_row(
-                layer_input.layer_key,
-                baseline_condition,
-                match,
-                baseline_columns,
-                current_descriptor_by_code,
-                baseline_universe,
-                current_universe,
-            )
-        )
-
-        if len(ordered_candidates) > 1:
-            ambiguous_lineage_count += 1
-        for duplicate in ordered_candidates[1:]:
-            emitted_current_ids.add(duplicate.id)
-            rows.append(
-                _added_row(
-                    layer_input.layer_key,
-                    duplicate,
-                    baseline_columns,
-                    current_descriptor_by_code,
-                    current_universe,
-                )
-            )
-
-    for condition in layer_input.current_conditions:
-        if condition.id in emitted_current_ids:
-            continue
-        rows.append(
-            _added_row(
-                layer_input.layer_key,
-                condition,
-                baseline_columns,
-                current_descriptor_by_code,
-                current_universe,
-            )
-        )
-
-    rows.sort(key=_row_sort_key)
-
-    return BackboneDiffLayerResult(
-        layer_key=layer_input.layer_key,
-        layer_sort_order=layer_input.layer_sort_order,
-        basis_hash=backbone_diff_layer_basis_hash(layer_input),
-        baseline_unavailable=False,
-        ambiguous_lineage_count=ambiguous_lineage_count,
-        matched_row_count=sum(row.row_status == ROW_STATUS_MATCHED for row in rows),
-        added_row_count=sum(row.row_status == ROW_STATUS_ADDED for row in rows),
-        removed_row_count=sum(row.row_status == ROW_STATUS_REMOVED for row in rows),
-        row_metadata_change_count=sum(len(row.metadata_changes) for row in rows),
-        added_cell_count=sum(
-            change.classification == CLASSIFICATION_ADDED for row in rows for change in row.cell_changes
-        ),
-        removed_cell_count=sum(
-            change.classification == CLASSIFICATION_REMOVED for row in rows for change in row.cell_changes
-        ),
-        cleared_cell_count=sum(
-            change.classification == CLASSIFICATION_CLEARED for row in rows for change in row.cell_changes
-        ),
-        changed_cell_count=sum(
-            change.classification == CLASSIFICATION_CHANGED for row in rows for change in row.cell_changes
-        ),
-        unchanged_cell_count=sum(
-            change.classification == CLASSIFICATION_UNCHANGED for row in rows for change in row.cell_changes
-        ),
-        rows=tuple(rows),
-    )
-
-
-def _matched_row(
-    layer_key: str,
-    baseline_condition: Any,
-    current_condition: BackboneDiffCurrentCondition,
-    baseline_columns: dict[str, BackboneSnapshotColumn],
-    current_descriptor_by_code: dict[str, BackboneDiffCurrentParameter],
-    baseline_universe: set[str],
-    current_universe: set[str],
-) -> BackboneDiffRow:
-    metadata_changes = tuple(_metadata_changes(baseline_condition, current_condition))
-    cell_changes = tuple(
-        _compare_coordinate(
-            parameter_code,
-            baseline_condition,
-            current_condition,
-            baseline_columns,
-            current_descriptor_by_code,
-            baseline_universe,
-            current_universe,
-        )
-        for parameter_code in _ordered_coordinate_codes(
-            baseline_condition,
-            current_condition,
-            baseline_columns,
-            current_descriptor_by_code,
-            baseline_universe,
-            current_universe,
-        )
-    )
-    return BackboneDiffRow(
-        layer_key=layer_key,
-        row_status=ROW_STATUS_MATCHED,
-        effective_condition_index=current_condition.condition_index,
-        identity=current_condition.id,
-        baseline_source_condition_id=baseline_condition.source_condition_id,
-        current_id=current_condition.id,
-        baseline_condition_index=baseline_condition.condition_index,
-        current_condition_index=current_condition.condition_index,
-        baseline_label=baseline_condition.label,
-        current_label=current_condition.label,
-        baseline_is_por=baseline_condition.is_por,
-        current_is_por=current_condition.is_por,
-        metadata_changes=metadata_changes,
-        cell_changes=cell_changes,
-    )
-
-
-def _added_row(
-    layer_key: str,
-    current_condition: BackboneDiffCurrentCondition,
-    baseline_columns: dict[str, BackboneSnapshotColumn],
-    current_descriptor_by_code: dict[str, BackboneDiffCurrentParameter],
-    current_universe: set[str],
-) -> BackboneDiffRow:
-    cell_changes = tuple(
-        BackboneDiffCellChange(
-            parameter_code=parameter_code,
-            sort_order=_descriptor_for_added_or_removed_code(parameter_code, baseline_columns, current_descriptor_by_code).sort_order,
-            classification=CLASSIFICATION_ADDED,
-            reason="row_added",
-            baseline_value=None,
-            current_value=_canonical_current_value(
-                _descriptor_for_added_or_removed_code(parameter_code, baseline_columns, current_descriptor_by_code),
-                current_condition.cells_by_code().get(parameter_code),
-                parameter_code,
-            ),
-        )
-        for parameter_code in _ordered_added_row_codes(current_universe, current_descriptor_by_code, baseline_columns)
-    )
-    return BackboneDiffRow(
-        layer_key=layer_key,
-        row_status=ROW_STATUS_ADDED,
-        effective_condition_index=current_condition.condition_index,
-        identity=current_condition.id,
-        baseline_source_condition_id=current_condition.source_condition_id,
-        current_id=current_condition.id,
-        baseline_condition_index=None,
-        current_condition_index=current_condition.condition_index,
-        baseline_label=None,
-        current_label=current_condition.label,
-        baseline_is_por=None,
-        current_is_por=current_condition.is_por,
-        metadata_changes=(),
-        cell_changes=cell_changes,
-    )
-
-
-def _removed_row(
-    layer_key: str,
-    baseline_condition: Any,
-    baseline_columns: dict[str, BackboneSnapshotColumn],
-    baseline_universe: set[str],
-) -> BackboneDiffRow:
-    cell_changes = tuple(
-        BackboneDiffCellChange(
-            parameter_code=parameter_code,
-            sort_order=baseline_columns[parameter_code].sort_order,
-            classification=CLASSIFICATION_REMOVED,
-            reason="row_removed",
-            baseline_value=_baseline_cell_value(baseline_condition, parameter_code),
-            current_value=None,
-        )
-        for parameter_code in _ordered_baseline_row_codes(baseline_universe, baseline_columns)
-    )
-    return BackboneDiffRow(
-        layer_key=layer_key,
-        row_status=ROW_STATUS_REMOVED,
-        effective_condition_index=baseline_condition.condition_index,
-        identity=baseline_condition.source_condition_id,
-        baseline_source_condition_id=baseline_condition.source_condition_id,
-        current_id=None,
-        baseline_condition_index=baseline_condition.condition_index,
-        current_condition_index=None,
-        baseline_label=baseline_condition.label,
-        current_label=None,
-        baseline_is_por=baseline_condition.is_por,
-        current_is_por=None,
-        metadata_changes=(),
-        cell_changes=cell_changes,
-    )
-
-
-def _metadata_changes(
-    baseline_condition: Any,
-    current_condition: BackboneDiffCurrentCondition,
-) -> list[BackboneDiffMetadataChange]:
-    changes: list[BackboneDiffMetadataChange] = []
-    if baseline_condition.label != current_condition.label:
-        changes.append(BackboneDiffMetadataChange("label", baseline_condition.label, current_condition.label))
-    if baseline_condition.condition_index != current_condition.condition_index:
-        changes.append(
-            BackboneDiffMetadataChange(
-                "condition_index",
-                baseline_condition.condition_index,
-                current_condition.condition_index,
-            )
-        )
-    if baseline_condition.is_por != current_condition.is_por:
-        changes.append(BackboneDiffMetadataChange("is_por", baseline_condition.is_por, current_condition.is_por))
-    return sorted(changes, key=lambda change: METADATA_FIELD_ORDER[change.field_name])
-
-
-def _compare_coordinate(
-    parameter_code: str,
-    baseline_condition: Any,
-    current_condition: BackboneDiffCurrentCondition,
-    baseline_columns: dict[str, BackboneSnapshotColumn],
-    current_descriptor_by_code: dict[str, BackboneDiffCurrentParameter],
-    baseline_universe: set[str],
-    current_universe: set[str],
-) -> BackboneDiffCellChange:
-    baseline_has_column = parameter_code in baseline_universe
-    current_has_column = parameter_code in current_universe
-    descriptor = _descriptor_for_code(
-        current_condition,
-        parameter_code,
-        baseline_columns,
-        current_descriptor_by_code,
-    )
-
-    if baseline_has_column and not current_has_column:
-        return BackboneDiffCellChange(
-            parameter_code=parameter_code,
-            sort_order=baseline_columns[parameter_code].sort_order,
-            classification=CLASSIFICATION_REMOVED,
-            reason="column_removed",
-            baseline_value=_baseline_cell_value(baseline_condition, parameter_code),
-            current_value=None,
-        )
-    if current_has_column and not baseline_has_column:
-        return BackboneDiffCellChange(
-            parameter_code=parameter_code,
-            sort_order=descriptor.sort_order,
-            classification=CLASSIFICATION_ADDED,
-            reason="column_added",
-            baseline_value=None,
-            current_value=_canonical_current_value(
-                descriptor,
-                current_condition.cells_by_code().get(parameter_code),
-                parameter_code,
-            ),
-        )
-
-    baseline_value = _baseline_cell_value(baseline_condition, parameter_code)
-    current_value = _canonical_current_value(
-        descriptor,
-        current_condition.cells_by_code().get(parameter_code),
-        parameter_code,
-    )
-
-    if baseline_value is None and current_value is None:
-        return BackboneDiffCellChange(
-            parameter_code=parameter_code,
-            sort_order=descriptor.sort_order,
-            classification=CLASSIFICATION_UNCHANGED,
-            reason="null_equal",
-            baseline_value=None,
-            current_value=None,
-        )
-    if baseline_value is None and current_value is not None:
-        return BackboneDiffCellChange(
-            parameter_code=parameter_code,
-            sort_order=descriptor.sort_order,
-            classification=CLASSIFICATION_ADDED,
-            reason="value_added",
-            baseline_value=None,
-            current_value=current_value,
-        )
-    if baseline_value is not None and current_value is None:
-        return BackboneDiffCellChange(
-            parameter_code=parameter_code,
-            sort_order=descriptor.sort_order,
-            classification=CLASSIFICATION_CLEARED,
-            reason="value_cleared",
-            baseline_value=baseline_value,
-            current_value=None,
-        )
-    if baseline_value == current_value:
-        return BackboneDiffCellChange(
-            parameter_code=parameter_code,
-            sort_order=descriptor.sort_order,
-            classification=CLASSIFICATION_UNCHANGED,
-            reason="value_equal",
-            baseline_value=baseline_value,
-            current_value=current_value,
-        )
-    return BackboneDiffCellChange(
-        parameter_code=parameter_code,
-        sort_order=descriptor.sort_order,
-        classification=CLASSIFICATION_CHANGED,
-        reason="value_changed",
-        baseline_value=baseline_value,
-        current_value=current_value,
-    )
-
-
-def _row_preview_items(layer_sort_order: int, row: BackboneDiffRow) -> list[BackboneDiffPreviewItem]:
-    items: list[BackboneDiffPreviewItem] = []
-    for change in row.metadata_changes:
-        items.append(
-            BackboneDiffPreviewItem(
-                layer_key=row.layer_key,
-                layer_sort_order=layer_sort_order,
-                effective_condition_index=row.effective_condition_index,
-                row_status=row.row_status,
-                identity=row.identity,
-                item_kind=ITEM_KIND_ROW_METADATA,
-                item_sort_key=(change.field_name,),
-                classification=CLASSIFICATION_CHANGED,
-                reason="row_metadata_changed",
-                field_name=change.field_name,
-                baseline_value=_stringify_value(change.baseline_value),
-                current_value=_stringify_value(change.current_value),
-            )
-        )
-    for change in row.cell_changes:
-        items.append(
-            BackboneDiffPreviewItem(
-                layer_key=row.layer_key,
-                layer_sort_order=layer_sort_order,
-                effective_condition_index=row.effective_condition_index,
-                row_status=row.row_status,
-                identity=row.identity,
-                item_kind=ITEM_KIND_CELL,
-                item_sort_key=(change.sort_order, change.parameter_code),
-                classification=change.classification,
-                reason=change.reason,
-                parameter_code=change.parameter_code,
-                baseline_value=change.baseline_value,
-                current_value=change.current_value,
-            )
-        )
-    return items
-
-
-def _preview_item_sort_key(item: BackboneDiffPreviewItem) -> tuple[Any, ...]:
-    return (
-        item.layer_sort_order,
-        item.layer_key,
-        item.effective_condition_index,
-        STATUS_RANK[item.row_status],
-        item.identity,
-        ITEM_KIND_RANK[item.item_kind],
-        item.item_sort_key,
-    )
-
-
-def _layer_input_sort_key(layer_input: BackboneDiffLayerInput) -> tuple[Any, ...]:
-    return (layer_input.layer_sort_order, layer_input.layer_key)
-
