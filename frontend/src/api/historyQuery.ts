@@ -14,7 +14,7 @@ export interface HistoryTimelineFilterInput {
   createdFrom?: string | null
   createdTo?: string | null
   layerKey?: string | null
-  eventTypes?: readonly string[]
+  eventTypes?: readonly HistoryEventType[]
   actor?: string | null
   origin?: HistoryOrigin | null
   sourceProjectId?: number | null
@@ -129,7 +129,7 @@ export function buildHistoryTimelineQueryString(
   appendOptionalText(query, 'origin', normalized.origin)
   appendOptionalNumber(query, 'source_project_id', normalized.sourceProjectId)
   appendOptionalText(query, 'cursor', normalizeOptionalText(options.cursor ?? null))
-  query.set('limit', String(options.limit ?? DEFAULT_TIMELINE_LIMIT))
+  query.set('limit', String(normalizeLimit(options.limit ?? DEFAULT_TIMELINE_LIMIT, 1, 100, 'timeline limit')))
   return query.toString()
 }
 
@@ -140,7 +140,7 @@ export function buildHistoryDetailQueryString(
   const query = new URLSearchParams()
   appendOptionalText(query, 'scope', normalizeOpaqueToken(scope))
   appendOptionalText(query, 'cursor', normalizeOptionalText(options.cursor ?? null))
-  query.set('limit', String(options.limit ?? DEFAULT_DETAIL_LIMIT))
+  query.set('limit', String(normalizeLimit(options.limit ?? DEFAULT_DETAIL_LIMIT, 1, 200, 'detail limit')))
   return query.toString()
 }
 
@@ -150,10 +150,10 @@ export function buildHistoryCellHistoryQueryString(
   options: HistoryCellHistoryQueryOptions = {},
 ): string {
   const query = new URLSearchParams()
-  query.set('condition_id', String(conditionId))
+  query.set('condition_id', String(normalizeConditionId(conditionId)))
   query.set('parameter_code', normalizePathToken(parameterCode))
   appendOptionalText(query, 'cursor', normalizeOptionalText(options.cursor ?? null))
-  query.set('limit', String(options.limit ?? DEFAULT_CELL_HISTORY_LIMIT))
+  query.set('limit', String(normalizeLimit(options.limit ?? DEFAULT_CELL_HISTORY_LIMIT, 1, 100, 'cell history limit')))
   return query.toString()
 }
 
@@ -184,13 +184,13 @@ function normalizeRequiredText(value: string, label: string): string {
 }
 
 function normalizeUniqueSortedEventTypes(
-  values: readonly string[],
+  values: readonly HistoryEventType[],
 ): readonly HistoryEventType[] {
   const seen = new Set<HistoryEventType>()
   const normalized: HistoryEventType[] = []
   for (const value of values) {
-    const item = value.trim()
-    if (!isHistoryEventType(item) || seen.has(item)) continue
+    const item = validateHistoryEventType(value)
+    if (seen.has(item)) continue
     seen.add(item)
     normalized.push(item)
   }
@@ -202,6 +202,14 @@ function isHistoryEventType(value: string): value is HistoryEventType {
   return (HISTORY_EVENT_TYPES as readonly string[]).includes(value)
 }
 
+function validateHistoryEventType(value: HistoryEventType): HistoryEventType {
+  const normalized = value.trim()
+  if (!isHistoryEventType(normalized)) {
+    throw new TypeError('History event type must be one of the exact backend values')
+  }
+  return normalized
+}
+
 function normalizeHistoryOrigin(origin: HistoryOrigin | null): HistoryOrigin | null {
   if (origin === null) return null
   const normalized = origin.trim() as HistoryOrigin
@@ -211,6 +219,25 @@ function normalizeHistoryOrigin(origin: HistoryOrigin | null): HistoryOrigin | n
 function normalizePositiveInteger(value: number | null): number | null {
   if (value === null) return null
   return Number.isInteger(value) && value > 0 ? value : null
+}
+
+function normalizeConditionId(value: number): number {
+  if (!Number.isInteger(value) || value < 1) {
+    throw new TypeError('condition_id must be a positive integer')
+  }
+  return value
+}
+
+function normalizeLimit(
+  value: number,
+  minimum: number,
+  maximum: number,
+  label: string,
+): number {
+  if (!Number.isInteger(value) || value < minimum || value > maximum) {
+    throw new TypeError(`${label} must be between ${minimum} and ${maximum}`)
+  }
+  return value
 }
 
 function appendOptionalText(

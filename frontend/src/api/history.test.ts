@@ -10,16 +10,17 @@ vi.mock('./client', () => ({
 
 import { apiClient } from './client'
 import {
+  buildHistoryCellHistoryQueryString,
+  buildHistoryDetailQueryString,
+  normalizeHistoryTimelineFilters,
+} from './historyQuery'
+import {
   getHistoryBatchDetail,
   getHistoryCellHistory,
   getHistoryTimeline,
 } from './history'
 import type { HistoryCellHistoryOut, HistoryDetailOut, HistoryTimelineOut } from './history'
-import {
-  buildHistoryTimelineQueryString,
-  createHistoryTimelineFilters,
-  normalizeHistoryTimelineFilters,
-} from './historyQuery'
+import { buildHistoryTimelineQueryString } from './historyQuery'
 
 function response<T>(data: T): AxiosResponse<T> {
   return { data } as unknown as AxiosResponse<T>
@@ -96,30 +97,38 @@ describe('history API client', () => {
     )
   })
 
-  it('omits invalid timeline bounds and unknown event types', () => {
-    const filters = normalizeHistoryTimelineFilters({
-      createdFrom: ' ',
-      createdTo: '2026-07-18T00:00:00Z',
-      layerKey: '   ',
-      eventTypes: ['manual', 'not-an-event', 'cell_update', 'cell_update'],
-      actor: ' ',
-      origin: 'manual',
-      sourceProjectId: 0,
-    })
+  it('fails closed on invalid timeline bounds, event types, and limits', () => {
+    expect(() =>
+      normalizeHistoryTimelineFilters({
+        createdFrom: ' ',
+        createdTo: '2026-07-18T00:00:00Z',
+        layerKey: '   ',
+        eventTypes: ['cell_update', 'not-an-event'] as unknown as readonly never[],
+        actor: ' ',
+        origin: 'manual',
+        sourceProjectId: 0,
+      }),
+    ).toThrow(TypeError)
 
-    expect(filters).toEqual({
-      createdFrom: null,
-      createdTo: '2026-07-18T00:00:00Z',
-      layerKey: null,
-      eventTypes: ['cell_update'],
-      actor: null,
-      origin: 'manual',
-      sourceProjectId: null,
-    })
-    expect(
-      buildHistoryTimelineQueryString(createHistoryTimelineFilters(filters), { limit: 1 }),
-    ).toBe(
-      'created_to=2026-07-18T00%3A00%3A00Z&event_type=cell_update&origin=manual&limit=1',
+    expect(() =>
+      buildHistoryTimelineQueryString(
+        {
+          createdFrom: '2026-07-17T00:00:00Z',
+          createdTo: '2026-07-18T00:00:00Z',
+          layerKey: null,
+          eventTypes: ['cell_update'],
+          actor: null,
+          origin: null,
+          sourceProjectId: null,
+        },
+        { limit: 0 },
+      ),
+    ).toThrow(TypeError)
+
+    expect(() => buildHistoryDetailQueryString('scope', { limit: 201 })).toThrow(TypeError)
+    expect(() => buildHistoryCellHistoryQueryString(0, 'ETCH_P001')).toThrow(TypeError)
+    expect(() => buildHistoryCellHistoryQueryString(11, 'ETCH_P001', { limit: 101 })).toThrow(
+      TypeError,
     )
   })
 })
