@@ -1,0 +1,246 @@
+{
+  "command": "cd backend && APP_TEST_DATABASE_URL='<guard-admin-url>' uv run python -m scripts.measure_backbone_diff_perf",
+  "database": {
+    "database_name": "pcm_phase26_test_99b8744477334563a54cb3c7f7f17351",
+    "dropped": true,
+    "guarded": true,
+    "transaction": {
+      "isolation": "repeatable read",
+      "read_only": "on",
+      "setup_statement": "SET TRANSACTION READ ONLY"
+    }
+  },
+  "failures": [],
+  "fixture": {
+    "changed_coordinate_count": 2000,
+    "choice_parameter_count": 50,
+    "cleared_coordinate_count": 1000,
+    "condition_count": 100,
+    "coordinate_count": 20000,
+    "layer_count": 100,
+    "non_unchanged_coordinate_count": 3000,
+    "non_unchanged_ratio": 0.15,
+    "null_coordinate_count": 1000,
+    "number_parameter_count": 50,
+    "parameter_count": 200,
+    "project_count": 1,
+    "seed": 20260717,
+    "text_parameter_count": 100,
+    "value_kinds": [
+      "number",
+      "text",
+      "choice",
+      "null"
+    ]
+  },
+  "metrics": {
+    "cell_limit_100": {
+      "item_count": 100,
+      "max_ms": 499.420855,
+      "max_response_bytes": 49205,
+      "max_round_trips": 6,
+      "max_select_count": 5,
+      "measured_runs": 5,
+      "p50_ms": 489.539436,
+      "p95_ms": 499.420855,
+      "path": "/api/projects/1/backbone-diff/layers/layer-000/conditions/eyJiYXNlbGluZV9jb25kaXRpb25faWQiOjEwMDAwLCJjdXJyZW50X2NvbmRpdGlvbl9pZCI6MSwia2luZCI6InJvd19yZWYiLCJsYXllcl9rZXkiOiJsYXllci0wMDAiLCJwcm9qZWN0X2lkIjoxLCJyb3dfc3RhdHVzIjoibWF0Y2hlZCIsInZlcnNpb24iOjF9/cells",
+      "requested_limit": 100,
+      "response_bytes": [
+        49205,
+        49205,
+        49205,
+        49205,
+        49205
+      ],
+      "round_trips": [
+        6,
+        6,
+        6,
+        6,
+        6
+      ],
+      "samples_ms": [
+        489.514838,
+        498.099928,
+        489.539436,
+        455.159157,
+        499.420855
+      ],
+      "select_counts": [
+        5,
+        5,
+        5,
+        5,
+        5
+      ],
+      "setup_statement_first": true,
+      "status_codes": [
+        200,
+        200,
+        200,
+        200,
+        200
+      ],
+      "warmup_runs": 1
+    },
+    "condition_limit_50": {
+      "item_count": 1,
+      "max_ms": 460.484889,
+      "max_response_bytes": 1708,
+      "max_round_trips": 6,
+      "max_select_count": 5,
+      "measured_runs": 5,
+      "p50_ms": 440.007428,
+      "p95_ms": 460.484889,
+      "path": "/api/projects/1/backbone-diff/layers/layer-000/conditions",
+      "requested_limit": 50,
+      "response_bytes": [
+        1708,
+        1708,
+        1708,
+        1708,
+        1708
+      ],
+      "round_trips": [
+        6,
+        6,
+        6,
+        6,
+        6
+      ],
+      "samples_ms": [
+        416.133091,
+        440.007428,
+        460.484889,
+        405.167439,
+        456.262791
+      ],
+      "select_counts": [
+        5,
+        5,
+        5,
+        5,
+        5
+      ],
+      "setup_statement_first": true,
+      "status_codes": [
+        200,
+        200,
+        200,
+        200,
+        200
+      ],
+      "warmup_runs": 1
+    },
+    "pure_diff_20k": {
+      "classification_counts": {
+        "added": 0,
+        "changed": 2000,
+        "cleared": 1000,
+        "removed": 0,
+        "unchanged": 17000
+      },
+      "coordinate_count": 20000,
+      "current_bytes": 2211372,
+      "layer_count": 100,
+      "max_ms": 186.157742,
+      "measured_runs": 5,
+      "p50_ms": 182.129652,
+      "p95_ms": 186.157742,
+      "peak_bytes": 31565329,
+      "samples_ms": [
+        183.390482,
+        186.157742,
+        179.561695,
+        181.059028,
+        182.129652
+      ],
+      "warmup_runs": 1
+    },
+    "root_preview_20": {
+      "item_count": 20,
+      "max_ms": 478.645736,
+      "max_response_bytes": 80472,
+      "max_round_trips": 6,
+      "max_select_count": 5,
+      "measured_runs": 5,
+      "p50_ms": 475.298261,
+      "p95_ms": 478.645736,
+      "path": "/api/projects/1/backbone-diff",
+      "requested_preview_limit": 20,
+      "response_bytes": [
+        80472,
+        80472,
+        80472,
+        80472,
+        80472
+      ],
+      "round_trips": [
+        6,
+        6,
+        6,
+        6,
+        6
+      ],
+      "samples_ms": [
+        445.290897,
+        477.889022,
+        478.645736,
+        475.298261,
+        473.917828
+      ],
+      "select_counts": [
+        5,
+        5,
+        5,
+        5,
+        5
+      ],
+      "setup_statement_first": true,
+      "status_codes": [
+        200,
+        200,
+        200,
+        200,
+        200
+      ],
+      "warmup_runs": 1
+    }
+  },
+  "protocol": {
+    "measured_runs": 5,
+    "percentile_method": "nearest-rank-ceiling",
+    "warmup_runs": 1
+  },
+  "runtime": {
+    "captured_at_utc": "2026-07-17T05:51:02.956576Z",
+    "cpu_count": 6,
+    "load_average": [
+      6.20849609375,
+      5.51953125,
+      4.80615234375
+    ],
+    "platform": "Linux-6.18.35.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+    "python": "3.14.3"
+  },
+  "schema_version": 1,
+  "source": {
+    "git_sha": "8779cde5fbd84e7b5b02fdcc8c0769a43b40c674",
+    "git_status_short": [
+      "?? docs/evidence/phase-4-history-backbone-diff/"
+    ]
+  },
+  "status": "passed",
+  "thresholds": {
+    "http_each": {
+      "p95_ms_max": 600.0,
+      "response_bytes_max": 262144,
+      "round_trips_max": 9,
+      "select_count_max": 8
+    },
+    "pure_diff_20k": {
+      "p95_ms_max": 250.0,
+      "peak_bytes_max": 67108864
+    }
+  }
+}
