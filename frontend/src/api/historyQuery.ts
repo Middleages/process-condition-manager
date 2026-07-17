@@ -85,7 +85,11 @@ export function normalizeHistoryTimelineFilters(
 ): HistoryTimelineFilters {
   const createdFrom = normalizeIsoDatetimeText(filters.createdFrom ?? null, 'createdFrom')
   const createdTo = normalizeIsoDatetimeText(filters.createdTo ?? null, 'createdTo')
-  if (createdFrom !== null && createdTo !== null && Date.parse(createdFrom) >= Date.parse(createdTo)) {
+  if (
+    createdFrom !== null &&
+    createdTo !== null &&
+    compareIsoDatetimes(createdFrom, createdTo) >= 0
+  ) {
     throw new TypeError('createdFrom must be earlier than createdTo')
   }
   return {
@@ -179,9 +183,7 @@ function normalizeIsoDatetimeText(value: string | null, label: string): string |
   if (value === null) return null
   const normalized = value.trim()
   if (normalized === '') return null
-  if (!isStrictIsoDatetime(normalized)) {
-    throw new TypeError(`${label} must be a valid ISO datetime`)
-  }
+  parseStrictIsoDatetime(normalized, label)
   return normalized
 }
 
@@ -253,11 +255,29 @@ function normalizePositiveInteger(value: number | null): number | null {
   return value
 }
 
-function isStrictIsoDatetime(value: string): boolean {
+function compareIsoDatetimes(left: string, right: string): number {
+  return strictIsoDatetimeToEpochMillis(parseStrictIsoDatetime(left, 'createdFrom')) -
+    strictIsoDatetimeToEpochMillis(parseStrictIsoDatetime(right, 'createdTo'))
+}
+
+interface StrictIsoDatetimeParts {
+  year: number
+  month: number
+  day: number
+  hour: number
+  minute: number
+  second: number
+  millisecond: number
+  offsetMinutes: number
+}
+
+function parseStrictIsoDatetime(value: string, label: string): StrictIsoDatetimeParts {
   const match = value.match(
     /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?(Z|[+-]\d{2}:\d{2})?$/,
   )
-  if (match === null) return false
+  if (match === null) {
+    throw new TypeError(`${label} must be a valid ISO datetime`)
+  }
 
   const year = Number(match[1])
   const month = Number(match[2])
@@ -268,32 +288,99 @@ function isStrictIsoDatetime(value: string): boolean {
   const millisecond = match[7] === undefined ? 0 : Number(match[7].padEnd(3, '0'))
   const timezone = match[8] ?? null
 
-  if (month < 1 || month > 12) return false
-  if (day < 1 || day > daysInMonth(year, month)) return false
-  if (hour > 23 || minute > 59 || second > 59 || millisecond > 999) return false
-
-  const utcMillis = Date.UTC(year, month - 1, day, hour, minute, second, millisecond)
-  if (!Number.isFinite(utcMillis)) return false
-
-  if (timezone === null) {
-    return true
+  if (year < 1) {
+    throw new TypeError(`${label} must be a valid ISO datetime`)
   }
-  if (timezone === 'Z') {
-    return true
+  if (month < 1 || month > 12) {
+    throw new TypeError(`${label} must be a valid ISO datetime`)
+  }
+  if (day < 1 || day > daysInMonth(year, month)) {
+    throw new TypeError(`${label} must be a valid ISO datetime`)
+  }
+  if (hour > 23 || minute > 59 || second > 59 || millisecond > 999) {
+    throw new TypeError(`${label} must be a valid ISO datetime`)
+  }
+
+  const offsetMinutes = parseTimezoneOffsetMinutes(timezone, label)
+  return {
+    year,
+    month,
+    day,
+    hour,
+    minute,
+    second,
+    millisecond,
+    offsetMinutes,
+  }
+}
+
+function daysInMonth(year: number, month: number): number {
+  switch (month) {
+    case 1:
+    case 3:
+    case 5:
+    case 7:
+    case 8:
+    case 10:
+    case 12:
+      return 31
+    case 4:
+    case 6:
+    case 9:
+    case 11:
+      return 30
+    case 2:
+      return isLeapYear(year) ? 29 : 28
+    default:
+      return 0
+  }
+}
+
+function isLeapYear(year: number): boolean {
+  return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)
+}
+
+function parseTimezoneOffsetMinutes(timezone: string | null, label: string): number {
+  if (timezone === null || timezone === 'Z') {
+    return 0
   }
 
   const sign = timezone.startsWith('-') ? -1 : 1
   const offsetHours = Number(timezone.slice(1, 3))
   const offsetMinutes = Number(timezone.slice(4, 6))
-  if (!Number.isInteger(offsetHours) || !Number.isInteger(offsetMinutes)) return false
-  if (offsetHours > 23 || offsetMinutes > 59) return false
-  const offsetTotalMinutes = sign * (offsetHours * 60 + offsetMinutes)
-  const adjusted = utcMillis - offsetTotalMinutes * 60_000
-  return Number.isFinite(adjusted)
+  if (!Number.isInteger(offsetHours) || !Number.isInteger(offsetMinutes)) {
+    throw new TypeError(`${label} must be a valid ISO datetime`)
+  }
+  if (offsetHours > 23 || offsetMinutes > 59) {
+    throw new TypeError(`${label} must be a valid ISO datetime`)
+  }
+  return sign * (offsetHours * 60 + offsetMinutes)
 }
 
-function daysInMonth(year: number, month: number): number {
-  return new Date(Date.UTC(year, month, 0)).getUTCDate()
+function strictIsoDatetimeToEpochMillis(value: StrictIsoDatetimeParts): number {
+  const daysSinceEpoch =
+    civilDateToDaysSinceEpoch(value.year, value.month, value.day)
+  return (
+    (((daysSinceEpoch * 24 + value.hour) * 60 + value.minute - value.offsetMinutes) * 60 +
+      value.second) *
+      1000 +
+    value.millisecond
+  )
+}
+
+function civilDateToDaysSinceEpoch(year: number, month: number, day: number): number {
+  const adjustedYear = month <= 2 ? year - 1 : year
+  const era = Math.floor(adjustedYear / 400)
+  const yearOfEra = adjustedYear - era * 400
+  const adjustedMonth = month + (month > 2 ? -3 : 9)
+  const dayOfYear = Math.floor((153 * adjustedMonth + 2) / 5) + day - 1
+  const dayOfEra =
+    yearOfEra * 365 +
+    Math.floor(yearOfEra / 4) -
+    Math.floor(yearOfEra / 100) +
+    Math.floor(yearOfEra / 400) +
+    dayOfYear
+  return era * 146097 + dayOfEra - 719468
 }
 
 function normalizeConditionId(value: number): number {
