@@ -3,9 +3,9 @@
 ## Source of truth
 
 - **Status:** Active
-- **Last refreshed:** 2026-07-16
+- **Last refreshed:** 2026-07-17
 - **Primary product surfaces:** 프로젝트 목록·생성·상세, Process Catalog, 조건표 편집기,
-  파라미터 레지스트리·ChoiceSet 관리
+  조건표 워크벤치/이력 탐색, 파라미터 레지스트리·ChoiceSet 관리
 - **Detailed Phase 2.5 specification:**
   [`docs/superpowers/specs/2026-07-13-phase-2-5-ui-ux-design.md`](./docs/superpowers/specs/2026-07-13-phase-2-5-ui-ux-design.md)
 - **Detailed Phase 2.6 specification:**
@@ -26,6 +26,10 @@
   - `frontend/src/features/projects/ProjectDetailPage.tsx` — 프로젝트 상세와 Layer 문맥
   - `frontend/src/features/parameters/ParameterAdminPage.tsx` — M1 파라미터 레지스트리
   - `frontend/src/features/sheets/SheetView.tsx` — 조건표 편집·잠금·붙여넣기 흐름
+  - `frontend/src/features/sheets/SheetWorkbench.tsx` / `HistoryWorkbench.tsx` —
+    공통 워크벤치 호스트와 이력 패널
+  - `frontend/src/features/sheets/useHistoryWorkbenchController.ts` — SheetView에서 이력
+    조회·상세·셀 범위를 한 컨트롤러로 연결하는 경계
   - 2026-07-13 사용자 승인: A2 / V1 / P1 / W1 / M1 / S1-C
   - 2026-07-14 사용자 승인: 고정 Project Profile / 공유 ChoiceSet / searchable choice
   - 2026-07-16 사용자 승인: A — 작업 집중형 3단계 프로젝트 생성 명료화
@@ -57,7 +61,6 @@
   - 공통 상태·폼·버튼·테이블·접근성 규칙을 재사용 가능한 계약으로 만든다.
 - **Non-goals:**
   - Phase 3 검증 엔진이나 사용자 문구 매퍼 구현
-  - Phase 4~6의 이력·승인·출력 기능 선행 구현
   - 실제 PARTID 원천 DB 연동과 Project Profile 자동 재동기화
   - 모바일 조건표 편집 최적화
   - 새 UI 프레임워크나 외부 폰트 도입

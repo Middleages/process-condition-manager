@@ -2,8 +2,14 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { forwardRef } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { Route, Routes, StaticRouter } from 'react-router-dom'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type {
+  HistoryCellHistoryOut,
+  HistoryCoverageOut,
+  HistoryDetailOut,
+  HistoryTimelineItemOut,
+} from '@/api/history'
 import type { ProjectOut, SheetOut } from '@/api/types'
 import type { ConditionGridProps } from '@/grid'
 
@@ -27,8 +33,68 @@ vi.mock('@/grid', async (importOriginal) => {
   }
 })
 
+type MockSheetWorkbenchState = {
+  mode: 'validation' | 'history' | 'backbone-diff' | null
+  open: () => void
+  close: () => void
+  toggle: () => void
+  selectMode: (mode: 'validation' | 'history' | 'backbone-diff') => void
+  resizeBy: () => void
+  setHeight: () => void
+  panelHeight: number
+}
+
+type MockHistoryController = {
+  state: HistoryWorkbenchState
+  coverage: HistoryCoverageOut
+  timelineStatus: 'idle' | 'loading' | 'ready' | 'error'
+  timelineError: string | null
+  nextPageError: string | null
+  cellHistory: HistoryCellHistoryOut | null
+  cellStatus: 'idle' | 'loading' | 'ready' | 'error'
+  cellError: string | null
+  cellNextPageError: string | null
+  onFiltersChange: (filters: unknown) => void
+  onModeChange: (mode: 'timeline' | 'cell') => void
+  onBatchToggle: (item: HistoryTimelineItemOut, shouldRequestDetail: boolean) => void
+  onCellHistoryRequest: (target: { conditionId: string; parameterCode: string }) => void
+  onLoadMoreTimeline: (cursor: string | null) => void
+  onLoadMoreCell: (cursor: string | null) => void
+  onRetryTimeline: () => void
+  onRetryCell: () => void
+}
+
+let mockSheetWorkbenchState = createMockSheetWorkbenchState()
+let mockHistoryWorkbenchController = createMockHistoryController()
+
+vi.mock('./SheetWorkbench', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./SheetWorkbench')>()
+  return {
+    ...actual,
+    useSheetWorkbenchState: () => mockSheetWorkbenchState,
+  }
+})
+
+vi.mock('./useHistoryWorkbenchController', () => ({
+  useHistoryWorkbenchController: () => mockHistoryWorkbenchController,
+}))
+
 import { shouldFocusLiveSheetTitle, SheetView, SheetViewPage } from './SheetView'
+import {
+  appendHistoryWorkbenchPage,
+  createHistoryWorkbenchState,
+  getHistoryTimelineItemKey,
+  openHistoryCellScope,
+  storeHistoryBatchDetail,
+  toggleHistoryBatchDetail,
+  type HistoryWorkbenchState,
+} from './historyWorkbenchState'
 import sheetViewSource from './SheetView.tsx?raw'
+
+beforeEach(() => {
+  mockSheetWorkbenchState = createMockSheetWorkbenchState()
+  mockHistoryWorkbenchController = createMockHistoryController()
+})
 
 const project: ProjectOut = {
   id: 7,
@@ -113,6 +179,180 @@ const sheet: SheetOut = {
   },
   validation_rules: [],
   validation_basis_hash: 'sha256:test',
+}
+
+function createMockSheetWorkbenchState(
+  mode: MockSheetWorkbenchState['mode'] = null,
+): MockSheetWorkbenchState {
+  return {
+    mode,
+    open: () => undefined,
+    close: () => undefined,
+    toggle: () => undefined,
+    selectMode: () => undefined,
+    resizeBy: () => undefined,
+    setHeight: () => undefined,
+    panelHeight: 300,
+  }
+}
+
+function createMockHistoryController(
+  state: HistoryWorkbenchState = buildHistoryState(),
+): MockHistoryController {
+  return {
+    state,
+    coverage: {
+      legacy_unresolved_layer_count: 1,
+      legacy_detail_unavailable_count: 1,
+    },
+    timelineStatus: 'ready',
+    timelineError: null,
+    nextPageError: null,
+    cellHistory: createCellHistory(),
+    cellStatus: 'ready',
+    cellError: null,
+    cellNextPageError: null,
+    onFiltersChange: () => undefined,
+    onModeChange: () => undefined,
+    onBatchToggle: () => undefined,
+    onCellHistoryRequest: () => undefined,
+    onLoadMoreTimeline: () => undefined,
+    onLoadMoreCell: () => undefined,
+    onRetryTimeline: () => undefined,
+    onRetryCell: () => undefined,
+  }
+}
+
+function buildHistoryState(): HistoryWorkbenchState {
+  const initial = createHistoryWorkbenchState({ actor: 'dev-admin' })
+  const cellScoped = openHistoryCellScope(initial, {
+    conditionId: 11,
+    parameterCode: 'ETCH_P001',
+  })
+  const page = appendHistoryWorkbenchPage(cellScoped, {
+    items: [createDeletedEvent(), createExpandedBatchItem()],
+    nextCursor: 'cursor-2',
+  })
+  const expanded = toggleHistoryBatchDetail(
+    page,
+    getHistoryTimelineItemKey(createExpandedBatchItem()),
+  )
+  return storeHistoryBatchDetail(
+    expanded,
+    getHistoryTimelineItemKey(createExpandedBatchItem()),
+    createDetail(),
+  )
+}
+
+function createDeletedEvent(): HistoryTimelineItemOut {
+  return {
+    kind: 'event',
+    cursor_id: 1,
+    event_types: ['cell_update'],
+    actors: ['dev-admin'],
+    origins: ['manual'],
+    started_at: '2026-07-17T00:00:00Z',
+    occurred_at: '2026-07-17T00:00:00Z',
+    layer_keys: ['L1::10::ETCH'],
+    source_project_id: null,
+    batch_id: null,
+    matched_event_count: 1,
+    total_event_count: 1,
+    summary: 'event-1',
+    jump_target: {
+      layer_key: 'L1::10::ETCH',
+      condition_id: 11,
+      parameter_code: 'ETCH_P001',
+      cell_ref: 'R11C3',
+      jump_status: 'deleted',
+    },
+    detail_status: 'available',
+    detail_scope: null,
+    metadata_status: 'complete',
+  }
+}
+
+function createExpandedBatchItem(): HistoryTimelineItemOut {
+  return {
+    kind: 'batch',
+    cursor_id: 2,
+    event_types: ['backbone_copy', 'cell_update'],
+    actors: ['dev-admin'],
+    origins: ['manual'],
+    started_at: '2026-07-17T01:00:00Z',
+    occurred_at: '2026-07-17T02:00:00Z',
+    layer_keys: ['L1::10::ETCH'],
+    source_project_id: 17,
+    batch_id: 'batch-2',
+    matched_event_count: 2,
+    total_event_count: 3,
+    summary: 'batch-2',
+    jump_target: {
+      layer_key: 'L1::10::ETCH',
+      condition_id: 11,
+      parameter_code: 'ETCH_P001',
+      cell_ref: 'R11C3',
+      jump_status: 'available',
+    },
+    detail_status: 'available',
+    detail_scope: 'scope-2',
+    metadata_status: 'legacy_partial',
+  }
+}
+
+function createDetail(): HistoryDetailOut {
+  return {
+    order_kind: 'event_desc',
+    detail_status: 'available',
+    items: [
+      {
+        event_id: 21,
+        old_code: 'OLD',
+        new_code: 'NEW',
+        copied_value: null,
+        choice_label: 'choice',
+        actor: 'dev-admin',
+        origin: 'manual',
+        created_at: '2026-07-17T00:00:00Z',
+        layer_key: 'L1::10::ETCH',
+        jump_target: {
+          layer_key: 'L1::10::ETCH',
+          condition_id: 11,
+          parameter_code: 'ETCH_P001',
+          cell_ref: 'R11C3',
+          jump_status: 'available',
+        },
+        domain_coordinate: null,
+        capture_tuple: null,
+        metadata_status: 'complete',
+      },
+    ],
+    reason: null,
+    next_cursor: null,
+  }
+}
+
+function createCellHistory(): HistoryCellHistoryOut {
+  return {
+    items: [
+      {
+        event_id: 31,
+        old_code: 'OLD',
+        new_code: 'NEW',
+        choice_label: 'choice',
+        actor: 'dev-admin',
+        origin: 'manual',
+        created_at: '2026-07-17T00:00:00Z',
+        layer_key: 'L1::10::ETCH',
+        jump_status: 'deleted',
+        metadata_status: 'complete',
+      },
+    ],
+    baseline_entry: null,
+    initial_entry: null,
+    initial_state_unavailable: true,
+    next_cursor: 'cell-cursor-2',
+  }
 }
 
 function client(): QueryClient {
@@ -481,6 +721,32 @@ describe('SheetView focus shell integration', () => {
     expect(html).not.toContain('data-validation-workbench')
   })
 
+  it('renders the history workbench host from the shared controller when history scope is opened', () => {
+    mockSheetWorkbenchState = createMockSheetWorkbenchState('history')
+    mockHistoryWorkbenchController = createMockHistoryController(
+      openHistoryCellScope(createHistoryWorkbenchState({ actor: 'dev-admin' }), {
+        conditionId: 11,
+        parameterCode: 'ETCH_P001',
+      }),
+    )
+
+    const queryClient = client()
+    queryClient.setQueryData(['project', 7], project)
+    queryClient.setQueryData(['sheet', 7], sheet)
+
+    const html = renderSheet(queryClient)
+
+    expect(html).toContain('data-sheet-workbench')
+    expect(html).toContain('data-history-workbench')
+    expect(html).toContain('condition #11')
+    expect(html).toContain('parameter ETCH_P001')
+    expect(html).toContain('초기 상태')
+    expect(html).toContain('상세')
+    expect(html).toContain('삭제된 대상이라 위치로 이동할 수 없습니다.')
+    expect(html).toContain('더 보기')
+    expect(html).toContain('aria-expanded="true"')
+  })
+
   it('orders hidden validation navigation across a committed category change without timer races', () => {
     const categoryChange = sheetViewSource.indexOf(
       'setActiveCategory(navigation.categoryCode)',
@@ -501,6 +767,15 @@ describe('SheetView focus shell integration', () => {
     expect(sheetViewSource).toContain('resolveWorkbenchCoordinateNavigation(')
     expect(sheetViewSource).toContain('visibleColumns.some(')
     expect(sheetViewSource).not.toMatch(/setTimeout\([\s\S]*?scrollToCell/)
+  })
+
+  it('wires the history controller and cell-history grid request into the shared host', () => {
+    expect(sheetViewSource).toContain('useHistoryWorkbenchController(projectId)')
+    expect(sheetViewSource).toContain('historyContent={')
+    expect(sheetViewSource).toContain('<HistoryWorkbench')
+    expect(sheetViewSource).toContain('onCellHistoryRequest: (payload) => {')
+    expect(sheetViewSource).toContain("workbenchState.selectMode('history')")
+    expect(sheetViewSource).toContain('activateHistoryJumpTarget')
   })
 
   it('renders truthful read-only discovery controls with accessible pressed and status semantics', () => {
