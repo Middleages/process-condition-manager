@@ -72,6 +72,7 @@ type MockHistoryController = {
 
 let mockSheetWorkbenchState = createMockSheetWorkbenchState()
 let mockHistoryWorkbenchController = createMockHistoryController()
+let mockBackboneDiffWorkbenchController = createMockBackboneDiffWorkbenchController()
 
 vi.mock('./SheetWorkbench', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./SheetWorkbench')>()
@@ -84,6 +85,9 @@ vi.mock('./SheetWorkbench', async (importOriginal) => {
 vi.mock('./useHistoryWorkbenchController', () => ({
   useHistoryWorkbenchController: () => mockHistoryWorkbenchController,
 }))
+vi.mock('./useBackboneDiffWorkbenchController', () => ({
+  useBackboneDiffWorkbenchController: () => mockBackboneDiffWorkbenchController,
+}))
 
 import { shouldFocusLiveSheetTitle, SheetView, SheetViewPage } from './SheetView'
 import {
@@ -95,11 +99,13 @@ import {
   toggleHistoryBatchDetail,
   type HistoryWorkbenchState,
 } from './historyWorkbenchState'
+import type { BackboneDiffWorkbenchController } from './useBackboneDiffWorkbenchController'
 import sheetViewSource from './SheetView.tsx?raw'
 
 beforeEach(() => {
   mockSheetWorkbenchState = createMockSheetWorkbenchState()
   mockHistoryWorkbenchController = createMockHistoryController()
+  mockBackboneDiffWorkbenchController = createMockBackboneDiffWorkbenchController()
 })
 
 const project: ProjectOut = {
@@ -231,6 +237,72 @@ function createMockHistoryController(
     onLoadMoreTimeline: () => undefined,
     onLoadMoreCell: () => undefined,
     onRetryTimeline: () => undefined,
+    onRetryCell: () => undefined,
+  }
+}
+
+function createMockBackboneDiffWorkbenchController(): BackboneDiffWorkbenchController {
+  return {
+    state: {
+      filters: {
+        classification: ['added', 'changed', 'cleared', 'removed', 'unchanged'],
+        layerKey: null,
+        categoryCode: null,
+        parameterCode: null,
+        includeUnchanged: false,
+        previewLimit: 20,
+      },
+      revision: 0,
+      rootScope: null,
+      rootBasisHash: null,
+      rootCounts: {
+        layer_count: 0,
+        available_layer_count: 0,
+        unavailable_layer_count: 0,
+        row_count: 0,
+        cell_count: 0,
+        full_row_count: 0,
+        full_cell_count: 0,
+        ambiguous_lineage_count: 0,
+        added_count: 0,
+        changed_count: 0,
+        cleared_count: 0,
+        removed_count: 0,
+        unchanged_count: 0,
+      },
+      layerSummaries: [],
+      previewItems: [],
+      mode: 'root',
+      openLayerKey: null,
+      branchScope: null,
+      branchPages: [],
+      branchNextCursor: null,
+      openCellLayerKey: null,
+      openCellRowRef: null,
+      openCellScope: null,
+      cellPages: [],
+      cellNextCursor: null,
+      navigationAnnouncement: null,
+    },
+    rootStatus: 'ready',
+    rootError: null,
+    rootNextPageError: null,
+    branchStatus: 'ready',
+    branchError: null,
+    branchNextPageError: null,
+    cellStatus: 'ready',
+    cellError: null,
+    cellNextPageError: null,
+    onFiltersChange: () => undefined,
+    onOpenBranch: () => undefined,
+    onCloseBranch: () => undefined,
+    onOpenCell: () => undefined,
+    onCloseCell: () => undefined,
+    onModeChange: () => undefined,
+    onLoadMoreConditions: () => undefined,
+    onLoadMoreCells: () => undefined,
+    onRetryRoot: () => undefined,
+    onRetryBranch: () => undefined,
     onRetryCell: () => undefined,
   }
 }
@@ -783,7 +855,7 @@ describe('SheetView focus shell integration', () => {
     const html = renderSheet(queryClient)
 
     expect(html).toContain('data-sheet-workbench')
-    expect(html).toContain('data-backbone-diff-workbench')
+    expect(html).toContain('aria-label="백본 비교 워크벤치"')
     expect(html).toContain('role="tabpanel"')
     expect(html).toContain('id="sheet-workbench-panel-backbone-diff"')
     expect(html).toContain('aria-controls="sheet-workbench-panel-backbone-diff"')
@@ -809,6 +881,7 @@ describe('SheetView focus shell integration', () => {
     const separatorCount = (opened.match(/role="separator"/g) ?? []).length
     expect(separatorCount).toBe(1)
     expect(opened).toContain('data-sheet-workbench')
+    expect(opened).toContain('aria-label="백본 비교 워크벤치"')
     expect(opened).not.toContain('data-history-workbench')
   })
 
@@ -856,9 +929,10 @@ describe('SheetView focus shell integration', () => {
   it('wires a shared jump seam into validation, history, and backbone-diff workbench content', () => {
     expect(sheetViewSource).toContain('const activateWorkbenchJumpTarget = useCallback(')
     expect(sheetViewSource).toContain('onIssueActivate={activateValidationIssue}')
-    expect(sheetViewSource).toContain('onActivateTarget={activateWorkbenchJumpTarget}')
+    expect(sheetViewSource).toContain('onActivateTarget={activateHistoryJumpTarget}')
+    expect(sheetViewSource).toContain('onActivateTarget={onBackboneActivateTarget}')
     expect(sheetViewSource).toContain('backboneDiffContent={')
-    expect(sheetViewSource).toContain('<BackboneDiffWorkbenchStub')
+    expect(sheetViewSource).toContain('<BackboneDiffWorkbench')
   })
 
   it('orders hidden validation navigation across a committed category change without timer races', () => {
