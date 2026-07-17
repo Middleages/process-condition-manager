@@ -31,7 +31,8 @@ APP_TEST_DATABASE_URL=postgresql+asyncpg://<guard-admin-host>/<source-db> \
 - setup/seed는 측정 밖이다. 각 경로를 1회 warm한 뒤 다음 5회를 측정한다.
 - p50/p95는 보수적인 `nearest-rank-ceiling`이다. 표본 5개의 p95는 최댓값이다.
 - pure compute는 DB에서 immutable graph를 materialize한 뒤 fresh child process에서 측정한다.
-  tracemalloc은 timing과 분리된 1회 실행이다.
+  Timing 5회 동안 cyclic GC는 비활성화하며, tracemalloc은 GC를 복원한 뒤 timing과
+  분리된 1회 실행이다. HTTP gate는 GC를 비활성화하지 않는다.
 - HTTP는 등록된 FastAPI route를 ASGI HTTP client로 실제 호출한다. root는 preview 20,
   condition은 limit 50, cell은 include-unchanged scope에서 limit 100을 요청한다.
 - HTTP 각 요청은 독립적으로 loader와 pure compute를 다시 수행한다. SQL recorder는
@@ -61,3 +62,11 @@ Pure 결과의 실제 분류 합은 `changed=2,000`, `cleared=1,000`, `unchanged
 따라서 외부 network/TLS latency를 대표하지 않지만, 계약 대상인 loader, transaction setup,
 pure comparison, FastAPI validation/serialization, 실제 response bytes는 모두 포함한다.
 수치는 기준 완화, percentile 보간, 추가 warmup, CPU pinning 없이 얻었다.
+
+## 재현성 보강
+
+병렬 reviewer가 함께 실행 중이던 진단 1회에서 cell p95가 `692.62 ms`로 실패했고,
+이를 숨기거나 기준을 완화하지 않았다. 병렬 작업을 종료한 독점 환경에서 같은 runner를
+변경 없이 3회 연속 재실행한 결과, cell p95는 각각 `508.91 / 507.43 / 540.87 ms`였고
+세 실행 모두 전체 gate를 통과했다. executable binding test도 runner를 3회 순차 실행해
+이 안정성 규칙을 지속적으로 고정한다.

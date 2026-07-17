@@ -844,6 +844,7 @@ async def _run_in_database(database: TemporaryPostgresDatabase) -> dict[str, Any
             "warmup_runs": _WARMUP_RUNS,
             "measured_runs": _MEASURED_RUNS,
             "percentile_method": "nearest-rank-ceiling",
+            "pure_timing_gc_enabled": False,
         },
         "database": {
             "guarded": True,

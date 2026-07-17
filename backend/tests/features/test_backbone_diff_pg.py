@@ -340,6 +340,21 @@ def _write_mutation(engine: Engine, kind: MutationKind, seed: _Seed, *, restore:
     statement, parameters = _mutation_sql(kind, seed, restore=restore)
     with engine.begin() as connection:
         connection.execute(text(statement), parameters)
+        if kind == "layer_replacement":
+            connection.execute(
+                text("UPDATE layer_condition SET label = :label WHERE id = :condition_id"),
+                {
+                    "condition_id": seed.condition_id,
+                    "label": "current" if restore else "replacement-current",
+                },
+            )
+            connection.execute(
+                text("UPDATE cell_value SET value_text = :value WHERE id = :cell_id"),
+                {
+                    "cell_id": seed.alpha_cell_id,
+                    "value": "current-alpha" if restore else "replacement-alpha",
+                },
+            )
 
 
 def _is_first_graph_select(statement: str) -> bool:
