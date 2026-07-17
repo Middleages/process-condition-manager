@@ -294,6 +294,16 @@ export function shouldHandleDiffBasisChangedQueryError(
   )
 }
 
+export function isBackboneDiffQueryPageCurrent({
+  dataToken,
+  latestToken,
+}: {
+  dataToken: number
+  latestToken: number
+}): boolean {
+  return dataToken >= latestToken
+}
+
 export function backboneDiffRootAuthority(
   input: {
     enabled: boolean
@@ -498,7 +508,7 @@ export function useBackboneDiffWorkbenchController(
       current.navigationAnnouncement === BASIS_CHANGED_MESSAGE
         ? announceBackboneDiffNavigation(current, null)
         : current
-    commitState((latest) =>
+    commitState((_) =>
       announceBackboneDiffNavigation(clearBackboneDiffOpenScopes(withAnnouncementCleared), BASIS_CHANGED_MESSAGE),
     )
     clearBackboneDiffBranchAndCellQueries(queryClient, projectId)
@@ -713,7 +723,10 @@ export function useBackboneDiffWorkbenchController(
       rootBasisToken: rootBasisTokenRef.current,
     })
     if (!isCurrentBackboneDiffBranchAuthority(branchAuthority, authority)) return
-    if (latest.token < branchQueryTokenRef.current) return
+    if (!isBackboneDiffQueryPageCurrent({
+      dataToken: latest.token,
+      latestToken: branchQueryTokenRef.current,
+    })) return
 
     commitState((current) =>
       setBackboneDiffBranchPages(current, mergedBranch.pages, mergedBranch.nextCursor),
@@ -848,7 +861,10 @@ export function useBackboneDiffWorkbenchController(
       rootBasisToken: rootBasisTokenRef.current,
     })
     if (!isCurrentBackboneDiffCellAuthority(cellAuthority, authority)) return
-    if (latest.token < cellQueryTokenRef.current) return
+    if (!isBackboneDiffQueryPageCurrent({
+      dataToken: latest.token,
+      latestToken: cellQueryTokenRef.current,
+    })) return
 
     commitState((current) => setBackboneDiffCellPages(current, mergedCell.pages, mergedCell.nextCursor))
   }, [cellAuthority, cellEnabled, cellQuery.data, cellQuery.isSuccess, commitState, mergedCell])
