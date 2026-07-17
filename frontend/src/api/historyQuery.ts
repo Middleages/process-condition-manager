@@ -168,9 +168,6 @@ export function buildHistoryCellHistoryQueryString(
 
 export function normalizeOpaqueToken(value: string): string {
   const normalized = normalizeRequiredText(value, 'scope', MAX_OPAQUE_TOKEN_LENGTH)
-  if (normalized.length > MAX_OPAQUE_TOKEN_LENGTH) {
-    throw new TypeError('History scope token is too long')
-  }
   return normalized
 }
 
@@ -182,7 +179,7 @@ function normalizeIsoDatetimeText(value: string | null, label: string): string |
   if (value === null) return null
   const normalized = value.trim()
   if (normalized === '') return null
-  if (Number.isNaN(Date.parse(normalized))) {
+  if (!isStrictIsoDatetime(normalized)) {
     throw new TypeError(`${label} must be a valid ISO datetime`)
   }
   return normalized
@@ -254,6 +251,49 @@ function normalizePositiveInteger(value: number | null): number | null {
     throw new TypeError('sourceProjectId must be a positive integer')
   }
   return value
+}
+
+function isStrictIsoDatetime(value: string): boolean {
+  const match = value.match(
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?(Z|[+-]\d{2}:\d{2})?$/,
+  )
+  if (match === null) return false
+
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  const hour = Number(match[4])
+  const minute = Number(match[5])
+  const second = match[6] === undefined ? 0 : Number(match[6])
+  const millisecond = match[7] === undefined ? 0 : Number(match[7].padEnd(3, '0'))
+  const timezone = match[8] ?? null
+
+  if (month < 1 || month > 12) return false
+  if (day < 1 || day > daysInMonth(year, month)) return false
+  if (hour > 23 || minute > 59 || second > 59 || millisecond > 999) return false
+
+  const utcMillis = Date.UTC(year, month - 1, day, hour, minute, second, millisecond)
+  if (!Number.isFinite(utcMillis)) return false
+
+  if (timezone === null) {
+    return true
+  }
+  if (timezone === 'Z') {
+    return true
+  }
+
+  const sign = timezone.startsWith('-') ? -1 : 1
+  const offsetHours = Number(timezone.slice(1, 3))
+  const offsetMinutes = Number(timezone.slice(4, 6))
+  if (!Number.isInteger(offsetHours) || !Number.isInteger(offsetMinutes)) return false
+  if (offsetHours > 23 || offsetMinutes > 59) return false
+  const offsetTotalMinutes = sign * (offsetHours * 60 + offsetMinutes)
+  const adjusted = utcMillis - offsetTotalMinutes * 60_000
+  return Number.isFinite(adjusted)
+}
+
+function daysInMonth(year: number, month: number): number {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate()
 }
 
 function normalizeConditionId(value: number): number {
