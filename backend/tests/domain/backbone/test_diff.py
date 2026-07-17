@@ -862,6 +862,39 @@ def test_backbone_diff_layer_basis_hash_changes_with_authority(
     assert backbone_diff_layer_basis_hash(base) != backbone_diff_layer_basis_hash(mutated)
 
 
+def test_backbone_diff_exact_hashes_match_f4156b8() -> None:
+    layer = _matched_layer_input()
+
+    assert backbone_diff_layer_basis_hash(layer) == (
+        "sha256:ff71dc7819fbec40fd9f2b8287900c7660057d6fb94a52942803e9b02970fee6"
+    )
+    assert backbone_diff_basis_hash((layer,)) == (
+        "sha256:535d6e8581738deff41ce8d07675ac4f6b09957354524832020b1d189950d6eb"
+    )
+    assert compare_backbone((layer,)).basis_hash == backbone_diff_basis_hash((layer,))
+    assert compare_backbone_layer(layer).basis_hash == backbone_diff_layer_basis_hash(layer)
+
+
+def test_backbone_diff_type_mismatch_details_are_safe() -> None:
+    with pytest.raises(RuleViolationError) as exc_info:
+        compare_backbone_layer(_mismatch_layer())
+
+    assert exc_info.value.code == DIFF_BASIS_INVALID
+    assert exc_info.value.details == {
+        "parameter_code": "shared_number_equal",
+        "baseline_value_type": "number",
+        "current_value_type": "text",
+    }
+
+
+def test_backbone_diff_unresolved_metadata_details_are_safe() -> None:
+    with pytest.raises(RuleViolationError) as exc_info:
+        compare_backbone_layer(_missing_descriptor_layer())
+
+    assert exc_info.value.code == UNRESOLVED_PARAMETER_METADATA
+    assert exc_info.value.details == {"parameter_code": "missing_code"}
+
+
 def test_backbone_diff_layer_input_rejects_contradictory_current_source() -> None:
     with pytest.raises(RuleViolationError) as exc_info:
         BackboneDiffLayerInput(

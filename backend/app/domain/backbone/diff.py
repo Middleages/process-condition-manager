@@ -7,7 +7,7 @@ import json
 from collections import defaultdict
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Literal, NoReturn
+from typing import Any, Literal, NoReturn, cast
 
 from app.domain.backbone.snapshot import (
     UNRESOLVED_PARAMETER_METADATA,
@@ -39,12 +39,16 @@ STATUS_RANK = {ROW_STATUS_MATCHED: 0, ROW_STATUS_ADDED: 1, ROW_STATUS_REMOVED: 2
 ITEM_KIND_RANK = {ITEM_KIND_ROW_METADATA: 0, ITEM_KIND_CELL: 1}
 
 
-def _diff_basis_invalid(message: str) -> NoReturn:
-    raise RuleViolationError(message, code=DIFF_BASIS_INVALID)
+def _diff_basis_invalid(
+    message: str, *, details: dict[str, object] | None = None
+) -> NoReturn:
+    raise RuleViolationError(message, code=DIFF_BASIS_INVALID, details=details)
 
 
-def _unresolved_parameter_metadata(message: str) -> NoReturn:
-    raise RuleViolationError(message, code=UNRESOLVED_PARAMETER_METADATA)
+def _unresolved_parameter_metadata(
+    message: str, *, details: dict[str, object] | None = None
+) -> NoReturn:
+    raise RuleViolationError(message, code=UNRESOLVED_PARAMETER_METADATA, details=details)
 
 
 @dataclass(frozen=True, slots=True)
@@ -330,12 +334,178 @@ class BackboneDiffResult:
         return sum(layer.ambiguous_lineage_count for layer in self.layer_results)
 
 
+@dataclass(frozen=True, slots=True)
+class _PreparedCoordinate:
+    parameter_code: str
+    descriptor: BackboneDiffCurrentParameter | BackboneSnapshotColumn
+    sort_order: int
+    baseline_has_column: bool
+    current_has_column: bool
+
+
+@dataclass(frozen=True, slots=True)
+class _PreparedCurrentCondition:
+    condition: BackboneDiffCurrentCondition
+    cells_by_code: dict[str, str | None]
+    canonical_values_by_code: dict[str, str | None]
+    payload_cells: tuple[tuple[str, str | None], ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _PreparedLayer:
+    layer_input: BackboneDiffLayerInput
+    basis_bytes: bytes
+    basis_hash: str
+    baseline_columns: dict[str, BackboneSnapshotColumn]
+    baseline_universe: set[str]
+    current_selected: tuple[BackboneDiffCurrentParameter, ...]
+    current_descriptor_by_code: dict[str, BackboneDiffCurrentParameter]
+    current_universe: set[str]
+    current_conditions: tuple[_PreparedCurrentCondition, ...]
+    coordinate_plan: dict[str, _PreparedCoordinate]
+    coordinate_codes: tuple[str, ...]
+    added_row_codes: tuple[str, ...]
+    removed_row_codes: tuple[str, ...]
+
+
+@dataclass(slots=True)
+class _PrepareCache:
+    baseline_columns_by_snapshot_id: dict[int, dict[str, BackboneSnapshotColumn]]
+    baseline_payload_by_snapshot_id: dict[int, dict[str, Any]]
+    current_selected_by_parameters_key: dict[
+        tuple[BackboneDiffCurrentParameter, ...], tuple[BackboneDiffCurrentParameter, ...]
+    ]
+    current_parameter_payload_by_selected_key: dict[
+        tuple[BackboneDiffCurrentParameter, ...], tuple[dict[str, Any], ...]
+    ]
+    coordinate_plan_by_descriptor_ids: dict[
+        tuple[int, tuple[BackboneDiffCurrentParameter, ...]],
+        tuple[
+            tuple[str, ...],
+            dict[str, _PreparedCoordinate],
+            tuple[str, ...],
+            tuple[str, ...],
+        ],
+    ]
+
+
+def _prepare_layer(
+    layer_input: BackboneDiffLayerInput,
+    *,
+    cache: _PrepareCache | None = None,
+) -> _PreparedLayer:
+    cache = cache or _PrepareCache({}, {}, {}, {}, {})
+    baseline_columns = (
+        {}
+        if layer_input.baseline_snapshot is None
+        else _baseline_columns_for_snapshot(layer_input.baseline_snapshot, cache)
+    )
+    baseline_universe = set(baseline_columns)
+    current_selected = _selected_current_descriptors(layer_input, cache)
+    current_descriptor_by_code = {parameter.code: parameter for parameter in current_selected}
+    current_universe = set(current_descriptor_by_code)
+    _validate_parameter_type_compatibility(baseline_columns, current_descriptor_by_code)
+
+    current_conditions = tuple(
+        _prepare_current_condition(
+            condition, baseline_columns, current_descriptor_by_code
+        )
+        for condition in layer_input.current_conditions
+    )
+
+    prepared_for_payload = _PreparedLayer(
+        layer_input=layer_input,
+        basis_bytes=b"",
+        basis_hash="",
+        baseline_columns=baseline_columns,
+        baseline_universe=baseline_universe,
+        current_selected=current_selected,
+        current_descriptor_by_code=current_descriptor_by_code,
+        current_universe=current_universe,
+        current_conditions=current_conditions,
+        coordinate_plan={},
+        coordinate_codes=(),
+        added_row_codes=(),
+        removed_row_codes=(),
+    )
+    basis_bytes = _layer_basis_bytes(prepared_for_payload, cache)
+    coordinate_plan_key = (id(baseline_columns), current_selected)
+    cached_coordinate_plan = cache.coordinate_plan_by_descriptor_ids.get(coordinate_plan_key)
+    if cached_coordinate_plan is None:
+        coordinate_codes = tuple(
+            _ordered_coordinate_codes(
+                baseline_columns,
+                current_descriptor_by_code,
+                baseline_universe,
+                current_universe,
+            )
+        )
+        coordinate_plan = {
+            parameter_code: _PreparedCoordinate(
+                parameter_code=parameter_code,
+                descriptor=(
+                    current_descriptor_by_code.get(parameter_code)
+                    or baseline_columns[parameter_code]
+                ),
+                sort_order=(
+                    current_descriptor_by_code.get(parameter_code)
+                    or baseline_columns[parameter_code]
+                ).sort_order,
+                baseline_has_column=parameter_code in baseline_universe,
+                current_has_column=parameter_code in current_universe,
+            )
+            for parameter_code in coordinate_codes
+        }
+        added_row_codes = tuple(
+            _ordered_added_row_codes(
+                baseline_columns,
+                current_descriptor_by_code,
+                current_universe,
+            )
+        )
+        removed_row_codes = tuple(
+            _ordered_baseline_row_codes(
+                baseline_columns,
+                baseline_universe,
+            )
+        )
+        cached_coordinate_plan = (
+            coordinate_codes,
+            coordinate_plan,
+            added_row_codes,
+            removed_row_codes,
+        )
+        cache.coordinate_plan_by_descriptor_ids[coordinate_plan_key] = cached_coordinate_plan
+    coordinate_codes, coordinate_plan, added_row_codes, removed_row_codes = cached_coordinate_plan
+    return _PreparedLayer(
+        layer_input=layer_input,
+        basis_bytes=basis_bytes,
+        basis_hash=_hash_bytes(basis_bytes),
+        baseline_columns=baseline_columns,
+        baseline_universe=baseline_universe,
+        current_selected=current_selected,
+        current_descriptor_by_code=current_descriptor_by_code,
+        current_universe=current_universe,
+        current_conditions=current_conditions,
+        coordinate_plan=coordinate_plan,
+        coordinate_codes=coordinate_codes,
+        added_row_codes=added_row_codes,
+        removed_row_codes=removed_row_codes,
+    )
+
+
 def compare_backbone_layer(layer_input: BackboneDiffLayerInput) -> BackboneDiffLayerResult:
+    prepared = _prepare_layer(layer_input)
+    return _compare_prepared_layer(prepared)
+
+
+def _compare_prepared_layer(prepared: _PreparedLayer) -> BackboneDiffLayerResult:
+    layer_input = prepared.layer_input
     if layer_input.baseline_snapshot is None:
         return BackboneDiffLayerResult(
             layer_key=layer_input.layer_key,
             layer_sort_order=layer_input.layer_sort_order,
-            basis_hash=backbone_diff_layer_basis_hash(layer_input),
+            basis_hash=prepared.basis_hash,
             baseline_unavailable=True,
             ambiguous_lineage_count=0,
             matched_row_count=0,
@@ -353,19 +523,14 @@ def compare_backbone_layer(layer_input: BackboneDiffLayerInput) -> BackboneDiffL
     baseline_snapshot = layer_input.baseline_snapshot
     assert baseline_snapshot is not None
 
-    baseline_columns = {column.parameter_code: column for column in baseline_snapshot.columns}
-    baseline_universe = set(baseline_columns)
-
-    current_descriptors = _selected_current_descriptors(layer_input)
-    current_descriptor_by_code = {parameter.code: parameter for parameter in current_descriptors}
-    current_universe = set(current_descriptor_by_code)
-
-    _validate_parameter_type_compatibility(baseline_columns, current_descriptor_by_code)
-
     current_candidates: dict[int, list[BackboneDiffCurrentCondition]] = defaultdict(list)
     for condition in layer_input.current_conditions:
         if condition.source_condition_id is not None:
             current_candidates[condition.source_condition_id].append(condition)
+    prepared_current_conditions_by_id = {
+        prepared_condition.condition.id: prepared_condition
+        for prepared_condition in prepared.current_conditions
+    }
 
     rows: list[BackboneDiffRow] = []
     emitted_current_ids: set[int] = set()
@@ -382,8 +547,7 @@ def compare_backbone_layer(layer_input: BackboneDiffLayerInput) -> BackboneDiffL
                     layer_input.layer_key,
                     baseline_condition,
                     baseline_cells_by_code,
-                    baseline_columns,
-                    baseline_universe,
+                    prepared,
                 )
             )
             continue
@@ -391,18 +555,15 @@ def compare_backbone_layer(layer_input: BackboneDiffLayerInput) -> BackboneDiffL
         ordered_candidates = sorted(candidates, key=_current_condition_sort_key)
         match = ordered_candidates[0]
         emitted_current_ids.add(match.id)
-        match_cells_by_code = match.cells_by_code()
+        match_prepared = prepared_current_conditions_by_id[match.id]
         rows.append(
             _matched_row(
                 layer_input.layer_key,
                 baseline_condition,
                 match,
                 baseline_cells_by_code,
-                match_cells_by_code,
-                baseline_columns,
-                current_descriptor_by_code,
-                baseline_universe,
-                current_universe,
+                match_prepared,
+                prepared,
             )
         )
 
@@ -410,30 +571,26 @@ def compare_backbone_layer(layer_input: BackboneDiffLayerInput) -> BackboneDiffL
             ambiguous_lineage_count += 1
         for duplicate in ordered_candidates[1:]:
             emitted_current_ids.add(duplicate.id)
-            duplicate_cells_by_code = duplicate.cells_by_code()
+            duplicate_prepared = prepared_current_conditions_by_id[duplicate.id]
             rows.append(
                 _added_row(
                     layer_input.layer_key,
                     duplicate,
-                    duplicate_cells_by_code,
-                    baseline_columns,
-                    current_descriptor_by_code,
-                    current_universe,
+                    duplicate_prepared,
+                    prepared,
                 )
             )
 
     for condition in layer_input.current_conditions:
         if condition.id in emitted_current_ids:
             continue
-        current_cells_by_code = condition.cells_by_code()
+        current_prepared = prepared_current_conditions_by_id[condition.id]
         rows.append(
             _added_row(
                 layer_input.layer_key,
                 condition,
-                current_cells_by_code,
-                baseline_columns,
-                current_descriptor_by_code,
-                current_universe,
+                current_prepared,
+                prepared,
             )
         )
 
@@ -442,7 +599,7 @@ def compare_backbone_layer(layer_input: BackboneDiffLayerInput) -> BackboneDiffL
     return BackboneDiffLayerResult(
         layer_key=layer_input.layer_key,
         layer_sort_order=layer_input.layer_sort_order,
-        basis_hash=backbone_diff_layer_basis_hash(layer_input),
+        basis_hash=prepared.basis_hash,
         baseline_unavailable=False,
         ambiguous_lineage_count=ambiguous_lineage_count,
         matched_row_count=sum(row.row_status == ROW_STATUS_MATCHED for row in rows),
@@ -482,91 +639,148 @@ def compare_backbone(
     layer_inputs: tuple[BackboneDiffLayerInput, ...] | list[BackboneDiffLayerInput],
 ) -> BackboneDiffResult:
     canonical_layers = tuple(sorted(layer_inputs, key=_layer_input_sort_key))
+    cache = _PrepareCache({}, {}, {}, {}, {})
+    prepared_layers = tuple(
+        _prepare_layer(layer_input, cache=cache) for layer_input in canonical_layers
+    )
     return BackboneDiffResult(
-        basis_hash=backbone_diff_basis_hash(canonical_layers),
-        layer_results=tuple(
-            compare_backbone_layer(layer_input) for layer_input in canonical_layers
-        ),
+        basis_hash=_hash_project_bytes(prepared_layers),
+        layer_results=tuple(_compare_prepared_layer(prepared) for prepared in prepared_layers),
     )
 
 
 def backbone_diff_layer_basis_hash(layer_input: BackboneDiffLayerInput) -> str:
-    canonical_json = json.dumps(
-        _layer_basis_payload(layer_input),
-        ensure_ascii=False,
-        separators=(",", ":"),
-        sort_keys=True,
-    )
-    return f"sha256:{hashlib.sha256(canonical_json.encode('utf-8')).hexdigest()}"
+    return _prepare_layer(layer_input).basis_hash
 
 
 def backbone_diff_basis_hash(
     layer_inputs: tuple[BackboneDiffLayerInput, ...] | list[BackboneDiffLayerInput],
 ) -> str:
     canonical_layers = tuple(sorted(layer_inputs, key=_layer_input_sort_key))
-    canonical_json = json.dumps(
-        [_layer_basis_payload(layer_input) for layer_input in canonical_layers],
-        ensure_ascii=False,
-        separators=(",", ":"),
-        sort_keys=True,
+    cache = _PrepareCache({}, {}, {}, {}, {})
+    prepared_layers = tuple(
+        _prepare_layer(layer_input, cache=cache) for layer_input in canonical_layers
     )
-    return f"sha256:{hashlib.sha256(canonical_json.encode('utf-8')).hexdigest()}"
+    return _hash_project_bytes(prepared_layers)
 
 
 def _layer_basis_payload(layer_input: BackboneDiffLayerInput) -> dict[str, Any]:
+    cache = _PrepareCache({}, {}, {}, {}, {})
+    return _layer_basis_payload_from_prepared(_prepare_layer(layer_input, cache=cache), cache)
+
+
+def _layer_basis_bytes(prepared: _PreparedLayer, cache: _PrepareCache) -> bytes:
+    return json.dumps(
+        _layer_basis_payload_from_prepared(prepared, cache),
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+
+
+def _layer_basis_payload_from_prepared(
+    prepared: _PreparedLayer, cache: _PrepareCache
+) -> dict[str, Any]:
+    layer_input = prepared.layer_input
     baseline_payload = (
         None
         if layer_input.baseline_snapshot is None
-        else serialize_backbone_snapshot(layer_input.baseline_snapshot)
+        else _serialize_backbone_snapshot_cached(layer_input.baseline_snapshot, cache)
     )
-    current_selected = _selected_current_descriptors(layer_input)
-    current_descriptor_by_code = {parameter.code: parameter for parameter in current_selected}
-    baseline_columns = (
-        {}
-        if layer_input.baseline_snapshot is None
-        else {column.parameter_code: column for column in layer_input.baseline_snapshot.columns}
-    )
-    _validate_parameter_type_compatibility(baseline_columns, current_descriptor_by_code)
     current_payload = [
         {
-            "id": condition.id,
-            "source_condition_id": condition.source_condition_id,
-            "label": condition.label,
-            "condition_index": condition.condition_index,
-            "is_por": condition.is_por,
+            "id": condition.condition.id,
+            "source_condition_id": condition.condition.source_condition_id,
+            "label": condition.condition.label,
+            "condition_index": condition.condition.condition_index,
+            "is_por": condition.condition.is_por,
             "cells": [
-                {
-                    "parameter_code": cell.parameter_code,
-                    "value": _canonical_current_value(
-                        _descriptor_for_code(
-                            condition,
-                            cell.parameter_code,
-                            baseline_columns,
-                            current_descriptor_by_code,
-                        ),
-                        cell.value,
-                        cell.parameter_code,
-                    ),
-                }
-                for cell in condition.cells
+                {"parameter_code": code, "value": value}
+                for code, value in condition.payload_cells
             ],
         }
-        for condition in layer_input.current_conditions
+        for condition in prepared.current_conditions
     ]
+    selected_key = prepared.current_selected
+    current_parameters = cache.current_parameter_payload_by_selected_key.get(selected_key)
+    if current_parameters is None:
+        current_parameters = tuple(
+            _current_parameter_payload(parameter) for parameter in prepared.current_selected
+        )
+        cache.current_parameter_payload_by_selected_key[selected_key] = current_parameters
     return {
         "baseline_snapshot": baseline_payload,
         "current_conditions": current_payload,
         "current_source": _source_payload(layer_input.current_source),
-        "current_parameters": [
-            _current_parameter_payload(parameter) for parameter in current_selected
-        ],
+        "current_parameters": list(current_parameters),
         "layer_key": layer_input.layer_key,
         "layer_sort_order": layer_input.layer_sort_order,
     }
 
 
+def _serialize_backbone_snapshot_cached(
+    baseline_snapshot: BackboneSnapshot, cache: _PrepareCache
+) -> dict[str, Any]:
+    baseline_snapshot_id = id(baseline_snapshot)
+    snapshot = cache.baseline_payload_by_snapshot_id.get(baseline_snapshot_id)
+    if snapshot is None:
+        snapshot = serialize_backbone_snapshot(baseline_snapshot)
+        cache.baseline_payload_by_snapshot_id[baseline_snapshot_id] = snapshot
+    return snapshot
+
+
+def _baseline_columns_for_snapshot(
+    baseline_snapshot: BackboneSnapshot, cache: _PrepareCache
+) -> dict[str, BackboneSnapshotColumn]:
+    baseline_snapshot_id = id(baseline_snapshot)
+    columns = cache.baseline_columns_by_snapshot_id.get(baseline_snapshot_id)
+    if columns is None:
+        columns = {
+            column.parameter_code: column for column in baseline_snapshot.columns
+        }
+        cache.baseline_columns_by_snapshot_id[baseline_snapshot_id] = columns
+    return columns
+
+
+def _prepare_current_condition(
+    condition: BackboneDiffCurrentCondition,
+    baseline_columns: dict[str, BackboneSnapshotColumn],
+    current_descriptor_by_code: dict[str, BackboneDiffCurrentParameter],
+) -> _PreparedCurrentCondition:
+    cells_by_code = condition.cells_by_code()
+    canonical_values_by_code: dict[str, str | None] = {}
+    payload_cells: list[tuple[str, str | None]] = []
+    for cell in condition.cells:
+        descriptor = current_descriptor_by_code.get(cell.parameter_code)
+        if descriptor is None:
+            descriptor = baseline_columns.get(cell.parameter_code)
+        if descriptor is None:
+            _unresolved_parameter_metadata(
+                f"missing current descriptor for parameter {cell.parameter_code}",
+                details={"parameter_code": cell.parameter_code, "condition_id": condition.id},
+            )
+        canonical_value = _canonical_current_value(
+            descriptor,
+            cell.value,
+            cell.parameter_code,
+        )
+        canonical_values_by_code[cell.parameter_code] = canonical_value
+        payload_cells.append((cell.parameter_code, canonical_value))
+    return _PreparedCurrentCondition(
+        condition=condition,
+        cells_by_code=cells_by_code,
+        canonical_values_by_code=canonical_values_by_code,
+        payload_cells=tuple(payload_cells),
+    )
+
+
+def _hash_project_bytes(prepared_layers: tuple[_PreparedLayer, ...]) -> str:
+    project_bytes = b"[" + b",".join(prepared.basis_bytes for prepared in prepared_layers) + b"]"
+    return _hash_bytes(project_bytes)
+
+
 def _current_parameter_payload(parameter: BackboneDiffCurrentParameter) -> dict[str, Any]:
-    value_type = _coerce_value_type(parameter.value_type)
+    value_type = cast(ValueType, parameter.value_type)
     return {
         "active": parameter.active,
         "category_code": parameter.category_code,
@@ -577,16 +791,17 @@ def _current_parameter_payload(parameter: BackboneDiffCurrentParameter) -> dict[
     }
 
 
+def _hash_bytes(payload: bytes) -> str:
+    return f"sha256:{hashlib.sha256(payload).hexdigest()}"
+
+
 def _matched_row(
     layer_key: str,
     baseline_condition: Any,
     current_condition: BackboneDiffCurrentCondition,
     baseline_cells_by_code: Mapping[str, str | None],
-    current_cells_by_code: Mapping[str, str | None],
-    baseline_columns: dict[str, BackboneSnapshotColumn],
-    current_descriptor_by_code: dict[str, BackboneDiffCurrentParameter],
-    baseline_universe: set[str],
-    current_universe: set[str],
+    current_prepared: _PreparedCurrentCondition,
+    prepared: _PreparedLayer,
 ) -> BackboneDiffRow:
     metadata_changes = tuple(_metadata_changes(baseline_condition, current_condition))
     cell_changes = tuple(
@@ -595,20 +810,10 @@ def _matched_row(
             baseline_condition,
             current_condition,
             baseline_cells_by_code,
-            current_cells_by_code,
-            baseline_columns,
-            current_descriptor_by_code,
-            baseline_universe,
-            current_universe,
+            current_prepared,
+            prepared,
         )
-        for parameter_code in _ordered_coordinate_codes(
-            baseline_condition,
-            current_condition,
-            baseline_columns,
-            current_descriptor_by_code,
-            baseline_universe,
-            current_universe,
-        )
+        for parameter_code in prepared.coordinate_codes
     )
     return BackboneDiffRow(
         layer_key=layer_key,
@@ -631,33 +836,19 @@ def _matched_row(
 def _added_row(
     layer_key: str,
     current_condition: BackboneDiffCurrentCondition,
-    current_cells_by_code: Mapping[str, str | None],
-    baseline_columns: dict[str, BackboneSnapshotColumn],
-    current_descriptor_by_code: dict[str, BackboneDiffCurrentParameter],
-    current_universe: set[str],
+    current_prepared: _PreparedCurrentCondition,
+    prepared: _PreparedLayer,
 ) -> BackboneDiffRow:
     cell_changes = tuple(
         BackboneDiffCellChange(
             parameter_code=parameter_code,
-            sort_order=_descriptor_for_added_or_removed_code(
-                parameter_code,
-                baseline_columns,
-                current_descriptor_by_code,
-            ).sort_order,
+            sort_order=prepared.coordinate_plan[parameter_code].sort_order,
             classification=CLASSIFICATION_ADDED,
             reason="row_added",
             baseline_value=None,
-            current_value=_canonical_current_value(
-                _descriptor_for_added_or_removed_code(
-                    parameter_code, baseline_columns, current_descriptor_by_code
-                ),
-                current_cells_by_code.get(parameter_code),
-                parameter_code,
-            ),
+            current_value=current_prepared.canonical_values_by_code.get(parameter_code),
         )
-        for parameter_code in _ordered_added_row_codes(
-            current_universe, current_descriptor_by_code, baseline_columns
-        )
+        for parameter_code in prepared.added_row_codes
     )
     return BackboneDiffRow(
         layer_key=layer_key,
@@ -681,19 +872,18 @@ def _removed_row(
     layer_key: str,
     baseline_condition: Any,
     baseline_cells_by_code: Mapping[str, str | None],
-    baseline_columns: dict[str, BackboneSnapshotColumn],
-    baseline_universe: set[str],
+    prepared: _PreparedLayer,
 ) -> BackboneDiffRow:
     cell_changes = tuple(
         BackboneDiffCellChange(
             parameter_code=parameter_code,
-            sort_order=baseline_columns[parameter_code].sort_order,
+            sort_order=prepared.coordinate_plan[parameter_code].sort_order,
             classification=CLASSIFICATION_REMOVED,
             reason="row_removed",
             baseline_value=baseline_cells_by_code.get(parameter_code),
             current_value=None,
         )
-        for parameter_code in _ordered_baseline_row_codes(baseline_universe, baseline_columns)
+        for parameter_code in prepared.removed_row_codes
     )
     return BackboneDiffRow(
         layer_key=layer_key,
@@ -744,25 +934,17 @@ def _compare_coordinate(
     baseline_condition: Any,
     current_condition: BackboneDiffCurrentCondition,
     baseline_cells_by_code: Mapping[str, str | None],
-    current_cells_by_code: Mapping[str, str | None],
-    baseline_columns: dict[str, BackboneSnapshotColumn],
-    current_descriptor_by_code: dict[str, BackboneDiffCurrentParameter],
-    baseline_universe: set[str],
-    current_universe: set[str],
+    current_prepared: _PreparedCurrentCondition,
+    prepared: _PreparedLayer,
 ) -> BackboneDiffCellChange:
-    baseline_has_column = parameter_code in baseline_universe
-    current_has_column = parameter_code in current_universe
-    descriptor = _descriptor_for_code(
-        current_condition,
-        parameter_code,
-        baseline_columns,
-        current_descriptor_by_code,
-    )
+    coordinate = prepared.coordinate_plan[parameter_code]
+    baseline_has_column = coordinate.baseline_has_column
+    current_has_column = coordinate.current_has_column
 
     if baseline_has_column and not current_has_column:
         return BackboneDiffCellChange(
             parameter_code=parameter_code,
-            sort_order=baseline_columns[parameter_code].sort_order,
+            sort_order=coordinate.sort_order,
             classification=CLASSIFICATION_REMOVED,
             reason="column_removed",
             baseline_value=baseline_cells_by_code.get(parameter_code),
@@ -771,24 +953,20 @@ def _compare_coordinate(
     if current_has_column and not baseline_has_column:
         return BackboneDiffCellChange(
             parameter_code=parameter_code,
-            sort_order=descriptor.sort_order,
+            sort_order=coordinate.sort_order,
             classification=CLASSIFICATION_ADDED,
             reason="column_added",
             baseline_value=None,
-            current_value=_canonical_current_value(
-                descriptor, current_cells_by_code.get(parameter_code), parameter_code
-            ),
+            current_value=current_prepared.canonical_values_by_code.get(parameter_code),
         )
 
     baseline_value = baseline_cells_by_code.get(parameter_code)
-    current_value = _canonical_current_value(
-        descriptor, current_cells_by_code.get(parameter_code), parameter_code
-    )
+    current_value = current_prepared.canonical_values_by_code.get(parameter_code)
 
     if baseline_value is None and current_value is None:
         return BackboneDiffCellChange(
             parameter_code=parameter_code,
-            sort_order=descriptor.sort_order,
+            sort_order=coordinate.sort_order,
             classification=CLASSIFICATION_UNCHANGED,
             reason="null_equal",
             baseline_value=None,
@@ -797,7 +975,7 @@ def _compare_coordinate(
     if baseline_value is None and current_value is not None:
         return BackboneDiffCellChange(
             parameter_code=parameter_code,
-            sort_order=descriptor.sort_order,
+            sort_order=coordinate.sort_order,
             classification=CLASSIFICATION_ADDED,
             reason="value_added",
             baseline_value=None,
@@ -806,7 +984,7 @@ def _compare_coordinate(
     if baseline_value is not None and current_value is None:
         return BackboneDiffCellChange(
             parameter_code=parameter_code,
-            sort_order=descriptor.sort_order,
+            sort_order=coordinate.sort_order,
             classification=CLASSIFICATION_CLEARED,
             reason="value_cleared",
             baseline_value=baseline_value,
@@ -815,7 +993,7 @@ def _compare_coordinate(
     if baseline_value == current_value:
         return BackboneDiffCellChange(
             parameter_code=parameter_code,
-            sort_order=descriptor.sort_order,
+            sort_order=coordinate.sort_order,
             classification=CLASSIFICATION_UNCHANGED,
             reason="value_equal",
             baseline_value=baseline_value,
@@ -823,7 +1001,7 @@ def _compare_coordinate(
         )
     return BackboneDiffCellChange(
         parameter_code=parameter_code,
-        sort_order=descriptor.sort_order,
+        sort_order=coordinate.sort_order,
         classification=CLASSIFICATION_CHANGED,
         reason="value_changed",
         baseline_value=baseline_value,
@@ -910,12 +1088,17 @@ def _ensure_parameter_type_match(
     baseline_column: BackboneSnapshotColumn,
     current_descriptor: BackboneDiffCurrentParameter,
 ) -> None:
-    baseline_type = _coerce_value_type(baseline_column.value_type)
-    current_type = _coerce_value_type(current_descriptor.value_type)
+    baseline_type = cast(ValueType, baseline_column.value_type)
+    current_type = cast(ValueType, current_descriptor.value_type)
     if baseline_type is not current_type:
         _diff_basis_invalid(
             f"type mismatch for parameter {parameter_code}: "
-            f"{baseline_type.value} vs {current_type.value}"
+            f"{baseline_type.value} vs {current_type.value}",
+            details={
+                "parameter_code": parameter_code,
+                "baseline_value_type": baseline_type.value,
+                "current_value_type": current_type.value,
+            },
         )
 
 
@@ -981,7 +1164,8 @@ def _descriptor_for_code(
         return baseline_column
     _unresolved_parameter_metadata(
         "missing current descriptor for parameter "
-        f"{parameter_code} in condition {current_condition.id}"
+        f"{parameter_code} in condition {current_condition.id}",
+        details={"parameter_code": parameter_code, "condition_id": current_condition.id},
     )
 
 
@@ -999,12 +1183,20 @@ def _descriptor_for_added_or_removed_code(
     baseline_column = baseline_columns.get(parameter_code)
     if baseline_column is not None:
         return baseline_column
-    _unresolved_parameter_metadata(f"missing descriptor for parameter {parameter_code}")
+    _unresolved_parameter_metadata(
+        f"missing descriptor for parameter {parameter_code}",
+        details={"parameter_code": parameter_code},
+    )
 
 
 def _selected_current_descriptors(
     layer_input: BackboneDiffLayerInput,
+    cache: _PrepareCache,
 ) -> tuple[BackboneDiffCurrentParameter, ...]:
+    parameters_key = layer_input.current_parameters
+    cached = cache.current_selected_by_parameters_key.get(parameters_key)
+    if cached is not None:
+        return cached
     parameter_by_code = {parameter.code: parameter for parameter in layer_input.current_parameters}
     selected_codes = {
         parameter.code for parameter in layer_input.current_parameters if parameter.active
@@ -1018,9 +1210,14 @@ def _selected_current_descriptors(
     for code in sorted(selected_codes):
         parameter = parameter_by_code.get(code)
         if parameter is None:
-            _unresolved_parameter_metadata(f"missing current descriptor for parameter {code}")
+            _unresolved_parameter_metadata(
+                f"missing current descriptor for parameter {code}",
+                details={"parameter_code": code},
+            )
         selected.append(parameter)
-    return tuple(sorted(selected, key=_current_parameter_sort_key))
+    selected_tuple = tuple(sorted(selected, key=_current_parameter_sort_key))
+    cache.current_selected_by_parameters_key[parameters_key] = selected_tuple
+    return selected_tuple
 
 
 def _validate_parameter_type_compatibility(
@@ -1036,8 +1233,6 @@ def _validate_parameter_type_compatibility(
 
 
 def _ordered_coordinate_codes(
-    baseline_condition: Any,
-    current_condition: BackboneDiffCurrentCondition,
     baseline_columns: dict[str, BackboneSnapshotColumn],
     current_descriptor_by_code: dict[str, BackboneDiffCurrentParameter],
     baseline_universe: set[str],
@@ -1046,14 +1241,7 @@ def _ordered_coordinate_codes(
     codes = sorted(baseline_universe | current_universe)
     codes.sort(
         key=lambda code: (
-            _descriptor_sort_key(
-                _descriptor_for_code(
-                    current_condition,
-                    code,
-                    baseline_columns,
-                    current_descriptor_by_code,
-                )
-            ),
+            _descriptor_sort_key(current_descriptor_by_code.get(code) or baseline_columns[code]),
             code,
         )
     )
@@ -1061,9 +1249,9 @@ def _ordered_coordinate_codes(
 
 
 def _ordered_added_row_codes(
-    current_universe: set[str],
-    current_descriptor_by_code: dict[str, BackboneDiffCurrentParameter],
     baseline_columns: dict[str, BackboneSnapshotColumn],
+    current_descriptor_by_code: dict[str, BackboneDiffCurrentParameter],
+    current_universe: set[str],
 ) -> list[str]:
     codes = sorted(current_universe)
     codes.sort(
@@ -1076,8 +1264,8 @@ def _ordered_added_row_codes(
 
 
 def _ordered_baseline_row_codes(
-    baseline_universe: set[str],
     baseline_columns: dict[str, BackboneSnapshotColumn],
+    baseline_universe: set[str],
 ) -> list[str]:
     codes = sorted(baseline_universe)
     codes.sort(key=lambda code: (_descriptor_sort_key(baseline_columns[code]), code))
