@@ -121,6 +121,16 @@ export interface BackboneDiffCellItem {
   readonly jumpStatus: BackboneDiffJumpStatus
 }
 
+export function formatBackboneDiffCellValue(
+  value: string | null,
+  side: 'baseline' | 'current',
+): string {
+  if (value === null) {
+    return side === 'baseline' ? '기준 없음' : '현재 없음'
+  }
+  return value === '' ? '비움' : value
+}
+
 export interface BackboneDiffFilter {
   readonly classification: readonly BackboneDiffClassification[]
   readonly layerKey: string
@@ -950,7 +960,7 @@ export function BackboneDiffWorkbench({
                                             {renderActivationButtonText(cellActivation)}
                                           </button>
                                           <span className="text-muted">
-                                            {cell.baselineValue ?? '기준 없음'} → {cell.currentValue ?? '현재 없음'}
+                                            {formatBackboneDiffCellValue(cell.baselineValue, 'baseline')} → {formatBackboneDiffCellValue(cell.currentValue, 'current')}
                                           </span>
                                           <span className="text-muted">{cell.reason}</span>
                                         </div>
