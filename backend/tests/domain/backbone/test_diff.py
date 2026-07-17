@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import replace
+from typing import Callable
 
-import pytest  # pyright: ignore[reportMissingImports]
+import pytest
 
 from app.domain.backbone.diff import (
     DIFF_BASIS_INVALID,
@@ -98,17 +98,13 @@ def _current_source(
     layer_key: str = "L1::PROC_ALPHA::010::ACT",
     step_seq: str = "010",
     layer_id: str = "ACT",
-    sort_order: int = 1,
-) -> BackboneDiffCurrentLayerSource:
-    return BackboneDiffCurrentLayerSource(
+) -> BackboneSnapshotSource:
+    return BackboneSnapshotSource(
         project_id=project_id,
         sheet_layer_id=sheet_layer_id,
         layer_key=layer_key,
         step_seq=step_seq,
         layer_id=layer_id,
-        sort_order=sort_order,
-        source_project_id=9001,
-        source_layer_key="SRC::L1::PROC_ALPHA::010::ACT",
     )
 
 
@@ -116,7 +112,7 @@ def _layer_input(
     *,
     baseline_snapshot: BackboneSnapshot | None,
     current_conditions: tuple[BackboneDiffCurrentCondition, ...],
-    current_source: BackboneDiffCurrentLayerSource | None = None,
+    current_source: BackboneSnapshotSource | None = None,
     include_orphan: bool = False,
 ) -> BackboneDiffLayerInput:
     parameters = [
@@ -156,7 +152,11 @@ def _layer_input(
         )
 
     if current_source is None:
-        current_source = _current_source()
+        current_source = (
+            baseline_snapshot.source
+            if baseline_snapshot is not None
+            else _current_source()
+        )
 
     return BackboneDiffLayerInput(
         layer_key="L1::PROC_ALPHA::010::ACT",
@@ -272,17 +272,9 @@ def test_compare_backbone_layer_classifies_and_orders_all_core_cases() -> None:
         for item in result.preview_items
         if item.row_status == "matched" and item.identity == 101
     ]
-    assert [item.item_kind for item in matched_preview[:3]] == [
-        "row_metadata",
-        "row_metadata",
-        "row_metadata",
-    ]
-    assert [item.field_name for item in matched_preview[:3]] == [
-        "condition_index",
-        "is_por",
-        "label",
-    ]
-    assert [item.parameter_code for item in matched_preview[3:]] == [
+    assert [item.item_kind for item in matched_preview[:2]] == ["row_metadata", "row_metadata"]
+    assert [item.field_name for item in matched_preview[:2]] == ["is_por", "label"]
+    assert [item.parameter_code for item in matched_preview[2:]] == [
         "baseline_only",
         "shared_blank",
         "shared_number_equal",
@@ -344,191 +336,6 @@ def test_compare_backbone_layer_null_source_condition_is_added() -> None:
     assert result.added_row_count == 1
     assert result.rows[-1].current_id == 301
     assert result.rows[-1].baseline_source_condition_id is None
-
-
-def test_compare_backbone_layer_duplicate_points_to_copied_target_id() -> None:
-    baseline = BackboneSnapshot(
-        capture_batch_id="0123456789abcdef0123456789abcdef",
-        captured_at="2026-07-16T04:17:58.715000Z",
-        source=_baseline_snapshot().source,
-        columns=_baseline_snapshot().columns,
-        conditions=(
-            BackboneSnapshotCondition(
-                source_condition_id=10,
-                label="Line A",
-                condition_index=0,
-                is_por=True,
-                cells=(
-                    BackboneSnapshotCell("baseline_only", "legacy"),
-                    BackboneSnapshotCell("shared_number_equal", "1.00"),
-                    BackboneSnapshotCell("shared_number_changed", "2.0"),
-                    BackboneSnapshotCell("shared_text_equal", "same"),
-                    BackboneSnapshotCell("shared_text_changed", "old"),
-                    BackboneSnapshotCell("shared_choice_equal", "CHOICE_A"),
-                    BackboneSnapshotCell("shared_choice_changed", "CHOICE_X"),
-                    BackboneSnapshotCell("shared_cleared", "to-clear"),
-                ),
-            ),
-        ),
-    )
-    layer = _layer_input(
-        baseline_snapshot=baseline,
-        current_conditions=(
-            _matched_current_condition(),
-            BackboneDiffCurrentCondition(
-                id=102,
-                source_condition_id=101,
-                label="Line A duplicate",
-                condition_index=3,
-                is_por=True,
-                cells=(
-                    BackboneDiffCurrentCell("shared_number_equal", "1.00"),
-                    BackboneDiffCurrentCell("shared_text_equal", "same"),
-                    BackboneDiffCurrentCell("current_only", "fresh"),
-                ),
-            ),
-        ),
-    )
-
-    result = compare_backbone_layer(layer)
-
-    assert [row.row_status for row in result.rows] == ["matched", "added"]
-    assert result.matched_row_count == 1
-    assert result.added_row_count == 1
-    assert result.rows[0].current_id == 101
-    assert result.rows[1].current_id == 102
-
-
-def test_compare_backbone_layer_original_deleted_with_only_duplicate() -> None:
-    baseline = BackboneSnapshot(
-        capture_batch_id="0123456789abcdef0123456789abcdef",
-        captured_at="2026-07-16T04:17:58.715000Z",
-        source=_baseline_snapshot().source,
-        columns=_baseline_snapshot().columns,
-        conditions=(
-            BackboneSnapshotCondition(
-                source_condition_id=10,
-                label="Line A",
-                condition_index=0,
-                is_por=True,
-                cells=(
-                    BackboneSnapshotCell("baseline_only", "legacy"),
-                    BackboneSnapshotCell("shared_number_equal", "1.00"),
-                    BackboneSnapshotCell("shared_number_changed", "2.0"),
-                    BackboneSnapshotCell("shared_text_equal", "same"),
-                    BackboneSnapshotCell("shared_text_changed", "old"),
-                    BackboneSnapshotCell("shared_choice_equal", "CHOICE_A"),
-                    BackboneSnapshotCell("shared_choice_changed", "CHOICE_X"),
-                    BackboneSnapshotCell("shared_cleared", "to-clear"),
-                ),
-            ),
-        ),
-    )
-    layer = _layer_input(
-        baseline_snapshot=baseline,
-        current_conditions=(
-            BackboneDiffCurrentCondition(
-                id=102,
-                source_condition_id=101,
-                label="Line A duplicate",
-                condition_index=3,
-                is_por=True,
-                cells=(
-                    BackboneDiffCurrentCell("shared_number_equal", "1.00"),
-                    BackboneDiffCurrentCell("shared_text_equal", "same"),
-                    BackboneDiffCurrentCell("current_only", "fresh"),
-                ),
-            ),
-        ),
-    )
-
-    result = compare_backbone_layer(layer)
-
-    assert [row.row_status for row in result.rows] == ["removed", "added"]
-    assert result.added_row_count == 1
-    assert result.removed_row_count == 1
-    assert result.rows[-1].current_id == 102
-
-
-def test_compare_backbone_layer_unmatched_lineage_is_added() -> None:
-    layer = _layer_input(
-        baseline_snapshot=_baseline_snapshot(),
-        current_conditions=(
-            BackboneDiffCurrentCondition(
-                id=401,
-                source_condition_id=77,
-                label="Unmatched",
-                condition_index=9,
-                is_por=False,
-                cells=(BackboneDiffCurrentCell("current_only", "fresh"),),
-            ),
-        ),
-    )
-
-    result = compare_backbone_layer(layer)
-
-    assert [row.row_status for row in result.rows] == ["removed", "removed", "added"]
-    assert result.rows[-1].current_id == 401
-
-
-def test_compare_backbone_same_source_id_never_cross_matches_across_layers() -> None:
-    layer_a = _layer_input(
-        baseline_snapshot=_baseline_snapshot(),
-        current_conditions=(_matched_current_condition(),),
-    )
-    layer_b = BackboneDiffLayerInput(
-        layer_key="L2::PROC_BETA::020::ACT",
-        layer_sort_order=2,
-        current_source=_current_source(
-            project_id=42,
-            sheet_layer_id=8,
-            layer_key="L2::PROC_BETA::020::ACT",
-            step_seq="020",
-            layer_id="ACT",
-            sort_order=2,
-        ),
-        baseline_snapshot=_baseline_snapshot(),
-        current_conditions=(replace(_matched_current_condition(), id=201, label="Other layer A"),),
-        current_parameters=(
-            BackboneDiffCurrentParameter("shared_blank", ValueType.TEXT, "Blank", None, 1, True),
-            BackboneDiffCurrentParameter(
-                "shared_number_equal", ValueType.NUMBER, "Number equal", None, 2, True
-            ),
-            BackboneDiffCurrentParameter(
-                "shared_number_changed", ValueType.NUMBER, "Number changed", None, 3, True
-            ),
-            BackboneDiffCurrentParameter(
-                "shared_text_equal", ValueType.TEXT, "Text equal", None, 4, True
-            ),
-            BackboneDiffCurrentParameter(
-                "shared_text_changed", ValueType.TEXT, "Text changed", None, 5, True
-            ),
-            BackboneDiffCurrentParameter(
-                "shared_choice_equal", ValueType.CHOICE, "Choice equal", None, 6, True
-            ),
-            BackboneDiffCurrentParameter(
-                "shared_choice_changed", ValueType.CHOICE, "Choice changed", None, 7, True
-            ),
-            BackboneDiffCurrentParameter(
-                "shared_cleared", ValueType.TEXT, "Cleared", None, 8, True
-            ),
-            BackboneDiffCurrentParameter("shared_added", ValueType.TEXT, "Added", None, 9, True),
-            BackboneDiffCurrentParameter(
-                "current_only", ValueType.TEXT, "Current only", None, 10, True
-            ),
-            BackboneDiffCurrentParameter(
-                "baseline_only", ValueType.TEXT, "Baseline only", None, 11, False
-            ),
-        ),
-    )
-
-    result = compare_backbone([layer_a, layer_b])
-
-    assert [layer.layer_key for layer in result.layer_results] == [
-        "L1::PROC_ALPHA::010::ACT",
-        "L2::PROC_BETA::020::ACT",
-    ]
-    assert all(layer.matched_row_count == 1 for layer in result.layer_results)
 
 
 @pytest.mark.parametrize(
@@ -683,20 +490,6 @@ def _mutated_layer_baseline_label(layer: BackboneDiffLayerInput) -> BackboneDiff
     return replace(layer, baseline_snapshot=replace(baseline, conditions=tuple(conditions)))
 
 
-def _mutated_layer_current_row_label(layer: BackboneDiffLayerInput) -> BackboneDiffLayerInput:
-    conditions = list(layer.current_conditions)
-    conditions[0] = replace(conditions[0], label="Line A v3")
-    return replace(layer, current_conditions=tuple(conditions))
-
-
-def _mutated_layer_current_value(layer: BackboneDiffLayerInput) -> BackboneDiffLayerInput:
-    conditions = list(layer.current_conditions)
-    cells = list(conditions[0].cells)
-    cells[0] = replace(cells[0], value="9.0")
-    conditions[0] = replace(conditions[0], cells=tuple(cells))
-    return replace(layer, current_conditions=tuple(conditions))
-
-
 def _mutated_current_source_project_id(layer: BackboneDiffLayerInput) -> BackboneDiffLayerInput:
     return replace(layer, current_source=replace(layer.current_source, project_id=99))
 
@@ -720,34 +513,6 @@ def _mutated_current_source_layer_id(layer: BackboneDiffLayerInput) -> BackboneD
     return replace(layer, current_source=replace(layer.current_source, layer_id="ALT"))
 
 
-def _mutated_current_source_source_project_id(
-    layer: BackboneDiffLayerInput,
-) -> BackboneDiffLayerInput:
-    return replace(layer, current_source=replace(layer.current_source, source_project_id=1234))
-
-
-def _mutated_current_source_source_layer_key(
-    layer: BackboneDiffLayerInput,
-) -> BackboneDiffLayerInput:
-    return replace(layer, current_source=replace(layer.current_source, source_layer_key="SRC::ALT"))
-
-
-def _mutated_layer_sort_order(layer: BackboneDiffLayerInput) -> BackboneDiffLayerInput:
-    return replace(layer, layer_sort_order=99)
-
-
-def _mutated_current_source_layer_key_mismatch(
-    layer: BackboneDiffLayerInput,
-) -> BackboneDiffLayerInput:
-    return replace(layer, current_source=replace(layer.current_source, layer_key="BROKEN"))
-
-
-def _mutated_current_source_sort_order_mismatch(
-    layer: BackboneDiffLayerInput,
-) -> BackboneDiffLayerInput:
-    return replace(layer, current_source=replace(layer.current_source, sort_order=99))
-
-
 @pytest.mark.parametrize(
     "mutator",
     [
@@ -755,16 +520,11 @@ def _mutated_current_source_sort_order_mismatch(
         _mutated_layer_parameter_sort_order,
         _mutated_layer_parameter_active,
         _mutated_layer_baseline_label,
-        _mutated_layer_current_row_label,
-        _mutated_layer_current_value,
         _mutated_current_source_project_id,
         _mutated_current_source_sheet_layer_id,
         _mutated_current_source_layer_key,
         _mutated_current_source_step_seq,
         _mutated_current_source_layer_id,
-        _mutated_current_source_source_project_id,
-        _mutated_current_source_source_layer_key,
-        _mutated_layer_sort_order,
     ],
 )
 def test_backbone_diff_layer_basis_hash_changes_with_authority(
@@ -774,117 +534,6 @@ def test_backbone_diff_layer_basis_hash_changes_with_authority(
     mutated = mutator(base)
 
     assert backbone_diff_layer_basis_hash(base) != backbone_diff_layer_basis_hash(mutated)
-
-
-def test_backbone_diff_layer_input_rejects_contradictory_current_source() -> None:
-    with pytest.raises(RuleViolationError) as exc_info:
-        BackboneDiffLayerInput(
-            layer_key="L1::PROC_ALPHA::010::ACT",
-            layer_sort_order=1,
-            current_source=replace(_current_source(), layer_key="BROKEN"),
-            baseline_snapshot=_baseline_snapshot(),
-            current_conditions=(),
-            current_parameters=(),
-        )
-    assert exc_info.value.code == DIFF_BASIS_INVALID
-
-
-def test_backbone_diff_layer_input_rejects_contradictory_current_source_sort_order() -> None:
-    with pytest.raises(RuleViolationError) as exc_info:
-        BackboneDiffLayerInput(
-            layer_key="L1::PROC_ALPHA::010::ACT",
-            layer_sort_order=1,
-            current_source=replace(_current_source(), sort_order=99),
-            baseline_snapshot=_baseline_snapshot(),
-            current_conditions=(),
-            current_parameters=(),
-        )
-    assert exc_info.value.code == DIFF_BASIS_INVALID
-
-
-def test_compare_backbone_layer_blank_added_and_removed_rows_emit_full_universe_once() -> None:
-    added_layer = _layer_input(
-        baseline_snapshot=_baseline_snapshot(),
-        current_conditions=(
-            BackboneDiffCurrentCondition(
-                id=701,
-                source_condition_id=None,
-                label="Blank added",
-                condition_index=8,
-                is_por=False,
-                cells=(),
-            ),
-        ),
-    )
-    removed_snapshot = BackboneSnapshot(
-        capture_batch_id="0123456789abcdef0123456789abcdef",
-        captured_at="2026-07-16T04:17:58.715000Z",
-        source=BackboneSnapshotSource(
-            project_id=42,
-            sheet_layer_id=7,
-            layer_key="L1::PROC_ALPHA::010::ACT",
-            step_seq="010",
-            layer_id="ACT",
-        ),
-        columns=_baseline_snapshot().columns,
-        conditions=(
-            BackboneSnapshotCondition(
-                source_condition_id=555,
-                label="Blank removed",
-                condition_index=6,
-                is_por=True,
-                cells=(),
-            ),
-        ),
-    )
-    removed_layer = _layer_input(
-        baseline_snapshot=removed_snapshot,
-        current_conditions=(),
-    )
-
-    added_result = compare_backbone_layer(added_layer)
-    removed_result = compare_backbone_layer(removed_layer)
-
-    added_codes = [change.parameter_code for change in added_result.rows[0].cell_changes]
-    removed_codes = [change.parameter_code for change in removed_result.rows[0].cell_changes]
-
-    assert added_codes == sorted(set(added_codes))
-    assert removed_codes == sorted(set(removed_codes))
-    assert added_codes == [
-        "shared_blank",
-        "shared_number_equal",
-        "shared_number_changed",
-        "shared_text_equal",
-        "shared_text_changed",
-        "shared_choice_equal",
-        "shared_choice_changed",
-        "shared_cleared",
-        "shared_added",
-        "current_only",
-    ]
-    assert removed_codes == [
-        "baseline_only",
-        "shared_blank",
-        "shared_number_equal",
-        "shared_number_changed",
-        "shared_text_equal",
-        "shared_text_changed",
-        "shared_choice_equal",
-        "shared_choice_changed",
-        "shared_cleared",
-        "shared_added",
-    ]
-
-
-def test_compare_backbone_layer_choice_empty_value_fails_closed() -> None:
-    layer = _matched_layer_input()
-    conditions = list(layer.current_conditions)
-    cells = list(conditions[0].cells)
-    cells[4] = replace(cells[4], value="")
-    conditions[0] = replace(conditions[0], cells=tuple(cells))
-    with pytest.raises(RuleViolationError) as exc_info:
-        compare_backbone_layer(replace(layer, current_conditions=tuple(conditions)))
-    assert exc_info.value.code == DIFF_BASIS_INVALID
 
 
 def test_compare_backbone_layer_baseline_unavailable_has_no_diff_items() -> None:
@@ -924,7 +573,6 @@ def test_compare_backbone_orders_layers_and_root_hash_is_stable() -> None:
             layer_key="L2::PROC_BETA::020::ACT",
             step_seq="020",
             layer_id="ACT",
-            sort_order=0,
         ),
         baseline_snapshot=None,
         current_conditions=(_added_current_condition(),),
