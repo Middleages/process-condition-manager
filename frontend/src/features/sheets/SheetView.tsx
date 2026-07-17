@@ -62,6 +62,18 @@ import {
 import { resolveSheetInteraction } from './sheetInteraction'
 import { SheetFocusFrame } from './SheetFocusFrame'
 import { SheetWorkbenchPanel, SheetWorkbenchToggle, useSheetWorkbenchState } from './SheetWorkbench'
+import {
+  activateBackboneJumpTarget,
+  BackboneDiffWorkbench,
+  type BackboneDiffConditionItem,
+  type BackboneDiffFilter,
+  type BackboneDiffJumpTarget,
+  type BackboneDiffLayerSummary,
+  type BackboneDiffPreviewItem,
+  type BackboneDiffRoot,
+  type BackboneDiffCellItem,
+  type BranchState,
+} from './BackboneDiffWorkbench'
 import { HistoryWorkbench } from './HistoryWorkbench'
 import { ValidationWorkbench } from './ValidationWorkbench'
 import {
@@ -87,6 +99,10 @@ import {
   type WorkbenchCoordinate,
 } from './workbenchCoordinateNavigation'
 import { useHistoryWorkbenchController } from './useHistoryWorkbenchController'
+import {
+  useBackboneDiffWorkbenchController,
+  type BackboneDiffWorkbenchController,
+} from './useBackboneDiffWorkbenchController'
 
 const COLUMN_SEARCH_STATUS_ID = 'sheet-column-search-status'
 const VALIDATION_DEFINITIONS_STATUS_ID = 'validation-definitions-status'
