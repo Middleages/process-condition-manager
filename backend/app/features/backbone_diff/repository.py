@@ -159,7 +159,11 @@ class BackboneDiffRepository:
             columns=layer_columns,
             conditions=tuple(
                 BackboneSnapshotCondition(
-                    source_condition_id=condition.source_condition_id,
+                    source_condition_id=(
+                        condition.source_condition_id
+                        if condition.source_condition_id is not None
+                        else condition.id
+                    ),
                     label=condition.label,
                     condition_index=condition.condition_index,
                     is_por=condition.is_por,

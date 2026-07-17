@@ -18,6 +18,7 @@ from sqlalchemy.pool import StaticPool
 
 import app.models  # noqa: F401 -- register all models for metadata
 from app.core.db import Base
+from app.core.errors import NotFoundError
 from app.domain.backbone.snapshot import (
     BackboneSnapshot,
     BackboneSnapshotCell,
@@ -103,6 +104,14 @@ async def _seed_parameters(session: AsyncSession) -> None:
                 sort_order=2,
                 category=photo,
                 is_active=False,
+            ),
+            Parameter(
+                code="gamma",
+                display_name="Gamma",
+                value_type=ValueType.TEXT,
+                sort_order=3,
+                category=None,
+                is_active=True,
             ),
         ]
     )
@@ -212,10 +221,33 @@ async def test_load_diff_input_sqlite_freezes_graph_without_lazy_queries(
         "alpha",
         "beta",
         "legacy",
+        "gamma",
     ]
     statements.clear()
     assert loaded.layers[0].current_snapshot.conditions[0].cells[0].value == "new"
     assert statements == []
+    assert loaded.layers[0].baseline_snapshot is not None
+    assert loaded.layers[0].baseline_snapshot.conditions[0].source_condition_id == 101
+    assert loaded.layers[0].current_snapshot.conditions[0].source_condition_id == 101
+    assert [column.parameter_code for column in loaded.layers[0].current_snapshot.columns] == [
+        "alpha",
+        "beta",
+        "legacy",
+        "gamma",
+    ]
+
+
+async def test_load_diff_input_missing_project_raises_not_found(
+    sqlite_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with sqlite_factory() as session:
+        await _seed_parameters(session)
+
+    with pytest.raises(NotFoundError) as excinfo:
+        await load_diff_input_with_session_factory(999_999, sqlite_factory)
+
+    assert excinfo.value.code == "not_found"
+    assert excinfo.value.details == {"project_id": 999_999}
 
 
 @pytest.mark.skipif(_PG_URL is None, reason="APP_TEST_DATABASE_URL 미설정")
@@ -256,10 +288,13 @@ async def test_load_diff_input_postgres_is_repeatable_read_and_read_only(
         ).scalar_one()
     assert isolation.upper() == "REPEATABLE READ"
     assert loaded.layers[0].baseline_snapshot is not None
+    assert loaded.layers[0].baseline_snapshot.conditions[0].source_condition_id == 101
+    assert loaded.layers[0].current_snapshot.conditions[0].source_condition_id == 101
     assert [parameter.parameter_code for parameter in loaded.parameters] == [
         "alpha",
         "beta",
         "legacy",
+        "gamma",
     ]
 
 
