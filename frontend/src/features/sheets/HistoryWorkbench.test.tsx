@@ -5,7 +5,6 @@ import type {
   HistoryCellHistoryOut,
   HistoryDetailOut,
   HistoryTimelineItemOut,
-  HistoryWorkbenchState,
 } from '@/api/history'
 
 import {
@@ -15,6 +14,7 @@ import {
   openHistoryCellScope,
   storeHistoryBatchDetail,
   toggleHistoryBatchDetail,
+  type HistoryWorkbenchState,
 } from './historyWorkbenchState'
 import { HistoryWorkbench } from './HistoryWorkbench'
 import source from './HistoryWorkbench.tsx?raw'
@@ -28,10 +28,9 @@ describe('HistoryWorkbench', () => {
         timelineStatus: 'error',
         timelineError: '서버에서 이력 목록을 불러오지 못했습니다.',
         nextPageError: '다음 페이지를 불러오지 못했습니다.',
-        onRetry: vi.fn(),
-        onLoadMore: vi.fn(),
+        onRetryTimeline: vi.fn(),
+        onLoadMoreTimeline: vi.fn(),
       },
-      timelineDetails(state),
     )
 
     expect(html).toContain('aria-label="변경 이력 워크벤치"')
@@ -39,9 +38,14 @@ describe('HistoryWorkbench', () => {
     expect(html).toContain('기간 시작')
     expect(html).toContain('Origin/source')
     expect(html).toContain('Type')
+    expect(html).toContain('적용')
+    expect(html).toContain('필터 초기화')
+    expect(html).toContain('aria-pressed="true"')
+    expect(html).not.toContain('role="tab"')
     expect(html).toContain('필터에서 위치를 확인할 수 없는 과거 항목 2개')
     expect(html).toContain('상세를 불러올 수 없는 레거시 항목 1개')
     expect(html).toContain('dev-admin')
+    expect(html).toContain('삭제됨')
     expect(html).toContain('삭제된 대상이라 위치로 이동할 수 없습니다.')
     expect(html).toContain('요약만 먼저 렌더됩니다.')
     expect(html).toContain('상세')
@@ -50,9 +54,14 @@ describe('HistoryWorkbench', () => {
     expect(html).toContain('다음 페이지를 불러오지 못했습니다.')
     expect(html).toContain('서버에서 이력 목록을 불러오지 못했습니다.')
     expect(html).toContain('2개 항목')
+    expect(html).toContain('aria-live="polite"')
     expect(source).toContain('handleHistoryWorkbenchItemActivationKey(')
-    expect(source).toContain('shouldRequestHistoryBatchDetail(')
+    expect(source).toContain('shouldRequestHistoryBatchDetailOnOpen(')
     expect(source).toContain('onBatchToggle?.(item, shouldRequestDetail)')
+    expect(source).toContain('parsePositiveIntegerText(')
+    expect(source).toContain('onLoadMoreTimeline?.(state.nextCursor)')
+    expect(source).toContain('onLoadMoreCell?.(cellHistory?.next_cursor ?? null)')
+    expect(source).toContain('onClick={handleApplyFilters}')
   })
 
   it('renders cell-scope history with explicit scope copy and initial-state fallback text', () => {
@@ -62,6 +71,9 @@ describe('HistoryWorkbench', () => {
     })
     const html = render(state, {
       cellHistory: cellHistory(),
+      cellNextPageError: '셀 다음 페이지를 불러오지 못했습니다.',
+      onLoadMoreCell: vi.fn(),
+      onRetryCell: vi.fn(),
     })
 
     expect(html).toContain('셀 범위')
@@ -71,6 +83,8 @@ describe('HistoryWorkbench', () => {
     expect(html).toContain('초기 셀 상태를 확인할 수 없습니다.')
     expect(html).toContain('삭제된 대상이라 위치로 이동할 수 없습니다.')
     expect(html).toContain('2026-07-17T00:00:00Z')
+    expect(html).toContain('더 보기')
+    expect(html).toContain('셀 다음 페이지를 불러오지 못했습니다.')
   })
 
   it('keeps the first batch detail fetch lazy and cached in the state path', () => {
@@ -80,7 +94,7 @@ describe('HistoryWorkbench', () => {
     const expanded = toggleHistoryBatchDetail(state, batchKey)
 
     expect(batchKey).toContain('scope-2::batch-2')
-    expect(render(expanded, {}, { [batchKey]: detailFixture() })).toContain('OLD → NEW')
+    expect(render(expanded)).toContain('OLD → NEW')
 
     const loaded = storeHistoryBatchDetail(expanded, batchKey, detailFixture())
     const collapsed = toggleHistoryBatchDetail(loaded, batchKey)
@@ -93,7 +107,6 @@ describe('HistoryWorkbench', () => {
 function render(
   state: HistoryWorkbenchState,
   overrides: Partial<Parameters<typeof HistoryWorkbench>[0]> = {},
-  detailByBatchKey: Readonly<Record<string, HistoryDetailOut>> = {},
 ): string {
   return renderToStaticMarkup(
     <HistoryWorkbench
@@ -103,7 +116,6 @@ function render(
         legacy_unresolved_layer_count: 2,
         legacy_detail_unavailable_count: 1,
       }}
-      detailByBatchKey={detailByBatchKey}
       timelineStatus="ready"
       cellStatus="ready"
       {...overrides}
@@ -117,12 +129,8 @@ function buildTimelineState(): HistoryWorkbenchState {
     items: [createDeletedEvent(), createExpandedBatchItem()],
     nextCursor: 'cursor-2',
   })
-  return toggleHistoryBatchDetail(withPage, getHistoryTimelineItemKey(createExpandedBatchItem()))
-}
-
-function timelineDetails(state: ReturnType<typeof buildTimelineState>): Readonly<Record<string, HistoryDetailOut>> {
-  const item = state.pages[0].items[1]
-  return { [getHistoryTimelineItemKey(item)]: detailFixture() }
+  const expanded = toggleHistoryBatchDetail(withPage, getHistoryTimelineItemKey(createExpandedBatchItem()))
+  return storeHistoryBatchDetail(expanded, getHistoryTimelineItemKey(createExpandedBatchItem()), detailFixture())
 }
 
 function createDeletedEvent(): HistoryTimelineItemOut {

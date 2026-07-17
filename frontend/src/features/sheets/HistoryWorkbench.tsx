@@ -1,5 +1,7 @@
 import {
+  useEffect,
   useMemo,
+  useState,
   type ChangeEvent,
   type KeyboardEvent,
   type ReactNode,
@@ -9,8 +11,6 @@ import type {
   HistoryCellHistoryItemOut,
   HistoryCellHistoryOut,
   HistoryCoverageOut,
-  HistoryDetailItemOut,
-  HistoryDetailOut,
   HistoryJumpTargetOut,
   HistoryTimelineItemOut,
 } from '@/api/history'
@@ -18,15 +18,19 @@ import type { HistoryTimelineFilterInput } from '@/api/historyQuery'
 import { cn } from '@/shared/lib/cn'
 
 import {
+  buildHistoryCellActivationTarget,
   describeHistoryDetailStatus,
   describeHistoryJumpTarget,
   describeHistoryLegacyCoverage,
   getHistoryTimelineItemKey,
   handleHistoryWorkbenchItemActivationKey,
+  historyEventTypeLabel,
+  HISTORY_EVENT_TYPES,
+  createHistoryWorkbenchState,
   normalizeHistoryWorkbenchFilters,
   resolveHistoryActorLabel,
-  shouldRequestHistoryBatchDetail,
-  type HistoryCellScope,
+  shouldRequestHistoryBatchDetailOnOpen,
+  type HistoryTimelineFilters,
   type HistoryWorkbenchMode,
   type HistoryWorkbenchState,
 } from './historyWorkbenchState'
@@ -35,51 +39,44 @@ export interface HistoryWorkbenchProps {
   projectId: number
   state: HistoryWorkbenchState
   coverage: HistoryCoverageOut
-  detailByBatchKey?: Readonly<Record<string, HistoryDetailOut>>
   cellHistory?: HistoryCellHistoryOut | null
   timelineStatus?: 'idle' | 'loading' | 'ready' | 'error'
   timelineError?: string | null
   nextPageError?: string | null
   cellStatus?: 'idle' | 'loading' | 'ready' | 'error'
   cellError?: string | null
+  cellNextPageError?: string | null
   onFiltersChange?: (filters: HistoryTimelineFilterInput) => void
   onModeChange?: (mode: HistoryWorkbenchMode) => void
   onBatchToggle?: (item: HistoryTimelineItemOut, shouldRequestDetail: boolean) => void
   onActivateTarget?: (target: HistoryJumpTargetOut) => void
-  onLoadMore?: (cursor: string | null) => void
-  onRetry?: () => void
+  onLoadMoreTimeline?: (cursor: string | null) => void
+  onLoadMoreCell?: (cursor: string | null) => void
+  onRetryTimeline?: () => void
+  onRetryCell?: () => void
 }
 
 const HISTORY_ORIGIN_OPTIONS = ['manual', 'paste', 'backbone', 'system'] as const
-
-const HISTORY_EVENT_TYPE_OPTIONS: ReadonlyArray<{ readonly value: string; readonly label: string }> = [
-  { value: 'project_create', label: '프로젝트 생성' },
-  { value: 'project_profile_update', label: '프로젝트 정보 변경' },
-  { value: 'backbone_copy', label: 'backbone 복사' },
-  { value: 'backbone_layer_replace', label: 'backbone 레이어 교체' },
-  { value: 'cell_update', label: '셀 수정' },
-  { value: 'condition_add', label: '조건 추가' },
-  { value: 'condition_remove', label: '조건 삭제' },
-  { value: 'por_change', label: 'POR 변경' },
-]
 
 export function HistoryWorkbench({
   projectId,
   state,
   coverage,
-  detailByBatchKey = {},
   cellHistory = null,
   timelineStatus = 'ready',
   timelineError = null,
   nextPageError = null,
   cellStatus = 'ready',
   cellError = null,
+  cellNextPageError = null,
   onFiltersChange,
   onModeChange,
   onBatchToggle,
   onActivateTarget,
-  onLoadMore,
-  onRetry,
+  onLoadMoreTimeline,
+  onLoadMoreCell,
+  onRetryTimeline,
+  onRetryCell,
 }: HistoryWorkbenchProps) {
   const timelineItems = useMemo(() => state.pages.flatMap((page) => page.items), [state.pages])
   const legacyCoverageMessage = describeHistoryLegacyCoverage(coverage)
@@ -87,69 +84,109 @@ export function HistoryWorkbench({
   const hasTimelineError = timelineError !== null && timelineError.trim() !== ''
   const hasNextPageError = nextPageError !== null && nextPageError.trim() !== ''
   const hasCellError = cellError !== null && cellError.trim() !== ''
+  const hasCellNextPageError = cellNextPageError !== null && cellNextPageError.trim() !== ''
+  const [announcement, setAnnouncement] = useState<string | null>(null)
+  const [draft, setDraft] = useState<HistoryTimelineFilters>(
+    createHistoryWorkbenchState(state.filters).filters,
+  )
+  const [draftSourceProjectIdText, setDraftSourceProjectIdText] = useState(
+    state.filters.sourceProjectId === null ? '' : String(state.filters.sourceProjectId),
+  )
 
-  function emitFilters(nextFilters: HistoryTimelineFilterInput): void {
+  useEffect(() => {
+    setDraft(createHistoryWorkbenchState(state.filters).filters)
+    setDraftSourceProjectIdText(
+      state.filters.sourceProjectId === null ? '' : String(state.filters.sourceProjectId),
+    )
+  }, [state.filters, state.revision])
+
+  function emitAnnouncement(message: string | null): void {
+    setAnnouncement(message)
+  }
+
+  function commitFilters(nextFilters: HistoryTimelineFilterInput): void {
     onFiltersChange?.(normalizeHistoryWorkbenchFilters(nextFilters))
   }
 
-  function handleCreatedFromChange(event: ChangeEvent<HTMLInputElement>): void {
-    emitFilters({ ...state.filters, createdFrom: event.currentTarget.value || null })
-  }
-
-  function handleCreatedToChange(event: ChangeEvent<HTMLInputElement>): void {
-    emitFilters({ ...state.filters, createdTo: event.currentTarget.value || null })
-  }
-
-  function handleLayerKeyChange(event: ChangeEvent<HTMLInputElement>): void {
-    emitFilters({ ...state.filters, layerKey: event.currentTarget.value || null })
-  }
-
-  function handleActorChange(event: ChangeEvent<HTMLInputElement>): void {
-    emitFilters({ ...state.filters, actor: event.currentTarget.value || null })
-  }
-
-  function handleSourceProjectIdChange(event: ChangeEvent<HTMLInputElement>): void {
-    const rawValue = event.currentTarget.value.trim()
-    emitFilters({
-      ...state.filters,
-      sourceProjectId: rawValue === '' ? null : Number.parseInt(rawValue, 10) || null,
+  function handleApplyFilters(): void {
+    commitFilters({
+      ...draft,
+      sourceProjectId: parsePositiveIntegerText(draftSourceProjectIdText),
     })
-  }
-
-  function handleOriginChange(event: ChangeEvent<HTMLSelectElement>): void {
-    emitFilters({
-      ...state.filters,
-      origin: event.currentTarget.value === '' ? null : event.currentTarget.value as HistoryTimelineFilterInput['origin'],
-    })
-  }
-
-  function handleToggleEventType(eventType: string, checked: boolean): void {
-    const nextEventTypes = checked
-      ? [...state.filters.eventTypes, eventType]
-      : state.filters.eventTypes.filter((value) => value !== eventType)
-    emitFilters({ ...state.filters, eventTypes: nextEventTypes })
   }
 
   function handleResetFilters(): void {
-    emitFilters({})
-  }
-
-  function handleLoadMore(): void {
-    onLoadMore?.(state.nextCursor)
+    const reset = normalizeHistoryWorkbenchFilters({})
+    setDraft(createHistoryWorkbenchState().filters)
+    setDraftSourceProjectIdText('')
+    onFiltersChange?.(reset)
   }
 
   function handleModeChange(mode: HistoryWorkbenchMode): void {
     onModeChange?.(mode)
   }
 
+  function handleLoadMoreTimeline(): void {
+    onLoadMoreTimeline?.(state.nextCursor)
+  }
+
+  function handleLoadMoreCell(): void {
+    onLoadMoreCell?.(cellHistory?.next_cursor ?? null)
+  }
+
+  function updateDraftField<K extends keyof HistoryTimelineFilters>(
+    key: K,
+    value: HistoryTimelineFilters[K],
+  ): void {
+    setDraft((current) => ({ ...current, [key]: value }))
+  }
+
+  function handleCreatedFromChange(event: ChangeEvent<HTMLInputElement>): void {
+    updateDraftField('createdFrom', event.currentTarget.value || null)
+  }
+
+  function handleCreatedToChange(event: ChangeEvent<HTMLInputElement>): void {
+    updateDraftField('createdTo', event.currentTarget.value || null)
+  }
+
+  function handleLayerKeyChange(event: ChangeEvent<HTMLInputElement>): void {
+    updateDraftField('layerKey', event.currentTarget.value || null)
+  }
+
+  function handleActorChange(event: ChangeEvent<HTMLInputElement>): void {
+    updateDraftField('actor', event.currentTarget.value || null)
+  }
+
+  function handleOriginChange(event: ChangeEvent<HTMLSelectElement>): void {
+    updateDraftField(
+      'origin',
+      event.currentTarget.value === ''
+        ? null
+        : (event.currentTarget.value as HistoryTimelineFilterInput['origin']),
+    )
+  }
+
+  function handleSourceProjectIdTextChange(event: ChangeEvent<HTMLInputElement>): void {
+    setDraftSourceProjectIdText(event.currentTarget.value)
+  }
+
+  function handleToggleEventType(eventType: (typeof HISTORY_EVENT_TYPES)[number], checked: boolean): void {
+    updateDraftField(
+      'eventTypes',
+      checked
+        ? [...draft.eventTypes, eventType]
+        : draft.eventTypes.filter((value) => value !== eventType),
+    )
+  }
+
   function renderTimelineItem(item: HistoryTimelineItemOut): ReactNode {
     const itemKey = getHistoryTimelineItemKey(item)
     const isExpanded = state.expandedBatchKey === itemKey
-    const detail = detailByBatchKey[itemKey]
+    const detail = state.batchDetailCache[itemKey]
     const detailUnavailableCopy = describeHistoryDetailStatus(item)
     const targetUnavailableCopy = describeHistoryJumpTarget(item.jump_target)
     const canToggleBatch = item.kind === 'batch' && item.detail_status === 'available'
-    const shouldRequestDetail = !isExpanded && shouldRequestHistoryBatchDetail(state, item)
+    const shouldRequestDetail = !isExpanded && shouldRequestHistoryBatchDetailOnOpen(state, item)
     const actorLabel = resolveHistoryActorLabel(item.actors)
     const jumpTarget = item.jump_target
 
@@ -159,12 +196,16 @@ export function HistoryWorkbench({
     }
 
     function handleJumpTargetActivate(): void {
-      if (jumpTarget?.jump_status !== 'available') return
-      onActivateTarget?.(jumpTarget)
+      if (jumpTarget === null) return
+      if (jumpTarget.jump_status === 'available') {
+        emitAnnouncement(`위치로 이동합니다. ${item.summary}`)
+        onActivateTarget?.(jumpTarget)
+        return
+      }
+      emitAnnouncement('삭제된 대상이라 위치로 이동할 수 없습니다.')
     }
 
     function handleJumpTargetKeyDown(event: KeyboardEvent<HTMLButtonElement>): void {
-      if (jumpTarget?.jump_status !== 'available') return
       handleHistoryWorkbenchItemActivationKey(
         event.key,
         event.repeat,
@@ -200,27 +241,21 @@ export function HistoryWorkbench({
           {item.batch_id !== null ? <span>batch {item.batch_id}</span> : null}
         </div>
 
-        {item.jump_target !== null ? (
+        {jumpTarget !== null ? (
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            {item.jump_target.jump_status === 'available' ? (
-              <button
-                className="rounded-sm border border-border-subtle px-2 py-1 text-xs font-semibold text-brand-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
-                onClick={handleJumpTargetActivate}
-                onKeyDown={handleJumpTargetKeyDown}
-                type="button"
-              >
-                위치로 이동
-              </button>
-            ) : (
-              <button
-                aria-disabled="true"
-                className="rounded-sm border border-border-subtle px-2 py-1 text-xs font-semibold text-muted"
-                disabled
-                type="button"
-              >
-                삭제됨
-              </button>
-            )}
+            <button
+              className={cn(
+                'rounded-sm border px-2 py-1 text-xs font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700',
+                jumpTarget.jump_status === 'deleted'
+                  ? 'border-border-subtle text-muted'
+                  : 'border-brand-700 text-brand-700',
+              )}
+              onClick={handleJumpTargetActivate}
+              onKeyDown={handleJumpTargetKeyDown}
+              type="button"
+            >
+              {jumpTarget.jump_status === 'deleted' ? '삭제됨' : '위치로 이동'}
+            </button>
             {targetUnavailableCopy !== null ? (
               <span aria-live="polite" className="text-xs text-muted" role="status">
                 {targetUnavailableCopy}
@@ -275,6 +310,61 @@ export function HistoryWorkbench({
     )
   }
 
+  function renderCellHistoryItem(item: HistoryCellHistoryItemOut): ReactNode {
+    const target = state.cellScope === null ? null : buildHistoryCellActivationTarget(state.cellScope, item)
+    function handleActivate(): void {
+      if (target === null) return
+      if (target.jump_status === 'available') {
+        emitAnnouncement('셀 이력 위치로 이동합니다.')
+        onActivateTarget?.(target)
+        return
+      }
+      emitAnnouncement('삭제된 대상이라 위치로 이동할 수 없습니다.')
+    }
+
+    return (
+      <article key={item.event_id} className="rounded-md border border-border-subtle bg-surface p-3 text-xs">
+        <div className="flex flex-wrap items-center gap-2 text-muted">
+          <strong className="text-foreground">{item.created_at}</strong>
+          <span>{resolveHistoryActorLabel(item.actor === null ? [] : [item.actor])}</span>
+          <span>{item.origin}</span>
+          <span>{item.layer_key ?? 'layer 없음'}</span>
+        </div>
+        <p className="mt-1 text-muted">
+          {item.old_code ?? '—'} → {item.new_code ?? '—'}
+          {item.choice_label !== null ? ` · ${item.choice_label}` : ''}
+        </p>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <button
+            className={cn(
+              'rounded-sm border px-2 py-1 font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700',
+              item.jump_status === 'deleted'
+                ? 'border-border-subtle text-muted'
+                : 'border-brand-700 text-brand-700',
+            )}
+            onClick={handleActivate}
+            onKeyDown={(event) =>
+              handleHistoryWorkbenchItemActivationKey(
+                event.key,
+                event.repeat,
+                () => event.preventDefault(),
+                handleActivate,
+              )
+            }
+            type="button"
+            >
+              {item.jump_status === 'deleted' ? '삭제됨' : '위치로 이동'}
+            </button>
+          {item.jump_status === 'deleted' ? (
+            <span aria-live="polite" className="text-xs text-muted" role="status">
+              삭제된 대상이라 위치로 이동할 수 없습니다.
+            </span>
+          ) : null}
+        </div>
+      </article>
+    )
+  }
+
   return (
     <section
       aria-label="변경 이력 워크벤치"
@@ -285,27 +375,29 @@ export function HistoryWorkbench({
       <div className="flex flex-wrap items-center gap-2 border-b border-border-subtle px-3 py-2 text-sm">
         <strong className="text-foreground">변경 이력</strong>
         <span className="text-xs text-muted">프로젝트 #{projectId}</span>
-        <div role="tablist" aria-label="이력 모드 선택" className="ml-auto flex gap-2">
+        <div className="ml-auto flex gap-2">
           <button
-            aria-selected={state.mode === 'timeline'}
-            className={modeTabClass(state.mode === 'timeline')}
+            aria-pressed={state.mode === 'timeline'}
+            className={modeButtonClass(state.mode === 'timeline')}
             onClick={() => handleModeChange('timeline')}
-            role="tab"
             type="button"
           >
             타임라인
           </button>
           <button
-            aria-selected={state.mode === 'cell'}
-            className={modeTabClass(state.mode === 'cell')}
+            aria-pressed={state.mode === 'cell'}
+            className={modeButtonClass(state.mode === 'cell')}
             onClick={() => handleModeChange('cell')}
-            role="tab"
             type="button"
           >
             셀 이력
           </button>
         </div>
       </div>
+
+      <p aria-live="polite" aria-atomic="true" className="sr-only" role="status">
+        {announcement ?? ''}
+      </p>
 
       {legacyCoverageMessage !== null ? (
         <div
@@ -329,7 +421,7 @@ export function HistoryWorkbench({
                 <input
                   className="rounded-sm border border-border-subtle bg-surface px-2 py-1 text-sm"
                   onChange={handleCreatedFromChange}
-                  value={state.filters.createdFrom ?? ''}
+                  value={draft.createdFrom ?? ''}
                 />
               </label>
               <label className="flex flex-col gap-1">
@@ -337,7 +429,7 @@ export function HistoryWorkbench({
                 <input
                   className="rounded-sm border border-border-subtle bg-surface px-2 py-1 text-sm"
                   onChange={handleCreatedToChange}
-                  value={state.filters.createdTo ?? ''}
+                  value={draft.createdTo ?? ''}
                 />
               </label>
               <label className="flex flex-col gap-1">
@@ -345,7 +437,7 @@ export function HistoryWorkbench({
                 <input
                   className="rounded-sm border border-border-subtle bg-surface px-2 py-1 text-sm"
                   onChange={handleLayerKeyChange}
-                  value={state.filters.layerKey ?? ''}
+                  value={draft.layerKey ?? ''}
                 />
               </label>
               <label className="flex flex-col gap-1">
@@ -353,7 +445,7 @@ export function HistoryWorkbench({
                 <input
                   className="rounded-sm border border-border-subtle bg-surface px-2 py-1 text-sm"
                   onChange={handleActorChange}
-                  value={state.filters.actor ?? ''}
+                  value={draft.actor ?? ''}
                 />
               </label>
               <label className="flex flex-col gap-1">
@@ -361,7 +453,7 @@ export function HistoryWorkbench({
                 <select
                   className="rounded-sm border border-border-subtle bg-surface px-2 py-1 text-sm"
                   onChange={handleOriginChange}
-                  value={state.filters.origin ?? ''}
+                  value={draft.origin ?? ''}
                 >
                   <option value="">전체</option>
                   {HISTORY_ORIGIN_OPTIONS.map((origin) => (
@@ -376,27 +468,34 @@ export function HistoryWorkbench({
                 <input
                   className="rounded-sm border border-border-subtle bg-surface px-2 py-1 text-sm"
                   inputMode="numeric"
-                  onChange={handleSourceProjectIdChange}
-                  value={state.filters.sourceProjectId ?? ''}
+                  onChange={handleSourceProjectIdTextChange}
+                  value={draftSourceProjectIdText}
                 />
               </label>
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
               <span className="shrink-0 text-muted">Type</span>
-              {HISTORY_EVENT_TYPE_OPTIONS.map((option) => (
-                <label key={option.value} className="inline-flex items-center gap-1 rounded-sm border border-border-subtle px-2 py-1 text-xs">
+              {HISTORY_EVENT_TYPES.map((eventType) => (
+                <label key={eventType} className="inline-flex items-center gap-1 rounded-sm border border-border-subtle px-2 py-1 text-xs">
                   <input
-                    checked={state.filters.eventTypes.includes(option.value as HistoryTimelineFilterInput['eventTypes'][number])}
-                    onChange={(event) => handleToggleEventType(option.value, event.currentTarget.checked)}
+                    checked={draft.eventTypes.includes(eventType)}
+                    onChange={(event) => handleToggleEventType(eventType, event.currentTarget.checked)}
                     type="checkbox"
                   />
-                  <span>{option.label}</span>
+                  <span>{historyEventTypeLabel(eventType)}</span>
                 </label>
               ))}
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
+              <button
+                className="rounded-sm border border-border-subtle px-3 py-1 text-xs font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
+                onClick={handleApplyFilters}
+                type="button"
+              >
+                적용
+              </button>
               <button
                 className="rounded-sm border border-border-subtle px-3 py-1 text-xs font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
                 onClick={handleResetFilters}
@@ -420,10 +519,10 @@ export function HistoryWorkbench({
             <div className="rounded-md border border-error/40 bg-error/10 p-3 text-sm text-error-700" role="alert">
               <div className="flex flex-wrap items-center gap-2">
                 <span>{timelineError}</span>
-                {onRetry !== undefined ? (
+                {onRetryTimeline !== undefined ? (
                   <button
                     className="rounded-sm border border-error/30 px-2 py-1 text-xs font-semibold"
-                    onClick={onRetry}
+                    onClick={onRetryTimeline}
                     type="button"
                   >
                     다시 시도
@@ -437,9 +536,9 @@ export function HistoryWorkbench({
             <div className="min-h-0 min-w-0 flex-1 space-y-3 overflow-y-auto">
               {timelineItems.map((item) => renderTimelineItem(item))}
             </div>
-          ) : (
+          ) : hasTimelineError || timelineStatus === 'loading' ? null : (
             <div className="rounded-md border border-border-subtle bg-canvas p-3 text-sm text-muted">
-              {timelineStatus === 'loading' ? '이력을 준비하는 중입니다.' : '표시할 변경 이력이 없습니다.'}
+              표시할 변경 이력이 없습니다.
             </div>
           )}
 
@@ -447,10 +546,10 @@ export function HistoryWorkbench({
             <div className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-warning-700" role="status">
               <div className="flex flex-wrap items-center gap-2">
                 <span>{nextPageError}</span>
-                {state.nextCursor !== null && onLoadMore !== undefined ? (
+                {state.nextCursor !== null && onLoadMoreTimeline !== undefined ? (
                   <button
                     className="rounded-sm border border-warning/30 px-2 py-1 text-xs font-semibold"
-                    onClick={handleLoadMore}
+                    onClick={handleLoadMoreTimeline}
                     type="button"
                   >
                     다음 페이지 다시 시도
@@ -464,7 +563,7 @@ export function HistoryWorkbench({
             <div className="flex justify-center">
               <button
                 className="rounded-sm border border-border-subtle px-3 py-1 text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
-                onClick={handleLoadMore}
+                onClick={handleLoadMoreTimeline}
                 type="button"
               >
                 다음 페이지 불러오기
@@ -507,10 +606,10 @@ export function HistoryWorkbench({
             <div className="rounded-md border border-error/40 bg-error/10 p-3 text-sm text-error-700" role="alert">
               <div className="flex flex-wrap items-center gap-2">
                 <span>{cellError}</span>
-                {onRetry !== undefined ? (
+                {onRetryCell !== undefined ? (
                   <button
                     className="rounded-sm border border-error/30 px-2 py-1 text-xs font-semibold"
-                    onClick={onRetry}
+                    onClick={onRetryCell}
                     type="button"
                   >
                     다시 시도
@@ -541,17 +640,30 @@ export function HistoryWorkbench({
                 ) : null}
               </div>
 
-              <div className="space-y-2">
-                {cellHistory.items.map((item) => (
-                  <HistoryCellHistoryRow key={item.event_id} item={item} />
-                ))}
-              </div>
+              <div className="space-y-2">{cellHistory.items.map((item) => renderCellHistoryItem(item))}</div>
+
+              {hasCellNextPageError ? (
+                <div className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-warning-700" role="status">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span>{cellNextPageError}</span>
+                    {cellHistory.next_cursor !== null && onLoadMoreCell !== undefined ? (
+                      <button
+                        className="rounded-sm border border-warning/30 px-2 py-1 text-xs font-semibold"
+                        onClick={handleLoadMoreCell}
+                        type="button"
+                      >
+                        더 보기 다시 시도
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
 
               {cellHistory.next_cursor !== null ? (
                 <div className="flex justify-center">
                   <button
                     className="rounded-sm border border-border-subtle px-3 py-1 text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
-                    onClick={handleLoadMore}
+                    onClick={handleLoadMoreCell}
                     type="button"
                   >
                     더 보기
@@ -559,9 +671,9 @@ export function HistoryWorkbench({
                 </div>
               ) : null}
             </div>
-          ) : (
+          ) : hasCellError || cellStatus === 'loading' ? null : (
             <div className="rounded-md border border-border-subtle bg-canvas p-3 text-sm text-muted">
-              {cellStatus === 'loading' ? '셀 이력을 준비하는 중입니다.' : '표시할 셀 이력이 없습니다.'}
+              표시할 셀 이력이 없습니다.
             </div>
           )}
         </div>
@@ -607,33 +719,19 @@ function HistoryBatchDetailList({ detail }: { detail: HistoryDetailOut }) {
   )
 }
 
-function HistoryCellHistoryRow({ item }: { item: HistoryCellHistoryItemOut }) {
-  return (
-    <article className="rounded-md border border-border-subtle bg-surface p-3 text-xs">
-      <div className="flex flex-wrap items-center gap-2 text-muted">
-        <strong className="text-foreground">{item.created_at}</strong>
-        <span>{resolveHistoryActorLabel(item.actor === null ? [] : [item.actor])}</span>
-        <span>{item.origin}</span>
-        <span>{item.layer_key ?? 'layer 없음'}</span>
-      </div>
-      <p className="mt-1 text-muted">
-        {item.old_code ?? '—'} → {item.new_code ?? '—'}
-        {item.choice_label !== null ? ` · ${item.choice_label}` : ''}
-      </p>
-      {item.jump_status === 'deleted' ? (
-        <p className="mt-2 rounded-sm border border-warning/40 bg-warning/10 px-2 py-1 text-xs text-warning-700">
-          삭제된 대상이라 위치로 이동할 수 없습니다.
-        </p>
-      ) : null}
-    </article>
-  )
-}
-
-function modeTabClass(selected: boolean): string {
+function modeButtonClass(selected: boolean): string {
   return cn(
     'rounded-sm border px-2 py-1 text-xs font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700',
     selected
       ? 'border-brand-700 bg-brand-700 text-white'
       : 'border-border-subtle bg-surface text-foreground',
   )
+}
+
+function parsePositiveIntegerText(value: string): number | null {
+  const trimmed = value.trim()
+  if (trimmed === '') return null
+  if (!/^[1-9]\d*$/.test(trimmed)) return null
+  const parsed = Number(trimmed)
+  return Number.isSafeInteger(parsed) ? parsed : null
 }

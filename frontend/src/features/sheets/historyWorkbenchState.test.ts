@@ -1,14 +1,15 @@
 import { describe, expect, it } from 'vitest'
 
 import type {
-  HistoryCellHistoryOut,
   HistoryDetailOut,
   HistoryTimelineItemOut,
 } from '@/api/history'
 
 import {
+  HISTORY_EVENT_TYPES,
   appendHistoryWorkbenchPage,
   createHistoryWorkbenchState,
+  buildHistoryCellActivationTarget,
   describeHistoryDetailStatus,
   describeHistoryJumpTarget,
   describeHistoryLegacyCoverage,
@@ -18,10 +19,10 @@ import {
   historyWorkbenchBatchDetailKey,
   historyWorkbenchCellHistoryKey,
   historyWorkbenchTimelineKey,
+  historyEventTypeLabel,
   openHistoryCellScope,
-  reduceHistoryWorkbenchState,
   resolveHistoryActorLabel,
-  shouldRequestHistoryBatchDetail,
+  shouldRequestHistoryBatchDetailOnOpen,
   storeHistoryBatchDetail,
   toggleHistoryBatchDetail,
   updateHistoryWorkbenchFilters,
@@ -36,7 +37,7 @@ describe('history workbench state', () => {
       items: [createBatchItem(1)],
       nextCursor: 'cursor-1',
     })
-    const expanded = toggleHistoryBatchDetail(page, getHistoryTimelineItemKey(createBatchItem(1)))
+    const expanded = toggleHistoryBatchDetail(page, batchKey(1))
     const loaded = storeHistoryBatchDetail(expanded, batchKey(1), createDetail(1))
     const changed = updateHistoryWorkbenchFilters(loaded, { layerKey: 'L1::10::ETCH' })
 
@@ -59,15 +60,15 @@ describe('history workbench state', () => {
     const key = getHistoryTimelineItemKey(createBatchItem(2))
     const expanded = toggleHistoryBatchDetail(page, key)
 
-    expect(shouldRequestHistoryBatchDetail(expanded, createBatchItem(2))).toBe(true)
+    expect(shouldRequestHistoryBatchDetailOnOpen(expanded, createBatchItem(2))).toBe(true)
 
     const loaded = storeHistoryBatchDetail(expanded, key, createDetail(2))
-    expect(shouldRequestHistoryBatchDetail(loaded, createBatchItem(2))).toBe(false)
+    expect(shouldRequestHistoryBatchDetailOnOpen(loaded, createBatchItem(2))).toBe(false)
 
     const collapsed = toggleHistoryBatchDetail(loaded, key)
     const reopened = toggleHistoryBatchDetail(collapsed, key)
 
-    expect(shouldRequestHistoryBatchDetail(reopened, createBatchItem(2))).toBe(false)
+    expect(shouldRequestHistoryBatchDetailOnOpen(reopened, createBatchItem(2))).toBe(false)
   })
 
   it('keeps the literal dev-admin actor and explicit legacy/deleted copy', () => {
@@ -76,6 +77,8 @@ describe('history workbench state', () => {
     expect(describeHistoryLegacyCoverage({ legacy_unresolved_layer_count: 2, legacy_detail_unavailable_count: 1 })).toContain('2개')
     expect(describeHistoryDetailStatus(createBatchItem(3, { detail_status: 'legacy_unavailable' }))).toContain('레거시 상세 형식')
     expect(describeHistoryJumpTarget({ ...availableJumpTarget(), jump_status: 'deleted' })).toContain('삭제된 대상')
+    expect(historyEventTypeLabel('por_change')).toBe('POR 변경')
+    expect(HISTORY_EVENT_TYPES).toHaveLength(8)
   })
 
   it('handles Enter and Space activations without repeating', () => {
@@ -111,11 +114,30 @@ describe('history workbench state', () => {
   it('opens a cell scope without disturbing the timeline filter state', () => {
     const initial = createHistoryWorkbenchState({ actor: 'dev-admin' })
     const opened = openHistoryCellScope(initial, { conditionId: 11, parameterCode: 'ETCH_P001' })
+    const target = buildHistoryCellActivationTarget({ conditionId: 11, parameterCode: 'ETCH_P001' }, {
+      event_id: 31,
+      old_code: 'OLD',
+      new_code: 'NEW',
+      choice_label: 'choice',
+      actor: 'dev-admin',
+      origin: 'manual',
+      created_at: '2026-07-17T00:00:00Z',
+      layer_key: 'L1::10::ETCH',
+      jump_status: 'available',
+      metadata_status: 'complete',
+    })
 
     expect(opened.mode).toBe('cell')
     expect(opened.cellScope).toEqual({ conditionId: 11, parameterCode: 'ETCH_P001' })
     expect(opened.filters.actor).toBe('dev-admin')
     expect(opened.expandedBatchKey).toBeNull()
+    expect(target).toEqual({
+      layer_key: 'L1::10::ETCH',
+      condition_id: 11,
+      parameter_code: 'ETCH_P001',
+      cell_ref: null,
+      jump_status: 'available',
+    })
   })
 })
 
