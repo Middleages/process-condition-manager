@@ -121,9 +121,9 @@ describe('useBackboneDiffWorkbenchController seams', () => {
       'scope-x',
     )
 
-    expect((branchKey[3] as { scope: string }).scope).toBe('scope-x')
-    expect((branchKey[4] as { rootScope: string }).rootScope).toBe('root-s')
-    expect((cellKey[5] as { filters: string }).filters).toBe(backboneDiffQueryFingerprint(filters))
+    expect((branchKey[4] as { scope: string }).scope).toBe('scope-x')
+    expect((branchKey[5] as { rootScope: string }).rootScope).toBe('root-s')
+    expect((cellKey[6] as { filters: string }).filters).toBe(backboneDiffQueryFingerprint(filters))
 
     const rootKey = createBackboneDiffWorkbenchRootQueryKey(7, filters)
     expect(rootKey[3]).toEqual({

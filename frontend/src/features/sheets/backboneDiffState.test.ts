@@ -102,7 +102,11 @@ describe('backbone diff workbench state', () => {
 
   it('keeps root branch/cell scope untouched when root result is unchanged', () => {
     const loaded = setBackboneDiffRootResult(
-      openBackboneDiffBranch(createBackboneDiffWorkbenchState(), 'L1::10::ETCH', 'branch-scope'),
+      openBackboneDiffBranch(
+        setBackboneDiffRootResult(createBackboneDiffWorkbenchState(), createRootOut()),
+        'L1::10::ETCH',
+        'branch-scope',
+      ),
       createRootOut(),
     )
 
@@ -114,7 +118,6 @@ describe('backbone diff workbench state', () => {
       openCellLayerKey: null,
       openCellScope: null,
       revision: loaded.revision,
-      rootCounts: sourceStateCounts(loaded),
       layerSummaries: loaded.layerSummaries,
       previewItems: loaded.previewItems,
       rootScope: loaded.rootScope,
