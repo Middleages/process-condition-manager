@@ -187,6 +187,127 @@ const CLASSIFICATIONS: readonly BackboneDiffClassification[] = [
   'unchanged',
 ]
 
+function formatNullableText(value: string | null | undefined): string {
+  return value === null || value === undefined ? '미지정' : value
+}
+
+function formatFactValue(value: string | number | boolean | null | undefined): string {
+  if (value === null || value === undefined) {
+    return '미지정'
+  }
+  if (typeof value === 'boolean') {
+    return value ? 'O' : 'X'
+  }
+  return String(value)
+}
+
+function formatRowFactDiff({
+  baselineValue,
+  currentValue,
+  defaultBaselineValue,
+  defaultCurrentValue,
+  showDiff,
+}: {
+  baselineValue: string | number | boolean | null | undefined
+  currentValue: string | number | boolean | null | undefined
+  defaultBaselineValue: string
+  defaultCurrentValue: string
+  showDiff: boolean
+}): string {
+  const normalizedBaseline = formatFactValue(baselineValue)
+  const normalizedCurrent = formatFactValue(currentValue)
+
+  const displayedBaseline =
+    baselineValue === null || baselineValue === undefined || baselineValue === ''
+      ? defaultBaselineValue
+      : normalizedBaseline
+  const displayedCurrent =
+    currentValue === null || currentValue === undefined || currentValue === ''
+      ? defaultCurrentValue
+      : normalizedCurrent
+
+  if (showDiff) {
+    return `${displayedBaseline} → ${displayedCurrent}`
+  }
+
+  return displayedCurrent
+}
+
+function shouldShowRowFactDiff(rowStatus: BackboneDiffRowStatus, hasChanged: boolean | undefined): boolean {
+  return rowStatus === 'added' || rowStatus === 'removed' || hasChanged === true
+}
+
+function formatDefaultForRowSide(rowStatus: BackboneDiffRowStatus, side: 'baseline' | 'current'): string {
+  if (side === 'baseline' && rowStatus === 'added') {
+    return '기준 없음'
+  }
+  if (side === 'current' && rowStatus === 'removed') {
+    return '현재 없음'
+  }
+  return side === 'baseline' ? '기준 없음' : '현재 없음'
+}
+
+export interface BackboneDiffConditionFactDiff {
+  readonly baselineToCurrentLabel: string
+  readonly baselineToCurrentIndex: string
+  readonly baselineToCurrentPor: string
+}
+
+export function formatBackboneDiffConditionFacts(params: {
+  rowStatus: BackboneDiffRowStatus
+  baselineConditionLabel: string | null | undefined
+  currentConditionLabel: string | null | undefined
+  baselineConditionIndex: number | null | undefined
+  currentConditionIndex: number | null | undefined
+  baselineConditionPor: boolean | null | undefined
+  currentConditionPor: boolean | null | undefined
+  rowMetadata?: {
+    readonly labelChanged: boolean
+    readonly indexChanged: boolean
+    readonly porChanged: boolean
+  }
+}): BackboneDiffConditionFactDiff {
+  const baselineLabel = params.baselineConditionLabel
+  const currentLabel = params.currentConditionLabel
+  const baselineConditionIndex = params.baselineConditionIndex
+  const currentConditionIndex = params.currentConditionIndex
+  const baselinePor = params.baselineConditionPor
+  const currentPor = params.currentConditionPor
+
+  return {
+    baselineToCurrentLabel: formatRowFactDiff({
+      baselineValue: baselineLabel,
+      currentValue: currentLabel,
+      defaultBaselineValue: formatDefaultForRowSide(params.rowStatus, 'baseline'),
+      defaultCurrentValue: formatDefaultForRowSide(params.rowStatus, 'current'),
+      showDiff: shouldShowRowFactDiff(
+        params.rowStatus,
+        params.rowMetadata?.labelChanged,
+      ),
+    }),
+    baselineToCurrentIndex: formatRowFactDiff({
+      baselineValue: baselineConditionIndex,
+      currentValue: currentConditionIndex,
+      defaultBaselineValue: formatDefaultForRowSide(params.rowStatus, 'baseline'),
+      defaultCurrentValue: formatDefaultForRowSide(params.rowStatus, 'current'),
+      showDiff: shouldShowRowFactDiff(
+        params.rowStatus,
+        params.rowMetadata?.indexChanged,
+      ),
+    }),
+    baselineToCurrentPor: formatRowFactDiff({
+      baselineValue: baselinePor,
+      currentValue: currentPor,
+      defaultBaselineValue: formatDefaultForRowSide(params.rowStatus, 'baseline'),
+      defaultCurrentValue: formatDefaultForRowSide(params.rowStatus, 'current'),
+      showDiff: shouldShowRowFactDiff(
+        params.rowStatus,
+        params.rowMetadata?.porChanged,
+      ),
+    }),
+  }
+}
+
 export function BackboneDiffWorkbench({
   root,
   rootStatus,
@@ -424,13 +545,14 @@ export function BackboneDiffWorkbench({
               사용 가능 레이어 <strong>{root.counts.availableLayerCount}</strong>
             </div>
             <div className="rounded border border-border-subtle bg-canvas px-2 py-1">
-              미사용 가능 레이어 <strong>{root.counts.unavailableLayerCount}</strong>
+              비교 불가 레이어 <strong>{root.counts.unavailableLayerCount}</strong>
             </div>
             <div className="rounded border border-border-subtle bg-canvas px-2 py-1">
               불일치 라인 <strong>{root.counts.ambiguousLineageCount}</strong>
             </div>
             <div className="rounded border border-border-subtle bg-canvas px-2 py-1">추가 <strong>{root.counts.addedCount}</strong></div>
             <div className="rounded border border-border-subtle bg-canvas px-2 py-1">변경 <strong>{root.counts.changedCount}</strong></div>
+            <div className="rounded border border-border-subtle bg-canvas px-2 py-1">비움 <strong>{root.counts.clearedCount}</strong></div>
             <div className="rounded border border-border-subtle bg-canvas px-2 py-1">제거 <strong>{root.counts.removedCount}</strong></div>
             <div className="rounded border border-border-subtle bg-canvas px-2 py-1">미변경 <strong>{root.counts.unchangedCount}</strong></div>
           </div>
@@ -529,7 +651,7 @@ export function BackboneDiffWorkbench({
           {preview.status === 'ready' && preview.items.length === 0 ? (
           <p className="mt-2 text-xs text-muted">미리보기 항목이 없습니다.</p>
         ) : null}
-                {preview.items.length > 0 ? (
+        {preview.items.length > 0 ? (
           <ul className="mt-2 space-y-1 text-xs">
             {preview.items.map((item) => (
               <li
@@ -548,7 +670,17 @@ export function BackboneDiffWorkbench({
                 }
                 className="rounded border border-border-subtle bg-canvas px-2 py-1"
               >
-                [{item.classification}] {item.itemKind} · {item.layerKey} · #{item.effectiveConditionIndex}
+                <p>
+                  [{item.classification}] {item.itemKind} · {item.layerKey} · #{item.effectiveConditionIndex}
+                </p>
+                <p className="text-muted mt-1">
+                  {item.rowStatus !== undefined && item.rowStatus !== null
+                    ? `상태: ${item.rowStatus}`
+                    : '상태: 미지정'}
+                  {item.parameterCode !== undefined && item.parameterCode !== null
+                    ? ` · 파라미터: ${item.parameterCode}`
+                    : ''}
+                </p>
               </li>
             ))}
           </ul>
@@ -610,7 +742,7 @@ export function BackboneDiffWorkbench({
                   >
                     {isExpanded ? '접기' : layer.layerStatus === 'available' ? '열기' : '조회 불가'}
                   </button>
-                  <strong className="text-xs">{layer.layerKey}</strong>
+                  <strong className="max-w-full break-all text-xs">{layer.layerKey}</strong>
                   <span className="text-xs text-muted">변경 {layer.changedCount}</span>
                   <span className="text-xs text-muted">조건 {layer.currentConditionCount}/{layer.baselineConditionCount}</span>
                   <span className="text-xs text-muted">셀 {layer.cellCount}/{layer.fullCellCount}</span>
@@ -649,43 +781,26 @@ export function BackboneDiffWorkbench({
                       const isRowExpanded = expandedLayerKey === layer.layerKey && expandedRowRef === condition.rowRef
                       const cellBranch = cellBranches[condition.rowRef]
                       const cells = cellBranch?.items ?? []
-                      const baselinePor =
-                        condition.baselineCondition?.isPor === null
-                          ? '미지정'
-                          : condition.baselineCondition?.isPor
-                            ? 'O'
-                            : 'X'
-                      const currentPor =
-                        condition.currentCondition?.isPor === null
-                          ? '미지정'
-                          : condition.currentCondition?.isPor
-                            ? 'O'
-                            : 'X'
-                      const baselineConditionIndex =
-                        condition.baselineCondition?.conditionIndex === null
-                          ? '미지정'
-                          : condition.baselineCondition?.conditionIndex
-                      const currentConditionIndex =
-                        condition.currentCondition?.conditionIndex === null
-                          ? '미지정'
-                          : condition.currentCondition?.conditionIndex
-                      const baselineLabel = condition.baselineCondition?.label ?? '기준 없음'
-                      const currentLabel = condition.currentCondition?.label ?? '현재 없음'
-                      const baselineToCurrentLabel = condition.rowMetadata?.labelChanged ? `${baselineLabel} → ${currentLabel}` : currentLabel
-                      const baselineToCurrentIndex = condition.rowMetadata?.indexChanged
-                        ? `${baselineConditionIndex} → ${currentConditionIndex}`
-                        : `${currentConditionIndex}`
-                      const baselineToCurrentPor = condition.rowMetadata?.porChanged ? `${baselinePor} → ${currentPor}` : `${currentPor}`
+                      const baselineConditionIndex = condition.baselineCondition?.conditionIndex
+                      const currentConditionIndex = condition.currentCondition?.conditionIndex
+                      const baselineLabel = formatNullableText(condition.baselineCondition?.label)
+                      const currentLabel = formatNullableText(condition.currentCondition?.label)
+                      const rowFacts = formatBackboneDiffConditionFacts({
+                        rowStatus: condition.rowStatus,
+                        baselineConditionLabel: baselineLabel,
+                        currentConditionLabel: currentLabel,
+                        baselineConditionIndex,
+                        currentConditionIndex,
+                        baselineConditionPor: condition.baselineCondition?.isPor,
+                        currentConditionPor: condition.currentCondition?.isPor,
+                        rowMetadata: condition.rowMetadata,
+                      })
                       const hasConditionNavigation =
                         condition.cellScope !== null
                         && ((condition.currentCondition?.conditionId ?? null) !== null
                         || (condition.baselineCondition?.conditionId ?? null) !== null)
 
-                      const rowActivation = activationStatusFor({
-                        classification: condition.rowStatus,
-                        jumpStatus: condition.jumpStatus,
-                        hasNavigation: condition.cellScope !== null,
-                      })
+                      const isRowJumpAvailable = false
 
                       return (
                         <div key={condition.rowRef} className="rounded border border-border-subtle bg-surface p-2 text-xs">
@@ -693,30 +808,27 @@ export function BackboneDiffWorkbench({
                             <button
                               className="rounded-sm border border-brand-700 px-2 py-1 text-xs font-semibold text-brand-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
                               onClick={() => {
-                                if (condition.cellScope === null && !isRowExpanded) {
+                                if (!hasConditionNavigation && !isRowExpanded) {
                                   emitAnnouncement('현재 위치로 이동할 수 없습니다.')
                                   return
                                 }
 
-                                toggleRow(condition.rowRef, condition.cellScope !== null)
+                                toggleRow(condition.rowRef, hasConditionNavigation)
                               }}
                               type="button"
-                              aria-disabled={condition.cellScope === null && !isRowExpanded}
+                              aria-disabled={!hasConditionNavigation && !isRowExpanded}
                             >
                               {isRowExpanded ? '셀 접기' : hasConditionNavigation ? '셀 보기' : '셀 조회 불가'}
                             </button>
-                            <span className="text-muted">
-                              {condition.baselineCondition?.label ?? '기준 없음'}
-                              {' · '}
-                              {condition.currentCondition?.label ?? '현재 없음'}
-                            </span>
-                            <span>
+                            <span className="text-muted">{rowFacts.baselineToCurrentLabel}</span>
+                            <span className="max-w-full break-all">
                               condition #{condition.effectiveConditionIndex}
-                              {' · '}조건 인덱스 {baselineToCurrentIndex}
-                              {' · '}POR {baselineToCurrentPor}
+                              {' · '}조건 인덱스 {rowFacts.baselineToCurrentIndex}
+                              {' · '}POR {rowFacts.baselineToCurrentPor}
                               {condition.filteredCellCount !== condition.fullCellCount
                                 ? ` · ${condition.filteredCellCount} / ${condition.fullCellCount} 셀`
                                 : ` · 셀 ${condition.fullCellCount}`}
+                              {' · '}상태: {condition.rowStatus}
                             </span>
                             <button
                               className={cn(
@@ -725,33 +837,10 @@ export function BackboneDiffWorkbench({
                                   ? 'border-brand-700 text-brand-700'
                                   : 'border-border-subtle text-muted',
                               )}
-                              aria-disabled={rowActivation !== 'available'}
+                              aria-disabled={!isRowJumpAvailable}
                               onClick={() => {
-                                if (rowActivation !== 'available') {
-                                  if (rowActivation === 'removed') {
-                                    emitAnnouncement('삭제된 대상은 이동할 수 없습니다.')
-                                  } else if (rowActivation === 'deleted') {
-                                    emitAnnouncement('삭제된 대상으로는 위치를 이동할 수 없습니다.')
-                                  } else {
-                                    emitAnnouncement('현재 위치로 이동할 수 없습니다.')
-                                  }
-                                  return
-                                }
-
-                                activateTarget({
-                                  kind: 'condition',
-                                  layerKey: layer.layerKey,
-                                  classification: condition.rowStatus,
-                                  jumpStatus: condition.jumpStatus,
-                                  rowRef: condition.rowRef,
-                                  conditionId: condition.identity,
-                                  parameterCode: null,
-                                  sourceConditionId:
-                                    condition.currentCondition?.sourceConditionId
-                                    ?? condition.baselineCondition?.sourceConditionId
-                                    ?? null,
-                                })
-                              }}
+                                emitAnnouncement('현재 위치로 이동할 수 없습니다.')
+                                }}
                               type="button"
                             >
                               {renderActivationButtonText('unavailable')}
@@ -795,7 +884,18 @@ export function BackboneDiffWorkbench({
                                                 : 'border-border-subtle text-muted',
                                             )}
                                             aria-disabled={cellActivation !== 'available'}
-                                            onClick={() =>
+                                            onClick={() => {
+                                              if (cellActivation !== 'available') {
+                                                if (cellActivation === 'removed') {
+                                                  emitAnnouncement('삭제된 대상은 이동할 수 없습니다.')
+                                                } else if (cellActivation === 'deleted') {
+                                                  emitAnnouncement('삭제된 대상으로는 위치를 이동할 수 없습니다.')
+                                                } else {
+                                                  emitAnnouncement('현재 위치로 이동할 수 없습니다.')
+                                                }
+                                                return
+                                              }
+
                                               activateTarget({
                                                 kind: 'cell',
                                                 layerKey: layer.layerKey,
@@ -908,6 +1008,5 @@ function activationStatusFor({
   if (hasNavigation === false) return 'unavailable'
   if (classification === 'removed') return 'removed'
   if (jumpStatus === 'deleted') return 'deleted'
-  if (classification === 'unchanged') return 'unavailable'
   return 'available'
 }

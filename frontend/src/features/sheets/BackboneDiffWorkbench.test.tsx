@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   BackboneDiffWorkbench,
   activateBackboneJumpTarget,
+  formatBackboneDiffConditionFacts,
   type BackboneDiffCellItem,
   type BackboneDiffConditionItem,
   type BackboneDiffPreviewItem,
@@ -87,17 +88,7 @@ function createRootData(): BackboneDiffRoot {
   }
 }
 
-function createPreviewState(): PreviewState<{
-  readonly itemKind: 'row' | 'cell'
-  readonly classification: 'added' | 'changed' | 'cleared' | 'removed' | 'unchanged'
-  readonly layerKey: string
-  readonly effectiveConditionIndex: number
-  readonly itemSortKey: readonly (string | number | null)[]
-  readonly rowRef: string | null
-  readonly cellScope: string | null
-  readonly rowStatus?: 'added' | 'changed' | 'cleared' | 'removed' | 'unchanged' | null
-  readonly parameterCode?: string | null
-}> {
+function createPreviewState(): PreviewState<BackboneDiffPreviewItem> {
   return {
     status: 'ready',
     items: [],
@@ -152,17 +143,7 @@ function createCell(): BackboneDiffCellItem {
 }
 
 function createPreviewStaticMarkup(root: BackboneDiffRoot, preview: PreviewState<
-  {
-    readonly itemKind: 'row' | 'cell'
-    readonly classification: 'added' | 'changed' | 'cleared' | 'removed' | 'unchanged'
-    readonly layerKey: string
-    readonly effectiveConditionIndex: number
-    readonly itemSortKey: readonly (string | number | null)[]
-    readonly rowRef: string | null
-    readonly cellScope: string | null
-    readonly rowStatus?: 'added' | 'changed' | 'cleared' | 'removed' | 'unchanged' | null
-    readonly parameterCode?: string | null
-  }
+  BackboneDiffPreviewItem
 >) {
   return renderToStaticMarkup(
     <BackboneDiffWorkbench
@@ -406,7 +387,7 @@ describe('BackboneDiffWorkbench', () => {
       onActivateTarget,
     )
     expect(deletedBlocked).toBe(false)
-    expect(onActivateTarget).toHaveBeenCalledTimes(1)
+    expect(onActivateTarget).toHaveBeenCalledTimes(2)
 
     const conditionNavigationBlocked = activateBackboneJumpTarget(
       {
@@ -546,6 +527,74 @@ describe('BackboneDiffWorkbench', () => {
     expect(html).toContain('파라미터: ETCH_P999')
   })
 
+  it('formats row facts by status and metadata without surfacing null/undefined values', () => {
+    const matchedWithoutChanges = formatBackboneDiffConditionFacts({
+      rowStatus: 'matched',
+      baselineConditionLabel: '기준값',
+      currentConditionLabel: '현재값',
+      baselineConditionIndex: 10,
+      currentConditionIndex: 10,
+      baselineConditionPor: true,
+      currentConditionPor: true,
+      rowMetadata: {
+        labelChanged: false,
+        indexChanged: false,
+        porChanged: false,
+      },
+    })
+
+    expect(matchedWithoutChanges.baselineToCurrentLabel).toEqual('현재값')
+    expect(matchedWithoutChanges.baselineToCurrentIndex).toEqual('10')
+    expect(matchedWithoutChanges.baselineToCurrentPor).toEqual('O')
+
+    const matchedWithMetadata = formatBackboneDiffConditionFacts({
+      rowStatus: 'matched',
+      baselineConditionLabel: 'baseline',
+      currentConditionLabel: '현재',
+      baselineConditionIndex: 1,
+      currentConditionIndex: 2,
+      baselineConditionPor: false,
+      currentConditionPor: true,
+      rowMetadata: {
+        labelChanged: true,
+        indexChanged: true,
+        porChanged: true,
+      },
+    })
+
+    expect(matchedWithMetadata.baselineToCurrentLabel).toEqual('baseline → 현재')
+    expect(matchedWithMetadata.baselineToCurrentIndex).toEqual('1 → 2')
+    expect(matchedWithMetadata.baselineToCurrentPor).toEqual('X → O')
+
+    const addedRow = formatBackboneDiffConditionFacts({
+      rowStatus: 'added',
+      baselineConditionLabel: null,
+      currentConditionLabel: 'current',
+      baselineConditionIndex: undefined,
+      currentConditionIndex: 3,
+      baselineConditionPor: null,
+      currentConditionPor: true,
+    })
+
+    expect(addedRow.baselineToCurrentLabel).toEqual('기준 없음 → current')
+    expect(addedRow.baselineToCurrentIndex).toEqual('기준 없음 → 3')
+    expect(addedRow.baselineToCurrentPor).toEqual('기준 없음 → O')
+
+    const removedRow = formatBackboneDiffConditionFacts({
+      rowStatus: 'removed',
+      baselineConditionLabel: 'baseline',
+      currentConditionLabel: null,
+      baselineConditionIndex: 5,
+      currentConditionIndex: undefined,
+      baselineConditionPor: false,
+      currentConditionPor: null,
+    })
+
+    expect(removedRow.baselineToCurrentLabel).toEqual('baseline → 현재 없음')
+    expect(removedRow.baselineToCurrentIndex).toEqual('5 → 현재 없음')
+    expect(removedRow.baselineToCurrentPor).toEqual('X → 현재 없음')
+  })
+
   it('marks unavailable rows when row-level navigation parameters are missing', () => {
     renderToStaticMarkup(
       <BackboneDiffWorkbench
@@ -608,6 +657,105 @@ describe('BackboneDiffWorkbench', () => {
     expect(source).toContain('baselineToCurrentIndex')
     expect(source).toContain('baselineToCurrentPor')
     expect(source).toContain('hasConditionNavigation')
+  })
+
+  it('keeps layout classes for long layer keys and row metadata facts', () => {
+    const layerKey = 'layer-with-a-very-long-key-that-should-break-::-긴문자열-텍스트-로-텍스트랩-확인'
+    const root = {
+      ...createRootData(),
+      layerSummaries: [
+        {
+          ...createRootData().layerSummaries[0],
+          layerKey,
+        },
+      ],
+    }
+
+    const html = createPreviewStaticMarkup(root, {
+      ...createPreviewState(),
+      status: 'ready',
+      items: [],
+      error: null,
+      nextCursor: null,
+      nextPageError: null,
+    })
+
+    expect(html).toContain(`class="max-w-full break-all text-xs">${layerKey}`)
+
+    const openStateHtml = renderToStaticMarkup(
+      <BackboneDiffWorkbench
+        root={root}
+        rootStatus="ready"
+        rootError={null}
+        onRetryRoot={vi.fn()}
+        onRefreshAnnouncementReset={vi.fn()}
+        refreshAnnouncement={null}
+        filters={createBaseFilter()}
+        onFiltersChange={vi.fn()}
+        preview={createPreviewState()}
+        onLoadMorePreview={vi.fn()}
+        onRetry={vi.fn()}
+        layerConditionBranches={{
+          [layerKey]: {
+            status: 'ready',
+            basisHash: 'scope-1',
+            scope: 'scope-1',
+            items: [
+              {
+                ...createCondition(),
+                baselineCondition: {
+                  conditionId: 10,
+                  sourceConditionId: 20,
+                  label: 'a'.repeat(40),
+                  conditionIndex: 5,
+                  isPor: false,
+                },
+                currentCondition: {
+                  conditionId: 11,
+                  sourceConditionId: 21,
+                  label: 'long-label-current',
+                  conditionIndex: 10,
+                  isPor: true,
+                },
+                rowMetadata: {
+                  labelChanged: true,
+                  indexChanged: true,
+                  porChanged: true,
+                },
+              },
+            ],
+            nextCursor: null,
+            error: null,
+            nextPageError: null,
+          },
+        }}
+        onOpenLayer={vi.fn()}
+        onLoadMoreConditions={vi.fn()}
+        onRetryConditions={vi.fn()}
+        cellBranches={{
+          'row-1': {
+            status: 'ready',
+            basisHash: 'scope-1',
+            scope: 'scope-1',
+            items: [],
+            nextCursor: null,
+            error: null,
+            nextPageError: null,
+          },
+        }}
+        onOpenCells={vi.fn()}
+        onLoadMoreCells={vi.fn()}
+        onRetryCells={vi.fn()}
+        onActivateTarget={vi.fn()}
+        baselineUnavailableCopy={null}
+      />,
+    )
+
+    const layerPrefix = `data-layer="${layerKey}"`
+    expect(openStateHtml).toContain(layerPrefix)
+    expect(openStateHtml).toContain('max-w-full break-all')
+    expect(source).toContain('max-w-full break-all text-xs')
+    expect(source).toContain('max-w-full break-all')
   })
 
   it('keeps preview rows visible during loading and error states', () => {
