@@ -814,6 +814,44 @@ def _layer_input_sort_key(layer_input: BackboneDiffLayerInput) -> tuple[Any, ...
     return (layer_input.layer_sort_order, layer_input.layer_key)
 
 
+def _require_text(value: Any, field_name: str) -> str:
+    if not isinstance(value, str) or value == "":
+        _diff_basis_invalid(f"{field_name} must be a non-empty string")
+    return value
+
+
+def _require_bool(value: Any, field_name: str) -> bool:
+    if not isinstance(value, bool):
+        _diff_basis_invalid(f"{field_name} must be a boolean")
+    return value
+
+
+def _require_int(value: Any, field_name: str, *, non_negative: bool) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        _diff_basis_invalid(f"{field_name} must be an integer")
+    if non_negative and value < 0:
+        _diff_basis_invalid(f"{field_name} must be non-negative")
+    if not non_negative and value <= 0:
+        _diff_basis_invalid(f"{field_name} must be positive")
+    return value
+
+
+def _require_positive_int(value: Any, field_name: str) -> int:
+    return _require_int(value, field_name, non_negative=False)
+
+
+def _require_non_negative_int(value: Any, field_name: str) -> int:
+    return _require_int(value, field_name, non_negative=True)
+
+
+def _coerce_value_type(value_type: ValueType | str) -> ValueType:
+    try:
+        return value_type if isinstance(value_type, ValueType) else ValueType(value_type)
+    except Exception as exc:  # pragma: no cover - ValueType raises ValueError on invalid input
+        _diff_basis_invalid(f"invalid value_type: {value_type}")
+        raise AssertionError from exc
+
+
 def _current_condition_sort_key(condition: BackboneDiffCurrentCondition) -> tuple[int, int]:
     return (condition.condition_index, condition.id)
 
@@ -1464,5 +1502,4 @@ def _preview_item_sort_key(item: BackboneDiffPreviewItem) -> tuple[Any, ...]:
 
 def _layer_input_sort_key(layer_input: BackboneDiffLayerInput) -> tuple[Any, ...]:
     return (layer_input.layer_sort_order, layer_input.layer_key)
-
 
