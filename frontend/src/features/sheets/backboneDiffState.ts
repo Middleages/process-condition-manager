@@ -479,7 +479,7 @@ function sameConditionPages(
   nextPages: readonly BackboneDiffConditionPage[],
   nextCursor: string | null,
 ): boolean {
-  return currentNextCursor === nextCursor && currentPages.length === nextPages.length
+  return currentNextCursor === nextCursor && currentPages === nextPages
 }
 
 function sameCellPages(
@@ -488,7 +488,7 @@ function sameCellPages(
   nextPages: readonly BackboneDiffCellPage[],
   nextCursor: string | null,
 ): boolean {
-  return currentNextCursor === nextCursor && currentPages.length === nextPages.length
+  return currentNextCursor === nextCursor && currentPages === nextPages
 }
 
 function normalizeRootQueryFromProjection(
