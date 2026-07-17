@@ -246,7 +246,7 @@ async def test_load_diff_input_missing_project_raises_not_found(
     with pytest.raises(NotFoundError) as excinfo:
         await load_diff_input_with_session_factory(999_999, sqlite_factory)
 
-    assert excinfo.value.code == "not_found"
+    assert excinfo.value.code == "project_not_found"
     assert excinfo.value.details == {"project_id": 999_999}
 
 
@@ -283,9 +283,7 @@ async def test_load_diff_input_postgres_is_repeatable_read_and_read_only(
 
     assert statements[0].lstrip().upper().startswith("SET TRANSACTION READ ONLY")
     async with read_only_factory() as session:
-        isolation = (
-            await session.execute(text("SHOW transaction_isolation"))
-        ).scalar_one()
+        isolation = (await session.execute(text("SHOW transaction_isolation"))).scalar_one()
     assert isolation.upper() == "REPEATABLE READ"
     assert loaded.layers[0].baseline_snapshot is not None
     assert loaded.layers[0].baseline_snapshot.conditions[0].source_condition_id == 101
