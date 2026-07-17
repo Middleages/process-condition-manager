@@ -1088,7 +1088,7 @@ export function useBackboneDiffWorkbenchController(
       cellBasisFailureCountRef.current = 0
       return true
     },
-    [commitState],
+    [commitState, projectId],
   )
 
   const handleBasisChanged = useCallback(

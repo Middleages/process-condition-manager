@@ -1764,6 +1764,7 @@ describe('useBackboneDiffWorkbenchController seams', () => {
     expect(source).toContain('handleBasisChangedFromRevision(revision)')
     expect(source).toContain('handleBasisChangedFromError(branchQuery.error)')
     expect(source).toContain('handleBasisChangedFromError(cellQuery.error)')
+    expect(source).toContain('[commitState, projectId]')
     expect(source).toContain('void rootQuery.refetch()')
     expect(source).toContain('void branchQuery.refetch()')
     expect(source).toContain('void cellQuery.refetch()')
