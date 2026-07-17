@@ -521,6 +521,7 @@ export function useBackboneDiffWorkbenchController(
   const handleBasisChanged = useCallback(() => {
     rootBasisTokenRef.current += 1
     setOuterGeneration((current) => current + 1)
+    rootQueryTokenRef.current += 1
     commitState((latest) =>
       announceBackboneDiffNavigation(clearBackboneDiffOpenScopes(latest), BASIS_CHANGED_MESSAGE),
     )
@@ -994,6 +995,7 @@ export function useBackboneDiffWorkbenchController(
   const onRetryRoot = useCallback(() => {
     if (rootEnabled) {
       rootQueryTokenRef.current += 1
+      rootQueryTokenByKeyRef.current[rootQueryKeyFingerprintRef.current] = rootQueryTokenRef.current
       void rootQuery.refetch()
     }
   }, [rootEnabled, rootQuery])
