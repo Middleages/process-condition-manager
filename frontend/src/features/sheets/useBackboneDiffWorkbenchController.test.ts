@@ -282,6 +282,20 @@ describe('useBackboneDiffWorkbenchController seams', () => {
         latestToken: latestTokenByKey[JSON.stringify(rootA)] ?? 0,
       }),
     ).toBe(true)
+
+    latestTokenByKey[JSON.stringify(rootA)] += 1
+    expect(
+      isBackboneDiffQueryPageCurrent({
+        dataToken: latestTokenByKey[JSON.stringify(rootA)] - 1,
+        latestToken: latestTokenByKey[JSON.stringify(rootA)] ?? 0,
+      }),
+    ).toBe(false)
+    expect(
+      isBackboneDiffQueryPageCurrent({
+        dataToken: latestTokenByKey[JSON.stringify(rootA)] + 1,
+        latestToken: latestTokenByKey[JSON.stringify(rootA)] ?? 0,
+      }),
+    ).toBe(true)
   })
 
   it('requires explicit announcement clear before emitting the same refresh message again', () => {
