@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
 from app.core.db import get_app_session
+from app.features.backbone_diff.provider import BackboneDiffProvider, build_backbone_diff_provider
 from app.features.backbone_diff.schema import (
     BackboneDiffBranchQueryIn,
     BackboneDiffCellPageOut,
@@ -17,7 +18,7 @@ from app.features.backbone_diff.schema import (
     BackboneDiffRootOut,
     BackboneDiffRootQueryIn,
 )
-from app.features.backbone_diff.service import BackboneDiffProvider, BackboneDiffService
+from app.features.backbone_diff.service import BackboneDiffService
 
 router = APIRouter(
     prefix="/projects",
@@ -26,19 +27,14 @@ router = APIRouter(
 )
 
 
-def _build_provider(session: AsyncSession) -> BackboneDiffProvider | None:
-    try:
-        from app.features.backbone_diff.read_snapshot import build_backbone_diff_provider
-    except ModuleNotFoundError:
-        return None
+def _build_provider(session: AsyncSession) -> BackboneDiffProvider:
     return build_backbone_diff_provider(session)
 
 
 def get_service(
     session: Annotated[AsyncSession, Depends(get_app_session, scope="function")],
 ) -> BackboneDiffService:
-    provider = _build_provider(session)
-    return BackboneDiffService(provider)
+    return BackboneDiffService(_build_provider(session))
 
 
 ServiceDep = Annotated[BackboneDiffService, Depends(get_service, scope="function")]
@@ -53,7 +49,10 @@ async def get_backbone_diff(
     return await service.root(project_id, query)
 
 
-@router.get("/{project_id}/backbone-diff/layers/{layer_key}/conditions", response_model=BackboneDiffConditionPageOut)
+@router.get(
+    "/{project_id}/backbone-diff/layers/{layer_key}/conditions",
+    response_model=BackboneDiffConditionPageOut,
+)
 async def get_backbone_diff_conditions(
     project_id: int,
     layer_key: Annotated[str, Path(min_length=1, max_length=256)],

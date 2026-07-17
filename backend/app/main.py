@@ -10,10 +10,10 @@ from app.core.config import settings
 from app.core.db import app_engine, ingest_engine
 from app.core.errors import register_exception_handlers
 from app.core.maintenance import Phase4WriterHealthOut, get_phase4_writer_health
+from app.features.backbone_diff.router import router as backbone_diff_router
 from app.features.cells.router import router as cells_router
 from app.features.choice_sets.router import router as choice_sets_router
 from app.features.conditions.router import router as conditions_router
-from app.features.backbone_diff.router import router as backbone_diff_router
 from app.features.history.router import router as history_router
 from app.features.locks.router import router as locks_router
 from app.features.parameters.router import router as parameters_router

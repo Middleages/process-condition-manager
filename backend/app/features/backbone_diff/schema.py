@@ -4,7 +4,14 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
 
 from app.features.backbone_diff.cursor import BackboneDiffClassification, BackboneDiffRowStatus
 
@@ -28,7 +35,9 @@ DisplayNameText = Annotated[
 ]
 ReasonText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=512)]
 ValueText = Annotated[str, StringConstraints(max_length=4096)]
-ValueTypeText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=32)]
+ValueTypeText = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=32)
+]
 
 BackboneDiffLayerStatus = Literal["available", "unavailable"]
 BackboneDiffJumpStatus = Literal["available", "deleted"]
@@ -68,7 +77,9 @@ class BackboneDiffRootQueryIn(_StrictModel):
     @model_validator(mode="after")
     def _validate_include_unchanged(self) -> BackboneDiffRootQueryIn:
         if not self.include_unchanged and "unchanged" in self.classification:
-            raise ValueError("include_unchanged must be true when classification includes unchanged")
+            raise ValueError(
+                "include_unchanged must be true when classification includes unchanged"
+            )
         return self
 
 
@@ -90,6 +101,9 @@ class BackboneDiffCountsOut(_StrictModel):
     unavailable_layer_count: int = Field(ge=0)
     row_count: int = Field(ge=0)
     cell_count: int = Field(ge=0)
+    full_row_count: int = Field(ge=0)
+    full_cell_count: int = Field(ge=0)
+    ambiguous_lineage_count: int = Field(ge=0)
     added_count: int = Field(ge=0)
     changed_count: int = Field(ge=0)
     cleared_count: int = Field(ge=0)
@@ -128,6 +142,9 @@ class BackboneDiffLayerSummaryOut(_StrictModel):
     current_condition_count: int = Field(ge=0)
     row_count: int = Field(ge=0)
     cell_count: int = Field(ge=0)
+    full_row_count: int = Field(ge=0)
+    full_cell_count: int = Field(ge=0)
+    ambiguous_lineage_count: int = Field(ge=0)
     changed_count: int = Field(ge=0)
     branch_scope: OpaqueTokenText | None = None
 
