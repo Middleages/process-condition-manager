@@ -659,6 +659,46 @@ describe('BackboneDiffWorkbench', () => {
     expect(removed.baselineToCurrentLabel).toEqual('미지정 → 현재 없음')
     expect(removed.baselineToCurrentIndex).toEqual('미지정 → 현재 없음')
     expect(removed.baselineToCurrentPor).toEqual('미지정 → 현재 없음')
+
+    const matchedEmptyCurrentLabel = formatBackboneDiffConditionItemFacts({
+      ...fullItem,
+      rowStatus: 'matched',
+      baselineCondition: {
+        ...fullItem.baselineCondition!,
+        label: 'before',
+      },
+      currentCondition: {
+        ...fullItem.currentCondition!,
+        label: '',
+      },
+      rowMetadata: {
+        labelChanged: true,
+        indexChanged: false,
+        porChanged: false,
+      },
+    })
+
+    expect(matchedEmptyCurrentLabel.baselineToCurrentLabel).toEqual('before → 비움')
+
+    const matchedEmptyCurrentUnchanged = formatBackboneDiffConditionItemFacts({
+      ...fullItem,
+      rowStatus: 'matched',
+      baselineCondition: {
+        ...fullItem.baselineCondition!,
+        label: 'before',
+      },
+      currentCondition: {
+        ...fullItem.currentCondition!,
+        label: '',
+      },
+      rowMetadata: {
+        labelChanged: false,
+        indexChanged: false,
+        porChanged: false,
+      },
+    })
+
+    expect(matchedEmptyCurrentUnchanged.baselineToCurrentLabel).toEqual('비움')
   })
 
   it('marks unavailable rows when row-level navigation parameters are missing', () => {
