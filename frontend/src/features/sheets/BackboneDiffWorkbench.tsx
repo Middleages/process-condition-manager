@@ -18,6 +18,8 @@ export type BackboneDiffJumpStatus = 'available' | 'deleted'
 
 export type BackboneDiffActivationStatus = 'available' | 'deleted' | 'removed'
 
+const DEFAULT_ROOT_CLASSIFICATIONS = ['added', 'changed', 'cleared', 'removed'] as const
+
 export interface BackboneDiffJumpTarget {
   readonly kind: 'condition' | 'cell'
   readonly layerKey: string
@@ -66,6 +68,8 @@ export interface BackboneDiffPreviewItem {
   readonly itemSortKey: readonly (string | number | null)[]
   readonly rowRef: string | null
   readonly cellScope: string | null
+  readonly rowStatus?: BackboneDiffClassification | null
+  readonly parameterCode?: string | null
 }
 
 export interface BackboneDiffRoot {
@@ -161,6 +165,8 @@ export interface BackboneDiffWorkbenchProps {
   readonly onOpenCells: (rowRef: string) => void
   readonly onLoadMoreCells: (rowRef: string, cursor: string | null) => void
   readonly onRetryCells: (rowRef: string) => void
+  readonly onCloseBranch?: (layerKey: string) => void
+  readonly onCloseCell?: (rowRef: string) => void
 
   readonly onActivateTarget: (target: BackboneDiffJumpTarget) => void
 
@@ -195,16 +201,18 @@ export function BackboneDiffWorkbench({
   onOpenCells,
   onLoadMoreCells,
   onRetryCells,
+  onCloseBranch,
+  onCloseCell,
   onActivateTarget,
   baselineUnavailableCopy,
 }: BackboneDiffWorkbenchProps) {
-  const [expandedLayers, setExpandedLayers] = useState<readonly string[]>([])
-  const [expandedRows, setExpandedRows] = useState<readonly string[]>([])
+  const [expandedLayerKey, setExpandedLayerKey] = useState<string | null>(null)
+  const [expandedRowRef, setExpandedRowRef] = useState<string | null>(null)
   const [announcement, setAnnouncement] = useState<string | null>(null)
 
   useEffect(() => {
-    setExpandedLayers([])
-    setExpandedRows([])
+    setExpandedLayerKey(null)
+    setExpandedRowRef(null)
     onRefreshAnnouncementReset()
   }, [root?.basisHash, onRefreshAnnouncementReset])
 
@@ -236,7 +244,11 @@ export function BackboneDiffWorkbench({
       } else {
         next.delete(classification)
       }
-      const includeUnchanged = next.has('unchanged')
+
+      const includeUnchanged =
+        classification === 'unchanged'
+          ? checked
+          : filters.includeUnchanged
       onFiltersChange({
         ...filters,
         classification: [...next],
@@ -253,6 +265,12 @@ export function BackboneDiffWorkbench({
         next.delete('unchanged')
       } else {
         next.add('unchanged')
+
+        if (!Array.from(next).some((classification) => classification !== 'unchanged')) {
+          for (const classification of DEFAULT_ROOT_CLASSIFICATIONS) {
+            next.add(classification)
+          }
+        }
       }
       onFiltersChange({
         ...filters,
@@ -296,34 +314,54 @@ export function BackboneDiffWorkbench({
 
   const toggleLayer = useCallback(
     (layerKey: string) => {
-      setExpandedLayers((current) => {
-        const isOpen = current.includes(layerKey)
-        const nextOpen = isOpen
-          ? current.filter((value) => value !== layerKey)
-          : [...current, layerKey]
-        if (!isOpen && layerConditionBranches[layerKey] === undefined) {
+      setExpandedLayerKey((current) => {
+        if (current === layerKey) {
+          onCloseBranch?.(layerKey)
+          setExpandedRowRef(null)
+          return null
+        }
+
+        if (current !== null) {
+          onCloseBranch?.(current)
+        }
+        if (expandedRowRef !== null && current !== layerKey) {
+          onCloseCell?.(expandedRowRef)
+          setExpandedRowRef(null)
+        }
+
+        if (layerConditionBranches[layerKey] === undefined) {
           onOpenLayer(layerKey)
         }
-        return nextOpen
+        return layerKey
       })
     },
-    [layerConditionBranches, onOpenLayer],
+    [layerConditionBranches, onCloseBranch, onCloseCell, onOpenLayer, expandedRowRef],
   )
 
   const toggleRow = useCallback(
     (rowRef: string) => {
-      setExpandedRows((current) => {
-        const isOpen = current.includes(rowRef)
-        const nextOpen = isOpen
-          ? current.filter((value) => value !== rowRef)
-          : [...current, rowRef]
-        if (!isOpen && cellBranches[rowRef] === undefined) {
+      if (expandedLayerKey === null) {
+        return
+      }
+
+      setExpandedRowRef((current) => {
+        if (current === rowRef) {
+          onCloseCell?.(rowRef)
+          return null
+        }
+
+        if (current !== null) {
+          onCloseCell?.(current)
+        }
+
+        if (cellBranches[rowRef] === undefined) {
           onOpenCells(rowRef)
         }
-        return nextOpen
+
+        return rowRef
       })
     },
-    [cellBranches, onOpenCells],
+    [cellBranches, expandedLayerKey, onCloseCell, onOpenCells],
   )
 
   const activateTarget = useCallback(
@@ -485,7 +523,19 @@ export function BackboneDiffWorkbench({
           <ul className="mt-2 space-y-1 text-xs">
             {preview.items.map((item) => (
               <li
-                key={`${item.layerKey}::${item.itemSortKey.join('-')}`}
+                key={
+                  item.itemSortKey
+                    .map((value) => String(value ?? ''))
+                    .concat([
+                      item.itemKind,
+                      item.classification,
+                      item.layerKey,
+                      String(item.effectiveConditionIndex),
+                      item.rowRef ?? '',
+                      item.parameterCode ?? '',
+                    ])
+                    .join('::')
+                }
                 className="rounded border border-border-subtle bg-canvas px-2 py-1"
               >
                 [{item.classification}] {item.itemKind} · {item.layerKey} · #{item.effectiveConditionIndex}
@@ -530,7 +580,7 @@ export function BackboneDiffWorkbench({
 
         <div className="mt-2 space-y-2">
           {root?.layerSummaries.map((layer) => {
-            const isExpanded = expandedLayers.includes(layer.layerKey)
+            const isExpanded = expandedLayerKey === layer.layerKey
             const branch = layerConditionBranches[layer.layerKey]
             const branchItems = branch?.items ?? []
             const branchStatus = branch?.status ?? 'idle'
@@ -581,7 +631,7 @@ export function BackboneDiffWorkbench({
                     ) : null}
 
                     {branchItems.map((condition) => {
-                      const isRowExpanded = expandedRows.includes(condition.rowRef)
+                      const isRowExpanded = expandedLayerKey === layer.layerKey && expandedRowRef === condition.rowRef
                       const cellBranch = cellBranches[condition.rowRef]
                       const cells = cellBranch?.items ?? []
 

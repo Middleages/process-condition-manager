@@ -54,6 +54,8 @@ function createRootData(): BackboneDiffRoot {
         itemSortKey: ['cell-01'],
         rowRef: 'row-1',
         cellScope: null,
+        rowStatus: 'added',
+        parameterCode: null,
       },
       {
         itemKind: 'cell',
@@ -63,6 +65,8 @@ function createRootData(): BackboneDiffRoot {
         itemSortKey: ['cell-02', 2],
         rowRef: 'row-2',
         cellScope: 'cell-scope',
+        rowStatus: null,
+        parameterCode: 'ETCH_P002',
       },
     ],
     layerSummaries: [
@@ -184,11 +188,13 @@ function nextFilterByClassification(current: BackboneDiffFilter, target: typeof 
   } else {
     next.delete(target)
   }
+  const includeUnchanged =
+    target === 'unchanged' ? checked : current.includeUnchanged
 
   return {
     ...current,
     classification: [...next],
-    includeUnchanged: next.has('unchanged'),
+    includeUnchanged,
   }
 }
 
@@ -198,10 +204,33 @@ function nextFilterByIncludeUnchanged(current: BackboneDiffFilter, includeUnchan
     next.delete('unchanged')
   } else {
     next.add('unchanged')
+
+    if (!Array.from(next).some((classification) => classification !== 'unchanged')) {
+      next.add('added')
+      next.add('changed')
+      next.add('cleared')
+      next.add('removed')
+    }
   }
   return {
     ...current,
     includeUnchanged,
+    classification: [...next],
+  }
+}
+
+function nextFilterByCloseDefault(current: BackboneDiffFilter) {
+  const next = new Set(current.classification)
+  if (next.size === 0) {
+    next.add('added')
+    next.add('changed')
+    next.add('cleared')
+    next.add('removed')
+  }
+  next.add('unchanged')
+  return {
+    ...current,
+    includeUnchanged: true,
     classification: [...next],
   }
 }
@@ -278,25 +307,64 @@ describe('BackboneDiffWorkbench', () => {
   })
 
   it('keeps disclosure transition contract for layers and rows without DOM execution', () => {
-    const openThenClose = (items: readonly string[], key: string) => {
-      const isOpen = items.includes(key)
-      return isOpen ? items.filter((value) => value !== key) : [...items, key]
+    const openThenClose = (current: string | null, next: string) => {
+      return current === next ? null : next
     }
 
-    expect(openThenClose([], 'L1::10::ETCH')).toEqual(['L1::10::ETCH'])
-    expect(openThenClose(['L1::10::ETCH'], 'L1::10::ETCH')).toEqual([])
-    expect(openThenClose([], 'row-1')).toEqual(['row-1'])
-    expect(openThenClose(['row-1'], 'row-1')).toEqual([])
+    expect(openThenClose(null, 'L1::10::ETCH')).toEqual('L1::10::ETCH')
+    expect(openThenClose('L1::10::ETCH', 'L1::10::ETCH')).toEqual(null)
+    expect(openThenClose('L1::10::ETCH', 'L1::20::ETCH')).toEqual('L1::20::ETCH')
+    expect(openThenClose('row-1', 'row-1')).toEqual(null)
+    expect(openThenClose('row-2', 'row-1')).toEqual('row-1')
 
-    expect(source).toContain('setExpandedLayers((current) => {')
-    expect(source).toContain('const isOpen = current.includes(layerKey)')
+    expect(source).toContain('setExpandedLayerKey((current) => {')
+    expect(source).toContain('if (current === layerKey) {')
     expect(source).toContain('if (!isOpen && layerConditionBranches[layerKey] === undefined) {')
     expect(source).toContain('onOpenLayer(layerKey)')
+    expect(source).toContain('onCloseBranch?.(current)')
 
-    expect(source).toContain('setExpandedRows((current) => {')
-    expect(source).toContain('const isOpen = current.includes(rowRef)')
+    expect(source).toContain('setExpandedRowRef((current) => {')
+    expect(source).toContain('if (current === rowRef) {')
     expect(source).toContain('if (!isOpen && cellBranches[rowRef] === undefined) {')
     expect(source).toContain('onOpenCells(rowRef)')
+  })
+
+  it('prevents preview key collisions by including kind/status/index and optional payload fields', () => {
+    const html = createPreviewStaticMarkup(createRootData(), {
+      ...createPreviewState(),
+      items: [
+        {
+          itemKind: 'row',
+          classification: 'added',
+          layerKey: 'L1::10::ETCH',
+          effectiveConditionIndex: 1,
+          itemSortKey: ['shared'],
+          rowRef: 'row-1',
+          cellScope: null,
+          rowStatus: 'added',
+          parameterCode: null,
+        },
+        {
+          itemKind: 'cell',
+          classification: 'added',
+          layerKey: 'L1::10::ETCH',
+          effectiveConditionIndex: 1,
+          itemSortKey: ['shared'],
+          rowRef: 'row-1',
+          cellScope: null,
+          rowStatus: 'added',
+          parameterCode: 'ETCH_P001',
+        },
+      ],
+      nextCursor: null,
+      status: 'ready',
+    })
+
+    expect(html).toContain('L1::10::ETCH')
+    expect(source).toContain('item.itemKind')
+    expect(source).toContain('item.effectiveConditionIndex')
+    expect(source).toContain('item.rowRef ??')
+    expect(source).toContain('item.parameterCode ??')
   })
 
   it('dispatches activation through one callback and blocks unavailable targets', () => {
@@ -489,6 +557,17 @@ describe('BackboneDiffWorkbench', () => {
       'changed',
       'removed',
     ])
+
+    const includeDefaulted = nextFilterByIncludeUnchanged({ ...base, classification: [] }, true)
+    expect(includeDefaulted).toEqual({
+      ...base,
+      includeUnchanged: true,
+      classification: ['added', 'changed', 'cleared', 'removed', 'unchanged'],
+    })
+
+    expect(nextFilterByIncludeUnchanged({ ...base, classification: ['added', 'changed'], includeUnchanged: false }, true)).toEqual(
+      nextFilterByCloseDefault({ ...base, classification: ['added', 'changed'] }),
+    )
 
     expect(source).toContain('handleClassificationToggle')
     expect(source).toContain('handleIncludeUnchanged')
