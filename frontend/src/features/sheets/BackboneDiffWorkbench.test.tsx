@@ -233,7 +233,8 @@ describe('BackboneDiffWorkbench', () => {
     )
 
     expect(html).toContain('aria-label="백본 비교 워크벤치"')
-    expect(html).toContain('변경 레이어')
+    expect(html).toContain('전체 레이어')
+    expect(html).not.toContain('변경 레이어')
     expect(html).toContain('변경 미리보기')
     expect(html).toContain('L1::10::ETCH')
     expect(html).toContain('baseline is unavailable for one deleted layer')
@@ -311,6 +312,10 @@ describe('BackboneDiffWorkbench', () => {
 
   it('guards empty-cell rendering to ready status via source contract', () => {
     expect(source).toContain("cellBranch?.status === 'ready' && cells.length === 0")
+  })
+
+  it('labels total-layer count truthfully in source and rendering contract', () => {
+    expect(source).toContain('전체 레이어 <strong>{root.counts.layerCount}</strong>')
   })
 
   it('guards next-page error rendering on branch presence before dereferencing', () => {

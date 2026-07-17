@@ -596,7 +596,7 @@ export function BackboneDiffWorkbench({
 
         {root !== null ? (
           <div className="mt-2 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
-            <div className="rounded border border-border-subtle bg-canvas px-2 py-1">변경 레이어 <strong>{root.counts.layerCount}</strong></div>
+            <div className="rounded border border-border-subtle bg-canvas px-2 py-1">전체 레이어 <strong>{root.counts.layerCount}</strong></div>
             <div className="rounded border border-border-subtle bg-canvas px-2 py-1">조건 <strong>{root.counts.rowCount}</strong></div>
             <div className="rounded border border-border-subtle bg-canvas px-2 py-1">셀 <strong>{root.counts.cellCount}</strong></div>
             <div className="rounded border border-border-subtle bg-canvas px-2 py-1">
