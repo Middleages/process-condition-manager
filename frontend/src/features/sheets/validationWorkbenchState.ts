@@ -5,6 +5,11 @@ import {
   type ValidationSeverity,
 } from '@/shared/domain/validation'
 
+import {
+  resolveWorkbenchCoordinateNavigation,
+  type WorkbenchCoordinateNavigation,
+} from './workbenchCoordinateNavigation'
+
 export const VALIDATION_WORKBENCH_MIN_HEIGHT = 180
 export const VALIDATION_WORKBENCH_MAX_HEIGHT = 520
 export const VALIDATION_WORKBENCH_DEFAULT_HEIGHT = 300
@@ -180,17 +185,7 @@ export function enrichValidationIssues(
   })
 }
 
-export type ValidationIssueNavigation =
-  | { readonly kind: 'missing-target' }
-  | {
-      readonly kind: 'direct'
-      readonly target: { readonly conditionId: string; readonly parameterCode: string }
-    }
-  | {
-      readonly kind: 'reveal-category'
-      readonly categoryCode: string | null
-      readonly target: { readonly conditionId: string; readonly parameterCode: string }
-    }
+export type ValidationIssueNavigation = WorkbenchCoordinateNavigation
 
 /** Resolves domain coordinates only. React commit ordering and the grid library stay with callers. */
 export function resolveValidationIssueNavigation(
@@ -201,20 +196,7 @@ export function resolveValidationIssueNavigation(
   rows: readonly ConditionGridRow[],
   activeCategory: string | null,
 ): ValidationIssueNavigation {
-  const conditionId =
-    'conditionId' in issue ? issue.conditionId : String(issue.condition_id)
-  const parameterCode =
-    'parameterCode' in issue ? issue.parameterCode : issue.parameter_code
-  const column = columns.find((candidate) => candidate.key === parameterCode)
-  if (column === undefined || !rows.some((row) => row.id === conditionId)) {
-    return { kind: 'missing-target' }
-  }
-
-  const target = { conditionId, parameterCode: column.key }
-  const visible = activeCategory === null || column.categoryCode === activeCategory
-  return visible
-    ? { kind: 'direct', target }
-    : { kind: 'reveal-category', categoryCode: column.categoryCode, target }
+  return resolveWorkbenchCoordinateNavigation(issue, columns, rows, activeCategory)
 }
 
 export function isValidationTileActivationKey(key: string): boolean {

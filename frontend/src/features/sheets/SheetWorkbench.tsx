@@ -16,25 +16,24 @@ import {
   VALIDATION_WORKBENCH_RESIZE_STEP,
   clampValidationWorkbenchHeight,
 } from './validationWorkbenchState'
+import {
+  readPersistedSheetWorkbenchHeight,
+  writePersistedSheetWorkbenchHeight,
+} from './sheetWorkbenchStorage'
 import { SheetWorkbenchNavigation } from './SheetWorkbenchNavigation'
 
 export type SheetWorkbenchMode = 'validation' | 'history' | 'backbone-diff' | null
 
-export function useSheetWorkbenchState(visible: boolean) {
+export function useSheetWorkbenchState() {
   const [mode, setMode] = useState<SheetWorkbenchMode>(null)
   const [panelHeight, setPanelHeight] = useState(() =>
-    clampValidationWorkbenchHeight(VALIDATION_WORKBENCH_DEFAULT_HEIGHT),
+    readPersistedSheetWorkbenchHeight(VALIDATION_WORKBENCH_DEFAULT_HEIGHT),
   )
-  const wasVisibleRef = useRef(false)
   const lastModeRef = useRef<Exclude<SheetWorkbenchMode, null>>('validation')
 
   useEffect(() => {
-    if (visible && !wasVisibleRef.current && mode === null) {
-      setMode('validation')
-      lastModeRef.current = 'validation'
-    }
-    wasVisibleRef.current = visible
-  }, [mode, visible])
+    writePersistedSheetWorkbenchHeight(panelHeight)
+  }, [panelHeight])
 
   const open = useCallback(() => setMode(lastModeRef.current), [])
   const close = useCallback(() => setMode(null), [])
@@ -69,7 +68,6 @@ export function useSheetWorkbenchState(visible: boolean) {
     resizeBy,
     setHeight,
     panelHeight,
-    visible: visible && mode !== null,
   }
 }
 
