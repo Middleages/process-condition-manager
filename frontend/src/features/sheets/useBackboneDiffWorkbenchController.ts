@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { type InfiniteData, useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
+import type { QueryClient } from '@tanstack/react-query'
 
 import { getApiErrorMessage } from '@/api/client'
 import {
@@ -158,6 +159,21 @@ interface BackboneDiffCellAuthority {
 }
 
 const BASIS_CHANGED_MESSAGE = '백본 비교 기준이 변경되어 새로고침합니다.'
+const BACKBONE_DIFF_BRANCH_QUERY_PREFIX = 'branch'
+const BACKBONE_DIFF_CELL_QUERY_PREFIX = 'cell'
+
+export function clearBackboneDiffBranchAndCellQueries(
+  queryClient: QueryClient,
+  projectId: number,
+): void {
+  const branchQueryPrefix: unknown[] = ['backboneDiff', projectId, BACKBONE_DIFF_BRANCH_QUERY_PREFIX]
+  const cellQueryPrefix: unknown[] = ['backboneDiff', projectId, BACKBONE_DIFF_CELL_QUERY_PREFIX]
+
+  queryClient.cancelQueries({ queryKey: branchQueryPrefix, exact: false })
+  queryClient.cancelQueries({ queryKey: cellQueryPrefix, exact: false })
+  queryClient.removeQueries({ queryKey: branchQueryPrefix, exact: false })
+  queryClient.removeQueries({ queryKey: cellQueryPrefix, exact: false })
+}
 
 export function backboneDiffQueryFingerprint(filters: BackboneDiffRootQueryOptions): string {
   return JSON.stringify(filters)
@@ -262,6 +278,22 @@ export function backboneDiffQueryPresentation(
   return { status: 'ready', rootError: null, nextPageError: null }
 }
 
+export function shouldHandleDiffBasisChangedQueryError(
+  input: {
+    error: unknown
+    isError: boolean
+    failureCount: number
+    previousFailureCount: number
+  },
+): boolean {
+  return (
+    input.isError &&
+    input.failureCount > 0 &&
+    input.previousFailureCount !== input.failureCount &&
+    isDiffBasisChanged(input.error)
+  )
+}
+
 export function backboneDiffRootAuthority(
   input: {
     enabled: boolean
@@ -324,8 +356,8 @@ export function isCurrentBackboneDiffBranchAuthority(
     current.enabled &&
     expected.outerGeneration === current.outerGeneration &&
     expected.revision === current.revision &&
-    expected.mode === 'branch' &&
-    current.mode === 'branch' &&
+    (expected.mode === 'branch' || expected.mode === 'cell') &&
+    (current.mode === 'branch' || current.mode === 'cell') &&
     expected.filterFingerprint === current.filterFingerprint &&
     expected.rootBasisToken === current.rootBasisToken &&
     expected.rootScope === current.rootScope &&
@@ -433,10 +465,12 @@ export function useBackboneDiffWorkbenchController(
   const stateRef = useRef(state)
   const previousEnabledRef = useRef(enabled)
   const previousRevisionRef = useRef(revision)
-  const outerGenerationRef = useRef(0)
+  const [outerGeneration, setOuterGeneration] = useState(0)
   const rootQueryTokenRef = useRef(0)
   const branchQueryTokenRef = useRef(0)
   const cellQueryTokenRef = useRef(0)
+  const branchQueryKeyRef = useRef('')
+  const cellQueryKeyRef = useRef('')
   const rootBasisTokenRef = useRef(0)
   const branchBasisFailureCountRef = useRef(0)
   const cellBasisFailureCountRef = useRef(0)
@@ -458,50 +492,21 @@ export function useBackboneDiffWorkbenchController(
 
   const handleBasisChanged = useCallback(() => {
     rootBasisTokenRef.current += 1
-    outerGenerationRef.current += 1
+    setOuterGeneration((current) => current + 1)
     const current = stateRef.current
+    const withAnnouncementCleared =
+      current.navigationAnnouncement === BASIS_CHANGED_MESSAGE
+        ? announceBackboneDiffNavigation(current, null)
+        : current
     commitState((latest) =>
-      announceBackboneDiffNavigation(clearBackboneDiffOpenScopes(latest), BASIS_CHANGED_MESSAGE),
+      announceBackboneDiffNavigation(clearBackboneDiffOpenScopes(withAnnouncementCleared), BASIS_CHANGED_MESSAGE),
     )
+    clearBackboneDiffBranchAndCellQueries(queryClient, projectId)
     void queryClient.invalidateQueries({
       queryKey: createBackboneDiffWorkbenchRootQueryKey(projectId, current.filters),
     })
-    if (
-      current.rootScope !== null &&
-      current.rootBasisHash !== null &&
-      current.openLayerKey !== null &&
-      current.branchScope !== null
-    ) {
-      void queryClient.invalidateQueries({
-        queryKey: createBackboneDiffWorkbenchBranchQueryKey(
-          projectId,
-          current.rootScope,
-          current.rootBasisHash,
-          current.filters,
-          current.openLayerKey,
-          current.branchScope,
-        ),
-      })
-    }
-    if (
-      current.rootScope !== null &&
-      current.rootBasisHash !== null &&
-      current.openLayerKey !== null &&
-      current.openCellScope !== null &&
-      current.openCellRowRef !== null
-    ) {
-      void queryClient.invalidateQueries({
-        queryKey: createBackboneDiffWorkbenchCellQueryKey(
-          projectId,
-          current.rootScope,
-          current.rootBasisHash,
-          current.filters,
-          current.openLayerKey,
-          current.openCellRowRef,
-          current.openCellScope,
-        ),
-      })
-    }
+    branchBasisFailureCountRef.current = 0
+    cellBasisFailureCountRef.current = 0
   }, [commitState, queryClient, projectId])
 
   useIsomorphicLayoutEffect(() => {
@@ -512,7 +517,7 @@ export function useBackboneDiffWorkbenchController(
     previousRevisionRef.current = revision
 
     if (enabledChanged || revisionChanged) {
-      outerGenerationRef.current += 1
+      setOuterGeneration((current) => current + 1)
       if (!enabled) {
         commitState((current) => {
           const previousAnnouncement = current.navigationAnnouncement
@@ -534,11 +539,11 @@ export function useBackboneDiffWorkbenchController(
     () =>
       backboneDiffRootAuthority({
         enabled: rootEnabled,
-        outerGeneration: outerGenerationRef.current,
+        outerGeneration: outerGeneration,
         state,
         rootBasisToken: rootBasisTokenRef.current,
       }),
-    [state, rootEnabled],
+    [state, rootEnabled, outerGeneration],
   )
   const rootQuery = useInfiniteQuery<
     BackboneDiffRootQueryPage,
@@ -572,7 +577,7 @@ export function useBackboneDiffWorkbenchController(
     if (!rootQuery.isSuccess || !rootAuthority.enabled) return
     const authority = backboneDiffRootAuthority({
       enabled: rootEnabled,
-      outerGeneration: outerGenerationRef.current,
+      outerGeneration,
       state: stateRef.current,
       rootBasisToken: rootBasisTokenRef.current,
     })
@@ -600,14 +605,8 @@ export function useBackboneDiffWorkbenchController(
     state.rootBasisHash,
     state.branchScope,
   )
-  const branchQuery = useInfiniteQuery<
-    BackboneDiffConditionQueryPage,
-    Error,
-    InfiniteData<BackboneDiffConditionQueryPage, BackboneDiffPageParam>,
-    BackboneDiffQueryKey,
-    BackboneDiffPageParam
-  >({
-    queryKey:
+  const branchQueryKey = useMemo<readonly unknown[]>(
+    () =>
       branchEnabled && state.openLayerKey !== null && state.branchScope !== null && state.rootScope !== null
         ? createBackboneDiffWorkbenchBranchQueryKey(
             projectId,
@@ -618,6 +617,24 @@ export function useBackboneDiffWorkbenchController(
             state.branchScope,
           )
         : ['backbone-diff', projectId, 'branch', 'disabled'],
+    [
+      branchEnabled,
+      state.openLayerKey,
+      state.branchScope,
+      state.rootScope,
+      state.rootBasisHash,
+      normalizedFilters,
+      projectId,
+    ],
+  )
+  const branchQuery = useInfiniteQuery<
+    BackboneDiffConditionQueryPage,
+    Error,
+    InfiniteData<BackboneDiffConditionQueryPage, BackboneDiffPageParam>,
+    BackboneDiffQueryKey,
+    BackboneDiffPageParam
+  >({
+    queryKey: branchQueryKey,
     initialPageParam: null as string | null,
     enabled: branchEnabled,
     retry: false,
@@ -640,11 +657,26 @@ export function useBackboneDiffWorkbenchController(
     getNextPageParam: (page) => page.result.next_cursor,
   })
 
+  const branchQueryKeyFingerprint = JSON.stringify(branchQueryKey)
+
   useIsomorphicLayoutEffect(() => {
-    if (!branchQuery.isError || branchQuery.failureCount <= 0 || branchBasisFailureCountRef.current === branchQuery.failureCount) {
+    if (branchQueryKeyRef.current !== branchQueryKeyFingerprint) {
+      branchQueryTokenRef.current = 0
+      branchQueryKeyRef.current = branchQueryKeyFingerprint
+    }
+  }, [branchQueryKeyFingerprint])
+
+  useIsomorphicLayoutEffect(() => {
+    if (
+      !shouldHandleDiffBasisChangedQueryError({
+        error: branchQuery.error,
+        isError: branchQuery.isError,
+        failureCount: branchQuery.failureCount,
+        previousFailureCount: branchBasisFailureCountRef.current,
+      })
+    ) {
       return
     }
-    if (!isDiffBasisChanged(branchQuery.error)) return
     branchBasisFailureCountRef.current = branchQuery.failureCount
     const current = stateRef.current
     if (current.mode === 'branch' || current.mode === 'cell') {
@@ -657,12 +689,12 @@ export function useBackboneDiffWorkbenchController(
       branchEnabled
         ? backboneDiffBranchAuthority({
             enabled: branchEnabled,
-            outerGeneration: outerGenerationRef.current,
+            outerGeneration: outerGeneration,
             state,
             rootBasisToken: rootBasisTokenRef.current,
           })
         : null,
-    [branchEnabled, state],
+    [branchEnabled, state, outerGeneration],
   )
 
   const mergedBranch = useMemo(
@@ -676,12 +708,12 @@ export function useBackboneDiffWorkbenchController(
     if (latest === undefined) return
     const authority = backboneDiffBranchAuthority({
       enabled: branchEnabled,
-      outerGeneration: outerGenerationRef.current,
+      outerGeneration,
       state: stateRef.current,
       rootBasisToken: rootBasisTokenRef.current,
     })
     if (!isCurrentBackboneDiffBranchAuthority(branchAuthority, authority)) return
-    if (latest.token !== branchQueryTokenRef.current) return
+    if (latest.token < branchQueryTokenRef.current) return
 
     commitState((current) =>
       setBackboneDiffBranchPages(current, mergedBranch.pages, mergedBranch.nextCursor),
@@ -696,14 +728,8 @@ export function useBackboneDiffWorkbenchController(
     state.openCellScope,
     state.openCellRowRef,
   )
-  const cellQuery = useInfiniteQuery<
-    BackboneDiffCellQueryPage,
-    Error,
-    InfiniteData<BackboneDiffCellQueryPage, BackboneDiffPageParam>,
-    BackboneDiffQueryKey,
-    BackboneDiffPageParam
-  >({
-    queryKey:
+  const cellQueryKey = useMemo<readonly unknown[]>(
+    () =>
       cellEnabled &&
       state.openLayerKey !== null &&
       state.openCellRowRef !== null &&
@@ -719,6 +745,25 @@ export function useBackboneDiffWorkbenchController(
             state.openCellScope,
           )
         : ['backbone-diff', projectId, 'cell', 'disabled'],
+    [
+      cellEnabled,
+      state.openLayerKey,
+      state.openCellRowRef,
+      state.openCellScope,
+      state.rootScope,
+      state.rootBasisHash,
+      normalizedFilters,
+      projectId,
+    ],
+  )
+  const cellQuery = useInfiniteQuery<
+    BackboneDiffCellQueryPage,
+    Error,
+    InfiniteData<BackboneDiffCellQueryPage, BackboneDiffPageParam>,
+    BackboneDiffQueryKey,
+    BackboneDiffPageParam
+  >({
+    queryKey: cellQueryKey,
     initialPageParam: null as string | null,
     enabled: cellEnabled,
     retry: false,
@@ -748,11 +793,26 @@ export function useBackboneDiffWorkbenchController(
     getNextPageParam: (page) => page.result.next_cursor,
   })
 
+  const cellQueryKeyFingerprint = JSON.stringify(cellQueryKey)
+
   useIsomorphicLayoutEffect(() => {
-    if (!cellQuery.isError || cellQuery.failureCount <= 0 || cellBasisFailureCountRef.current === cellQuery.failureCount) {
+    if (cellQueryKeyRef.current !== cellQueryKeyFingerprint) {
+      cellQueryTokenRef.current = 0
+      cellQueryKeyRef.current = cellQueryKeyFingerprint
+    }
+  }, [cellQueryKeyFingerprint])
+
+  useIsomorphicLayoutEffect(() => {
+    if (
+      !shouldHandleDiffBasisChangedQueryError({
+        error: cellQuery.error,
+        isError: cellQuery.isError,
+        failureCount: cellQuery.failureCount,
+        previousFailureCount: cellBasisFailureCountRef.current,
+      })
+    ) {
       return
     }
-    if (!isDiffBasisChanged(cellQuery.error)) return
     cellBasisFailureCountRef.current = cellQuery.failureCount
     if (stateRef.current.mode === 'cell') {
       handleBasisChanged()
@@ -764,12 +824,12 @@ export function useBackboneDiffWorkbenchController(
       cellEnabled
         ? backboneDiffCellAuthority({
             enabled: cellEnabled,
-            outerGeneration: outerGenerationRef.current,
+            outerGeneration: outerGeneration,
             state,
             rootBasisToken: rootBasisTokenRef.current,
           })
         : null,
-    [cellEnabled, state],
+    [cellEnabled, state, outerGeneration],
   )
 
   const mergedCell = useMemo(
@@ -783,12 +843,12 @@ export function useBackboneDiffWorkbenchController(
     if (latest === undefined) return
     const authority = backboneDiffCellAuthority({
       enabled: cellEnabled,
-      outerGeneration: outerGenerationRef.current,
+      outerGeneration: outerGeneration,
       state: stateRef.current,
       rootBasisToken: rootBasisTokenRef.current,
     })
     if (!isCurrentBackboneDiffCellAuthority(cellAuthority, authority)) return
-    if (latest.token !== cellQueryTokenRef.current) return
+    if (latest.token < cellQueryTokenRef.current) return
 
     commitState((current) => setBackboneDiffCellPages(current, mergedCell.pages, mergedCell.nextCursor))
   }, [cellAuthority, cellEnabled, cellQuery.data, cellQuery.isSuccess, commitState, mergedCell])

@@ -1,3 +1,4 @@
+import { QueryClient } from '@tanstack/react-query'
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -30,9 +31,10 @@ import {
   mergeBackboneDiffConditionPages,
   mergeBackboneDiffCellPages,
   mergeBackboneDiffRootPages,
+  clearBackboneDiffBranchAndCellQueries,
+  shouldHandleDiffBasisChangedQueryError,
 } from './useBackboneDiffWorkbenchController'
 import { type BackboneDiffWorkbenchMode, type BackboneDiffWorkbenchState } from './backboneDiffState'
-import source from './useBackboneDiffWorkbenchController.ts?raw'
 
 describe('useBackboneDiffWorkbenchController seams', () => {
   it('gates root/branch/cell queries by mode and outer enabled flag', () => {
@@ -203,15 +205,93 @@ describe('useBackboneDiffWorkbenchController seams', () => {
     ).toEqual({ status: 'idle', rootError: null, nextPageError: null })
   })
 
-  it('contains three query hooks and basis-changed guards in implementation', () => {
-    expect(source).toContain('const rootQuery = useInfiniteQuery<')
-    expect(source).toContain('const branchQuery = useInfiniteQuery<')
-    expect(source).toContain('const cellQuery = useInfiniteQuery<')
-    expect(source).toContain('isDiffBasisChanged(')
-    expect(source).toContain('handleBasisChanged()')
-    expect(source).toContain('isCurrentBackboneDiffRootAuthority')
-    expect(source).toContain('isCurrentBackboneDiffBranchAuthority(branchAuthority, authority)')
-    expect(source).toContain('isCurrentBackboneDiffCellAuthority(cellAuthority, authority)')
+  it('only handles basis-change errors once per observed failure count and only after reset', () => {
+    const basisError = {
+      response: {
+        status: 409,
+        data: {
+          code: 'diff_basis_changed',
+        },
+      },
+    } as const
+
+    expect(
+      shouldHandleDiffBasisChangedQueryError({
+        error: basisError,
+        isError: true,
+        failureCount: 1,
+        previousFailureCount: 0,
+      }),
+    ).toBe(true)
+
+    expect(
+      shouldHandleDiffBasisChangedQueryError({
+        error: basisError,
+        isError: true,
+        failureCount: 1,
+        previousFailureCount: 1,
+      }),
+    ).toBe(false)
+
+    const nonBasisError = { response: { status: 409, data: { code: 'other' } } } as const
+    expect(
+      shouldHandleDiffBasisChangedQueryError({
+        error: nonBasisError,
+        isError: true,
+        failureCount: 1,
+        previousFailureCount: 0,
+      }),
+    ).toBe(false)
+  })
+
+  it('clears branch/cell cache families on basis-change and keeps root cache intact', () => {
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+      },
+    })
+    const branchKey = createBackboneDiffWorkbenchBranchQueryKey(
+      7,
+      'root-s',
+      'hash-1',
+      {
+        classification: [],
+        layerKey: null,
+        categoryCode: null,
+        parameterCode: null,
+        includeUnchanged: false,
+        previewLimit: 20,
+      },
+      'L1::10::ETCH',
+      'scope-x',
+    )
+    const cellKey = createBackboneDiffWorkbenchCellQueryKey(
+      7,
+      'root-s',
+      'hash-1',
+      {
+        classification: [],
+        layerKey: null,
+        categoryCode: null,
+        parameterCode: null,
+        includeUnchanged: false,
+        previewLimit: 20,
+      },
+      'L1::10::ETCH',
+      'R1',
+      'scope-x',
+    )
+    const rootKey = createBackboneDiffWorkbenchRootQueryKey(7, { previewLimit: 20 })
+
+    queryClient.setQueryData(branchKey, { pages: [] })
+    queryClient.setQueryData(cellKey, { pages: [] })
+    queryClient.setQueryData(rootKey, { pages: [] })
+
+    clearBackboneDiffBranchAndCellQueries(queryClient, 7)
+
+    expect(queryClient.getQueryData(branchKey)).toBeUndefined()
+    expect(queryClient.getQueryData(cellKey)).toBeUndefined()
+    expect(queryClient.getQueryData(rootKey)).toEqual({ pages: [] })
   })
 
   it('keeps query-key contracts for branch/cell key generation', () => {
