@@ -10,6 +10,8 @@ export type BackboneDiffClassification =
   | 'removed'
   | 'unchanged'
 
+export type BackboneDiffRowStatus = 'matched' | 'added' | 'removed'
+
 export type BackboneDiffLoadStatus = 'idle' | 'loading' | 'ready' | 'error'
 
 export type BackboneDiffLayerStatus = 'available' | 'unavailable'
@@ -67,7 +69,7 @@ export interface BackboneDiffPreviewItem {
   readonly itemSortKey: readonly (string | number | null)[]
   readonly rowRef: string | null
   readonly cellScope: string | null
-  readonly rowStatus?: BackboneDiffClassification | null
+  readonly rowStatus?: BackboneDiffRowStatus | null
   readonly parameterCode?: string | null
 }
 
@@ -81,7 +83,7 @@ export interface BackboneDiffRoot {
 
 export interface BackboneDiffConditionItem {
   readonly rowRef: string
-  readonly rowStatus: BackboneDiffClassification
+  readonly rowStatus: BackboneDiffRowStatus
   readonly effectiveConditionIndex: number
   readonly identity: number
   readonly baselineCondition: {
@@ -98,6 +100,11 @@ export interface BackboneDiffConditionItem {
     readonly conditionIndex: number | null
     readonly isPor: boolean | null
   } | null
+  readonly rowMetadata?: {
+    readonly labelChanged: boolean
+    readonly indexChanged: boolean
+    readonly porChanged: boolean
+  }
   readonly filteredCellCount: number
   readonly fullCellCount: number
   readonly jumpStatus: BackboneDiffJumpStatus
@@ -662,16 +669,39 @@ export function BackboneDiffWorkbench({
                         condition.currentCondition?.isPor
                         ?? condition.baselineCondition?.isPor
                         ?? null
+                      const baselinePor =
+                        condition.baselineCondition?.isPor === null
+                          ? '미지정'
+                          : condition.baselineCondition?.isPor
+                            ? 'O'
+                            : 'X'
+                      const currentPor =
+                        condition.currentCondition?.isPor === null
+                          ? '미지정'
+                          : condition.currentCondition?.isPor
+                            ? 'O'
+                            : 'X'
+                      const baselineConditionIndex =
+                        condition.baselineCondition?.conditionIndex === null
+                          ? '미지정'
+                          : condition.baselineCondition?.conditionIndex
+                      const currentConditionIndex =
+                        condition.currentCondition?.conditionIndex === null
+                          ? '미지정'
+                          : condition.currentCondition?.conditionIndex
+                      const baselineLabel = condition.baselineCondition?.label ?? '기준 없음'
+                      const currentLabel = condition.currentCondition?.label ?? '현재 없음'
+                      const baselineToCurrentLabel = condition.rowMetadata?.labelChanged ? `${baselineLabel} → ${currentLabel}` : currentLabel
+                      const baselineToCurrentIndex = condition.rowMetadata?.indexChanged
+                        ? `${baselineConditionIndex} → ${currentConditionIndex}`
+                        : `${currentConditionIndex}`
+                      const baselineToCurrentPor = condition.rowMetadata?.porChanged ? `${baselinePor} → ${currentPor}` : `${currentPor}`
                       const hasConditionNavigation =
                         condition.cellScope !== null
                         && ((condition.currentCondition?.conditionId ?? null) !== null
                         || (condition.baselineCondition?.conditionId ?? null) !== null)
 
-                      const rowActivation = activationStatusFor({
-                        classification: condition.rowStatus,
-                        jumpStatus: condition.jumpStatus,
-                        hasNavigation: hasConditionNavigation,
-                      })
+                      const rowActivation: BackboneDiffActivationStatus = 'unavailable'
 
                       return (
                         <div key={condition.rowRef} className="rounded border border-border-subtle bg-surface p-2 text-xs">
@@ -692,14 +722,12 @@ export function BackboneDiffWorkbench({
                               {isRowExpanded ? '셀 접기' : hasConditionNavigation ? '셀 보기' : '셀 조회 불가'}
                             </button>
                             <span className="text-muted">
-                              {condition.baselineCondition?.label ?? '기준 없음'}
-                              {' · '}
-                              {condition.currentCondition?.label ?? '현재 없음'}
+                              {baselineToCurrentLabel}
                             </span>
                             <span>
                               condition #{condition.effectiveConditionIndex}
-                              {' · '}조건 인덱스 {conditionIndex !== null ? conditionIndex : '미지정'}
-                              {' · '}POR {isPor === true ? 'O' : isPor === false ? 'X' : '미지정'}
+                              {' · '}조건 인덱스 {baselineToCurrentIndex}
+                              {' · '}POR {baselineToCurrentPor}
                               {condition.filteredCellCount !== condition.fullCellCount
                                 ? ` · ${condition.filteredCellCount} / ${condition.fullCellCount} 셀`
                                 : ` · 셀 ${condition.fullCellCount}`}
@@ -898,7 +926,7 @@ function activationStatusFor({
   jumpStatus,
   hasNavigation,
 }: {
-  classification: BackboneDiffClassification
+  classification: BackboneDiffClassification | BackboneDiffRowStatus
   jumpStatus: BackboneDiffJumpStatus
   hasNavigation?: boolean
 }): BackboneDiffActivationStatus {
