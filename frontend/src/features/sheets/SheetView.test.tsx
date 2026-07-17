@@ -1007,6 +1007,51 @@ describe('SheetView focus shell integration', () => {
     )
   })
 
+  it('adds a backbone diff mutation revision that is passed to the controller and fenced on success', () => {
+    expect(sheetViewSource).toContain(
+      'const [backboneDiffMutationRevision, setBackboneDiffMutationRevision] = useState(0)',
+    )
+    expect(sheetViewSource).toContain('invalidateProjectBackboneDiffAfterMutation(queryClient, projectId)')
+    expect(sheetViewSource).toContain(
+      'const invalidateProjectBackboneDiff = useCallback(() => {',
+    )
+    expect(sheetViewSource).toContain('setBackboneDiffMutationRevision((current) => current + 1)')
+    expect(sheetViewSource).toMatch(
+      /useBackboneDiffWorkbenchController\(\s*projectId,\s*workbenchState\.mode === 'backbone-diff',\s*backboneDiffMutationRevision,?\s*\)/,
+    )
+    expect(sheetViewSource).toContain('invalidateProjectBackboneDiff()')
+    expect(sheetViewSource).toContain('invalidateProjectBackboneDiff()')
+  })
+
+  it('passes backbone diff close-navigation callbacks and announcement clear contract to the shared workbench', () => {
+    expect(sheetViewSource).toContain('onCloseBranch={backboneDiffWorkbench.onCloseBranch}')
+    expect(sheetViewSource).toContain('onCloseCell={backboneDiffWorkbench.onCloseCell}')
+    expect(sheetViewSource).toContain('onClearNavigationAnnouncement?.()')
+  })
+
+  it('maps backbone diff preview, condition, and cell data fields to the shared contracts', () => {
+    expect(sheetViewSource).toContain('rowStatus: preview.row_status')
+    expect(sheetViewSource).toContain('parameterCode: preview.parameter_code')
+    expect(sheetViewSource).toContain('rowStatus: condition.row_status')
+    expect(sheetViewSource).toContain('rowMetadata: mapBackboneDiffConditionRowMetadata(condition.row_metadata)')
+    expect(sheetViewSource).toContain('labelChanged: metadata.label_changed')
+    expect(sheetViewSource).toContain('indexChanged: metadata.index_changed')
+    expect(sheetViewSource).toContain('porChanged: metadata.por_changed')
+    expect(sheetViewSource).toContain('baselineValue: cell.baseline_value')
+    expect(sheetViewSource).toContain('currentValue: cell.current_value')
+  })
+
+  it('uses exact baseline-unavailable announcement copy in backbone diff mode', () => {
+    expect(sheetViewSource).toContain(
+      'const BACKBONE_DIFF_ROOT_UNAVAILABLE_MESSAGE =',
+    )
+    expect(sheetViewSource).toContain(
+      '저장된 기준 백본이 없어 일부 레이어의 비교 상세를 제공할 수 없습니다',
+    )
+    expect(sheetViewSource).not.toContain('not available')
+    expect(sheetViewSource).not.toContain('더이상')
+  })
+
   it('renders truthful read-only discovery controls with accessible pressed and status semantics', () => {
     const queryClient = client()
     queryClient.setQueryData(['project', 7], project)
