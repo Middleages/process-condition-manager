@@ -431,7 +431,7 @@ export function BackboneDiffWorkbench({
             </div>
             <div className="rounded border border-border-subtle bg-canvas px-2 py-1">추가 <strong>{root.counts.addedCount}</strong></div>
             <div className="rounded border border-border-subtle bg-canvas px-2 py-1">변경 <strong>{root.counts.changedCount}</strong></div>
-            <div className="rounded border border-border-subtle bg-canvas px-2 py-1">삭제 <strong>{root.counts.clearedCount}</strong></div>
+            <div className="rounded border border-border-subtle bg-canvas px-2 py-1">비움 <strong>{root.counts.clearedCount}</strong></div>
             <div className="rounded border border-border-subtle bg-canvas px-2 py-1">제거 <strong>{root.counts.removedCount}</strong></div>
             <div className="rounded border border-border-subtle bg-canvas px-2 py-1">미변경 <strong>{root.counts.unchangedCount}</strong></div>
           </div>
@@ -660,15 +660,6 @@ export function BackboneDiffWorkbench({
                       const isRowExpanded = expandedLayerKey === layer.layerKey && expandedRowRef === condition.rowRef
                       const cellBranch = cellBranches[condition.rowRef]
                       const cells = cellBranch?.items ?? []
-
-                      const conditionIndex =
-                        condition.currentCondition?.conditionIndex
-                        ?? condition.baselineCondition?.conditionIndex
-                        ?? null
-                      const isPor =
-                        condition.currentCondition?.isPor
-                        ?? condition.baselineCondition?.isPor
-                        ?? null
                       const baselinePor =
                         condition.baselineCondition?.isPor === null
                           ? '미지정'
@@ -701,7 +692,7 @@ export function BackboneDiffWorkbench({
                         && ((condition.currentCondition?.conditionId ?? null) !== null
                         || (condition.baselineCondition?.conditionId ?? null) !== null)
 
-                      const rowActivation: BackboneDiffActivationStatus = 'unavailable'
+                      const isRowJumpAvailable = false
 
                       return (
                         <div key={condition.rowRef} className="rounded border border-border-subtle bg-surface p-2 text-xs">
@@ -735,40 +726,17 @@ export function BackboneDiffWorkbench({
                             <button
                               className={cn(
                                 'rounded-sm border px-2 py-1 text-xs font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700',
-                                rowActivation === 'available'
+                                isRowJumpAvailable
                                   ? 'border-brand-700 text-brand-700'
                                   : 'border-border-subtle text-muted',
                               )}
-                              aria-disabled={rowActivation !== 'available'}
+                              aria-disabled={!isRowJumpAvailable}
                               onClick={() => {
-                                if (rowActivation !== 'available') {
-                                  if (rowActivation === 'removed') {
-                                    emitAnnouncement('삭제된 대상은 이동할 수 없습니다.')
-                                  } else if (rowActivation === 'deleted') {
-                                    emitAnnouncement('삭제된 대상으로는 위치를 이동할 수 없습니다.')
-                                  } else {
-                                    emitAnnouncement('현재 위치로 이동할 수 없습니다.')
-                                  }
-                                  return
-                                }
-
-                                activateTarget({
-                                  kind: 'condition',
-                                  layerKey: layer.layerKey,
-                                  classification: condition.rowStatus,
-                                  jumpStatus: condition.jumpStatus,
-                                  rowRef: condition.rowRef,
-                                  conditionId: condition.identity,
-                                  parameterCode: null,
-                                  sourceConditionId:
-                                    condition.currentCondition?.sourceConditionId
-                                    ?? condition.baselineCondition?.sourceConditionId
-                                    ?? null,
-                                })
-                              }}
+                                emitAnnouncement('현재 위치로 이동할 수 없습니다.')
+                                }}
                               type="button"
                             >
-                              {renderActivationButtonText(rowActivation)}
+                              {renderActivationButtonText('unavailable')}
                             </button>
                           </div>
 
@@ -933,6 +901,5 @@ function activationStatusFor({
   if (hasNavigation === false) return 'unavailable'
   if (classification === 'removed') return 'removed'
   if (jumpStatus === 'deleted') return 'deleted'
-  if (classification === 'unchanged') return 'unavailable'
   return 'available'
 }

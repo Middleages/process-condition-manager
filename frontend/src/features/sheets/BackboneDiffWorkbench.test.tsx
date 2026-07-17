@@ -6,6 +6,7 @@ import {
   activateBackboneJumpTarget,
   type BackboneDiffCellItem,
   type BackboneDiffConditionItem,
+  type BackboneDiffPreviewItem,
   type BackboneDiffFilter,
   type BackboneDiffRoot,
   type PreviewState,
@@ -86,17 +87,7 @@ function createRootData(): BackboneDiffRoot {
   }
 }
 
-function createPreviewState(): PreviewState<{
-  readonly itemKind: 'row' | 'cell'
-  readonly classification: 'added' | 'changed' | 'cleared' | 'removed' | 'unchanged'
-  readonly layerKey: string
-  readonly effectiveConditionIndex: number
-  readonly itemSortKey: readonly (string | number | null)[]
-  readonly rowRef: string | null
-  readonly cellScope: string | null
-  readonly rowStatus?: 'added' | 'changed' | 'cleared' | 'removed' | 'unchanged' | null
-  readonly parameterCode?: string | null
-}> {
+function createPreviewState(): PreviewState<BackboneDiffPreviewItem> {
   return {
     status: 'ready',
     items: [],
@@ -109,7 +100,7 @@ function createPreviewState(): PreviewState<{
 function createCondition(): BackboneDiffConditionItem {
   return {
     rowRef: 'row-1',
-    rowStatus: 'changed',
+    rowStatus: 'matched',
     effectiveConditionIndex: 1,
     identity: 101,
     baselineCondition: {
@@ -130,6 +121,11 @@ function createCondition(): BackboneDiffConditionItem {
     fullCellCount: 2,
     jumpStatus: 'available',
     cellScope: 'scope-row-1',
+    rowMetadata: {
+      labelChanged: true,
+      indexChanged: true,
+      porChanged: true,
+    },
   }
 }
 
@@ -146,17 +142,7 @@ function createCell(): BackboneDiffCellItem {
 }
 
 function createPreviewStaticMarkup(root: BackboneDiffRoot, preview: PreviewState<
-  {
-    readonly itemKind: 'row' | 'cell'
-    readonly classification: 'added' | 'changed' | 'cleared' | 'removed' | 'unchanged'
-    readonly layerKey: string
-    readonly effectiveConditionIndex: number
-    readonly itemSortKey: readonly (string | number | null)[]
-    readonly rowRef: string | null
-    readonly cellScope: string | null
-    readonly rowStatus?: 'added' | 'changed' | 'cleared' | 'removed' | 'unchanged' | null
-    readonly parameterCode?: string | null
-  }
+  BackboneDiffPreviewItem
 >) {
   return renderToStaticMarkup(
     <BackboneDiffWorkbench
@@ -250,7 +236,7 @@ describe('BackboneDiffWorkbench', () => {
     expect(html).toContain('baseline is unavailable for one deleted layer')
     expect(html).toContain('classification')
     expect(html).toContain('#1')
-    expect(html).toContain('삭제 <strong>0</strong>')
+    expect(html).toContain('비움 <strong>0</strong>')
   })
 
   it('renders root and preview errors with retry actions', () => {
@@ -370,6 +356,22 @@ describe('BackboneDiffWorkbench', () => {
     expect(activated).toBe(true)
     expect(onActivateTarget).toHaveBeenCalledOnce()
 
+    const unchangedAvailable = activateBackboneJumpTarget(
+      {
+        kind: 'cell',
+        layerKey: 'L1::10::ETCH',
+        classification: 'unchanged',
+        jumpStatus: 'available',
+        rowRef: 'row-1',
+        conditionId: 11,
+        parameterCode: 'ETCH_P001',
+        sourceConditionId: null,
+      },
+      onActivateTarget,
+    )
+    expect(unchangedAvailable).toBe(true)
+    expect(onActivateTarget).toHaveBeenCalledTimes(2)
+
     const deletedBlocked = activateBackboneJumpTarget(
       {
         kind: 'cell',
@@ -384,7 +386,7 @@ describe('BackboneDiffWorkbench', () => {
       onActivateTarget,
     )
     expect(deletedBlocked).toBe(false)
-    expect(onActivateTarget).toHaveBeenCalledTimes(1)
+    expect(onActivateTarget).toHaveBeenCalledTimes(2)
 
     const conditionNavigationBlocked = activateBackboneJumpTarget(
       {
@@ -415,7 +417,7 @@ describe('BackboneDiffWorkbench', () => {
       onActivateTarget,
     )
     expect(removedBlocked).toBe(false)
-    expect(onActivateTarget).toHaveBeenCalledOnce()
+    expect(onActivateTarget).toHaveBeenCalledTimes(2)
   })
 
   it('documents disabled jump target labels in source-contract and SSR visibility', () => {
@@ -507,7 +509,7 @@ describe('BackboneDiffWorkbench', () => {
           itemSortKey: ['secret'],
           rowRef: 'row-secret',
           cellScope: 'secret-scope',
-          rowStatus: 'changed',
+          rowStatus: 'matched',
           parameterCode: 'ETCH_P999',
         },
       ],
@@ -520,7 +522,7 @@ describe('BackboneDiffWorkbench', () => {
     expect(html).toContain('L1::10::ETCH')
     expect(html).not.toContain('row-secret')
     expect(html).not.toContain('secret-scope')
-    expect(html).toContain('상태: changed')
+    expect(html).toContain('상태: matched')
     expect(html).toContain('파라미터: ETCH_P999')
   })
 
@@ -582,8 +584,9 @@ describe('BackboneDiffWorkbench', () => {
       />,
     )
 
-    expect(source).toContain('const conditionIndex')
-    expect(source).toContain('isPor')
+    expect(source).toContain('baselineToCurrentLabel')
+    expect(source).toContain('baselineToCurrentIndex')
+    expect(source).toContain('baselineToCurrentPor')
     expect(source).toContain('hasConditionNavigation')
   })
 
