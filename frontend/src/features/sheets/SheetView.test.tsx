@@ -489,14 +489,14 @@ describe('SheetView focus shell integration', () => {
       'setPendingCoordinateJump(navigation.target)',
     )
     const committedJump = sheetViewSource.indexOf(
-      'gridRef.current?.scrollToCell(pendingCoordinateJump.conditionId',
+      'gridRef.current?.scrollToCell(conditionId, parameterCode)',
     )
 
     expect(categoryChange).toBeGreaterThan(-1)
     expect(pendingPublication).toBeGreaterThan(categoryChange)
     expect(committedJump).toBeGreaterThan(-1)
     expect(sheetViewSource).toMatch(
-      /useEffect\(\(\) => \{[\s\S]*?pendingCoordinateJump[\s\S]*?visibleColumns\.some\([\s\S]*?scrollToCell\(pendingCoordinateJump\.conditionId/,
+      /useEffect\(\(\) => \{[\s\S]*?pendingCoordinateJump[\s\S]*?visibleColumns\.some\([\s\S]*?const conditionId = String\(pendingCoordinateJump\.conditionId\)[\s\S]*?scrollToCell\(conditionId, parameterCode\)/,
     )
     expect(sheetViewSource).toContain('resolveWorkbenchCoordinateNavigation(')
     expect(sheetViewSource).toContain('visibleColumns.some(')

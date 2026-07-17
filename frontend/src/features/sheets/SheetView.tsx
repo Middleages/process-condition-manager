@@ -716,7 +716,10 @@ function SheetEditor({
         setPendingCoordinateJump(navigation.target)
         return
       }
-      gridRef.current?.scrollToCell(navigation.target.conditionId, navigation.target.parameterCode)
+      gridRef.current?.scrollToCell(
+        String(navigation.target.conditionId),
+        String(navigation.target.parameterCode),
+      )
       setCoordinateNavigationStatus('대상 셀로 이동했습니다.')
     },
     [interaction.canSwitchCategory, data.columns, displayRows, activeCategory],
