@@ -106,6 +106,22 @@ type BackboneDiffFilterPayload = Omit<BackboneDiffFilter, 'layerKey' | 'category
 
 const BACKBONE_DIFF_ROOT_UNAVAILABLE_MESSAGE = '백본 비교 기준 중 기준 백본이 더 이상 존재하지 않아 일부 데이터는 표시되지 않습니다.'
 
+const BACKBONE_DIFF_EMPTY_COUNTS: BackboneDiffRoot['counts'] = {
+  layerCount: 0,
+  availableLayerCount: 0,
+  unavailableLayerCount: 0,
+  rowCount: 0,
+  cellCount: 0,
+  fullRowCount: 0,
+  fullCellCount: 0,
+  ambiguousLineageCount: 0,
+  addedCount: 0,
+  changedCount: 0,
+  clearedCount: 0,
+  removedCount: 0,
+  unchangedCount: 0,
+}
+
 function mapBackboneDiffConditionClassification(
   status: 'added' | 'removed' | 'matched',
 ): 'added' | 'changed' | 'cleared' | 'removed' | 'unchanged' {
@@ -865,21 +881,7 @@ function SheetEditor({
     if (backboneDiffWorkbenchState.rootScope === null || backboneDiffWorkbenchState.rootBasisHash === null) {
       return null
     }
-    const rootCounts = backboneDiffWorkbenchState.rootCounts ?? {
-      layer_count: 0,
-      available_layer_count: 0,
-      unavailable_layer_count: 0,
-      row_count: 0,
-      cell_count: 0,
-      full_row_count: 0,
-      full_cell_count: 0,
-      ambiguous_lineage_count: 0,
-      added_count: 0,
-      changed_count: 0,
-      cleared_count: 0,
-      removed_count: 0,
-      unchanged_count: 0,
-    }
+    const rootCounts = backboneDiffWorkbenchState.rootCounts
     return {
       scope: backboneDiffWorkbenchState.rootScope,
       basisHash: backboneDiffWorkbenchState.rootBasisHash,
@@ -1044,10 +1046,11 @@ function SheetEditor({
     backboneDiffWorkbench.onOpenBranch(layerKey, branchScope)
   }, [backboneDiffWorkbench, backboneDiffLayerScopeByLayer])
   const onBackboneLoadMoreConditions = useCallback(
-    (_layerKey: string, cursor: string | null) => {
+    (layerKey: string, cursor: string | null) => {
+      if (backboneDiffWorkbenchState.openLayerKey !== layerKey) return
       backboneDiffWorkbench.onLoadMoreConditions(cursor)
     },
-    [backboneDiffWorkbench],
+    [backboneDiffWorkbench, backboneDiffWorkbenchState.openLayerKey],
   )
   const onBackboneRetryConditions = useCallback(
     (_layerKey: string) => {
@@ -1065,10 +1068,11 @@ function SheetEditor({
     [backboneDiffWorkbench, backboneDiffWorkbenchState.openLayerKey, branchRowCellScopeByRef],
   )
   const onBackboneLoadMoreCells = useCallback(
-    (_rowRef: string, cursor: string | null) => {
+    (rowRef: string, cursor: string | null) => {
+      if (backboneDiffWorkbenchState.openCellRowRef !== rowRef) return
       backboneDiffWorkbench.onLoadMoreCells(cursor)
     },
-    [backboneDiffWorkbench],
+    [backboneDiffWorkbench, backboneDiffWorkbenchState.openCellRowRef],
   )
   const onBackboneRetryCells = useCallback(
     (_rowRef: string) => {
@@ -1100,24 +1104,9 @@ function SheetEditor({
     [backboneDiffWorkbenchState.filters],
   )
   const backboneDiffRootUnavailableCopy = useMemo(() => {
-    const rootCounts = backboneDiffWorkbenchState.rootCounts ?? {
-      layer_count: 0,
-      available_layer_count: 0,
-      unavailable_layer_count: 0,
-      row_count: 0,
-      cell_count: 0,
-      full_row_count: 0,
-      full_cell_count: 0,
-      ambiguous_lineage_count: 0,
-      added_count: 0,
-      changed_count: 0,
-      cleared_count: 0,
-      removed_count: 0,
-      unchanged_count: 0,
-    }
-    if (rootCounts.unavailable_layer_count <= 0) return null
+    if (backboneDiffWorkbenchState.rootCounts.unavailable_layer_count <= 0) return null
     return BACKBONE_DIFF_ROOT_UNAVAILABLE_MESSAGE
-  }, [backboneDiffWorkbenchState.rootCounts])
+  }, [backboneDiffWorkbenchState.rootCounts.unavailable_layer_count])
 
   return (
     <SheetFocusFrame
