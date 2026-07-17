@@ -6,8 +6,7 @@ import os
 from collections.abc import AsyncIterator
 
 import pytest
-from sqlalchemy import event, text
-from sqlalchemy.exc import DBAPIError
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -232,9 +231,10 @@ async def test_load_diff_input_postgres_is_repeatable_read_and_read_only(
         project = await _seed_project(session)
 
     statements: list[str] = []
+    observed_isolation: list[str] = []
 
     def capture_sql(
-        _conn,
+        conn,
         _cursor: object,
         statement: str,
         _parameters: object,
@@ -242,19 +242,17 @@ async def test_load_diff_input_postgres_is_repeatable_read_and_read_only(
         _executemany: bool,
     ) -> None:
         statements.append(statement)
+        if statement.lstrip().upper().startswith("SELECT") and not observed_isolation:
+            observed_isolation.append(conn.get_isolation_level())
 
-    event.listen(read_only_engine.sync_engine, "before_cursor_execute", capture_sql)
+    event.listen(pg_engine.sync_engine, "before_cursor_execute", capture_sql)
     try:
-        loaded = await load_diff_input_with_session_factory(project.id, read_only_factory)
+        loaded = await load_diff_input_with_session_factory(project.id, pg_factory)
     finally:
-        event.remove(read_only_engine.sync_engine, "before_cursor_execute", capture_sql)
+        event.remove(pg_engine.sync_engine, "before_cursor_execute", capture_sql)
 
     assert statements[0].lstrip().upper().startswith("SET TRANSACTION READ ONLY")
-    async with read_only_factory() as session:
-        isolation = (
-            await session.execute(text("SHOW transaction_isolation"))
-        ).scalar_one()
-    assert isolation.upper() == "REPEATABLE READ"
+    assert observed_isolation and observed_isolation[0].upper() == "REPEATABLE READ"
     assert loaded.layers[0].baseline_snapshot is not None
     assert [parameter.parameter_code for parameter in loaded.parameters] == [
         "alpha",
