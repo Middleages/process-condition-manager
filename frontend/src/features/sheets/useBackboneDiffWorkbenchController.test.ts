@@ -38,6 +38,8 @@ import {
   createBackboneDiffWorkbenchCellQueryFn,
   createBackboneDiffWorkbenchRootQueryFn,
   useBackboneDiffWorkbenchController,
+  acceptBackboneDiffQueryPage,
+  shouldAcceptBackboneDiffQueryPage,
   shouldHandleDiffBasisChangedQueryError,
   shouldHandleDiffBasisChangedQueryErrorWithAuthority,
 } from './useBackboneDiffWorkbenchController'
@@ -144,6 +146,71 @@ describe('useBackboneDiffWorkbenchController seams', () => {
       includeUnchanged: false,
       previewLimit: 20,
     })
+  })
+
+  it('separates branch/cell issued and accepted authority gates', () => {
+    expect(
+      shouldAcceptBackboneDiffQueryPage({
+        dataToken: 1,
+        issuedToken: 2,
+        acceptedToken: 1,
+      }),
+    ).toBe(true)
+    expect(
+      shouldAcceptBackboneDiffQueryPage({
+        dataToken: 2,
+        issuedToken: 2,
+        acceptedToken: 0,
+      }),
+    ).toBe(true)
+    expect(
+      shouldAcceptBackboneDiffQueryPage({
+        dataToken: 1,
+        issuedToken: 2,
+        acceptedToken: 0,
+      }),
+    ).toBe(false)
+    expect(
+      shouldAcceptBackboneDiffQueryPage({
+        dataToken: 2,
+        issuedToken: 2,
+        acceptedToken: 1,
+      }),
+    ).toBe(true)
+    expect(
+      shouldAcceptBackboneDiffQueryPage({
+        dataToken: 3,
+        issuedToken: 2,
+        acceptedToken: 1,
+      }),
+    ).toBe(true)
+  })
+
+  it('applies accepted updates through the exported production acceptance helper', () => {
+    const acceptedTokenByKeyRef = { current: {} as Record<string, number> }
+    const key = '["backboneDiff",7,"branch","L1::10::ETCH",{"scope":"scope-a","cursor":null,"limit":50}]'
+
+    expect(
+      acceptBackboneDiffQueryPage({
+        dataToken: 1,
+        issuedToken: 2,
+        acceptedToken: 0,
+        acceptedTokenByKeyRef,
+        key,
+      }),
+    ).toBe(false)
+    expect(acceptedTokenByKeyRef.current[key]).toBeUndefined()
+
+    expect(
+      acceptBackboneDiffQueryPage({
+        dataToken: 2,
+        issuedToken: 2,
+        acceptedToken: 1,
+        acceptedTokenByKeyRef,
+        key,
+      }),
+    ).toBe(true)
+    expect(acceptedTokenByKeyRef.current[key]).toBe(2)
   })
 
   it('rejects stale authorities when revision/generation/token/context changes', () => {
@@ -312,7 +379,6 @@ describe('useBackboneDiffWorkbenchController seams', () => {
       },
     })
     queryClient.mount()
-    queryClient.mount()
 
     const rootKey = createBackboneDiffWorkbenchRootQueryKey(projectId, {
       previewLimit: 20,
@@ -378,7 +444,7 @@ describe('useBackboneDiffWorkbenchController seams', () => {
     }
   })
 
-  it('uses the production branch/cell query seams so A survives B on the same client', async () => {
+  it('uses the production branch/cell query seams with separate issued and accepted authority', async () => {
     const projectId = 7
     const queryClient = new QueryClient({
       defaultOptions: {
@@ -388,10 +454,12 @@ describe('useBackboneDiffWorkbenchController seams', () => {
     queryClient.mount()
 
     const onlineState = onlineManager.isOnline()
-    const branchTokenByKeyRef = { current: {} as Record<string, number> }
-    const cellTokenByKeyRef = { current: {} as Record<string, number> }
-    const branchQueryFn = createBackboneDiffWorkbenchBranchQueryFn(queryClient, branchTokenByKeyRef)
-    const cellQueryFn = createBackboneDiffWorkbenchCellQueryFn(queryClient, cellTokenByKeyRef)
+    const branchIssuedTokenByKeyRef = { current: {} as Record<string, number> }
+    const branchAcceptedTokenByKeyRef = { current: {} as Record<string, number> }
+    const cellIssuedTokenByKeyRef = { current: {} as Record<string, number> }
+    const cellAcceptedTokenByKeyRef = { current: {} as Record<string, number> }
+    const branchQueryFn = createBackboneDiffWorkbenchBranchQueryFn(queryClient, branchIssuedTokenByKeyRef)
+    const cellQueryFn = createBackboneDiffWorkbenchCellQueryFn(queryClient, cellIssuedTokenByKeyRef)
 
     const branchAKey = createBackboneDiffWorkbenchBranchQueryKey(
       projectId,
@@ -456,14 +524,32 @@ describe('useBackboneDiffWorkbenchController seams', () => {
       'scope-b',
     )
 
+    const branchDeferredA1 = deferred<BackboneDiffConditionPageOut>()
+    const branchDeferredB = deferred<BackboneDiffConditionPageOut>()
+    const branchDeferredA2 = deferred<BackboneDiffConditionPageOut>()
+    const branchDeferredA3 = deferred<BackboneDiffConditionPageOut>()
+    const cellDeferredA1 = deferred<BackboneDiffCellPageOut>()
+    const cellDeferredB = deferred<BackboneDiffCellPageOut>()
+    const cellDeferredA2 = deferred<BackboneDiffCellPageOut>()
+    const cellDeferredA3 = deferred<BackboneDiffCellPageOut>()
+    const branchScopeCalls: Record<string, number> = { 'scope-a': 0, 'scope-b': 0 }
+    const cellScopeCalls: Record<string, number> = { 'scope-a': 0, 'scope-b': 0 }
+
     const branchSpy = vi.spyOn(backboneDiffApi, 'getBackboneDiffConditions').mockImplementation(
       async (projectIdArg, layerKey, query) => {
         expect(projectIdArg).toBe(projectId)
         expect(layerKey).toBe('L1::10::ETCH')
         expect(query.cursor).toBeNull()
-        if (query.scope === 'scope-a') return createConditionPage('R-a-1')
-        if (query.scope === 'scope-b') return createConditionPage('R-b-1')
-        throw new Error(`Unexpected branch scope ${query.scope}`)
+        const scope = query.scope
+        if (scope !== 'scope-a' && scope !== 'scope-b') {
+          throw new Error(`Unexpected branch scope ${scope}`)
+        }
+        branchScopeCalls[scope] = (branchScopeCalls[scope] ?? 0) + 1
+        if (scope === 'scope-a' && branchScopeCalls[scope] === 1) return branchDeferredA1.promise
+        if (scope === 'scope-b') return branchDeferredB.promise
+        if (scope === 'scope-a' && branchScopeCalls[scope] === 2) return branchDeferredA2.promise
+        if (scope === 'scope-a' && branchScopeCalls[scope] === 3) return branchDeferredA3.promise
+        throw new Error(`Unexpected branch scope ${scope}`)
       },
     )
     const cellSpy = vi.spyOn(backboneDiffApi, 'getBackboneDiffCells').mockImplementation(
@@ -471,9 +557,16 @@ describe('useBackboneDiffWorkbenchController seams', () => {
         expect(projectIdArg).toBe(projectId)
         expect(layerKey).toBe('L1::10::ETCH')
         expect(query.cursor).toBeNull()
-        if (rowRef === 'R-1' && query.scope === 'scope-a') return createCellPage('P-a-1')
-        if (rowRef === 'R-2' && query.scope === 'scope-b') return createCellPage('P-b-1')
-        throw new Error(`Unexpected cell descriptor ${rowRef}/${query.scope}`)
+        const scope = query.scope
+        if (scope !== 'scope-a' && scope !== 'scope-b') {
+          throw new Error(`Unexpected cell descriptor ${rowRef}/${scope}`)
+        }
+        cellScopeCalls[scope] = (cellScopeCalls[scope] ?? 0) + 1
+        if (rowRef === 'R-1' && scope === 'scope-a' && cellScopeCalls[scope] === 1) return cellDeferredA1.promise
+        if (rowRef === 'R-2' && scope === 'scope-b') return cellDeferredB.promise
+        if (rowRef === 'R-1' && scope === 'scope-a' && cellScopeCalls[scope] === 2) return cellDeferredA2.promise
+        if (rowRef === 'R-1' && scope === 'scope-a' && cellScopeCalls[scope] === 3) return cellDeferredA3.promise
+        throw new Error(`Unexpected cell descriptor ${rowRef}/${scope}`)
       },
     )
 
@@ -490,11 +583,6 @@ describe('useBackboneDiffWorkbenchController seams', () => {
         queryFn: branchQueryFn,
         initialPageParam: null as string | null,
       })
-      const branchRequestARepeat = queryClient.fetchInfiniteQuery({
-        queryKey: branchAKey,
-        queryFn: branchQueryFn,
-        initialPageParam: null as string | null,
-      })
       const cellRequestA = queryClient.fetchInfiniteQuery({
         queryKey: cellAKey,
         queryFn: cellQueryFn,
@@ -502,11 +590,6 @@ describe('useBackboneDiffWorkbenchController seams', () => {
       })
       const cellRequestB = queryClient.fetchInfiniteQuery({
         queryKey: cellBKey,
-        queryFn: cellQueryFn,
-        initialPageParam: null as string | null,
-      })
-      const cellRequestARepeat = queryClient.fetchInfiniteQuery({
-        queryKey: cellAKey,
         queryFn: cellQueryFn,
         initialPageParam: null as string | null,
       })
@@ -522,44 +605,71 @@ describe('useBackboneDiffWorkbenchController seams', () => {
         expect(cellSpy).toHaveBeenCalledTimes(2)
       })
 
-      const [branchAData, branchBData, branchARepeatData, cellAData, cellBData, cellARepeatData] = await Promise.all([
+      branchDeferredA1.resolve(createConditionPage('R-a-1'))
+      branchDeferredB.resolve(createConditionPage('R-b-1'))
+      cellDeferredA1.resolve(createCellPage('P-a-1'))
+      cellDeferredB.resolve(createCellPage('P-b-1'))
+
+      const [branchAData, branchBData, cellAData, cellBData] = await Promise.all([
         branchRequestA,
         branchRequestB,
-        branchRequestARepeat,
         cellRequestA,
         cellRequestB,
-        cellRequestARepeat,
       ])
 
       expect(branchAData.pages[0]?.token).toBe(1)
       expect(branchBData.pages[0]?.token).toBe(1)
-      expect(branchARepeatData.pages[0]?.token).toBe(1)
       expect(cellAData.pages[0]?.token).toBe(1)
       expect(cellBData.pages[0]?.token).toBe(1)
-      expect(cellARepeatData.pages[0]?.token).toBe(1)
+
+      const branchAKeyFingerprint = JSON.stringify(branchAKey)
+      const branchBKeyFingerprint = JSON.stringify(branchBKey)
+      const cellAKeyFingerprint = JSON.stringify(cellAKey)
+      const cellBKeyFingerprint = JSON.stringify(cellBKey)
 
       expect(
-        isBackboneDiffQueryPageCurrent({
-          dataToken: branchAData.pages[branchAData.pages.length - 1]?.token ?? 0,
-          latestToken: branchTokenByKeyRef.current[JSON.stringify(branchAKey)] ?? 0,
+        acceptBackboneDiffQueryPage({
+          dataToken: branchAData.pages[0]?.token ?? 0,
+          issuedToken: branchIssuedTokenByKeyRef.current[branchAKeyFingerprint] ?? 0,
+          acceptedToken: branchAcceptedTokenByKeyRef.current[branchAKeyFingerprint] ?? 0,
+          acceptedTokenByKeyRef: branchAcceptedTokenByKeyRef,
+          key: branchAKeyFingerprint,
         }),
       ).toBe(true)
       expect(
-        isBackboneDiffQueryPageCurrent({
-          dataToken: cellAData.pages[cellAData.pages.length - 1]?.token ?? 0,
-          latestToken: cellTokenByKeyRef.current[JSON.stringify(cellAKey)] ?? 0,
+        acceptBackboneDiffQueryPage({
+          dataToken: branchBData.pages[0]?.token ?? 0,
+          issuedToken: branchIssuedTokenByKeyRef.current[branchBKeyFingerprint] ?? 0,
+          acceptedToken: branchAcceptedTokenByKeyRef.current[branchBKeyFingerprint] ?? 0,
+          acceptedTokenByKeyRef: branchAcceptedTokenByKeyRef,
+          key: branchBKeyFingerprint,
+        }),
+      ).toBe(true)
+      expect(
+        acceptBackboneDiffQueryPage({
+          dataToken: cellAData.pages[0]?.token ?? 0,
+          issuedToken: cellIssuedTokenByKeyRef.current[cellAKeyFingerprint] ?? 0,
+          acceptedToken: cellAcceptedTokenByKeyRef.current[cellAKeyFingerprint] ?? 0,
+          acceptedTokenByKeyRef: cellAcceptedTokenByKeyRef,
+          key: cellAKeyFingerprint,
+        }),
+      ).toBe(true)
+      expect(
+        acceptBackboneDiffQueryPage({
+          dataToken: cellBData.pages[0]?.token ?? 0,
+          issuedToken: cellIssuedTokenByKeyRef.current[cellBKeyFingerprint] ?? 0,
+          acceptedToken: cellAcceptedTokenByKeyRef.current[cellBKeyFingerprint] ?? 0,
+          acceptedTokenByKeyRef: cellAcceptedTokenByKeyRef,
+          key: cellBKeyFingerprint,
         }),
       ).toBe(true)
 
-      queryClient.invalidateQueries({ queryKey: branchAKey, exact: true })
-      queryClient.invalidateQueries({ queryKey: cellAKey, exact: true })
-
-      const branchReplay = queryClient.fetchInfiniteQuery({
+      const branchARefresh = queryClient.fetchInfiniteQuery({
         queryKey: branchAKey,
         queryFn: branchQueryFn,
         initialPageParam: null as string | null,
       })
-      const cellReplay = queryClient.fetchInfiniteQuery({
+      const cellARefresh = queryClient.fetchInfiniteQuery({
         queryKey: cellAKey,
         queryFn: cellQueryFn,
         initialPageParam: null as string | null,
@@ -569,15 +679,99 @@ describe('useBackboneDiffWorkbenchController seams', () => {
         expect(branchSpy).toHaveBeenCalledTimes(3)
         expect(cellSpy).toHaveBeenCalledTimes(3)
       })
+      expect(
+        shouldAcceptBackboneDiffQueryPage({
+          dataToken: 1,
+          issuedToken: branchIssuedTokenByKeyRef.current[branchAKeyFingerprint] ?? 0,
+          acceptedToken: 0,
+        }),
+      ).toBe(false)
+      expect(
+        shouldAcceptBackboneDiffQueryPage({
+          dataToken: 1,
+          issuedToken: cellIssuedTokenByKeyRef.current[cellAKeyFingerprint] ?? 0,
+          acceptedToken: 0,
+        }),
+      ).toBe(false)
+      expect(
+        acceptBackboneDiffQueryPage({
+          dataToken: 1,
+          issuedToken: branchIssuedTokenByKeyRef.current[branchAKeyFingerprint] ?? 0,
+          acceptedToken: branchAcceptedTokenByKeyRef.current[branchAKeyFingerprint] ?? 0,
+          acceptedTokenByKeyRef: branchAcceptedTokenByKeyRef,
+          key: branchAKeyFingerprint,
+        }),
+      ).toBe(true)
+      expect(
+        acceptBackboneDiffQueryPage({
+          dataToken: 1,
+          issuedToken: cellIssuedTokenByKeyRef.current[cellAKeyFingerprint] ?? 0,
+          acceptedToken: cellAcceptedTokenByKeyRef.current[cellAKeyFingerprint] ?? 0,
+          acceptedTokenByKeyRef: cellAcceptedTokenByKeyRef,
+          key: cellAKeyFingerprint,
+        }),
+      ).toBe(true)
 
-      const [branchReplayData, cellReplayData] = await Promise.all([branchReplay, cellReplay])
+      const branchAReplayCache = queryClient.getQueryData(branchAKey) as
+        | { pages?: Array<{ token?: number }> }
+        | undefined
+      const cellAReplayCache = queryClient.getQueryData(cellAKey) as
+        | { pages?: Array<{ token?: number }> }
+        | undefined
+      const branchAReplayPage = branchAReplayCache?.pages?.[branchAReplayCache.pages.length - 1]
+      const cellAReplayPage = cellAReplayCache?.pages?.[cellAReplayCache.pages.length - 1]
+      expect(branchAReplayPage?.token).toBe(1)
+      expect(cellAReplayPage?.token).toBe(1)
 
-      expect(branchReplayData.pages[0]?.token).toBe(2)
-      expect(cellReplayData.pages[0]?.token).toBe(2)
-      expect(branchTokenByKeyRef.current[JSON.stringify(branchAKey)]).toBe(2)
-      expect(branchTokenByKeyRef.current[JSON.stringify(branchBKey)]).toBe(1)
-      expect(cellTokenByKeyRef.current[JSON.stringify(cellAKey)]).toBe(2)
-      expect(cellTokenByKeyRef.current[JSON.stringify(cellBKey)]).toBe(1)
+      branchDeferredA2.reject(new Error('branch-a-2-failed'))
+      cellDeferredA2.reject(new Error('cell-a-2-failed'))
+      await expect(branchARefresh).rejects.toThrow('branch-a-2-failed')
+      await expect(cellARefresh).rejects.toThrow('cell-a-2-failed')
+
+      expect(branchAcceptedTokenByKeyRef.current[branchAKeyFingerprint]).toBe(1)
+      expect(branchAcceptedTokenByKeyRef.current[branchBKeyFingerprint]).toBe(1)
+      expect(cellAcceptedTokenByKeyRef.current[cellAKeyFingerprint]).toBe(1)
+      expect(cellAcceptedTokenByKeyRef.current[cellBKeyFingerprint]).toBe(1)
+
+      branchDeferredA3.resolve(createConditionPage('R-a-3'))
+      cellDeferredA3.resolve(createCellPage('P-a-3'))
+      const branchAAdvance = queryClient.fetchInfiniteQuery({
+        queryKey: branchAKey,
+        queryFn: branchQueryFn,
+        initialPageParam: null as string | null,
+      })
+      const cellAAdvance = queryClient.fetchInfiniteQuery({
+        queryKey: cellAKey,
+        queryFn: cellQueryFn,
+        initialPageParam: null as string | null,
+      })
+      await vi.waitFor(() => {
+        expect(branchSpy).toHaveBeenCalledTimes(4)
+        expect(cellSpy).toHaveBeenCalledTimes(4)
+      })
+      const [branchAAdvanceData, cellAAdvanceData] = await Promise.all([branchAAdvance, cellAAdvance])
+      expect(branchAAdvanceData.pages[0]?.token).toBe(3)
+      expect(cellAAdvanceData.pages[0]?.token).toBe(3)
+      expect(
+        acceptBackboneDiffQueryPage({
+          dataToken: branchAAdvanceData.pages[0]?.token ?? 0,
+          issuedToken: branchIssuedTokenByKeyRef.current[branchAKeyFingerprint] ?? 0,
+          acceptedToken: branchAcceptedTokenByKeyRef.current[branchAKeyFingerprint] ?? 0,
+          acceptedTokenByKeyRef: branchAcceptedTokenByKeyRef,
+          key: branchAKeyFingerprint,
+        }),
+      ).toBe(true)
+      expect(
+        acceptBackboneDiffQueryPage({
+          dataToken: cellAAdvanceData.pages[0]?.token ?? 0,
+          issuedToken: cellIssuedTokenByKeyRef.current[cellAKeyFingerprint] ?? 0,
+          acceptedToken: cellAcceptedTokenByKeyRef.current[cellAKeyFingerprint] ?? 0,
+          acceptedTokenByKeyRef: cellAcceptedTokenByKeyRef,
+          key: cellAKeyFingerprint,
+        }),
+      ).toBe(true)
+      expect(branchAcceptedTokenByKeyRef.current[branchAKeyFingerprint]).toBe(3)
+      expect(cellAcceptedTokenByKeyRef.current[cellAKeyFingerprint]).toBe(3)
     } finally {
       onlineManager.setOnline(onlineState)
       branchSpy.mockRestore()
@@ -861,6 +1055,7 @@ describe('useBackboneDiffWorkbenchController seams', () => {
     expect(source).toContain('createBackboneDiffWorkbenchRootQueryFn')
     expect(source).toContain('createBackboneDiffWorkbenchBranchQueryFn')
     expect(source).toContain('createBackboneDiffWorkbenchCellQueryFn')
+    expect(source).toContain('acceptBackboneDiffQueryPage')
   })
 })
 
