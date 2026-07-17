@@ -160,6 +160,10 @@ export function reduceBackboneDiffWorkbenchState(
       const nextBasisHash = result.basis_hash
       const scopeOrBasisChanged =
         state.rootScope !== nextRootScope || state.rootBasisHash !== nextBasisHash
+      const shouldAnnounceBasisChange =
+        state.rootScope !== null &&
+        state.rootBasisHash !== null &&
+        scopeOrBasisChanged
 
       return {
         ...state,
@@ -181,7 +185,9 @@ export function reduceBackboneDiffWorkbenchState(
               openCellScope: null,
               cellPages: [],
               cellNextCursor: null,
-              navigationAnnouncement: '백본 비교 기준이 변경되어 새로고침합니다.',
+              ...(shouldAnnounceBasisChange
+                ? { navigationAnnouncement: '백본 비교 기준이 변경되어 새로고침합니다.' }
+                : {}),
             }
           : {}),
       }

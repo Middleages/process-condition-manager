@@ -68,7 +68,7 @@ describe('backbone diff workbench state', () => {
   })
 
   it('clears all opened scopes while preserving filter state when root basis changes', () => {
-    const sourceState = setBackboneDiffCellPages(
+    const sourceWithOpenedScope = setBackboneDiffCellPages(
       setBackboneDiffBranchPages(
         openBackboneDiffCell(
           openBackboneDiffBranch(createBackboneDiffWorkbenchState(), 'L1::10::ETCH', 'branch-scope'),
@@ -81,6 +81,10 @@ describe('backbone diff workbench state', () => {
       ),
       [createCellPage()],
       'cell-next',
+    )
+    const sourceState = setBackboneDiffRootResult(
+      sourceWithOpenedScope,
+      createRootOut({ scope: 'root-s', basis_hash: 'hash-1' }),
     )
 
     const next = setBackboneDiffRootResult(sourceState, createRootOut({ scope: 'new-root', basis_hash: 'hash-2' }))
@@ -96,6 +100,38 @@ describe('backbone diff workbench state', () => {
     expect(next.navigationAnnouncement).toBe('백본 비교 기준이 변경되어 새로고침합니다.')
     expect(next.rootScope).toBe('new-root')
     expect(next.rootBasisHash).toBe('hash-2')
+    expect(next.filters).toEqual(sourceState.filters)
+  })
+
+  it('does not announce when first root value lands from null scope', () => {
+    const sourceState = setBackboneDiffCellPages(
+      setBackboneDiffBranchPages(
+        openBackboneDiffCell(
+          openBackboneDiffBranch(createBackboneDiffWorkbenchState(), 'L1::10::ETCH', 'branch-scope'),
+          'L1::10::ETCH',
+          'ROW-1',
+          'cell-scope',
+        ),
+        [createConditionPage()],
+        'branch-next',
+      ),
+      [createCellPage()],
+      'cell-next',
+    )
+
+    const next = setBackboneDiffRootResult(sourceState, createRootOut())
+
+    expect(next.revision).toBe(sourceState.revision + 1)
+    expect(next.mode).toBe('root')
+    expect(next.openLayerKey).toBeNull()
+    expect(next.branchScope).toBeNull()
+    expect(next.openCellLayerKey).toBeNull()
+    expect(next.openCellScope).toBeNull()
+    expect(next.branchPages).toEqual([])
+    expect(next.cellPages).toEqual([])
+    expect(next.navigationAnnouncement).toBeNull()
+    expect(next.rootScope).toBe('scope-root')
+    expect(next.rootBasisHash).toBe('hash-1')
     expect(next.filters).toEqual(sourceState.filters)
   })
 
@@ -122,6 +158,29 @@ describe('backbone diff workbench state', () => {
       rootScope: loaded.rootScope,
       rootBasisHash: loaded.rootBasisHash,
     })
+  })
+
+  it('does not announce on the first root load from empty scope', () => {
+    const loaded = setBackboneDiffRootResult(createBackboneDiffWorkbenchState(), createRootOut())
+    expect(loaded.navigationAnnouncement).toBeNull()
+  })
+
+  it('re-emits basis change announcement after explicit clear', () => {
+    const initial = setBackboneDiffRootResult(createBackboneDiffWorkbenchState(), createRootOut({ basis_hash: 'hash-1' }))
+    const firstChange = setBackboneDiffRootResult(initial, createRootOut({ basis_hash: 'hash-2' }))
+
+    expect(firstChange.navigationAnnouncement).toBe('백본 비교 기준이 변경되어 새로고침합니다.')
+
+    const cleared = announceBackboneDiffNavigation(
+      firstChange,
+      null,
+    )
+    const secondChange = setBackboneDiffRootResult(
+      cleared,
+      createRootOut({ basis_hash: 'hash-3' }),
+    )
+
+    expect(secondChange.navigationAnnouncement).toBe('백본 비교 기준이 변경되어 새로고침합니다.')
   })
 
   it('announces and clears navigation and open scopes with stable equality when unchanged', () => {
