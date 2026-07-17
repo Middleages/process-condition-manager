@@ -3,37 +3,46 @@ import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from 'rea
 import { ErrorMessage, LoadingMessage } from '@/shared/components/StatusMessage'
 import { cn } from '@/shared/lib/cn'
 
-export type BackboneDiffClassification = 'added' | 'changed' | 'cleared' | 'removed' | 'unchanged'
+export type BackboneDiffClassification =
+  | 'added'
+  | 'changed'
+  | 'cleared'
+  | 'removed'
+  | 'unchanged'
+
 export type BackboneDiffLoadStatus = 'idle' | 'loading' | 'ready' | 'error'
+
 export type BackboneDiffLayerStatus = 'available' | 'unavailable'
+
 export type BackboneDiffJumpStatus = 'available' | 'deleted'
+
 export type BackboneDiffActivationStatus = 'available' | 'deleted' | 'removed'
 
 export interface BackboneDiffJumpTarget {
   readonly kind: 'condition' | 'cell'
   readonly layerKey: string
   readonly classification: BackboneDiffClassification
-  readonly jumpStatus: BackboneDiffJumpStatus | null
+  readonly jumpStatus: BackboneDiffJumpStatus
   readonly rowRef: string | null
-  readonly conditionId: string | null
+  readonly conditionId: number
   readonly parameterCode: string | null
   readonly sourceConditionId: number | null
 }
 
 export interface BackboneDiffCounts {
-  layerCount: number
-  availableLayerCount: number
-  unavailableLayerCount: number
-  rowCount: number
-  cellCount: number
-  fullRowCount: number
-  fullCellCount: number
-  ambiguousLineageCount: number
-  addedCount: number
-  changedCount: number
-  clearedCount: number
-  removedCount: number
-  unchangedCount: number
+  readonly layerCount: number
+  readonly availableLayerCount: number
+  readonly unavailableLayerCount: number
+  readonly rowCount: number
+  readonly cellCount: number
+  readonly fullRowCount: number
+  readonly fullCellCount: number
+  readonly ambiguousLineageCount: number
+  readonly addedCount: number
+  readonly changedCount: number
+  readonly clearedCount: number
+  readonly removedCount: number
+  readonly unchangedCount: number
 }
 
 export interface BackboneDiffLayerSummary {
@@ -134,7 +143,6 @@ export interface BackboneDiffWorkbenchProps {
   readonly rootError: string | null
   readonly onRetryRoot: () => void
   readonly onRefreshAnnouncementReset: () => void
-
   readonly refreshAnnouncement: string | null
 
   readonly filters: BackboneDiffFilter
@@ -142,6 +150,7 @@ export interface BackboneDiffWorkbenchProps {
 
   readonly preview: PreviewState<BackboneDiffPreviewItem>
   readonly onLoadMorePreview: (cursor: string | null) => void
+  readonly onRetry: () => void
 
   readonly layerConditionBranches: Readonly<Record<string, BranchState<BackboneDiffConditionItem>>>
   readonly onOpenLayer: (layerKey: string) => void
@@ -154,9 +163,17 @@ export interface BackboneDiffWorkbenchProps {
   readonly onRetryCells: (rowRef: string) => void
 
   readonly onActivateTarget: (target: BackboneDiffJumpTarget) => void
-  readonly onRetry: () => void
+
   readonly baselineUnavailableCopy: string | null
 }
+
+const CLASSIFICATIONS: readonly BackboneDiffClassification[] = [
+  'added',
+  'changed',
+  'cleared',
+  'removed',
+  'unchanged',
+]
 
 export function BackboneDiffWorkbench({
   root,
@@ -169,6 +186,7 @@ export function BackboneDiffWorkbench({
   onFiltersChange,
   preview,
   onLoadMorePreview,
+  onRetry,
   layerConditionBranches,
   onOpenLayer,
   onLoadMoreConditions,
@@ -178,7 +196,6 @@ export function BackboneDiffWorkbench({
   onLoadMoreCells,
   onRetryCells,
   onActivateTarget,
-  onRetry,
   baselineUnavailableCopy,
 }: BackboneDiffWorkbenchProps) {
   const [expandedLayers, setExpandedLayers] = useState<readonly string[]>([])
@@ -188,14 +205,12 @@ export function BackboneDiffWorkbench({
   useEffect(() => {
     setExpandedLayers([])
     setExpandedRows([])
-    if (root?.basisHash !== undefined) {
-      onRefreshAnnouncementReset()
-    }
+    onRefreshAnnouncementReset()
   }, [root?.basisHash, onRefreshAnnouncementReset])
 
   useEffect(() => {
     if (announcement !== null) {
-      const timer = window.setTimeout(() => setAnnouncement(null), 4000)
+      const timer = window.setTimeout(() => setAnnouncement(null), 3500)
       return () => window.clearTimeout(timer)
     }
     return
@@ -206,35 +221,12 @@ export function BackboneDiffWorkbench({
     [filters.classification],
   )
 
-  const toggleLayer = useCallback(
-    (layerKey: string) => {
-      setExpandedLayers((current) => {
-        const nextOpen = current.includes(layerKey)
-          ? current.filter((value) => value !== layerKey)
-          : [...current, layerKey]
-        if (!current.includes(layerKey) && layerConditionBranches[layerKey] === undefined) {
-          onOpenLayer(layerKey)
-        }
-        return nextOpen
-      })
-    },
-    [layerConditionBranches, onOpenLayer],
-  )
+  const hasUnavailableCopy = baselineUnavailableCopy !== null && baselineUnavailableCopy.trim() !== ''
+  const hasRefreshAnnouncement = refreshAnnouncement !== null && refreshAnnouncement.trim() !== ''
 
-  const toggleRow = useCallback(
-    (rowRef: string) => {
-      setExpandedRows((current) => {
-        const nextOpen = current.includes(rowRef)
-          ? current.filter((value) => value !== rowRef)
-          : [...current, rowRef]
-        if (!current.includes(rowRef) && cellBranches[rowRef] === undefined) {
-          onOpenCells(rowRef)
-        }
-        return nextOpen
-      })
-    },
-    [cellBranches, onOpenCells],
-  )
+  const emitAnnouncement = useCallback((message: string | null) => {
+    setAnnouncement(message)
+  }, [])
 
   const handleClassificationToggle = useCallback(
     (classification: BackboneDiffClassification, checked: boolean) => {
@@ -244,12 +236,11 @@ export function BackboneDiffWorkbench({
       } else {
         next.delete(classification)
       }
+      const includeUnchanged = next.has('unchanged')
       onFiltersChange({
         ...filters,
         classification: [...next],
-        includeUnchanged: next.has('unchanged')
-          ? true
-          : filters.includeUnchanged,
+        includeUnchanged,
       })
     },
     [filters, onFiltersChange],
@@ -282,44 +273,87 @@ export function BackboneDiffWorkbench({
     [filters, onFiltersChange],
   )
 
-  const onLayerKeyFilterChange = useCallback(
+  const handleLayerKeyFilter = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
       handleTextFilter('layerKey', event.currentTarget.value)
     },
     [handleTextFilter],
   )
 
-  const onCategoryFilterChange = useCallback(
+  const handleCategoryFilter = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
       handleTextFilter('categoryCode', event.currentTarget.value)
     },
     [handleTextFilter],
   )
 
-  const onParameterFilterChange = useCallback(
+  const handleParameterFilter = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
       handleTextFilter('parameterCode', event.currentTarget.value)
     },
     [handleTextFilter],
   )
 
-  const maybeRefreshAnnouncement = refreshAnnouncement?.trim() ?? null
+  const toggleLayer = useCallback(
+    (layerKey: string) => {
+      setExpandedLayers((current) => {
+        const isOpen = current.includes(layerKey)
+        const nextOpen = isOpen
+          ? current.filter((value) => value !== layerKey)
+          : [...current, layerKey]
+        if (!isOpen && layerConditionBranches[layerKey] === undefined) {
+          onOpenLayer(layerKey)
+        }
+        return nextOpen
+      })
+    },
+    [layerConditionBranches, onOpenLayer],
+  )
 
-  function renderActivationButtonLabel(state: BackboneDiffActivationStatus): string {
+  const toggleRow = useCallback(
+    (rowRef: string) => {
+      setExpandedRows((current) => {
+        const isOpen = current.includes(rowRef)
+        const nextOpen = isOpen
+          ? current.filter((value) => value !== rowRef)
+          : [...current, rowRef]
+        if (!isOpen && cellBranches[rowRef] === undefined) {
+          onOpenCells(rowRef)
+        }
+        return nextOpen
+      })
+    },
+    [cellBranches, onOpenCells],
+  )
+
+  const activateTarget = useCallback(
+    (target: BackboneDiffJumpTarget) => {
+      const activated = activateBackboneJumpTarget(target, onActivateTarget)
+      if (!activated) {
+        if (target.classification === 'removed') {
+          emitAnnouncement('삭제된 대상은 이동할 수 없습니다.')
+        } else {
+          emitAnnouncement('삭제된 대상으로는 위치를 이동할 수 없습니다.')
+        }
+      }
+      return activated
+    },
+    [emitAnnouncement, onActivateTarget],
+  )
+
+  const renderActivationButtonText = useCallback((state: BackboneDiffActivationStatus) => {
     if (state === 'available') return '위치로 이동'
     if (state === 'removed') return '제거됨'
     return '삭제됨'
-  }
+  }, [])
 
-  function rowIdentity(item: BackboneDiffConditionItem): number {
-    return item.identity
-  }
+  const previewCards = root?.changedPreview ?? []
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-canvas p-2" aria-label="백본 비교 워크벤치">
-      <section className="mb-3 rounded-md border border-border-subtle bg-surface p-2">
-        <h3 className="font-semibold">요약/요청 상태</h3>
-        {rootStatus === 'loading' ? <LoadingMessage>백본 비교 조회 중...</LoadingMessage> : null}
+    <section className="flex min-h-0 min-w-0 flex-1 flex-col bg-canvas p-2" aria-label="백본 비교 워크벤치">
+      <div className="mb-3 rounded-md border border-border-subtle bg-surface p-2">
+        <h3 className="font-semibold">요약</h3>
+        {rootStatus === 'loading' ? <LoadingMessage>루트 조회 중...</LoadingMessage> : null}
         {rootStatus === 'error' && rootError !== null ? (
           <>
             <ErrorMessage message={rootError} />
@@ -328,42 +362,84 @@ export function BackboneDiffWorkbench({
               onClick={onRetryRoot}
               type="button"
             >
-              다시 시도
+              루트 다시 시도
             </button>
           </>
         ) : null}
+
         {root !== null ? (
           <div className="mt-2 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+            <div className="rounded border border-border-subtle bg-canvas px-2 py-1">변경 레이어 <strong>{root.counts.layerCount}</strong></div>
+            <div className="rounded border border-border-subtle bg-canvas px-2 py-1">조건 <strong>{root.counts.rowCount}</strong></div>
+            <div className="rounded border border-border-subtle bg-canvas px-2 py-1">셀 <strong>{root.counts.cellCount}</strong></div>
+            <div className="rounded border border-border-subtle bg-canvas px-2 py-1">scope <strong>{root.scope}</strong></div>
             <div className="rounded border border-border-subtle bg-canvas px-2 py-1">
-              <span className="text-muted">조건</span>
-              <strong className="ml-2">{root.counts.rowCount}</strong>
+              기준 <strong>{root.basisHash.slice(0, 8)}</strong>
             </div>
             <div className="rounded border border-border-subtle bg-canvas px-2 py-1">
-              <span className="text-muted">셀</span>
-              <strong className="ml-2">{root.counts.cellCount}</strong>
+              사용 가능 레이어 <strong>{root.counts.availableLayerCount}</strong>
             </div>
             <div className="rounded border border-border-subtle bg-canvas px-2 py-1">
-              <span className="text-muted">scope</span>
-              <strong className="ml-2">{root.scope.slice(0, 8)}</strong>
+              미사용 가능 레이어 <strong>{root.counts.unavailableLayerCount}</strong>
             </div>
             <div className="rounded border border-border-subtle bg-canvas px-2 py-1">
-              <span className="text-muted">basis</span>
-              <strong className="ml-2">{root.basisHash.slice(0, 8)}</strong>
+              불일치 라인 <strong>{root.counts.ambiguousLineageCount}</strong>
             </div>
           </div>
         ) : null}
-      </section>
+      </div>
 
-      {baselineUnavailableCopy !== null ? (
-        <section className="mb-3 rounded-md border border-warning bg-warning-surface px-3 py-2 text-xs text-warning">
+      {hasUnavailableCopy ? (
+        <p
+          aria-live="polite"
+          className="mb-3 rounded-md border border-warning bg-warning-surface px-3 py-2 text-xs text-warning"
+          role="status"
+        >
           {baselineUnavailableCopy}
-        </section>
+        </p>
       ) : null}
 
       <section className="mb-3 rounded-md border border-border-subtle bg-surface p-2">
         <h3 className="font-semibold">필터</h3>
-        <div className="mt-2 flex flex-wrap gap-2 text-xs">
-          {(['added', 'changed', 'cleared', 'removed', 'unchanged'] as const).map((classification) => {
+        <div className="mt-2 grid gap-2 text-xs md:grid-cols-2 xl:grid-cols-4">
+          <label className="flex flex-col gap-1">
+            <span>Layer</span>
+            <input
+              aria-label="layer 필터"
+              className="rounded-md border border-border-subtle px-2 py-1"
+              onChange={handleLayerKeyFilter}
+              placeholder="예: L1::10::ETCH"
+              type="text"
+              value={filters.layerKey}
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span>Category</span>
+            <input
+              aria-label="category 필터"
+              className="rounded-md border border-border-subtle px-2 py-1"
+              onChange={handleCategoryFilter}
+              placeholder="예: process"
+              type="text"
+              value={filters.categoryCode}
+            />
+          </label>
+          <label className="flex flex-col gap-1 md:col-span-2">
+            <span>Parameter</span>
+            <input
+              aria-label="parameter 필터"
+              className="rounded-md border border-border-subtle px-2 py-1"
+              onChange={handleParameterFilter}
+              placeholder="예: ETCH_P001"
+              type="text"
+              value={filters.parameterCode}
+            />
+          </label>
+        </div>
+
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <span className="text-xs text-muted">classification</span>
+          {CLASSIFICATIONS.map((classification) => {
             const checked = selectedClassifications.has(classification)
             return (
               <label className="inline-flex items-center gap-1" key={classification}>
@@ -372,11 +448,11 @@ export function BackboneDiffWorkbench({
                   onChange={(event) => handleClassificationToggle(classification, event.currentTarget.checked)}
                   type="checkbox"
                 />
-                {classification}
+                <span>{classification}</span>
               </label>
             )
           })}
-          <label className="ml-auto inline-flex items-center gap-1">
+          <label className="ml-auto inline-flex items-center gap-1 text-xs">
             <input
               checked={filters.includeUnchanged}
               onChange={(event) => handleIncludeUnchanged(event.currentTarget.checked)}
@@ -385,36 +461,10 @@ export function BackboneDiffWorkbench({
             unchanged 포함
           </label>
         </div>
-        <div className="mt-2 flex flex-wrap gap-2 text-xs">
-          <input
-            aria-label="Layer"
-            className="rounded-md border border-border-subtle px-2 py-1"
-            onChange={onLayerKeyFilterChange}
-            placeholder="layer"
-            type="text"
-            value={filters.layerKey}
-          />
-          <input
-            aria-label="Category"
-            className="rounded-md border border-border-subtle px-2 py-1"
-            onChange={onCategoryFilterChange}
-            placeholder="category"
-            type="text"
-            value={filters.categoryCode}
-          />
-          <input
-            aria-label="Parameter"
-            className="rounded-md border border-border-subtle px-2 py-1"
-            onChange={onParameterFilterChange}
-            placeholder="parameter"
-            type="text"
-            value={filters.parameterCode}
-          />
-        </div>
       </section>
 
       <section className="mb-3 rounded-md border border-border-subtle bg-surface p-2">
-        <h3 className="font-semibold">변경 미리보기 (최대 20)</h3>
+        <h3 className="font-semibold">변경 미리보기 (최대 {previewCards.length > 0 ? previewCards.length : 20})</h3>
         {preview.status === 'loading' ? <LoadingMessage>미리보기 로드 중...</LoadingMessage> : null}
         {preview.status === 'error' && preview.error !== null ? (
           <>
@@ -438,7 +488,9 @@ export function BackboneDiffWorkbench({
                 key={`${item.layerKey}::${item.itemSortKey.join('-')}`}
                 className="rounded border border-border-subtle bg-canvas px-2 py-1"
               >
-                [{item.classification}] {item.itemKind} · {item.layerKey} · 조건 #{item.effectiveConditionIndex}
+                [{item.classification}] {item.itemKind} · {item.layerKey} · #{item.effectiveConditionIndex}
+                {item.rowRef !== null ? ` · row ${item.rowRef}` : ''}
+                {item.cellScope !== null ? ` · ${item.cellScope}` : ''}
               </li>
             ))}
           </ul>
@@ -453,24 +505,26 @@ export function BackboneDiffWorkbench({
             더 보기
           </button>
         ) : null}
-        {preview.nextPageError !== null ? <p className="mt-2 text-xs text-warning">{preview.nextPageError}</p> : null}
+        {preview.nextPageError !== null ? (
+          <p className="mt-2 text-xs text-warning" role="status">
+            {preview.nextPageError}
+          </p>
+        ) : null}
       </section>
 
       <section className="rounded-md border border-border-subtle bg-surface p-2">
         <h3 className="font-semibold">레이어</h3>
-        {root === null ? (
-          <p className="mt-2 text-xs text-muted">루트 데이터를 불러온 뒤 레이어를 볼 수 있습니다.</p>
-        ) : null}
+        {root === null ? <p className="mt-2 text-xs text-muted">루트 데이터를 불러온 뒤 레이어를 조회할 수 있습니다.</p> : null}
+
         <div className="mt-2 space-y-2">
           {root?.layerSummaries.map((layer) => {
             const isExpanded = expandedLayers.includes(layer.layerKey)
             const branch = layerConditionBranches[layer.layerKey]
             const branchItems = branch?.items ?? []
             const branchStatus = branch?.status ?? 'idle'
-            const conditionRow = isExpanded ? 'row' : 'closed'
 
             return (
-              <article key={layer.layerKey} className="rounded-md border border-border-subtle bg-canvas p-2">
+              <article key={layer.layerKey} className="rounded-md border border-border-subtle bg-canvas p-2" data-layer={layer.layerKey}>
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     className="rounded-sm border border-brand-700 px-2 py-1 text-xs font-semibold text-brand-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
@@ -480,9 +534,9 @@ export function BackboneDiffWorkbench({
                     {isExpanded ? '접기' : '열기'}
                   </button>
                   <strong className="text-xs">{layer.layerKey}</strong>
-                  <span className="text-xs text-muted">
-                    변경 {layer.changedCount} · 기준 {layer.currentConditionCount}/{layer.baselineConditionCount}
-                  </span>
+                  <span className="text-xs text-muted">변경 {layer.changedCount}</span>
+                  <span className="text-xs text-muted">조건 {layer.currentConditionCount}/{layer.baselineConditionCount}</span>
+                  <span className="text-xs text-muted">셀 {layer.cellCount}/{layer.fullCellCount}</span>
                   <span
                     className={cn(
                       'rounded border px-2 py-0.5 text-[11px]',
@@ -493,23 +547,22 @@ export function BackboneDiffWorkbench({
                   >
                     {layer.layerStatus}
                   </span>
-                  <span className="ml-auto text-xs text-muted">{conditionRow}</span>
                 </div>
 
                 {isExpanded ? (
                   <div className="mt-2 space-y-2">
-                    {branchStatus === 'loading' ? <LoadingMessage>조건 로딩 중...</LoadingMessage> : null}
+                    {branchStatus === 'loading' ? <LoadingMessage>조건 목록 로드 중...</LoadingMessage> : null}
                     {branchStatus === 'error' && branch !== undefined ? (
-                      <>
+                      <div className="rounded border border-error/40 bg-error/10 p-2 text-xs text-error-700">
                         <ErrorMessage message={branch.error ?? '조건 목록을 불러오지 못했습니다.'} />
                         <button
-                          className="rounded-sm border border-brand-700 px-2 py-1 text-xs font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
+                          className="mt-1 rounded-sm border border-error px-2 py-1 font-semibold"
                           onClick={() => onRetryConditions(layer.layerKey)}
                           type="button"
                         >
                           조건 다시 시도
                         </button>
-                      </>
+                      </div>
                     ) : null}
                     {branchItems.length === 0 && branchStatus === 'ready' ? (
                       <p className="text-xs text-muted">조건 항목이 없습니다.</p>
@@ -519,29 +572,11 @@ export function BackboneDiffWorkbench({
                       const isRowExpanded = expandedRows.includes(condition.rowRef)
                       const cellBranch = cellBranches[condition.rowRef]
                       const cells = cellBranch?.items ?? []
+
                       const rowActivation = activationStatusFor({
                         classification: condition.rowStatus,
                         jumpStatus: condition.jumpStatus,
                       })
-
-                      function onJumpRow(): void {
-                        const activated = activateBackboneJumpTarget(
-                          {
-                            kind: 'condition',
-                            layerKey: layer.layerKey,
-                            classification: condition.rowStatus,
-                            jumpStatus: condition.jumpStatus,
-                            rowRef: condition.rowRef,
-                            conditionId: String(condition.identity),
-                            parameterCode: null,
-                            sourceConditionId: condition.currentCondition?.sourceConditionId ?? null,
-                          },
-                          onActivateTarget,
-                        )
-                        if (!activated) {
-                          setAnnouncement('삭제/제거된 항목은 이동할 수 없습니다.')
-                        }
-                      }
 
                       return (
                         <div key={condition.rowRef} className="rounded border border-border-subtle bg-surface p-2 text-xs">
@@ -553,7 +588,12 @@ export function BackboneDiffWorkbench({
                             >
                               {isRowExpanded ? '셀 접기' : '셀 보기'}
                             </button>
-                            <span>condition #{rowIdentity(condition)} · {condition.filteredCellCount} / {condition.fullCellCount}</span>
+                            <span>
+                              condition #{condition.effectiveConditionIndex}
+                              {condition.filteredCellCount !== condition.fullCellCount
+                                ? ` · ${condition.filteredCellCount} / ${condition.fullCellCount} 셀`
+                                : ` · 셀 ${condition.fullCellCount}`}
+                            </span>
                             <button
                               className={cn(
                                 'rounded-sm border px-2 py-1 text-xs font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700',
@@ -562,31 +602,43 @@ export function BackboneDiffWorkbench({
                                   : 'border-border-subtle text-muted',
                               )}
                               disabled={rowActivation !== 'available'}
-                              onClick={onJumpRow}
+                              onClick={() =>
+                                activateTarget({
+                                  kind: 'condition',
+                                  layerKey: layer.layerKey,
+                                  classification: condition.rowStatus,
+                                  jumpStatus: condition.jumpStatus,
+                                  rowRef: condition.rowRef,
+                                  conditionId: condition.identity,
+                                  parameterCode: null,
+                                  sourceConditionId:
+                                    condition.currentCondition?.sourceConditionId
+                                    ?? condition.baselineCondition?.sourceConditionId
+                                    ?? null,
+                                })
+                              }
                               type="button"
                             >
-                              {renderActivationButtonLabel(rowActivation)}
+                              {renderActivationButtonText(rowActivation)}
                             </button>
                           </div>
 
                           {isRowExpanded ? (
                             <div className="mt-2 space-y-1">
-                              {cellBranch?.status === 'loading' ? <LoadingMessage>셀 목록 조회 중...</LoadingMessage> : null}
+                              {cellBranch?.status === 'loading' ? <LoadingMessage>셀 목록 로드 중...</LoadingMessage> : null}
                               {cellBranch?.status === 'error' ? (
-                                <>
+                                <div className="rounded border border-error/40 bg-error/10 p-2 text-xs text-error-700">
                                   <ErrorMessage message={cellBranch.error ?? '셀 목록을 불러오지 못했습니다.'} />
                                   <button
-                                    className="rounded-sm border border-brand-700 px-2 py-1 text-xs font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
+                                    className="mt-1 rounded-sm border border-error px-2 py-1 font-semibold"
                                     onClick={() => onRetryCells(condition.rowRef)}
                                     type="button"
                                   >
                                     셀 다시 시도
                                   </button>
-                                </>
+                                </div>
                               ) : null}
-                              {cells.length === 0 && cellBranch !== undefined ? (
-                                <p className="text-xs text-muted">셀 항목이 없습니다.</p>
-                              ) : null}
+                              {cells.length === 0 && cellBranch !== undefined ? <p className="text-xs text-muted">셀 항목이 없습니다.</p> : null}
                               {cells.length > 0 ? (
                                 <ul className="space-y-1">
                                   {cells.map((cell) => {
@@ -608,27 +660,24 @@ export function BackboneDiffWorkbench({
                                                 : 'border-border-subtle text-muted',
                                             )}
                                             disabled={cellActivation !== 'available'}
-                                            onClick={() => {
-                                              const activated = activateBackboneJumpTarget(
-                                                {
-                                                  kind: 'cell',
-                                                  layerKey: layer.layerKey,
-                                                  classification: cell.classification,
-                                                  jumpStatus: cell.jumpStatus,
-                                                  rowRef: condition.rowRef,
-                                                  conditionId: String(condition.identity),
-                                                  parameterCode: cell.parameterCode,
-                                                  sourceConditionId: condition.currentCondition?.sourceConditionId ?? null,
-                                                },
-                                                onActivateTarget,
-                                              )
-                                              if (!activated) {
-                                                setAnnouncement('삭제된 셀은 이동할 수 없습니다.')
-                                              }
-                                            }}
+                                            onClick={() =>
+                                              activateTarget({
+                                                kind: 'cell',
+                                                layerKey: layer.layerKey,
+                                                classification: cell.classification,
+                                                jumpStatus: cell.jumpStatus,
+                                                rowRef: condition.rowRef,
+                                                conditionId: condition.identity,
+                                                parameterCode: cell.parameterCode,
+                                                sourceConditionId:
+                                                  condition.currentCondition?.sourceConditionId
+                                                  ?? condition.baselineCondition?.sourceConditionId
+                                                  ?? null,
+                                              })
+                                            }
                                             type="button"
                                           >
-                                            {renderActivationButtonLabel(cellActivation)}
+                                            {renderActivationButtonText(cellActivation)}
                                           </button>
                                           <span className="text-muted">{cell.reason}</span>
                                         </div>
@@ -637,7 +686,7 @@ export function BackboneDiffWorkbench({
                                   })}
                                 </ul>
                               ) : null}
-                              {cellBranch?.nextCursor !== null && cellBranch?.status === 'ready' ? (
+                              {cellBranch?.nextCursor !== null && cellBranch.status === 'ready' ? (
                                 <button
                                   className="rounded-sm border border-brand-700 px-2 py-1 text-xs font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
                                   onClick={() => onLoadMoreCells(condition.rowRef, cellBranch.nextCursor)}
@@ -671,15 +720,16 @@ export function BackboneDiffWorkbench({
               </article>
             )
           })}
+
           {root !== null && root.layerSummaries.length === 0 ? (
             <p className="text-xs text-muted">변경된 레이어가 없습니다.</p>
           ) : null}
         </div>
       </section>
 
-      {maybeRefreshAnnouncement !== null ? (
+      {hasRefreshAnnouncement ? (
         <p aria-live="polite" className="mt-2 text-xs text-muted" role="status">
-          {maybeRefreshAnnouncement}
+          {refreshAnnouncement}
         </p>
       ) : null}
       {announcement !== null ? (
@@ -687,7 +737,7 @@ export function BackboneDiffWorkbench({
           {announcement}
         </p>
       ) : null}
-    </div>
+    </section>
   )
 }
 
@@ -695,8 +745,12 @@ export function activateBackboneJumpTarget(
   target: BackboneDiffJumpTarget,
   onActivateTarget: (target: BackboneDiffJumpTarget) => void,
 ): boolean {
-  if (target.classification === 'removed') return false
-  if (target.jumpStatus !== 'available') return false
+  if (target.classification === 'removed') {
+    return false
+  }
+  if (target.jumpStatus === 'deleted') {
+    return false
+  }
   onActivateTarget(target)
   return true
 }
