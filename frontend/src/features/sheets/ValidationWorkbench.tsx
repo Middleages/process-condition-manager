@@ -1,9 +1,7 @@
 import {
   useMemo,
   useReducer,
-  useRef,
   type KeyboardEvent,
-  type PointerEvent,
 } from 'react'
 
 import type { ValidationSummaryOut } from '@/api/types'
@@ -16,8 +14,6 @@ import {
 } from './validationState'
 import type { ServerConfirmation } from './useSheetValidation'
 import {
-  VALIDATION_WORKBENCH_MAX_HEIGHT,
-  VALIDATION_WORKBENCH_MIN_HEIGHT,
   createValidationWorkbenchState,
   filterValidationWorkbenchIssues,
   handleValidationTileActivationKey,
@@ -35,7 +31,6 @@ export interface ValidationWorkbenchProps {
   navigationStatus?: string | null
   onIssueActivate: (issue: ValidationWorkbenchIssue) => void
   onRetry: () => void
-  defaultHeight?: number
 }
 
 export function ValidationWorkbench({
@@ -48,21 +43,10 @@ export function ValidationWorkbench({
   navigationStatus = null,
   onIssueActivate,
   onRetry,
-  defaultHeight,
 }: ValidationWorkbenchProps) {
-  const [state, dispatch] = useReducer(
-    reduceValidationWorkbenchState,
-    { panelHeight: defaultHeight },
-    (initial) =>
-      createValidationWorkbenchState({
-        ...(initial.panelHeight === undefined ? {} : { panelHeight: initial.panelHeight }),
-      }),
+  const [state, dispatch] = useReducer(reduceValidationWorkbenchState, {}, () =>
+    createValidationWorkbenchState(),
   )
-  const dragRef = useRef<{
-    pointerId: number
-    startY: number
-    startHeight: number
-  } | null>(null)
   const filteredIssues = useMemo(
     () => filterValidationWorkbenchIssues(issues, state),
     [issues, state],
@@ -84,70 +68,19 @@ export function ValidationWorkbench({
     serverConfirmation === 'failed' &&
     serverFailure === VALIDATION_SERVER_FAILURE
 
-  function resizeWithKeyboard(event: KeyboardEvent<HTMLDivElement>): void {
-    if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return
-    event.preventDefault()
-    dispatch({ type: 'resize-by', delta: event.key === 'ArrowUp' ? 1 : -1 })
-  }
-
-  function beginResize(event: PointerEvent<HTMLDivElement>): void {
-    dragRef.current = {
-      pointerId: event.pointerId,
-      startY: event.clientY,
-      startHeight: state.panelHeight,
-    }
-    event.currentTarget.setPointerCapture(event.pointerId)
-  }
-
-  function continueResize(event: PointerEvent<HTMLDivElement>): void {
-    const drag = dragRef.current
-    if (drag === null || drag.pointerId !== event.pointerId) return
-    dispatch({
-      type: 'set-height',
-      height: drag.startHeight + drag.startY - event.clientY,
-    })
-  }
-
-  function finishResize(event: PointerEvent<HTMLDivElement>): void {
-    if (dragRef.current?.pointerId !== event.pointerId) return
-    dragRef.current = null
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId)
-    }
-  }
-
   return (
-    <section
+    <div
       aria-label="검증 결과"
-      className={cn(
-        'flex min-h-0 min-w-0 flex-col overflow-hidden border-t border-border-subtle bg-surface',
-      )}
+      className={cn('flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-canvas p-2')}
       data-validation-workbench
-      style={{ height: state.panelHeight }}
     >
-      <div
-        aria-label="검증 패널 높이 조절"
-        aria-orientation="horizontal"
-        aria-valuemax={VALIDATION_WORKBENCH_MAX_HEIGHT}
-        aria-valuemin={VALIDATION_WORKBENCH_MIN_HEIGHT}
-        aria-valuenow={state.panelHeight}
-        className="h-2 shrink-0 cursor-row-resize bg-border-subtle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-brand-700"
-        onKeyDown={resizeWithKeyboard}
-        onPointerCancel={finishResize}
-        onPointerDown={beginResize}
-        onPointerMove={continueResize}
-        onPointerUp={finishResize}
-        role="separator"
-        tabIndex={0}
-      />
-
       <div
         className={cn(
           'flex h-[30px] min-w-0 shrink-0 items-center gap-2 px-3 text-xs',
           stripStatus.toneClass,
         )}
         data-testid="validation-summary-strip"
-        >
+      >
         <strong className="shrink-0 text-error">오류 {errorCount}</strong>
         <strong className="shrink-0 text-warning">경고 {warningCount}</strong>
         <span aria-live="polite" className="min-w-0 flex-1 truncate" role="status">
@@ -217,7 +150,7 @@ export function ValidationWorkbench({
           )}
         </div>
       </div>
-    </section>
+    </div>
   )
 }
 

@@ -8,7 +8,6 @@ import {
 
 import { Button } from '@/shared/components/Button'
 import { InlineAlert } from '@/shared/components/InlineAlert'
-import { cn } from '@/shared/lib/cn'
 
 import {
   VALIDATION_WORKBENCH_DEFAULT_HEIGHT,
@@ -17,6 +16,7 @@ import {
   VALIDATION_WORKBENCH_RESIZE_STEP,
   clampValidationWorkbenchHeight,
 } from './validationWorkbenchState'
+import { SheetWorkbenchNavigation } from './SheetWorkbenchNavigation'
 
 export type SheetWorkbenchMode = 'validation' | 'history' | 'backbone-diff' | null
 
@@ -114,8 +114,8 @@ export function SheetWorkbenchPanel({
   onResizeBy: (delta: -1 | 1) => void
   onSetHeight: (height: number) => void
   validationContent: ReactNode
-  historyContent: ReactNode
-  backboneDiffContent: ReactNode
+  historyContent?: ReactNode
+  backboneDiffContent?: ReactNode
 }) {
   const dragRef = useRef<{
     pointerId: number
@@ -176,43 +176,43 @@ export function SheetWorkbenchPanel({
       />
 
       <div className="border-b border-border-subtle bg-canvas px-3 py-2">
-        {/* Workbench navigation is mode-based; category tabs remain in the sheet toolbar. */}
-        <SheetWorkbenchNavigationBridge mode={mode} onModeChange={onModeChange} />
+        <SheetWorkbenchNavigation mode={mode} onModeChange={onModeChange} />
       </div>
 
       <div className="min-h-0 min-w-0 flex-1 overflow-hidden bg-canvas p-2">
-        {mode === 'validation' ? (
-          <WorkbenchPanel
-            id="sheet-workbench-panel-validation"
-            labelledBy="sheet-workbench-tab-validation"
-          >
-            {validationContent}
-          </WorkbenchPanel>
-        ) : mode === 'history' ? (
-          <WorkbenchPanel
-            id="sheet-workbench-panel-history"
-            labelledBy="sheet-workbench-tab-history"
-          >
-            {historyContent}
-          </WorkbenchPanel>
-        ) : (
-          <WorkbenchPanel
-            id="sheet-workbench-panel-backbone-diff"
-            labelledBy="sheet-workbench-tab-backbone-diff"
-          >
-            {backboneDiffContent}
-          </WorkbenchPanel>
-        )}
+        <WorkbenchTabPanel
+          active={mode === 'validation'}
+          id="sheet-workbench-panel-validation"
+          labelledBy="sheet-workbench-tab-validation"
+        >
+          {validationContent}
+        </WorkbenchTabPanel>
+        <WorkbenchTabPanel
+          active={mode === 'history'}
+          id="sheet-workbench-panel-history"
+          labelledBy="sheet-workbench-tab-history"
+        >
+          {historyContent ?? <WorkbenchPlaceholder title="이력 워크벤치" />}
+        </WorkbenchTabPanel>
+        <WorkbenchTabPanel
+          active={mode === 'backbone-diff'}
+          id="sheet-workbench-panel-backbone-diff"
+          labelledBy="sheet-workbench-tab-backbone-diff"
+        >
+          {backboneDiffContent ?? <WorkbenchPlaceholder title="백본 비교 워크벤치" />}
+        </WorkbenchTabPanel>
       </div>
     </section>
   )
 }
 
-function WorkbenchPanel({
+function WorkbenchTabPanel({
+  active,
   id,
   labelledBy,
   children,
 }: {
+  active: boolean
   id: string
   labelledBy: string
   children: ReactNode
@@ -221,42 +221,21 @@ function WorkbenchPanel({
     <section
       aria-labelledby={labelledBy}
       className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-md border border-border-subtle bg-surface"
-      hidden={false}
+      hidden={!active}
       id={id}
       role="tabpanel"
+      aria-hidden={!active}
     >
-      <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-2">
-        {children}
-      </div>
+      {active ? (
+        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-2">
+          {children}
+        </div>
+      ) : null}
     </section>
   )
 }
 
-function SheetWorkbenchNavigationBridge({
-  mode,
-  onModeChange,
-}: {
-  mode: Exclude<SheetWorkbenchMode, null>
-  onModeChange: (mode: Exclude<SheetWorkbenchMode, null>) => void
-}) {
-  return <SheetWorkbenchNavigation mode={mode} onModeChange={onModeChange} />
-}
-
-function SheetWorkbenchNavigation({
-  mode,
-  onModeChange,
-}: {
-  mode: Exclude<SheetWorkbenchMode, null>
-  onModeChange: (mode: Exclude<SheetWorkbenchMode, null>) => void
-}) {
-  return null
-}
-
-function PlaceholderWorkbench({
-  title,
-}: {
-  title: string
-}) {
+function WorkbenchPlaceholder({ title }: { title: string }) {
   return (
     <InlineAlert tone="info">
       <div className="flex flex-wrap items-center gap-2">
@@ -265,11 +244,4 @@ function PlaceholderWorkbench({
       </div>
     </InlineAlert>
   )
-}
-
-export function SheetWorkbenchFallbackPanels() {
-  return {
-    history: <PlaceholderWorkbench title="이력 워크벤치" />,
-    backboneDiff: <PlaceholderWorkbench title="백본 비교 워크벤치" />,
-  }
 }

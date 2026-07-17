@@ -58,8 +58,7 @@ import {
 } from './persistenceReconciliation'
 import { resolveSheetInteraction } from './sheetInteraction'
 import { SheetFocusFrame } from './SheetFocusFrame'
-import { useSheetWorkbenchMode, SheetWorkbenchToggle } from './SheetWorkbench'
-import { SheetWorkbenchCategoryTabs } from './SheetWorkbenchNavigation'
+import { SheetWorkbenchPanel, SheetWorkbenchToggle, useSheetWorkbenchState } from './SheetWorkbench'
 import { ValidationWorkbench } from './ValidationWorkbench'
 import {
   SheetAdapterError,
@@ -353,7 +352,7 @@ function SheetEditor({
     validation.issues,
     validation.explicitValidationCompleted,
   )
-  const workbenchMode = useSheetWorkbenchMode(showValidationWorkbench)
+  const workbenchState = useSheetWorkbenchState(showValidationWorkbench)
 
   // 붙여넣기 스테이징(적용 전 미리보기). null = 대기 중인 붙여넣기 없음.
   const [paste, setPasteState] = useState<PasteStagingResult | null>(null)
@@ -797,12 +796,25 @@ function SheetEditor({
           <div className="flex min-w-0 flex-wrap items-center gap-2" data-testid="sheet-category-tabs">
             <SheetMetrics rowCount={data.rows.length} colCount={data.columns.length} />
             {categories.length > 0 ? (
-              <SheetWorkbenchCategoryTabs
-                activeCategory={activeCategory}
-                categories={categories}
-                disabled={!interaction.canSwitchCategory}
-                onSelectCategory={selectCategory}
-              />
+              <>
+                <CategoryTab
+                  active={activeCategory === null}
+                  disabled={!interaction.canSwitchCategory}
+                  onClick={() => selectCategory(null)}
+                >
+                  전체
+                </CategoryTab>
+                {categories.map((category) => (
+                  <CategoryTab
+                    key={category}
+                    active={activeCategory === category}
+                    disabled={!interaction.canSwitchCategory}
+                    onClick={() => selectCategory(category)}
+                  >
+                    {category}
+                  </CategoryTab>
+                ))}
+              </>
             ) : null}
             <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2">
               <Button
@@ -819,13 +831,13 @@ function SheetEditor({
                 onClick={() => void validation.explicitlyValidate()}
                 size="compact"
                 type="button"
-                >
-                  검증
-                </Button>
+              >
+                검증
+              </Button>
               {showValidationWorkbench ? (
                 <SheetWorkbenchToggle
-                  expanded={workbenchMode.visible}
-                  onToggle={workbenchMode.toggle}
+                  expanded={workbenchState.visible}
+                  onToggle={workbenchState.toggle}
                   disabled={!showValidationWorkbench}
                 />
               ) : null}
@@ -899,17 +911,26 @@ function SheetEditor({
         </div>
       }
       workbench={
-        workbenchMode.visible && showValidationWorkbench ? (
-          <ValidationWorkbench
-            definitionsPending={validationDefinitionsPending}
-            issues={validationIssues}
-            summary={validation.summary}
-            issueAuthority={validation.issueAuthority}
-            serverConfirmation={validation.serverConfirmation}
-            serverFailure={validation.serverFailure}
-            navigationStatus={validationNavigationStatus}
-            onIssueActivate={activateValidationIssue}
-            onRetry={() => void validation.retry()}
+        workbenchState.visible && showValidationWorkbench ? (
+          <SheetWorkbenchPanel
+            mode={workbenchState.mode ?? 'validation'}
+            onModeChange={workbenchState.selectMode}
+            onResizeBy={workbenchState.resizeBy}
+            onSetHeight={workbenchState.setHeight}
+            panelHeight={workbenchState.panelHeight}
+            validationContent={
+              <ValidationWorkbench
+                definitionsPending={validationDefinitionsPending}
+                issues={validationIssues}
+                summary={validation.summary}
+                issueAuthority={validation.issueAuthority}
+                serverConfirmation={validation.serverConfirmation}
+                serverFailure={validation.serverFailure}
+                navigationStatus={validationNavigationStatus}
+                onIssueActivate={activateValidationIssue}
+                onRetry={() => void validation.retry()}
+              />
+            }
           />
         ) : undefined
       }
