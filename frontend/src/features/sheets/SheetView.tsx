@@ -474,6 +474,8 @@ function SheetEditor({
     workbenchState.mode === 'backbone-diff',
     backboneDiffMutationRevision,
   )
+  const { onClearNavigationAnnouncement: onClearBackboneNavigationAnnouncement } =
+    backboneDiffWorkbench
   const [backboneDiffRefreshAnnouncement, setBackboneDiffRefreshAnnouncement] = useState<string | null>(
     null,
   )
@@ -483,8 +485,8 @@ function SheetEditor({
   }, [backboneDiffWorkbench.state.navigationAnnouncement])
   const onBackboneRefreshAnnouncementReset = useCallback(() => {
     setBackboneDiffRefreshAnnouncement(null)
-    backboneDiffWorkbench.onClearNavigationAnnouncement?.()
-  }, [backboneDiffWorkbench])
+    onClearBackboneNavigationAnnouncement?.()
+  }, [onClearBackboneNavigationAnnouncement])
 
   const previousValidationIssueCountRef = useRef(0)
 

@@ -242,6 +242,7 @@ function createMockHistoryController(
 }
 
 function createMockBackboneDiffWorkbenchController(): BackboneDiffWorkbenchController {
+  const onClearNavigationAnnouncement = vi.fn()
   return {
     state: {
       filters: {
@@ -304,6 +305,7 @@ function createMockBackboneDiffWorkbenchController(): BackboneDiffWorkbenchContr
     onRetryRoot: () => undefined,
     onRetryBranch: () => undefined,
     onRetryCell: () => undefined,
+    onClearNavigationAnnouncement,
   }
 }
 
@@ -1027,6 +1029,16 @@ describe('SheetView focus shell integration', () => {
     expect(sheetViewSource).toContain('onCloseBranch={backboneDiffWorkbench.onCloseBranch}')
     expect(sheetViewSource).toContain('onCloseCell={backboneDiffWorkbench.onCloseCell}')
     expect(sheetViewSource).toContain('onClearNavigationAnnouncement?.()')
+  })
+
+  it('resets backbone-diff announcement via a stable clear callback, not full controller object', () => {
+    expect(sheetViewSource).toContain(
+      'const { onClearNavigationAnnouncement: onClearBackboneNavigationAnnouncement } = backboneDiffWorkbench',
+    )
+    expect(sheetViewSource).toContain('const onBackboneRefreshAnnouncementReset = useCallback(() => {')
+    expect(sheetViewSource).toContain('onClearBackboneNavigationAnnouncement?.()')
+    expect(sheetViewSource).toContain('}, [onClearBackboneNavigationAnnouncement])')
+    expect(sheetViewSource).not.toContain('}, [backboneDiffWorkbench])')
   })
 
   it('maps backbone diff preview, condition, and cell data fields to the shared contracts', () => {
