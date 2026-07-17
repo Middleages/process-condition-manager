@@ -707,14 +707,14 @@ export function BackboneDiffWorkbench({
                     {branch?.nextCursor !== null ? (
                       <button
                         className="rounded-sm border border-brand-700 px-2 py-1 text-xs font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
-                        disabled={branch.status !== 'ready'}
+                        disabled={branch?.status !== 'ready'}
                         onClick={() => onLoadMoreConditions(layer.layerKey, branch.nextCursor)}
                         type="button"
                       >
                         더 보기
                       </button>
                     ) : null}
-                    {branch?.nextPageError !== null ? <p className="text-xs text-warning">{branch.nextPageError}</p> : null}
+                    {branch?.nextPageError !== null ? <p className="text-xs text-warning">{branch?.nextPageError}</p> : null}
                   </div>
                 ) : null}
               </article>

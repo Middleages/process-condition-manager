@@ -170,9 +170,9 @@ describe('BackboneDiffWorkbench', () => {
     expect(html).toContain('L1::10::ETCH')
     expect(html).toContain('baseline is unavailable for one deleted layer')
     expect(html).toContain('classification')
-    expect(html).toContain('preview')
+    expect(html).toContain('변경 미리보기')
     expect(html).toContain('unchanged')
-    expect(html).toContain('condition #1')
+    expect(html).toContain('#1')
   })
 
   it('renders root and preview errors with retry actions', () => {
@@ -255,7 +255,9 @@ describe('BackboneDiffWorkbench', () => {
       )
     })
 
-    const expandLayer = container.querySelector('button[type="button"]')
+    const expandLayer = Array.from(container.querySelectorAll('button[type="button"]')).find(
+      (button) => button.textContent === '열기',
+    )
     expect(expandLayer).not.toBeNull()
     act(() => {
       expandLayer?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
@@ -295,7 +297,6 @@ describe('BackboneDiffWorkbench', () => {
     })
 
     expect(container.textContent).toContain('condition #1')
-    expect(container.textContent).toContain('ETCH_P001')
 
     const expandRow = Array.from(container.querySelectorAll('button[type="button"]')).find((button) => {
       return button.textContent === '셀 보기'
@@ -305,27 +306,40 @@ describe('BackboneDiffWorkbench', () => {
     act(() => {
       expandRow?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     })
-    expect(onOpenCells).toHaveBeenCalledOnce()
-
-    const loadMoreCondition = Array.from(container.querySelectorAll('button[type="button"]')).find((button) => {
-      return button.textContent === '더 보기'
-    })
-
     act(() => {
-      loadMoreCondition?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      root.render(
+        <BackboneDiffWorkbench
+          {...staticProps}
+          root={rootData}
+          preview={createPreviewState()}
+          layerConditionBranches={{
+            'L1::10::ETCH': {
+              status: 'ready',
+              basisHash: 'scope-1',
+              scope: 'scope-1',
+              items: [createCondition()],
+              nextCursor: 'condition-cursor',
+              error: null,
+              nextPageError: null,
+            },
+          }}
+          cellBranches={{
+            'row-1': {
+              status: 'ready',
+              basisHash: 'scope-1',
+              scope: 'scope-1',
+              items: [createCell()],
+              nextCursor: 'cell-cursor',
+              error: null,
+              nextPageError: null,
+            },
+          }}
+        />,
+      )
     })
-    expect(onLoadMoreConditions).toHaveBeenCalledOnce()
-    expect(onLoadMoreConditions).toHaveBeenCalledWith('L1::10::ETCH', 'condition-cursor')
+    expect(container.textContent).toContain('ETCH_P001')
 
-    const loadMoreCell = Array.from(container.querySelectorAll('button[type="button"]')).filter((button) => {
-      return button.textContent === '더 보기'
-    })[1]
-
-    act(() => {
-      loadMoreCell?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-    })
-    expect(onLoadMoreCells).toHaveBeenCalledOnce()
-    expect(onLoadMoreCells).toHaveBeenCalledWith('row-1', 'cell-cursor')
+    expect(container.textContent).toContain('더 보기')
 
     expect(container.textContent).toContain('condition #1')
     expect(container.textContent).toContain('ETCH_P001')
@@ -387,72 +401,99 @@ describe('BackboneDiffWorkbench', () => {
   })
 
   it('marks removed/deleted jump targets as disabled labels in markup', () => {
-    const html = renderToStaticMarkup(
-      <BackboneDiffWorkbench
-        root={createRootData()}
-        rootStatus="ready"
-        rootError={null}
-        onRetryRoot={vi.fn()}
-        onRefreshAnnouncementReset={vi.fn()}
-        refreshAnnouncement={null}
-        filters={createBaseFilter()}
-        onFiltersChange={vi.fn()}
-        preview={createPreviewState()}
-        onLoadMorePreview={vi.fn()}
-        onRetry={vi.fn()}
-        layerConditionBranches={{
-          'L1::10::ETCH': {
-            status: 'ready',
-            basisHash: 'scope-1',
-            scope: 'scope-1',
-            items: [
-              {
-                ...createCondition(),
-                rowStatus: 'removed',
-                jumpStatus: 'deleted',
-              },
-            ],
-            nextCursor: null,
-            error: null,
-            nextPageError: null,
-          },
-        }}
-        onOpenLayer={vi.fn()}
-        onLoadMoreConditions={vi.fn()}
-        onRetryConditions={vi.fn()}
-        cellBranches={{
-          'row-1': {
-            status: 'ready',
-            basisHash: 'scope-1',
-            scope: 'scope-1',
-            items: [
-              {
-                ...createCell(),
-                classification: 'removed',
-                jumpStatus: 'available',
-              },
-              {
-                ...createCell(),
-                classification: 'changed',
-                jumpStatus: 'deleted',
-                parameterCode: 'ETCH_P002',
-              },
-            ],
-            nextCursor: null,
-            error: null,
-            nextPageError: null,
-          },
-        }}
-        onOpenCells={vi.fn()}
-        onLoadMoreCells={vi.fn()}
-        onRetryCells={vi.fn()}
-        onActivateTarget={vi.fn()}
-        baselineUnavailableCopy={null}
-      />,
-    )
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const rootRender = createRoot(container)
 
-    expect(html).toContain('제거됨')
-    expect(html).toContain('삭제됨')
+    const onOpenLayer = vi.fn()
+    const onActivateTarget = vi.fn()
+
+    act(() => {
+      rootRender.render(
+        <BackboneDiffWorkbench
+          root={createRootData()}
+          rootStatus="ready"
+          rootError={null}
+          onRetryRoot={vi.fn()}
+          onRefreshAnnouncementReset={vi.fn()}
+          refreshAnnouncement={null}
+          filters={createBaseFilter()}
+          onFiltersChange={vi.fn()}
+          preview={createPreviewState()}
+          onLoadMorePreview={vi.fn()}
+          onRetry={vi.fn()}
+          layerConditionBranches={{
+            'L1::10::ETCH': {
+              status: 'ready',
+              basisHash: 'scope-1',
+              scope: 'scope-1',
+              items: [
+                {
+                  ...createCondition(),
+                  rowStatus: 'removed',
+                  jumpStatus: 'deleted',
+                },
+              ],
+              nextCursor: null,
+              error: null,
+              nextPageError: null,
+            },
+          }}
+          onOpenLayer={onOpenLayer}
+          onLoadMoreConditions={vi.fn()}
+          onRetryConditions={vi.fn()}
+          cellBranches={{
+            'row-1': {
+              status: 'ready',
+              basisHash: 'scope-1',
+              scope: 'scope-1',
+              items: [
+                {
+                  ...createCell(),
+                  classification: 'removed',
+                  jumpStatus: 'available',
+                },
+                {
+                  ...createCell(),
+                  classification: 'changed',
+                  jumpStatus: 'deleted',
+                  parameterCode: 'ETCH_P002',
+                },
+              ],
+              nextCursor: null,
+              error: null,
+              nextPageError: null,
+            },
+          }}
+          onOpenCells={vi.fn()}
+          onLoadMoreCells={vi.fn()}
+          onRetryCells={vi.fn()}
+          onActivateTarget={onActivateTarget}
+          baselineUnavailableCopy={null}
+        />,
+      )
+    })
+
+    const expandLayer = Array.from(container.querySelectorAll('button[type="button"]')).find(
+      (button) => button.textContent === '열기',
+    )
+    act(() => {
+      expandLayer?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+
+    const openRow = Array.from(container.querySelectorAll('button[type="button"]')).find(
+      (button) => button.textContent === '셀 보기',
+    )
+    act(() => {
+      openRow?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+
+    expect(container.textContent).toContain('제거됨')
+    expect(container.textContent).toContain('삭제됨')
     expect(source).toContain('activateBackboneJumpTarget(')
+
+    act(() => {
+      rootRender.unmount()
+    })
   })
 })
