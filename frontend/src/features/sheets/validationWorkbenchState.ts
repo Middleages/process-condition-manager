@@ -196,7 +196,18 @@ export function resolveValidationIssueNavigation(
   rows: readonly ConditionGridRow[],
   activeCategory: string | null,
 ): ValidationIssueNavigation {
-  return resolveWorkbenchCoordinateNavigation(issue, columns, rows, activeCategory)
+  const coordinate =
+    'conditionId' in issue
+      ? {
+          conditionId: issue.conditionId,
+          parameterCode: issue.parameterCode,
+        }
+      : {
+          conditionId: issue.condition_id,
+          parameterCode: issue.parameter_code,
+        }
+
+  return resolveWorkbenchCoordinateNavigation(coordinate, columns, rows, activeCategory)
 }
 
 export function isValidationTileActivationKey(key: string): boolean {

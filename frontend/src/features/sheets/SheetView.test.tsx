@@ -567,10 +567,13 @@ describe('SheetView focus shell integration', () => {
     expect(sheetViewSource).toContain(
       'const wasValidationWorkbenchVisibleRef = useRef(false)',
     )
-    expect(sheetViewSource).toMatch(
-      /if \(showValidationWorkbench && !wasValidationWorkbenchVisibleRef\.current && workbenchState\.mode === null\) \{\s*workbenchState\.selectMode\('validation'\)\s*\}\s*wasValidationWorkbenchVisibleRef\.current = showValidationWorkbench/,
-    )
+    expect(sheetViewSource).toContain('showValidationWorkbench &&')
+    expect(sheetViewSource).toContain('!wasValidationWorkbenchVisibleRef.current')
+    expect(sheetViewSource).toContain('workbenchState.mode === null')
     expect(sheetViewSource).toContain("workbenchState.selectMode('validation')")
+    expect(sheetViewSource).toContain(
+      'wasValidationWorkbenchVisibleRef.current = showValidationWorkbench',
+    )
     expect(sheetViewSource).toContain('expanded={workbenchState.mode !== null}')
     expect(sheetViewSource).toContain('workbenchState.mode !== null ? (')
     expect(sheetViewSource).not.toContain('workbenchState.visible')

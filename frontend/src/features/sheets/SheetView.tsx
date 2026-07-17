@@ -359,7 +359,11 @@ function SheetEditor({
   const wasValidationWorkbenchVisibleRef = useRef(false)
 
   useEffect(() => {
-    if (showValidationWorkbench && !wasValidationWorkbenchVisibleRef.current && workbenchState.mode === null) {
+    if (
+      showValidationWorkbench &&
+      !wasValidationWorkbenchVisibleRef.current &&
+      workbenchState.mode === null
+    ) {
       workbenchState.selectMode('validation')
     }
     wasValidationWorkbenchVisibleRef.current = showValidationWorkbench
@@ -445,12 +449,14 @@ function SheetEditor({
   useEffect(() => {
     if (pendingCoordinateJump === null) return
     if (!visibleColumns.some((column) => column.key === pendingCoordinateJump.parameterCode)) return
-    if (!displayRows.some((row) => row.id === pendingCoordinateJump.conditionId)) {
+    const conditionId = String(pendingCoordinateJump.conditionId)
+    const parameterCode = String(pendingCoordinateJump.parameterCode)
+    if (!displayRows.some((row) => row.id === conditionId)) {
       setCoordinateNavigationStatus('이동할 대상 셀을 찾지 못했습니다.')
       setPendingCoordinateJump(null)
       return
     }
-    gridRef.current?.scrollToCell(pendingCoordinateJump.conditionId, pendingCoordinateJump.parameterCode)
+    gridRef.current?.scrollToCell(conditionId, parameterCode)
     setCoordinateNavigationStatus('대상 셀로 이동했습니다.')
     setPendingCoordinateJump(null)
   }, [pendingCoordinateJump, visibleColumns, displayRows])
