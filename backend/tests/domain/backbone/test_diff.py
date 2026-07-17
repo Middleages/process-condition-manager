@@ -8,18 +8,17 @@ from app.domain.backbone.diff import (
     BackboneDiffCurrentCondition,
     BackboneDiffCurrentParameter,
     BackboneDiffLayerInput,
-    backbone_diff_basis_hash,
     backbone_diff_layer_basis_hash,
     compare_backbone,
     compare_backbone_layer,
 )
 from app.domain.backbone.snapshot import (
+    UNRESOLVED_PARAMETER_METADATA,
     BackboneSnapshot,
     BackboneSnapshotCell,
     BackboneSnapshotColumn,
     BackboneSnapshotCondition,
     BackboneSnapshotSource,
-    UNRESOLVED_PARAMETER_METADATA,
 )
 from app.domain.errors import RuleViolationError
 from app.domain.parameters.types import ValueType
@@ -247,9 +246,7 @@ def test_compare_backbone_layer_classifies_and_orders_all_core_cases() -> None:
     ]
 
 
-def test_compare_backbone_layer_is_stable_under_input_shuffling_and_ignores_orphan_inactive_parameters() -> (
-    None
-):
+def test_compare_backbone_layer_is_stable_under_input_shuffling_and_ignores_orphan_inactive_parameters() -> None:
     current_conditions = (
         _duplicate_current_condition(),
         _matched_current_condition(),
