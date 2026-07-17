@@ -9,6 +9,7 @@ from app.core.db import app_engine
 from app.features.backbone_diff.contracts import DiffInput
 from app.features.backbone_diff.repository import BackboneDiffRepository
 
+
 def build_read_only_sessionmaker(
     engine: AsyncEngine,
 ) -> async_sessionmaker[AsyncSession]:
