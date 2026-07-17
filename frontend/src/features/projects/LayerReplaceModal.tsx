@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 
 import { getApiErrorMessage } from '@/api/client'
+import { invalidateProjectBackboneDiffAfterMutation } from '@/api/backboneDiffCache'
 import { invalidateProjectHistoryAfterMutation } from '@/api/historyCache'
 import { acquireLock, releaseLock } from '@/api/locks'
 import { getProject, listProjects, replaceLayerBackbone } from '@/api/projects'
@@ -60,6 +61,7 @@ export function LayerReplaceModal({
     },
     onSuccess: async () => {
       await Promise.all([
+        invalidateProjectBackboneDiffAfterMutation(queryClient, project.id),
         invalidateProjectHistoryAfterMutation(queryClient, project.id),
         queryClient.invalidateQueries({ queryKey: ['project', project.id] }),
         queryClient.invalidateQueries({ queryKey: ['projects'] }),

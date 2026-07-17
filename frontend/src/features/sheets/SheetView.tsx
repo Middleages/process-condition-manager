@@ -12,6 +12,7 @@ import { Link, useParams } from 'react-router-dom'
 
 import { getApiErrorMessage } from '@/api/client'
 import { addCondition, deleteCondition, setConditionPor } from '@/api/conditions'
+import { invalidateProjectBackboneDiffAfterMutation } from '@/api/backboneDiffCache'
 import { invalidateProjectHistoryAfterMutation } from '@/api/historyCache'
 import type { HistoryJumpTargetOut } from '@/api/history'
 import { getProject } from '@/api/projects'
@@ -105,7 +106,8 @@ type BackboneDiffFilterPayload = Omit<BackboneDiffFilter, 'layerKey' | 'category
   parameterCode: string | null
 }
 
-const BACKBONE_DIFF_ROOT_UNAVAILABLE_MESSAGE = '백본 비교 기준 중 기준 백본이 더 이상 존재하지 않아 일부 데이터는 표시되지 않습니다.'
+const BACKBONE_DIFF_ROOT_UNAVAILABLE_MESSAGE =
+  '저장된 기준 백본이 없어 일부 레이어의 비교 상세를 제공할 수 없습니다'
 
 const BACKBONE_DIFF_EMPTY_COUNTS: BackboneDiffCountsOut = {
   layer_count: 0,
@@ -123,12 +125,22 @@ const BACKBONE_DIFF_EMPTY_COUNTS: BackboneDiffCountsOut = {
   unchanged_count: 0,
 }
 
-function mapBackboneDiffConditionClassification(
-  status: 'added' | 'removed' | 'matched',
-): 'added' | 'changed' | 'cleared' | 'removed' | 'unchanged' {
-  if (status === 'added') return 'added'
-  if (status === 'removed') return 'removed'
-  return 'unchanged'
+function mapBackboneDiffConditionRowMetadata(
+  metadata: {
+    readonly label_changed: boolean
+    readonly index_changed: boolean
+    readonly por_changed: boolean
+  },
+): {
+  readonly labelChanged: boolean
+  readonly indexChanged: boolean
+  readonly porChanged: boolean
+} {
+  return {
+    labelChanged: metadata.label_changed,
+    indexChanged: metadata.index_changed,
+    porChanged: metadata.por_changed,
+  }
 }
 
 function mapBackboneDiffConditionMetadata(
@@ -313,10 +325,15 @@ function SheetEditor({
   const queryClient = useQueryClient()
   const liveTitleRef = useRef<HTMLHeadingElement>(null)
   const [historyMutationRevision, setHistoryMutationRevision] = useState(0)
+  const [backboneDiffMutationRevision, setBackboneDiffMutationRevision] = useState(0)
 
   const invalidateProjectHistory = useCallback(() => {
     setHistoryMutationRevision((current) => current + 1)
     void invalidateProjectHistoryAfterMutation(queryClient, projectId)
+  }, [queryClient, projectId])
+  const invalidateProjectBackboneDiff = useCallback(() => {
+    setBackboneDiffMutationRevision((current) => current + 1)
+    void invalidateProjectBackboneDiffAfterMutation(queryClient, projectId)
   }, [queryClient, projectId])
 
   const choiceResources = useSheetChoiceSets(sheet.columns)
@@ -337,8 +354,9 @@ function SheetEditor({
         (snapshot) => useEditStore.getState().markSaved(snapshot),
       )
       invalidateProjectHistory()
+      invalidateProjectBackboneDiff()
     },
-    [commitSaved, invalidateProjectHistory],
+    [commitSaved, invalidateProjectHistory, invalidateProjectBackboneDiff],
   )
 
   const editing = useSheetEditing(projectId, {
@@ -454,6 +472,7 @@ function SheetEditor({
   const backboneDiffWorkbench = useBackboneDiffWorkbenchController(
     projectId,
     workbenchState.mode === 'backbone-diff',
+    backboneDiffMutationRevision,
   )
   const [backboneDiffRefreshAnnouncement, setBackboneDiffRefreshAnnouncement] = useState<string | null>(
     null,
@@ -464,7 +483,8 @@ function SheetEditor({
   }, [backboneDiffWorkbench.state.navigationAnnouncement])
   const onBackboneRefreshAnnouncementReset = useCallback(() => {
     setBackboneDiffRefreshAnnouncement(null)
-  }, [])
+    backboneDiffWorkbench.onClearNavigationAnnouncement?.()
+  }, [backboneDiffWorkbench])
 
   const previousValidationIssueCountRef = useRef(0)
 
@@ -620,6 +640,7 @@ function SheetEditor({
       try {
         await runStructuralChange(fn)
         invalidateProjectHistory()
+        invalidateProjectBackboneDiff()
         refreshSheet()
         return true
       } catch (error) {
@@ -630,7 +651,12 @@ function SheetEditor({
         setStructBusy(false)
       }
     },
-    [runStructuralChange, invalidateProjectHistory, refreshSheet],
+    [
+      runStructuralChange,
+      invalidateProjectHistory,
+      invalidateProjectBackboneDiff,
+      refreshSheet,
+    ],
   )
 
   const handleAddEmpty = useCallback(() => {
@@ -913,6 +939,8 @@ function SheetEditor({
         itemSortKey: preview.item_sort_key,
         rowRef: preview.row_ref,
         cellScope: preview.cell_scope,
+        rowStatus: preview.row_status,
+        parameterCode: preview.parameter_code,
       })),
       layerSummaries: backboneDiffWorkbenchState.layerSummaries.map((summary) => ({
         layerKey: summary.layer_key,
@@ -941,13 +969,18 @@ function SheetEditor({
       backboneDiffWorkbenchState.branchPages.flatMap((page) =>
         page.items.map((condition) => ({
           rowRef: condition.row_ref,
-          rowStatus: mapBackboneDiffConditionClassification(condition.row_status),
+          rowStatus: condition.row_status,
           effectiveConditionIndex: condition.effective_condition_index,
           identity: condition.identity,
           baselineCondition:
-            condition.baseline_condition === null ? null : mapBackboneDiffConditionMetadata(condition.baseline_condition),
+            condition.baseline_condition === null
+              ? null
+              : mapBackboneDiffConditionMetadata(condition.baseline_condition),
           currentCondition:
-            condition.current_condition === null ? null : mapBackboneDiffConditionMetadata(condition.current_condition),
+            condition.current_condition === null
+              ? null
+              : mapBackboneDiffConditionMetadata(condition.current_condition),
+          rowMetadata: mapBackboneDiffConditionRowMetadata(condition.row_metadata),
           filteredCellCount: condition.filtered_cell_count,
           fullCellCount: condition.full_cell_count,
           jumpStatus: condition.jump_status,
@@ -1393,6 +1426,8 @@ function SheetEditor({
                 onOpenCells={onBackboneOpenCells}
                 onLoadMoreCells={onBackboneLoadMoreCells}
                 onRetryCells={onBackboneRetryCells}
+                onCloseBranch={backboneDiffWorkbench.onCloseBranch}
+                onCloseCell={backboneDiffWorkbench.onCloseCell}
                 onActivateTarget={onBackboneActivateTarget}
                 baselineUnavailableCopy={backboneDiffRootUnavailableCopy}
               />

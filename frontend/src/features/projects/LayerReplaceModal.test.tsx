@@ -116,7 +116,13 @@ describe('LayerReplaceModal semantic UI contract', () => {
     expect(successBody).toContain(
       'invalidateProjectHistoryAfterMutation(queryClient, project.id)',
     )
+    expect(successBody).toContain(
+      'invalidateProjectBackboneDiffAfterMutation(queryClient, project.id)',
+    )
     expect(successBody?.indexOf('invalidateProjectHistoryAfterMutation')).toBeLessThan(
+      successBody?.indexOf('onClose()') ?? -1,
+    )
+    expect(successBody?.indexOf('invalidateProjectBackboneDiffAfterMutation')).toBeLessThan(
       successBody?.indexOf('onClose()') ?? -1,
     )
   })
