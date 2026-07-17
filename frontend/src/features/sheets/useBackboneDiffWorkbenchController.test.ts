@@ -583,6 +583,11 @@ describe('useBackboneDiffWorkbenchController seams', () => {
         queryFn: branchQueryFn,
         initialPageParam: null as string | null,
       })
+      const branchRequestAReplay = queryClient.fetchInfiniteQuery({
+        queryKey: branchAKey,
+        queryFn: branchQueryFn,
+        initialPageParam: null as string | null,
+      })
       const cellRequestA = queryClient.fetchInfiniteQuery({
         queryKey: cellAKey,
         queryFn: cellQueryFn,
@@ -590,6 +595,11 @@ describe('useBackboneDiffWorkbenchController seams', () => {
       })
       const cellRequestB = queryClient.fetchInfiniteQuery({
         queryKey: cellBKey,
+        queryFn: cellQueryFn,
+        initialPageParam: null as string | null,
+      })
+      const cellRequestAReplay = queryClient.fetchInfiniteQuery({
+        queryKey: cellAKey,
         queryFn: cellQueryFn,
         initialPageParam: null as string | null,
       })
@@ -612,8 +622,10 @@ describe('useBackboneDiffWorkbenchController seams', () => {
 
       const [branchAData, branchBData, cellAData, cellBData] = await Promise.all([
         branchRequestA,
+        branchRequestAReplay,
         branchRequestB,
         cellRequestA,
+        cellRequestAReplay,
         cellRequestB,
       ])
 
@@ -1056,6 +1068,10 @@ describe('useBackboneDiffWorkbenchController seams', () => {
     expect(source).toContain('createBackboneDiffWorkbenchBranchQueryFn')
     expect(source).toContain('createBackboneDiffWorkbenchCellQueryFn')
     expect(source).toContain('acceptBackboneDiffQueryPage')
+    expect(source).toContain('branchQuery.data === void 0')
+    expect(source).toContain('cellQuery.data === void 0')
+    expect(source).not.toContain('!branchQuery.isSuccess')
+    expect(source).not.toContain('!cellQuery.isSuccess')
   })
 })
 
