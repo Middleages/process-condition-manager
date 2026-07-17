@@ -733,24 +733,20 @@ def _mutated_current_source_source_layer_key(
     return replace(layer, current_source=replace(layer.current_source, source_layer_key="SRC::ALT"))
 
 
-def _mutated_layer_key_coherent(layer: BackboneDiffLayerInput) -> BackboneDiffLayerInput:
-    return replace(
-        layer,
-        layer_key="L1::PROC_ALPHA::010::ALT",
-        current_source=replace(layer.current_source, layer_key="L1::PROC_ALPHA::010::ALT"),
-    )
-
-
-def _mutated_layer_sort_order_coherent(layer: BackboneDiffLayerInput) -> BackboneDiffLayerInput:
-    return replace(
-        layer,
-        layer_sort_order=99,
-        current_source=replace(layer.current_source, sort_order=99),
-    )
-
-
 def _mutated_layer_sort_order(layer: BackboneDiffLayerInput) -> BackboneDiffLayerInput:
     return replace(layer, layer_sort_order=99)
+
+
+def _mutated_current_source_layer_key_mismatch(
+    layer: BackboneDiffLayerInput,
+) -> BackboneDiffLayerInput:
+    return replace(layer, current_source=replace(layer.current_source, layer_key="BROKEN"))
+
+
+def _mutated_current_source_sort_order_mismatch(
+    layer: BackboneDiffLayerInput,
+) -> BackboneDiffLayerInput:
+    return replace(layer, current_source=replace(layer.current_source, sort_order=99))
 
 
 @pytest.mark.parametrize(
@@ -770,6 +766,7 @@ def _mutated_layer_sort_order(layer: BackboneDiffLayerInput) -> BackboneDiffLaye
         _mutated_current_source_layer_id,
         _mutated_current_source_source_project_id,
         _mutated_current_source_source_layer_key,
+        _mutated_layer_sort_order,
     ],
 )
 def test_backbone_diff_layer_basis_hash_changes_with_authority(
@@ -850,13 +847,11 @@ def test_compare_backbone_layer_blank_added_and_removed_rows_emit_full_universe_
     added_result = compare_backbone_layer(added_layer)
     removed_result = compare_backbone_layer(removed_layer)
 
-    added_row = next(row for row in added_result.rows if row.row_status == "added")
-    removed_row = next(row for row in removed_result.rows if row.row_status == "removed")
-    added_codes = [change.parameter_code for change in added_row.cell_changes]
-    removed_codes = [change.parameter_code for change in removed_row.cell_changes]
+    added_codes = [change.parameter_code for change in added_result.rows[0].cell_changes]
+    removed_codes = [change.parameter_code for change in removed_result.rows[0].cell_changes]
 
-    assert len(added_codes) == len(set(added_codes))
-    assert len(removed_codes) == len(set(removed_codes))
+    assert added_codes == sorted(set(added_codes))
+    assert removed_codes == sorted(set(removed_codes))
     assert added_codes == [
         "shared_blank",
         "shared_number_equal",
