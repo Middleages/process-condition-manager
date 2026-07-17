@@ -39,9 +39,7 @@ STATUS_RANK = {ROW_STATUS_MATCHED: 0, ROW_STATUS_ADDED: 1, ROW_STATUS_REMOVED: 2
 ITEM_KIND_RANK = {ITEM_KIND_ROW_METADATA: 0, ITEM_KIND_CELL: 1}
 
 
-def _diff_basis_invalid(
-    message: str, *, details: dict[str, object] | None = None
-) -> NoReturn:
+def _diff_basis_invalid(message: str, *, details: dict[str, object] | None = None) -> NoReturn:
     raise RuleViolationError(message, code=DIFF_BASIS_INVALID, details=details)
 
 
@@ -340,7 +338,6 @@ class BackboneDiffResult:
 @dataclass(frozen=True, slots=True)
 class _PreparedCoordinate:
     parameter_code: str
-    descriptor: BackboneDiffCurrentParameter | BackboneSnapshotColumn
     sort_order: int
     baseline_has_column: bool
     current_has_column: bool
@@ -349,7 +346,6 @@ class _PreparedCoordinate:
 @dataclass(frozen=True, slots=True)
 class _PreparedCurrentCondition:
     condition: BackboneDiffCurrentCondition
-    cells_by_code: dict[str, str | None]
     canonical_values_by_code: dict[str, str | None]
     payload_cells: tuple[tuple[str, str | None], ...]
 
@@ -382,8 +378,8 @@ class _PrepareCache:
     current_parameter_payload_by_selected_key: dict[
         tuple[BackboneDiffCurrentParameter, ...], tuple[dict[str, Any], ...]
     ]
-    coordinate_plan_by_descriptor_ids: dict[
-        tuple[int, tuple[BackboneDiffCurrentParameter, ...]],
+    coordinate_plan_by_descriptor_shape: dict[
+        tuple[frozenset[tuple[str, ValueType, int]], int],
         tuple[
             tuple[str, ...],
             dict[str, _PreparedCoordinate],
@@ -408,34 +404,23 @@ def _prepare_layer(
     current_selected = _selected_current_descriptors(layer_input, cache)
     current_descriptor_by_code = {parameter.code: parameter for parameter in current_selected}
     current_universe = set(current_descriptor_by_code)
-    _validate_parameter_type_compatibility(baseline_columns, current_descriptor_by_code)
-
-    current_conditions = tuple(
-        _prepare_current_condition(
-            condition, baseline_columns, current_descriptor_by_code
+    # Repository hydration creates a distinct snapshot object per layer even when
+    # their column registries are identical.  The comparison plan only depends on
+    # code/type/order plus the already-selected immutable current registry, so use
+    # that structural shape instead of snapshot identity.  Including the type lets
+    # a cache hit also prove that the compatibility check already succeeded.
+    baseline_descriptor_shape = frozenset(
+        (
+            parameter_code,
+            cast(ValueType, column.value_type),
+            column.sort_order,
         )
-        for condition in layer_input.current_conditions
+        for parameter_code, column in baseline_columns.items()
     )
-
-    prepared_for_payload = _PreparedLayer(
-        layer_input=layer_input,
-        basis_bytes=b"",
-        basis_hash="",
-        baseline_columns=baseline_columns,
-        baseline_universe=baseline_universe,
-        current_selected=current_selected,
-        current_descriptor_by_code=current_descriptor_by_code,
-        current_universe=current_universe,
-        current_conditions=current_conditions,
-        coordinate_plan={},
-        coordinate_codes=(),
-        added_row_codes=(),
-        removed_row_codes=(),
-    )
-    basis_bytes = _layer_basis_bytes(prepared_for_payload, cache)
-    coordinate_plan_key = (id(baseline_columns), current_selected)
-    cached_coordinate_plan = cache.coordinate_plan_by_descriptor_ids.get(coordinate_plan_key)
+    coordinate_plan_key = (baseline_descriptor_shape, id(current_selected))
+    cached_coordinate_plan = cache.coordinate_plan_by_descriptor_shape.get(coordinate_plan_key)
     if cached_coordinate_plan is None:
+        _validate_parameter_type_compatibility(baseline_columns, current_descriptor_by_code)
         coordinate_codes = tuple(
             _ordered_coordinate_codes(
                 baseline_columns,
@@ -447,10 +432,6 @@ def _prepare_layer(
         coordinate_plan = {
             parameter_code: _PreparedCoordinate(
                 parameter_code=parameter_code,
-                descriptor=(
-                    current_descriptor_by_code.get(parameter_code)
-                    or baseline_columns[parameter_code]
-                ),
                 sort_order=(
                     current_descriptor_by_code.get(parameter_code)
                     or baseline_columns[parameter_code]
@@ -479,8 +460,29 @@ def _prepare_layer(
             added_row_codes,
             removed_row_codes,
         )
-        cache.coordinate_plan_by_descriptor_ids[coordinate_plan_key] = cached_coordinate_plan
+        cache.coordinate_plan_by_descriptor_shape[coordinate_plan_key] = cached_coordinate_plan
     coordinate_codes, coordinate_plan, added_row_codes, removed_row_codes = cached_coordinate_plan
+
+    current_conditions = tuple(
+        _prepare_current_condition(condition, baseline_columns, current_descriptor_by_code)
+        for condition in layer_input.current_conditions
+    )
+    prepared_for_payload = _PreparedLayer(
+        layer_input=layer_input,
+        basis_bytes=b"",
+        basis_hash="",
+        baseline_columns=baseline_columns,
+        baseline_universe=baseline_universe,
+        current_selected=current_selected,
+        current_descriptor_by_code=current_descriptor_by_code,
+        current_universe=current_universe,
+        current_conditions=current_conditions,
+        coordinate_plan=coordinate_plan,
+        coordinate_codes=coordinate_codes,
+        added_row_codes=added_row_codes,
+        removed_row_codes=removed_row_codes,
+    )
+    basis_bytes = _layer_basis_bytes(prepared_for_payload, cache)
     return _PreparedLayer(
         layer_input=layer_input,
         basis_bytes=basis_bytes,
@@ -600,41 +602,50 @@ def _compare_prepared_layer(prepared: _PreparedLayer) -> BackboneDiffLayerResult
 
     rows.sort(key=_row_sort_key)
 
+    matched_row_count = 0
+    added_row_count = 0
+    removed_row_count = 0
+    row_metadata_change_count = 0
+    added_cell_count = 0
+    removed_cell_count = 0
+    cleared_cell_count = 0
+    changed_cell_count = 0
+    unchanged_cell_count = 0
+    for row in rows:
+        if row.row_status == ROW_STATUS_MATCHED:
+            matched_row_count += 1
+        elif row.row_status == ROW_STATUS_ADDED:
+            added_row_count += 1
+        else:
+            removed_row_count += 1
+        row_metadata_change_count += len(row.metadata_changes)
+        for change in row.cell_changes:
+            if change.classification == CLASSIFICATION_ADDED:
+                added_cell_count += 1
+            elif change.classification == CLASSIFICATION_REMOVED:
+                removed_cell_count += 1
+            elif change.classification == CLASSIFICATION_CLEARED:
+                cleared_cell_count += 1
+            elif change.classification == CLASSIFICATION_CHANGED:
+                changed_cell_count += 1
+            elif change.classification == CLASSIFICATION_UNCHANGED:
+                unchanged_cell_count += 1
+
     return BackboneDiffLayerResult(
         layer_key=layer_input.layer_key,
         layer_sort_order=layer_input.layer_sort_order,
         basis_hash=prepared.basis_hash,
         baseline_unavailable=False,
         ambiguous_lineage_count=ambiguous_lineage_count,
-        matched_row_count=sum(row.row_status == ROW_STATUS_MATCHED for row in rows),
-        added_row_count=sum(row.row_status == ROW_STATUS_ADDED for row in rows),
-        removed_row_count=sum(row.row_status == ROW_STATUS_REMOVED for row in rows),
-        row_metadata_change_count=sum(len(row.metadata_changes) for row in rows),
-        added_cell_count=sum(
-            change.classification == CLASSIFICATION_ADDED
-            for row in rows
-            for change in row.cell_changes
-        ),
-        removed_cell_count=sum(
-            change.classification == CLASSIFICATION_REMOVED
-            for row in rows
-            for change in row.cell_changes
-        ),
-        cleared_cell_count=sum(
-            change.classification == CLASSIFICATION_CLEARED
-            for row in rows
-            for change in row.cell_changes
-        ),
-        changed_cell_count=sum(
-            change.classification == CLASSIFICATION_CHANGED
-            for row in rows
-            for change in row.cell_changes
-        ),
-        unchanged_cell_count=sum(
-            change.classification == CLASSIFICATION_UNCHANGED
-            for row in rows
-            for change in row.cell_changes
-        ),
+        matched_row_count=matched_row_count,
+        added_row_count=added_row_count,
+        removed_row_count=removed_row_count,
+        row_metadata_change_count=row_metadata_change_count,
+        added_cell_count=added_cell_count,
+        removed_cell_count=removed_cell_count,
+        cleared_cell_count=cleared_cell_count,
+        changed_cell_count=changed_cell_count,
+        unchanged_cell_count=unchanged_cell_count,
         rows=tuple(rows),
     )
 
@@ -699,8 +710,7 @@ def _layer_basis_payload_from_prepared(
             "condition_index": condition.condition.condition_index,
             "is_por": condition.condition.is_por,
             "cells": [
-                {"parameter_code": code, "value": value}
-                for code, value in condition.payload_cells
+                {"parameter_code": code, "value": value} for code, value in condition.payload_cells
             ],
         }
         for condition in prepared.current_conditions
@@ -739,9 +749,7 @@ def _baseline_columns_for_snapshot(
     baseline_snapshot_id = id(baseline_snapshot)
     columns = cache.baseline_columns_by_snapshot_id.get(baseline_snapshot_id)
     if columns is None:
-        columns = {
-            column.parameter_code: column for column in baseline_snapshot.columns
-        }
+        columns = {column.parameter_code: column for column in baseline_snapshot.columns}
         cache.baseline_columns_by_snapshot_id[baseline_snapshot_id] = columns
     return columns
 
@@ -751,7 +759,6 @@ def _prepare_current_condition(
     baseline_columns: dict[str, BackboneSnapshotColumn],
     current_descriptor_by_code: dict[str, BackboneDiffCurrentParameter],
 ) -> _PreparedCurrentCondition:
-    cells_by_code = condition.cells_by_code()
     canonical_values_by_code: dict[str, str | None] = {}
     payload_cells: list[tuple[str, str | None]] = []
     for cell in condition.cells:
@@ -772,7 +779,6 @@ def _prepare_current_condition(
         payload_cells.append((cell.parameter_code, canonical_value))
     return _PreparedCurrentCondition(
         condition=condition,
-        cells_by_code=cells_by_code,
         canonical_values_by_code=canonical_values_by_code,
         payload_cells=tuple(payload_cells),
     )
@@ -811,8 +817,6 @@ def _matched_row(
     cell_changes = tuple(
         _compare_coordinate(
             parameter_code,
-            baseline_condition,
-            current_condition,
             baseline_cells_by_code,
             current_prepared,
             prepared,
@@ -935,8 +939,6 @@ def _metadata_changes(
 
 def _compare_coordinate(
     parameter_code: str,
-    baseline_condition: Any,
-    current_condition: BackboneDiffCurrentCondition,
     baseline_cells_by_code: Mapping[str, str | None],
     current_prepared: _PreparedCurrentCondition,
     prepared: _PreparedLayer,

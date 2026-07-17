@@ -12,6 +12,7 @@ from app.domain.backbone.diff import (
     BackboneDiffCurrentLayerSource,
     BackboneDiffCurrentParameter,
     BackboneDiffLayerInput,
+    BackboneDiffResult,
     backbone_diff_basis_hash,
     backbone_diff_layer_basis_hash,
     compare_backbone,
@@ -923,11 +924,7 @@ def _unavailable_layer_with_shared_parameters(
                 label="current",
                 condition_index=0,
                 is_por=False,
-                cells=(
-                    (BackboneDiffCurrentCell("legacy", "stored"),)
-                    if stored_legacy
-                    else ()
-                ),
+                cells=((BackboneDiffCurrentCell("legacy", "stored"),) if stored_legacy else ()),
             ),
         ),
         current_parameters=parameters,
@@ -987,6 +984,210 @@ def test_backbone_diff_project_cache_separates_layer_specific_stored_parameter_c
         backbone_diff_layer_basis_hash(stored_legacy_first),
         backbone_diff_layer_basis_hash(no_legacy_second),
     ]
+
+
+def test_backbone_diff_structural_plan_keeps_distinct_snapshot_authority() -> None:
+    layer_a = _matched_layer_input()
+    baseline_a = layer_a.baseline_snapshot
+    assert baseline_a is not None
+    baseline_a_source = baseline_a.source
+    assert baseline_a_source is not None
+    columns_b = list(baseline_a.columns)
+    columns_b[0] = replace(
+        columns_b[0],
+        display_name="Layer B baseline only",
+        category_code="layer-b",
+    )
+    conditions_b = list(baseline_a.conditions)
+    cells_b = list(conditions_b[0].cells)
+    changed_cell_index = next(
+        index for index, cell in enumerate(cells_b) if cell.parameter_code == "shared_text_changed"
+    )
+    cells_b[changed_cell_index] = replace(cells_b[changed_cell_index], value="new")
+    conditions_b[0] = replace(conditions_b[0], cells=tuple(cells_b))
+    layer_b_key = "L2::PROC_BETA::020::ACT"
+    baseline_b = replace(
+        baseline_a,
+        capture_batch_id="1123456789abcdef0123456789abcdef",
+        source=replace(
+            baseline_a_source,
+            sheet_layer_id=8,
+            layer_key=layer_b_key,
+            step_seq="020",
+        ),
+        columns=tuple(columns_b),
+        conditions=tuple(conditions_b),
+    )
+    layer_b = replace(
+        layer_a,
+        layer_key=layer_b_key,
+        layer_sort_order=2,
+        current_source=replace(
+            layer_a.current_source,
+            sheet_layer_id=8,
+            layer_key=layer_b_key,
+            step_seq="020",
+            sort_order=2,
+            source_layer_key="SRC::L2::PROC_BETA::020::ACT",
+        ),
+        baseline_snapshot=baseline_b,
+    )
+
+    assert layer_a.baseline_snapshot is not layer_b.baseline_snapshot
+    assert layer_a.current_parameters is layer_b.current_parameters
+    expected_a = compare_backbone_layer(layer_a)
+    expected_b = compare_backbone_layer(layer_b)
+
+    combined = compare_backbone((layer_a, layer_b))
+
+    assert combined.layer_results == (expected_a, expected_b)
+    assert expected_a.basis_hash != expected_b.basis_hash
+    changed_a = {
+        change.parameter_code: change.classification
+        for row in expected_a.rows
+        if row.row_status == "matched"
+        for change in row.cell_changes
+    }
+    changed_b = {
+        change.parameter_code: change.classification
+        for row in expected_b.rows
+        if row.row_status == "matched"
+        for change in row.cell_changes
+    }
+    assert changed_a["shared_text_changed"] == "changed"
+    assert changed_b["shared_text_changed"] == "unchanged"
+
+
+def test_backbone_diff_structural_plan_does_not_mask_later_type_drift() -> None:
+    drift_layer = _mismatch_layer()
+    drift_baseline = drift_layer.baseline_snapshot
+    assert drift_baseline is not None
+    drift_source = drift_baseline.source
+    assert drift_source is not None
+    valid_columns = tuple(
+        replace(column, value_type=ValueType.TEXT)
+        if column.parameter_code == "shared_number_equal"
+        else column
+        for column in drift_baseline.columns
+    )
+    valid_layer = replace(
+        drift_layer,
+        baseline_snapshot=replace(drift_baseline, columns=valid_columns),
+    )
+    drift_layer_key = "L2::PROC_BETA::020::ACT"
+    later_drift_layer = replace(
+        drift_layer,
+        layer_key=drift_layer_key,
+        layer_sort_order=2,
+        current_source=replace(
+            drift_layer.current_source,
+            sheet_layer_id=8,
+            layer_key=drift_layer_key,
+            step_seq="020",
+            sort_order=2,
+        ),
+        baseline_snapshot=replace(
+            drift_baseline,
+            source=replace(
+                drift_source,
+                sheet_layer_id=8,
+                layer_key=drift_layer_key,
+                step_seq="020",
+            ),
+        ),
+    )
+
+    assert valid_layer.current_parameters is later_drift_layer.current_parameters
+    with pytest.raises(RuleViolationError) as exc_info:
+        compare_backbone((valid_layer, later_drift_layer))
+
+    assert exc_info.value.code == DIFF_BASIS_INVALID
+    assert exc_info.value.details == {
+        "parameter_code": "shared_number_equal",
+        "baseline_value_type": "number",
+        "current_value_type": "text",
+    }
+
+
+def test_backbone_diff_structural_plan_separates_per_layer_stored_universes() -> None:
+    shared_parameters = (
+        BackboneDiffCurrentParameter("active", ValueType.TEXT, "Active", None, 0, True),
+        BackboneDiffCurrentParameter("legacy", ValueType.TEXT, "Legacy", None, 1, False),
+    )
+    baseline = BackboneSnapshot(
+        capture_batch_id="2123456789abcdef0123456789abcdef",
+        captured_at="2026-07-16T04:17:58.715000Z",
+        source=BackboneSnapshotSource(42, 1, "A", "0", "A"),
+        columns=(
+            BackboneSnapshotColumn("active", ValueType.TEXT, "Active", None, 0, True),
+            BackboneSnapshotColumn("legacy", ValueType.TEXT, "Legacy", None, 1, False),
+        ),
+        conditions=(
+            BackboneSnapshotCondition(
+                source_condition_id=1,
+                label="baseline",
+                condition_index=0,
+                is_por=True,
+                cells=(
+                    BackboneSnapshotCell("active", "A"),
+                    BackboneSnapshotCell("legacy", "L"),
+                ),
+            ),
+        ),
+    )
+
+    def layer(
+        layer_key: str, layer_sort_order: int, *, stored_legacy: bool
+    ) -> BackboneDiffLayerInput:
+        cells = [BackboneDiffCurrentCell("active", "A")]
+        if stored_legacy:
+            cells.append(BackboneDiffCurrentCell("legacy", "L"))
+        return BackboneDiffLayerInput(
+            layer_key=layer_key,
+            layer_sort_order=layer_sort_order,
+            current_source=BackboneDiffCurrentLayerSource(
+                project_id=42,
+                sheet_layer_id=layer_sort_order + 1,
+                layer_key=layer_key,
+                step_seq=str(layer_sort_order),
+                layer_id=layer_key,
+                sort_order=layer_sort_order,
+                source_project_id=None,
+                source_layer_key=None,
+            ),
+            baseline_snapshot=baseline,
+            current_conditions=(
+                BackboneDiffCurrentCondition(
+                    id=layer_sort_order + 1,
+                    source_condition_id=1,
+                    label="baseline",
+                    condition_index=0,
+                    is_por=True,
+                    cells=tuple(cells),
+                ),
+            ),
+            current_parameters=shared_parameters,
+        )
+
+    def legacy_classifications(result: BackboneDiffResult) -> list[str]:
+        return [
+            next(
+                change.classification
+                for change in layer_result.rows[0].cell_changes
+                if change.parameter_code == "legacy"
+            )
+            for layer_result in result.layer_results
+        ]
+
+    forward = compare_backbone(
+        (layer("A", 0, stored_legacy=False), layer("B", 1, stored_legacy=True))
+    )
+    inverse = compare_backbone(
+        (layer("A", 0, stored_legacy=True), layer("B", 1, stored_legacy=False))
+    )
+
+    assert legacy_classifications(forward) == ["removed", "unchanged"]
+    assert legacy_classifications(inverse) == ["unchanged", "removed"]
 
 
 def test_backbone_diff_layer_input_rejects_contradictory_current_source() -> None:
