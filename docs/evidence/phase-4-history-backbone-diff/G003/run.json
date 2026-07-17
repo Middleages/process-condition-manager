@@ -1,7 +1,7 @@
 {
   "command": "cd backend && APP_TEST_DATABASE_URL='<guard-admin-url>' uv run python -m scripts.measure_backbone_diff_perf",
   "database": {
-    "database_name": "pcm_phase26_test_99b8744477334563a54cb3c7f7f17351",
+    "database_name": "pcm_phase26_test_8b72b6e2bbb142b6b185ce2857c47e8c",
     "dropped": true,
     "guarded": true,
     "transaction": {
@@ -36,13 +36,13 @@
   "metrics": {
     "cell_limit_100": {
       "item_count": 100,
-      "max_ms": 499.420855,
+      "max_ms": 545.402543,
       "max_response_bytes": 49205,
       "max_round_trips": 6,
       "max_select_count": 5,
       "measured_runs": 5,
-      "p50_ms": 489.539436,
-      "p95_ms": 499.420855,
+      "p50_ms": 515.841917,
+      "p95_ms": 545.402543,
       "path": "/api/projects/1/backbone-diff/layers/layer-000/conditions/eyJiYXNlbGluZV9jb25kaXRpb25faWQiOjEwMDAwLCJjdXJyZW50X2NvbmRpdGlvbl9pZCI6MSwia2luZCI6InJvd19yZWYiLCJsYXllcl9rZXkiOiJsYXllci0wMDAiLCJwcm9qZWN0X2lkIjoxLCJyb3dfc3RhdHVzIjoibWF0Y2hlZCIsInZlcnNpb24iOjF9/cells",
       "requested_limit": 100,
       "response_bytes": [
@@ -60,11 +60,11 @@
         6
       ],
       "samples_ms": [
-        489.514838,
-        498.099928,
-        489.539436,
-        455.159157,
-        499.420855
+        515.841917,
+        473.647496,
+        519.71109,
+        545.402543,
+        508.488532
       ],
       "select_counts": [
         5,
@@ -85,13 +85,13 @@
     },
     "condition_limit_50": {
       "item_count": 1,
-      "max_ms": 460.484889,
+      "max_ms": 482.642314,
       "max_response_bytes": 1708,
       "max_round_trips": 6,
       "max_select_count": 5,
       "measured_runs": 5,
-      "p50_ms": 440.007428,
-      "p95_ms": 460.484889,
+      "p50_ms": 450.756129,
+      "p95_ms": 482.642314,
       "path": "/api/projects/1/backbone-diff/layers/layer-000/conditions",
       "requested_limit": 50,
       "response_bytes": [
@@ -109,11 +109,11 @@
         6
       ],
       "samples_ms": [
-        416.133091,
-        440.007428,
-        460.484889,
-        405.167439,
-        456.262791
+        424.427393,
+        450.756129,
+        457.813873,
+        482.642314,
+        413.120991
       ],
       "select_counts": [
         5,
@@ -141,31 +141,31 @@
         "unchanged": 17000
       },
       "coordinate_count": 20000,
-      "current_bytes": 2211372,
+      "current_bytes": 2213472,
       "layer_count": 100,
-      "max_ms": 186.157742,
+      "max_ms": 186.310214,
       "measured_runs": 5,
-      "p50_ms": 182.129652,
-      "p95_ms": 186.157742,
-      "peak_bytes": 31565329,
+      "p50_ms": 183.159927,
+      "p95_ms": 186.310214,
+      "peak_bytes": 31567429,
       "samples_ms": [
-        183.390482,
-        186.157742,
-        179.561695,
-        181.059028,
-        182.129652
+        183.27743,
+        179.187419,
+        186.310214,
+        183.159927,
+        182.681914
       ],
       "warmup_runs": 1
     },
     "root_preview_20": {
       "item_count": 20,
-      "max_ms": 478.645736,
+      "max_ms": 501.089652,
       "max_response_bytes": 80472,
       "max_round_trips": 6,
       "max_select_count": 5,
       "measured_runs": 5,
-      "p50_ms": 475.298261,
-      "p95_ms": 478.645736,
+      "p50_ms": 482.128034,
+      "p95_ms": 501.089652,
       "path": "/api/projects/1/backbone-diff",
       "requested_preview_limit": 20,
       "response_bytes": [
@@ -183,11 +183,11 @@
         6
       ],
       "samples_ms": [
-        445.290897,
-        477.889022,
-        478.645736,
-        475.298261,
-        473.917828
+        457.368724,
+        492.742279,
+        501.089652,
+        468.918157,
+        482.128034
       ],
       "select_counts": [
         5,
@@ -210,25 +210,24 @@
   "protocol": {
     "measured_runs": 5,
     "percentile_method": "nearest-rank-ceiling",
+    "pure_timing_gc_enabled": false,
     "warmup_runs": 1
   },
   "runtime": {
-    "captured_at_utc": "2026-07-17T05:51:02.956576Z",
+    "captured_at_utc": "2026-07-17T06:14:08.431017Z",
     "cpu_count": 6,
     "load_average": [
-      6.20849609375,
-      5.51953125,
-      4.80615234375
+      3.7470703125,
+      3.361328125,
+      3.4814453125
     ],
     "platform": "Linux-6.18.35.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
     "python": "3.14.3"
   },
   "schema_version": 1,
   "source": {
-    "git_sha": "8779cde5fbd84e7b5b02fdcc8c0769a43b40c674",
-    "git_status_short": [
-      "?? docs/evidence/phase-4-history-backbone-diff/"
-    ]
+    "git_sha": "335a5ebf9aa5475c78c55c85ea28129973a247dc",
+    "git_status_short": []
   },
   "status": "passed",
   "thresholds": {

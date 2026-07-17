@@ -15,7 +15,7 @@ APP_TEST_DATABASE_URL=postgresql+asyncpg://<guard-admin-host>/<source-db> \
 
 `APP_TEST_DATABASE_URL`은 기존 DB를 측정 대상으로 쓰지 않는다. 공용 guard가
 `pcm_phase26_test_<uuid>` child DB만 생성·삭제하며, 이번 실행의 child
-`pcm_phase26_test_99b8744477334563a54cb3c7f7f17351`도 종료 전에 삭제됐다. 기존 review DB/volume은 변경하지 않았다.
+`pcm_phase26_test_8b72b6e2bbb142b6b185ce2857c47e8c`도 종료 전에 삭제됐다. 기존 review DB/volume은 변경하지 않았다.
 
 ## 고정 fixture와 측정 규약
 
@@ -38,17 +38,17 @@ APP_TEST_DATABASE_URL=postgresql+asyncpg://<guard-admin-host>/<source-db> \
 - HTTP 각 요청은 독립적으로 loader와 pure compute를 다시 수행한다. SQL recorder는
   `SET TRANSACTION READ ONLY`가 첫 문장인지와 SELECT/round-trip 수를 함께 고정한다.
 - CPU affinity를 강제하지 않았다. 캡처 시 1/5/15분 load average는
-  `6.21/5.52/4.81`
+  `3.75/3.36/3.48`
   (6 logical CPUs)였다.
 
 ## 결과
 
 | gate | p50 ms | p95 ms | max ms | SQL / trips | response | budget |
 |---|---:|---:|---:|---:|---:|---|
-| pure diff 20k | 182.13 | 186.16 | 186.16 | n/a | peak 30.10 MiB | p95 <=250 ms, peak <=64 MiB |
-| root preview 20 | 475.30 | 478.65 | 478.65 | 5 / 6 | 80,472 B | p95 <=600 ms, <=8 / <=9, <=256 KiB |
-| condition limit 50 | 440.01 | 460.48 | 460.48 | 5 / 6 | 1,708 B | p95 <=600 ms, <=8 / <=9, <=256 KiB |
-| cell limit 100 | 489.54 | 499.42 | 499.42 | 5 / 6 | 49,205 B | p95 <=600 ms, <=8 / <=9, <=256 KiB |
+| pure diff 20k | 183.16 | 186.31 | 186.31 | n/a | peak 30.10 MiB | p95 <=250 ms, peak <=64 MiB |
+| root preview 20 | 482.13 | 501.09 | 501.09 | 5 / 6 | 80,472 B | p95 <=600 ms, <=8 / <=9, <=256 KiB |
+| condition limit 50 | 450.76 | 482.64 | 482.64 | 5 / 6 | 1,708 B | p95 <=600 ms, <=8 / <=9, <=256 KiB |
+| cell limit 100 | 515.84 | 545.40 | 545.40 | 5 / 6 | 49,205 B | p95 <=600 ms, <=8 / <=9, <=256 KiB |
 
 Pure 결과의 실제 분류 합은 `changed=2,000`, `cleared=1,000`, `unchanged=17,000`,
 `added=removed=0`이다. HTTP 세 경로 모두 매 요청 5 SELECT / 6 round-trips였고,
