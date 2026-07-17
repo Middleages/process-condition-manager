@@ -176,6 +176,7 @@ const MAX_CLASSIFICATION_LENGTH = 64
 const MAX_LAYER_KEY_LENGTH = 256
 const MAX_TOKEN_LENGTH = 4096
 const MAX_CODE_LENGTH = 64
+const OPAQUE_TOKEN_CHARACTERS = /^[A-Za-z0-9_-]+$/
 
 const CLASSIFICATIONS: readonly BackboneDiffClassification[] = [
   'added',
@@ -220,7 +221,7 @@ export function createBackboneDiffBranchQueryOptions(
   input: BackboneDiffBranchQueryInput,
 ): BackboneDiffBranchQueryOptions {
   return {
-    scope: normalizeRequiredToken(input.scope, 'scope'),
+    scope: normalizeRequiredOpaqueToken(input.scope, 'scope'),
     cursor: normalizeOptionalToken(input.cursor ?? null, 'cursor'),
     limit: normalizeLimit(input.limit ?? DEFAULT_BRANCH_LIMIT, MIN_BRANCH_LIMIT, MAX_BRANCH_LIMIT, 'limit'),
   }
@@ -230,7 +231,7 @@ export function createBackboneDiffCellQueryOptions(
   input: BackboneDiffCellQueryInput,
 ): BackboneDiffCellQueryOptions {
   return {
-    scope: normalizeRequiredToken(input.scope, 'scope'),
+    scope: normalizeRequiredOpaqueToken(input.scope, 'scope'),
     cursor: normalizeOptionalToken(input.cursor ?? null, 'cursor'),
     limit: normalizeLimit(input.limit ?? DEFAULT_CELL_LIMIT, MIN_CELL_LIMIT, MAX_CELL_LIMIT, 'limit'),
   }
@@ -271,7 +272,7 @@ export function backboneDiffCellQueryKey(
     ...backboneDiffProjectQueryKey(projectId),
     'cell',
     normalizePathToken(layerKey, 'layerKey', MAX_LAYER_KEY_LENGTH),
-    normalizeRequiredToken(rowRef, 'rowRef'),
+    normalizeRequiredOpaqueToken(rowRef, 'rowRef'),
     options,
   ]
 }
@@ -285,7 +286,7 @@ export function backboneDiffCellPath(
   layerKey: string,
   rowRef: string,
 ): string {
-  return `/projects/${projectId}/backbone-diff/layers/${encodePathToken(layerKey, 'layerKey', MAX_LAYER_KEY_LENGTH)}/conditions/${encodePathToken(rowRef, 'rowRef', MAX_TOKEN_LENGTH)}/cells`
+  return `/projects/${projectId}/backbone-diff/layers/${encodePathToken(layerKey, 'layerKey', MAX_LAYER_KEY_LENGTH)}/conditions/${encodeOpaquePathToken(rowRef, 'rowRef')}/cells`
 }
 
 export function buildBackboneDiffRootQueryString(
@@ -413,8 +414,31 @@ function normalizeRequiredToken(value: string | undefined | null, label: string)
   return normalized
 }
 
+function normalizeRequiredOpaqueToken(value: string | undefined | null, label: string): string {
+  if (value === undefined || value === null) {
+    throw new TypeError(`${label} is required`)
+  }
+  if (value.length === 0) {
+    throw new TypeError(`${label} is required`)
+  }
+  if (value.length > MAX_TOKEN_LENGTH) {
+    throw new TypeError(`${label} must be at most ${MAX_TOKEN_LENGTH} characters`)
+  }
+  if (!OPAQUE_TOKEN_CHARACTERS.test(value)) {
+    throw new TypeError(`${label} is invalid`)
+  }
+  return value
+}
+
 function normalizeOptionalToken(value: string | null, label: string): string | null {
-  return normalizeOptionalText(value, label, MAX_TOKEN_LENGTH)
+  return normalizeOptionalOpaqueToken(value, label)
+}
+
+function normalizeOptionalOpaqueToken(value: string | null, label: string): string | null {
+  if (value === null) {
+    return null
+  }
+  return normalizeRequiredOpaqueToken(value, label)
 }
 
 function normalizePathToken(value: string, label: string, maxLength: number): string {
@@ -427,4 +451,8 @@ function normalizePathToken(value: string, label: string, maxLength: number): st
 
 function encodePathToken(value: string, label: string, maxLength: number): string {
   return encodeURIComponent(normalizePathToken(value, label, maxLength))
+}
+
+function encodeOpaquePathToken(value: string, label: string): string {
+  return encodeURIComponent(normalizeRequiredOpaqueToken(value, label))
 }

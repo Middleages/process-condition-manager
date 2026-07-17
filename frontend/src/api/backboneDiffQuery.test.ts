@@ -56,12 +56,12 @@ describe('backboneDiffQuery', () => {
 
   it('normalizes branch options and enforces bounds', () => {
     const normalized = createBackboneDiffBranchQueryOptions({
-      scope: 'scope-token',
+      scope: 'scope-token_1',
       limit: 1,
-      cursor: ' next ',
+      cursor: 'next_cursor-2',
     })
 
-    expect(normalized).toEqual({ scope: 'scope-token', cursor: 'next', limit: 1 })
+    expect(normalized).toEqual({ scope: 'scope-token_1', cursor: 'next_cursor-2', limit: 1 })
 
     expect(() =>
       createBackboneDiffBranchQueryOptions({
@@ -69,36 +69,86 @@ describe('backboneDiffQuery', () => {
         limit: 0,
       }),
     ).toThrow(TypeError)
+    expect(() =>
+      createBackboneDiffBranchQueryOptions({
+        scope: ' scope-token',
+        limit: 1,
+      }),
+    ).toThrow(TypeError)
+    expect(() =>
+      createBackboneDiffBranchQueryOptions({
+        scope: 'scope-token',
+        cursor: 'next\n',
+        limit: 1,
+      }),
+    ).toThrow(TypeError)
 
-    expect(buildBackboneDiffBranchQueryString({ scope: 'scope-token', cursor: 'next', limit: 20 })).toBe(
-      'scope=scope-token&cursor=next&limit=20',
-    )
+    expect(
+      createBackboneDiffBranchQueryOptions({
+        scope: 'scope-token',
+        cursor: null,
+        limit: 1,
+      }),
+    ).toEqual({
+      scope: 'scope-token',
+      cursor: null,
+      limit: 1,
+    })
+
+    expect(() =>
+      createBackboneDiffBranchQueryOptions({
+        scope: 'a'.repeat(4097),
+      }),
+    ).toThrow(TypeError)
+
+    expect(
+      buildBackboneDiffBranchQueryString({
+        scope: 'scope-token_1',
+        cursor: 'next_cursor-2',
+        limit: 20,
+      }),
+    ).toBe('scope=scope-token_1&cursor=next_cursor-2&limit=20')
   })
 
   it('normalizes cell options and enforces bounds', () => {
-    expect(createBackboneDiffCellQueryOptions({ scope: 'scope-token', limit: 100 }).limit).toBe(100)
+    expect(createBackboneDiffCellQueryOptions({ scope: 'scope-token_1', limit: 100 }).limit).toBe(100)
 
     expect(
       buildBackboneDiffCellQueryString({
-        scope: 'scope-token',
+        scope: 'scope-token_1',
         limit: 200,
       }),
-    ).toBe('scope=scope-token&limit=200')
+    ).toBe('scope=scope-token_1&limit=200')
 
     expect(() =>
       createBackboneDiffCellQueryOptions({
-        scope: 'scope-token',
+        scope: 'scope-token_1',
         limit: 201,
       }),
     ).toThrow(TypeError)
+
+    expect(() =>
+      createBackboneDiffCellQueryOptions({
+        scope: 'scope-token 1',
+        limit: 1,
+      }),
+    ).toThrow(TypeError)
+
+    expect(
+      buildBackboneDiffCellQueryString({
+        scope: 'scope-token_1',
+        cursor: 'cursor_cell_2',
+        limit: 100,
+      }),
+    ).toBe('scope=scope-token_1&cursor=cursor_cell_2&limit=100')
   })
 
   it('builds encoded layer/row paths using encoded path tokens', () => {
     expect(backboneDiffBranchPath(7, 'L1::PROC A::010::ETCH')).toBe(
       '/projects/7/backbone-diff/layers/L1%3A%3APROC%20A%3A%3A010%3A%3AETCH/conditions',
     )
-    expect(backboneDiffCellPath(7, 'L1::PROC_A::010::ETCH', 'row/ref with spaces')).toBe(
-      '/projects/7/backbone-diff/layers/L1%3A%3APROC_A%3A%3A010%3A%3AETCH/conditions/row%2Fref%20with%20spaces/cells',
+    expect(backboneDiffCellPath(7, 'L1::PROC_A::010::ETCH', 'cmVfcm93X3JlZg')).toBe(
+      '/projects/7/backbone-diff/layers/L1%3A%3APROC_A%3A%3A010%3A%3AETCH/conditions/cmVfcm93X3JlZg/cells',
     )
   })
 
@@ -129,7 +179,7 @@ describe('backboneDiffQuery', () => {
         limit: 10,
       },
     ])
-    expect(backboneDiffCellQueryKey(7, 'L1::PROC_A::010::ETCH', 'row', {
+    expect(backboneDiffCellQueryKey(7, 'L1::PROC_A::010::ETCH', 'cmVfcm93X3JlZg', {
       scope: 'scope-1',
       cursor: null,
       limit: 10,
@@ -137,7 +187,7 @@ describe('backboneDiffQuery', () => {
       ...backboneDiffProjectQueryKey(7),
       'cell',
       'L1::PROC_A::010::ETCH',
-      'row',
+      'cmVfcm93X3JlZg',
       {
         scope: 'scope-1',
         cursor: null,

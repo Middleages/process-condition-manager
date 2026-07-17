@@ -72,13 +72,13 @@ describe('backboneDiff API client', () => {
     get.mockResolvedValue(response(out))
 
     await getBackboneDiffConditions(7, 'L1::PROC_A::010::ETCH', {
-      scope: ' scope-token ',
-      cursor: ' next ',
+      scope: 'scope-token_1',
+      cursor: 'cursor_2',
       limit: 10,
     })
 
     expect(get).toHaveBeenCalledWith(
-      '/projects/7/backbone-diff/layers/L1%3A%3APROC_A%3A%3A010%3A%3AETCH/conditions?scope=scope-token&cursor=next&limit=10',
+      '/projects/7/backbone-diff/layers/L1%3A%3APROC_A%3A%3A010%3A%3AETCH/conditions?scope=scope-token_1&cursor=cursor_2&limit=10',
     )
   })
 
@@ -92,13 +92,13 @@ describe('backboneDiff API client', () => {
     }
     get.mockResolvedValue(response(out))
 
-    await getBackboneDiffCells(7, 'L1::PROC_A::010::ETCH', 'row/ref', {
-      scope: 'scope-token',
+    await getBackboneDiffCells(7, 'L1::PROC_A::010::ETCH', 'cmVfcm93X3JlZg', {
+      scope: 'scope-token_2',
       limit: 50,
     })
 
     expect(get).toHaveBeenCalledWith(
-      '/projects/7/backbone-diff/layers/L1%3A%3APROC_A%3A%3A010%3A%3AETCH/conditions/row%2Fref/cells?scope=scope-token&limit=50',
+      '/projects/7/backbone-diff/layers/L1%3A%3APROC_A%3A%3A010%3A%3AETCH/conditions/cmVfcm93X3JlZg/cells?scope=scope-token_2&limit=50',
     )
   })
 
@@ -127,6 +127,13 @@ describe('backboneDiff API client', () => {
     await expect(
       getBackboneDiffCells(7, 'L1::PROC_A::010::ETCH', ' ', {
         scope: 'scope',
+        limit: 10,
+      }),
+    ).rejects.toThrow(TypeError)
+    await expect(
+      getBackboneDiffConditions(7, 'L1::PROC_A::010::ETCH', {
+        scope: 'scope-token_1',
+        cursor: ' cursor-2 ',
         limit: 10,
       }),
     ).rejects.toThrow(TypeError)
