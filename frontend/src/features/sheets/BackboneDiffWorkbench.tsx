@@ -217,8 +217,8 @@ export function BackboneDiffWorkbench({
 
   useEffect(() => {
     if (announcement !== null) {
-      const timer = window.setTimeout(() => setAnnouncement(null), 3500)
-      return () => window.clearTimeout(timer)
+      const announcementTimer = window.setTimeout(() => setAnnouncement(null), 3500)
+      return () => window.clearTimeout(announcementTimer)
     }
     return
   }, [announcement])
