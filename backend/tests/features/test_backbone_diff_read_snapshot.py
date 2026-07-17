@@ -305,7 +305,7 @@ async def test_load_diff_input_missing_project_raises_not_found(
     with pytest.raises(NotFoundError) as excinfo:
         await load_diff_input_with_session_factory(999_999, sqlite_factory)
 
-    assert excinfo.value.code == "not_found"
+    assert excinfo.value.code == "project_not_found"
     assert excinfo.value.details == {"project_id": 999_999}
 
 
