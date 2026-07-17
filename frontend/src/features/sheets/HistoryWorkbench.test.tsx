@@ -91,15 +91,15 @@ describe('HistoryWorkbench', () => {
     const state = buildTimelineState()
     const item = state.pages[0].items[1]
     const batchKey = getHistoryTimelineItemKey(item)
-    const expanded = toggleHistoryBatchDetail(state, batchKey)
 
     expect(batchKey).toContain('scope-2::batch-2')
-    expect(render(expanded)).toContain('OLD → NEW')
+    expect(render(state)).toContain('OLD → NEW')
 
-    const loaded = storeHistoryBatchDetail(expanded, batchKey, detailFixture())
-    const collapsed = toggleHistoryBatchDetail(loaded, batchKey)
-    const reopened = toggleHistoryBatchDetail(collapsed, batchKey)
+    const collapsed = toggleHistoryBatchDetail(state, batchKey)
+    const loaded = storeHistoryBatchDetail(collapsed, batchKey, detailFixture())
+    const reopened = toggleHistoryBatchDetail(loaded, batchKey)
 
+    expect(loaded.batchDetailCache[batchKey]).toBeDefined()
     expect(reopened.batchDetailCache[batchKey]).toBeDefined()
   })
 })
@@ -240,6 +240,6 @@ function cellHistory(): HistoryCellHistoryOut {
     baseline_entry: null,
     initial_entry: null,
     initial_state_unavailable: true,
-    next_cursor: null,
+    next_cursor: 'cell-cursor-2',
   }
 }
