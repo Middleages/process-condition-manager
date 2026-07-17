@@ -83,19 +83,19 @@ type BackboneDiffWorkbenchAction =
   | { readonly type: 'clear-opened-scopes' }
 
 const EMPTY_ROOT_COUNTS: BackboneDiffCountsOut = {
-  layerCount: 0,
-  availableLayerCount: 0,
-  unavailableLayerCount: 0,
-  rowCount: 0,
-  cellCount: 0,
-  fullRowCount: 0,
-  fullCellCount: 0,
-  ambiguousLineageCount: 0,
-  addedCount: 0,
-  changedCount: 0,
-  clearedCount: 0,
-  removedCount: 0,
-  unchangedCount: 0,
+  layer_count: 0,
+  available_layer_count: 0,
+  unavailable_layer_count: 0,
+  row_count: 0,
+  cell_count: 0,
+  full_row_count: 0,
+  full_cell_count: 0,
+  ambiguous_lineage_count: 0,
+  added_count: 0,
+  changed_count: 0,
+  cleared_count: 0,
+  removed_count: 0,
+  unchanged_count: 0,
 }
 
 export function createBackboneDiffWorkbenchState(

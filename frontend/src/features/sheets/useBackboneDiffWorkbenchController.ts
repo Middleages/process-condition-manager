@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
-import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
+import { type InfiniteData, useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
 
 import { getApiErrorMessage } from '@/api/client'
 import {
@@ -78,13 +78,13 @@ export interface BackboneDiffMergedRoot {
 
 export interface BackboneDiffMergedConditionPage {
   readonly pages: readonly BackboneDiffConditionPage[]
-  readonly items: readonly BackboneDiffConditionPage[0]['items'][number][]
+  readonly items: readonly BackboneDiffConditionPage['items'][number][]
   readonly nextCursor: string | null
 }
 
 export interface BackboneDiffMergedCellPage {
   readonly pages: readonly BackboneDiffCellPage[]
-  readonly items: readonly BackboneDiffCellPage[0]['items'][number][]
+  readonly items: readonly BackboneDiffCellPage['items'][number][]
   readonly nextCursor: string | null
 }
 
@@ -103,6 +103,24 @@ export interface BackboneDiffQueryPresentation {
   readonly rootError: string | null
   readonly nextPageError: string | null
 }
+
+type BackboneDiffRootQueryPage = {
+  readonly token: number
+  readonly result: BackboneDiffRootOut
+}
+
+type BackboneDiffConditionQueryPage = {
+  readonly token: number
+  readonly result: BackboneDiffConditionPageOut
+}
+
+type BackboneDiffCellQueryPage = {
+  readonly token: number
+  readonly result: BackboneDiffCellPageOut
+}
+
+type BackboneDiffQueryKey = readonly unknown[]
+type BackboneDiffPageParam = string | null
 
 interface BackboneDiffRootAuthority {
   readonly enabled: boolean
@@ -520,7 +538,13 @@ export function useBackboneDiffWorkbenchController(
       }),
     [state, rootEnabled],
   )
-  const rootQuery = useInfiniteQuery({
+  const rootQuery = useInfiniteQuery<
+    BackboneDiffRootQueryPage,
+    Error,
+    InfiniteData<BackboneDiffRootQueryPage, BackboneDiffPageParam>,
+    BackboneDiffQueryKey,
+    BackboneDiffPageParam
+  >({
     queryKey: createBackboneDiffWorkbenchRootQueryKey(projectId, normalizedFilters),
     initialPageParam: null as string | null,
     enabled: rootEnabled,
@@ -533,7 +557,7 @@ export function useBackboneDiffWorkbenchController(
     getNextPageParam: () => null,
     retry: false,
     select: (data) => {
-      const page = data.pages.at(-1)
+      const page = data.pages[data.pages.length - 1]
       if (page === undefined) return data
       return {
         ...data,
@@ -541,11 +565,6 @@ export function useBackboneDiffWorkbenchController(
       }
     },
   })
-
-  const mergedRoot = useMemo(
-    () => mergeBackboneDiffRootPages(rootQuery.data?.pages.map((entry) => entry.result) ?? []),
-    [rootQuery.data?.pages],
-  )
 
   useIsomorphicLayoutEffect(() => {
     if (!rootQuery.isSuccess || !rootAuthority.enabled) return
@@ -556,7 +575,8 @@ export function useBackboneDiffWorkbenchController(
       rootBasisToken: rootBasisTokenRef.current,
     })
     if (!isCurrentBackboneDiffRootAuthority(rootAuthority, authority)) return
-    const latest = rootQuery.data?.pages.at(-1)
+    const latest =
+      rootQuery.data === undefined ? undefined : rootQuery.data.pages[rootQuery.data.pages.length - 1]
     if (latest === undefined) return
     if (latest.token !== rootQueryTokenRef.current) return
 
@@ -908,17 +928,17 @@ export function useBackboneDiffWorkbenchController(
 }
 
 const EMPTY_COUNTS = {
-  layerCount: 0,
-  availableLayerCount: 0,
-  unavailableLayerCount: 0,
-  rowCount: 0,
-  cellCount: 0,
-  fullRowCount: 0,
-  fullCellCount: 0,
-  ambiguousLineageCount: 0,
-  addedCount: 0,
-  changedCount: 0,
-  clearedCount: 0,
-  removedCount: 0,
-  unchangedCount: 0,
+  layer_count: 0,
+  available_layer_count: 0,
+  unavailable_layer_count: 0,
+  row_count: 0,
+  cell_count: 0,
+  full_row_count: 0,
+  full_cell_count: 0,
+  ambiguous_lineage_count: 0,
+  added_count: 0,
+  changed_count: 0,
+  cleared_count: 0,
+  removed_count: 0,
+  unchanged_count: 0,
 }
