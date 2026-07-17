@@ -1,9 +1,8 @@
 import type { ConditionGridColumn, ConditionGridRow } from '@/grid/types'
-import type { ValidationIssuePayload } from '@/shared/domain/validation'
 
 export type WorkbenchCoordinate = {
-  readonly conditionId: string
-  readonly parameterCode: string
+  readonly conditionId: string | number | null
+  readonly parameterCode: string | number | null
 }
 
 export type WorkbenchCoordinateNavigation =
@@ -16,24 +15,25 @@ export type WorkbenchCoordinateNavigation =
     }
 
 export function resolveWorkbenchCoordinateNavigation(
-  coordinate:
-    | Pick<ValidationIssuePayload, 'condition_id' | 'parameter_code'>
-    | Pick<WorkbenchCoordinate, 'conditionId' | 'parameterCode'>,
+  coordinate: WorkbenchCoordinate,
   columns: readonly ConditionGridColumn[],
   rows: readonly ConditionGridRow[],
   activeCategory: string | null,
 ): WorkbenchCoordinateNavigation {
-  const conditionId =
-    'conditionId' in coordinate ? coordinate.conditionId : String(coordinate.condition_id)
-  const parameterCode =
-    'parameterCode' in coordinate ? coordinate.parameterCode : coordinate.parameter_code
+  if (coordinate.conditionId === null || coordinate.parameterCode === null) {
+    return { kind: 'missing-target' }
+  }
+
+  const conditionId = String(coordinate.conditionId)
+  const parameterCode = String(coordinate.parameterCode)
   const column = columns.find((candidate) => candidate.key === parameterCode)
   if (column === undefined || !rows.some((row) => row.id === conditionId)) {
     return { kind: 'missing-target' }
   }
 
   const target = { conditionId, parameterCode: column.key }
-  const visible = activeCategory === null || column.categoryCode === activeCategory
+  const visible =
+    column.categoryCode === null || activeCategory === null || column.categoryCode === activeCategory
   return visible
     ? { kind: 'direct', target }
     : { kind: 'reveal-category', categoryCode: column.categoryCode, target }

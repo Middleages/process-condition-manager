@@ -356,18 +356,13 @@ function SheetEditor({
     validation.explicitValidationCompleted,
   )
   const workbenchState = useSheetWorkbenchState()
-  const validationAutoOpenRef = useRef(false)
+  const wasValidationWorkbenchVisibleRef = useRef(false)
 
   useEffect(() => {
-    if (
-      !showValidationWorkbench ||
-      workbenchState.mode !== null ||
-      validationAutoOpenRef.current
-    ) {
-      return
+    if (showValidationWorkbench && !wasValidationWorkbenchVisibleRef.current && workbenchState.mode === null) {
+      workbenchState.selectMode('validation')
     }
-    validationAutoOpenRef.current = true
-    workbenchState.selectMode('validation')
+    wasValidationWorkbenchVisibleRef.current = showValidationWorkbench
   }, [showValidationWorkbench, workbenchState.mode, workbenchState.selectMode])
 
   // 붙여넣기 스테이징(적용 전 미리보기). null = 대기 중인 붙여넣기 없음.
