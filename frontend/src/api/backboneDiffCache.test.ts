@@ -55,16 +55,11 @@ describe('project backbone-diff mutation cache boundary', () => {
     queryClient.setQueryData(branchKey, ['branch-before'])
     queryClient.setQueryData(cellKey, ['cell-before'])
 
-    const branchObserver = new QueryObserver(queryClient, {
-      queryKey: branchKey,
-      queryFn: branchQueryFn,
+    const rootObserver = new QueryObserver(queryClient, {
+      queryKey: rootKey,
+      queryFn: rootQueryFn,
     })
-    const cellObserver = new QueryObserver(queryClient, {
-      queryKey: cellKey,
-      queryFn: cellQueryFn,
-    })
-    const unsubscribeBranch = branchObserver.subscribe(() => undefined)
-    const unsubscribeCell = cellObserver.subscribe(() => undefined)
+    const unsubscribeRoot = rootObserver.subscribe(() => undefined)
 
     const rootRequest = queryClient
       .fetchQuery({ queryKey: rootKey, queryFn: rootQueryFn })
@@ -78,11 +73,9 @@ describe('project backbone-diff mutation cache boundary', () => {
 
     await Promise.resolve()
 
-    expect([
-      rootQueryFn.mock.calls.length,
-      branchQueryFn.mock.calls.length,
-      cellQueryFn.mock.calls.length,
-    ]).toEqual([1, 1, 1])
+    expect(rootQueryFn).toHaveBeenCalledTimes(1)
+    expect(branchQueryFn).toHaveBeenCalledTimes(1)
+    expect(cellQueryFn).toHaveBeenCalledTimes(1)
 
     const callOrder: string[] = []
     const cancelSpy = vi.spyOn(queryClient, 'cancelQueries').mockImplementation((filters) => {
@@ -112,20 +105,20 @@ describe('project backbone-diff mutation cache boundary', () => {
     expect(queryClient.getQueryData(rootKey)).toBe('root-before')
     expect(queryClient.getQueryData(branchKey)).toBeUndefined()
     expect(queryClient.getQueryData(cellKey)).toBeUndefined()
-    expect(queryClient.getQueryState(rootKey)?.isInvalidated).toBe(true)
 
     await mutationRefresh
 
-    expect(rootQueryFn.mock.calls.length).toBeGreaterThanOrEqual(1)
+    expect(rootQueryFn).toHaveBeenCalledTimes(2)
+    expect(queryClient.getQueryData(rootKey)).toBe('root-fresh')
 
     lateRoot.resolve('root-late')
     lateBranch.resolve('branch-late')
     lateCell.resolve('cell-late')
 
-    await Promise.all([rootRequest, branchRequest, cellRequest])
-    await Promise.resolve()
+    const oldRequests = await Promise.allSettled([rootRequest, branchRequest, cellRequest])
+    expect(oldRequests.every((result) => result.status === 'fulfilled')).toBe(true)
 
-    expect(queryClient.getQueryData(rootKey)).not.toBe('root-late')
+    expect(queryClient.getQueryData(rootKey)).toBe('root-fresh')
     expect(queryClient.getQueryData(branchKey)).toBeUndefined()
     expect(queryClient.getQueryData(cellKey)).toBeUndefined()
 
@@ -138,8 +131,7 @@ describe('project backbone-diff mutation cache boundary', () => {
     expect(branchQueryFn).toHaveBeenCalledTimes(2)
     expect(cellQueryFn).toHaveBeenCalledTimes(2)
 
-    unsubscribeBranch()
-    unsubscribeCell()
+    unsubscribeRoot()
     queryClient.clear()
   })
 })
