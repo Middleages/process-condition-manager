@@ -547,7 +547,7 @@ export function BackboneDiffWorkbench({
 
       setExpandedRowRef(rowRef)
     },
-    [cellBranches, expandedLayerKey, onCloseCell, onOpenCells],
+    [cellBranches, expandedLayerKey, expandedRowRef, onCloseCell, onOpenCells],
   )
 
   const activateTarget = useCallback(

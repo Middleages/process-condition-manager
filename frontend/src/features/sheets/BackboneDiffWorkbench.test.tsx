@@ -306,6 +306,7 @@ describe('BackboneDiffWorkbench', () => {
     expect(source).toContain('setExpandedLayerKey(layerKey)')
     expect(source).toContain('setExpandedRowRef(null)')
     expect(source).toContain('setExpandedRowRef(rowRef)')
+    expect(source).toContain('[cellBranches, expandedLayerKey, expandedRowRef, onCloseCell, onOpenCells]')
   })
 
   it('guards empty-cell rendering to ready status via source contract', () => {
