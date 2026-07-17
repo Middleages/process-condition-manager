@@ -48,6 +48,10 @@ export interface HistoryCellHistoryQueryOptions {
 const DEFAULT_TIMELINE_LIMIT = 50
 const DEFAULT_DETAIL_LIMIT = 100
 const DEFAULT_CELL_HISTORY_LIMIT = 50
+const MAX_OPAQUE_TOKEN_LENGTH = 4096
+const MAX_LAYER_KEY_LENGTH = 256
+const MAX_ACTOR_LENGTH = 128
+const MAX_PARAMETER_CODE_LENGTH = 64
 
 const HISTORY_ORIGINS: readonly HistoryOrigin[] = ['manual', 'paste', 'backbone', 'system']
 const HISTORY_EVENT_TYPES: readonly HistoryEventType[] = [
@@ -79,12 +83,17 @@ export function createHistoryTimelineFilters(
 export function normalizeHistoryTimelineFilters(
   filters: HistoryTimelineFilterInput,
 ): HistoryTimelineFilters {
+  const createdFrom = normalizeIsoDatetimeText(filters.createdFrom ?? null, 'createdFrom')
+  const createdTo = normalizeIsoDatetimeText(filters.createdTo ?? null, 'createdTo')
+  if (createdFrom !== null && createdTo !== null && Date.parse(createdFrom) >= Date.parse(createdTo)) {
+    throw new TypeError('createdFrom must be earlier than createdTo')
+  }
   return {
-    createdFrom: normalizeOptionalText(filters.createdFrom ?? null),
-    createdTo: normalizeOptionalText(filters.createdTo ?? null),
-    layerKey: normalizeOptionalText(filters.layerKey ?? null),
+    createdFrom,
+    createdTo,
+    layerKey: normalizeOptionalText(filters.layerKey ?? null, 'layerKey', MAX_LAYER_KEY_LENGTH),
     eventTypes: normalizeUniqueSortedEventTypes(filters.eventTypes ?? []),
-    actor: normalizeOptionalText(filters.actor ?? null),
+    actor: normalizeOptionalText(filters.actor ?? null, 'actor', MAX_ACTOR_LENGTH),
     origin: normalizeHistoryOrigin(filters.origin ?? null),
     sourceProjectId: normalizePositiveInteger(filters.sourceProjectId ?? null),
   }
@@ -128,7 +137,7 @@ export function buildHistoryTimelineQueryString(
   appendOptionalText(query, 'actor', normalized.actor)
   appendOptionalText(query, 'origin', normalized.origin)
   appendOptionalNumber(query, 'source_project_id', normalized.sourceProjectId)
-  appendOptionalText(query, 'cursor', normalizeOptionalText(options.cursor ?? null))
+  appendOptionalText(query, 'cursor', normalizeOptionalText(options.cursor ?? null, 'cursor', MAX_OPAQUE_TOKEN_LENGTH))
   query.set('limit', String(normalizeLimit(options.limit ?? DEFAULT_TIMELINE_LIMIT, 1, 100, 'timeline limit')))
   return query.toString()
 }
@@ -139,7 +148,7 @@ export function buildHistoryDetailQueryString(
 ): string {
   const query = new URLSearchParams()
   appendOptionalText(query, 'scope', normalizeOpaqueToken(scope))
-  appendOptionalText(query, 'cursor', normalizeOptionalText(options.cursor ?? null))
+  appendOptionalText(query, 'cursor', normalizeOptionalText(options.cursor ?? null, 'cursor', MAX_OPAQUE_TOKEN_LENGTH))
   query.set('limit', String(normalizeLimit(options.limit ?? DEFAULT_DETAIL_LIMIT, 1, 200, 'detail limit')))
   return query.toString()
 }
@@ -152,33 +161,50 @@ export function buildHistoryCellHistoryQueryString(
   const query = new URLSearchParams()
   query.set('condition_id', String(normalizeConditionId(conditionId)))
   query.set('parameter_code', normalizePathToken(parameterCode))
-  appendOptionalText(query, 'cursor', normalizeOptionalText(options.cursor ?? null))
+  appendOptionalText(query, 'cursor', normalizeOptionalText(options.cursor ?? null, 'cursor', MAX_OPAQUE_TOKEN_LENGTH))
   query.set('limit', String(normalizeLimit(options.limit ?? DEFAULT_CELL_HISTORY_LIMIT, 1, 100, 'cell history limit')))
   return query.toString()
 }
 
 export function normalizeOpaqueToken(value: string): string {
-  const normalized = normalizeRequiredText(value, 'scope')
-  if (normalized.length > 4096) {
+  const normalized = normalizeRequiredText(value, 'scope', MAX_OPAQUE_TOKEN_LENGTH)
+  if (normalized.length > MAX_OPAQUE_TOKEN_LENGTH) {
     throw new TypeError('History scope token is too long')
   }
   return normalized
 }
 
 export function normalizePathToken(value: string): string {
-  return normalizeRequiredText(value, 'path token')
+  return normalizeRequiredText(value, 'path token', MAX_PARAMETER_CODE_LENGTH)
 }
 
-function normalizeOptionalText(value: string | null): string | null {
+function normalizeIsoDatetimeText(value: string | null, label: string): string | null {
   if (value === null) return null
   const normalized = value.trim()
-  return normalized === '' ? null : normalized
+  if (normalized === '') return null
+  if (Number.isNaN(Date.parse(normalized))) {
+    throw new TypeError(`${label} must be a valid ISO datetime`)
+  }
+  return normalized
 }
 
-function normalizeRequiredText(value: string, label: string): string {
+function normalizeOptionalText(value: string | null, label: string, maxLength: number): string | null {
+  if (value === null) return null
+  const normalized = value.trim()
+  if (normalized === '') return null
+  if (normalized.length > maxLength) {
+    throw new TypeError(`${label} is too long`)
+  }
+  return normalized
+}
+
+function normalizeRequiredText(value: string, label: string, maxLength: number): string {
   const normalized = value.trim()
   if (normalized === '') {
     throw new TypeError(`${label} must be non-empty`)
+  }
+  if (normalized.length > maxLength) {
+    throw new TypeError(`${label} is too long`)
   }
   return normalized
 }
@@ -203,7 +229,7 @@ function isHistoryEventType(value: string): value is HistoryEventType {
 }
 
 function validateHistoryEventType(value: HistoryEventType): HistoryEventType {
-  const normalized = value.trim()
+  const normalized = typeof value === 'string' ? value.trim() : ''
   if (!isHistoryEventType(normalized)) {
     throw new TypeError('History event type must be one of the exact backend values')
   }
@@ -212,13 +238,22 @@ function validateHistoryEventType(value: HistoryEventType): HistoryEventType {
 
 function normalizeHistoryOrigin(origin: HistoryOrigin | null): HistoryOrigin | null {
   if (origin === null) return null
-  const normalized = origin.trim() as HistoryOrigin
-  return HISTORY_ORIGINS.includes(normalized) ? normalized : null
+  if (typeof origin !== 'string') {
+    throw new TypeError('History origin must be one of the exact backend values')
+  }
+  const normalized = origin.trim()
+  if (!HISTORY_ORIGINS.includes(normalized as HistoryOrigin)) {
+    throw new TypeError('History origin must be one of the exact backend values')
+  }
+  return normalized as HistoryOrigin
 }
 
 function normalizePositiveInteger(value: number | null): number | null {
   if (value === null) return null
-  return Number.isInteger(value) && value > 0 ? value : null
+  if (!Number.isInteger(value) || value < 1) {
+    throw new TypeError('sourceProjectId must be a positive integer')
+  }
+  return value
 }
 
 function normalizeConditionId(value: number): number {
