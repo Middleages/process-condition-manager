@@ -1,11 +1,11 @@
 import type { HistoryTimelineItemOut } from '@/api/history'
-
 import {
   createHistoryTimelineFilters,
   historyTimelineQueryKey,
   normalizeHistoryTimelineFilters,
+  type HistoryTimelineFilterInput,
   type HistoryTimelineFilters,
-} from './historyQuery'
+} from '@/api/historyQuery'
 
 export interface HistoryTimelinePage {
   items: readonly HistoryTimelineItemOut[]
@@ -20,12 +20,12 @@ export interface HistoryTimelineState {
 }
 
 export type HistoryTimelineAction =
-  | { readonly type: 'replace-filters'; readonly filters: Partial<HistoryTimelineFilters> }
+  | { readonly type: 'replace-filters'; readonly filters: HistoryTimelineFilterInput }
   | { readonly type: 'append-page'; readonly page: HistoryTimelinePage }
   | { readonly type: 'reset-pages' }
 
 export function createHistoryTimelineState(
-  filters: Partial<HistoryTimelineFilters> = {},
+  filters: HistoryTimelineFilterInput = {},
 ): HistoryTimelineState {
   return {
     filters: createHistoryTimelineFilters(filters),
@@ -80,7 +80,7 @@ export function resetHistoryTimelinePages(state: HistoryTimelineState): HistoryT
 
 export function updateHistoryTimelineFilters(
   state: HistoryTimelineState,
-  filters: Partial<HistoryTimelineFilters>,
+  filters: HistoryTimelineFilterInput,
 ): HistoryTimelineState {
   return reduceHistoryTimelineState(state, { type: 'replace-filters', filters })
 }

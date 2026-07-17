@@ -9,7 +9,7 @@ import {
   historyDetailQueryKey,
   historyTimelineQueryKey,
   normalizeHistoryTimelineFilters,
-} from './historyQuery'
+} from '@/api/historyQuery'
 
 describe('history query helpers', () => {
   it('normalizes filters and produces a stable query key', () => {
@@ -17,7 +17,7 @@ describe('history query helpers', () => {
       createdFrom: ' 2026-07-17T00:00:00Z ',
       createdTo: '2026-07-18T00:00:00Z',
       layerKey: ' L1::10::ETCH ',
-      eventTypes: ['paste', 'manual', 'manual', 'backbone'],
+      eventTypes: ['cell_update', 'backbone_copy', 'backbone_copy'],
       actor: ' dev-admin ',
       origin: 'manual',
       sourceProjectId: 17,
@@ -27,7 +27,7 @@ describe('history query helpers', () => {
       createdFrom: '2026-07-17T00:00:00Z',
       createdTo: '2026-07-18T00:00:00Z',
       layerKey: 'L1::10::ETCH',
-      eventTypes: ['backbone', 'manual', 'paste'],
+      eventTypes: ['backbone_copy', 'cell_update'],
       actor: 'dev-admin',
       origin: 'manual',
       sourceProjectId: 17,
@@ -46,7 +46,7 @@ describe('history query helpers', () => {
         createdFrom: '2026-07-17T00:00:00Z',
         createdTo: '2026-07-18T00:00:00Z',
         layerKey: 'L1::10::ETCH',
-        eventTypes: ['paste', 'manual'],
+        eventTypes: ['cell_update', 'backbone_copy'],
         actor: 'dev-admin',
         origin: 'system',
         sourceProjectId: 19,
@@ -59,8 +59,8 @@ describe('history query helpers', () => {
         'created_from=2026-07-17T00%3A00%3A00Z',
         'created_to=2026-07-18T00%3A00%3A00Z',
         'layer_key=L1%3A%3A10%3A%3AETCH',
-        'event_type=manual',
-        'event_type=paste',
+        'event_type=backbone_copy',
+        'event_type=cell_update',
         'actor=dev-admin',
         'origin=system',
         'source_project_id=19',

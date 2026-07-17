@@ -4,7 +4,7 @@ export function createHistoryTimelineItem(cursorId: number): HistoryTimelineItem
   return {
     kind: 'event',
     cursor_id: cursorId,
-    event_types: ['manual'],
+    event_types: ['cell_update'],
     actors: ['dev-admin'],
     origins: ['manual'],
     started_at: '2026-07-17T00:00:00Z',

@@ -15,6 +15,11 @@ import {
   getHistoryTimeline,
 } from './history'
 import type { HistoryCellHistoryOut, HistoryDetailOut, HistoryTimelineOut } from './history'
+import {
+  buildHistoryTimelineQueryString,
+  createHistoryTimelineFilters,
+  normalizeHistoryTimelineFilters,
+} from './historyQuery'
 
 function response<T>(data: T): AxiosResponse<T> {
   return { data } as unknown as AxiosResponse<T>
@@ -41,7 +46,7 @@ describe('history API client', () => {
         createdFrom: '2026-07-17T00:00:00Z',
         createdTo: '2026-07-18T00:00:00Z',
         layerKey: 'L1::10::ETCH',
-        eventTypes: ['paste', 'manual'],
+        eventTypes: ['cell_update', 'backbone_copy'],
         actor: 'dev-admin',
         origin: 'manual',
         sourceProjectId: 17,
@@ -50,7 +55,7 @@ describe('history API client', () => {
     )
 
     expect(get).toHaveBeenCalledWith(
-      '/projects/7/events?created_from=2026-07-17T00%3A00%3A00Z&created_to=2026-07-18T00%3A00%3A00Z&layer_key=L1%3A%3A10%3A%3AETCH&event_type=manual&event_type=paste&actor=dev-admin&origin=manual&source_project_id=17&cursor=cursor-1&limit=75',
+      '/projects/7/events?created_from=2026-07-17T00%3A00%3A00Z&created_to=2026-07-18T00%3A00%3A00Z&layer_key=L1%3A%3A10%3A%3AETCH&event_type=backbone_copy&event_type=cell_update&actor=dev-admin&origin=manual&source_project_id=17&cursor=cursor-1&limit=75',
     )
   })
 
@@ -88,6 +93,33 @@ describe('history API client', () => {
 
     expect(get).toHaveBeenCalledWith(
       '/projects/7/cell-history?condition_id=11&parameter_code=ETCH_P001&cursor=next&limit=50',
+    )
+  })
+
+  it('omits invalid timeline bounds and unknown event types', () => {
+    const filters = normalizeHistoryTimelineFilters({
+      createdFrom: ' ',
+      createdTo: '2026-07-18T00:00:00Z',
+      layerKey: '   ',
+      eventTypes: ['manual', 'not-an-event', 'cell_update', 'cell_update'],
+      actor: ' ',
+      origin: 'manual',
+      sourceProjectId: 0,
+    })
+
+    expect(filters).toEqual({
+      createdFrom: null,
+      createdTo: '2026-07-18T00:00:00Z',
+      layerKey: null,
+      eventTypes: ['cell_update'],
+      actor: null,
+      origin: 'manual',
+      sourceProjectId: null,
+    })
+    expect(
+      buildHistoryTimelineQueryString(createHistoryTimelineFilters(filters), { limit: 1 }),
+    ).toBe(
+      'created_to=2026-07-18T00%3A00%3A00Z&event_type=cell_update&origin=manual&limit=1',
     )
   })
 })

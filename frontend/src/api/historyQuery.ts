@@ -1,10 +1,30 @@
 export type HistoryOrigin = 'manual' | 'paste' | 'backbone' | 'system'
 
+export type HistoryEventType =
+  | 'project_create'
+  | 'project_profile_update'
+  | 'backbone_copy'
+  | 'backbone_layer_replace'
+  | 'cell_update'
+  | 'condition_add'
+  | 'condition_remove'
+  | 'por_change'
+
+export interface HistoryTimelineFilterInput {
+  createdFrom?: string | null
+  createdTo?: string | null
+  layerKey?: string | null
+  eventTypes?: readonly string[]
+  actor?: string | null
+  origin?: HistoryOrigin | null
+  sourceProjectId?: number | null
+}
+
 export interface HistoryTimelineFilters {
   createdFrom: string | null
   createdTo: string | null
   layerKey: string | null
-  eventTypes: readonly string[]
+  eventTypes: readonly HistoryEventType[]
   actor: string | null
   origin: HistoryOrigin | null
   sourceProjectId: number | null
@@ -30,9 +50,19 @@ const DEFAULT_DETAIL_LIMIT = 100
 const DEFAULT_CELL_HISTORY_LIMIT = 50
 
 const HISTORY_ORIGINS: readonly HistoryOrigin[] = ['manual', 'paste', 'backbone', 'system']
+const HISTORY_EVENT_TYPES: readonly HistoryEventType[] = [
+  'project_create',
+  'project_profile_update',
+  'backbone_copy',
+  'backbone_layer_replace',
+  'cell_update',
+  'condition_add',
+  'condition_remove',
+  'por_change',
+]
 
 export function createHistoryTimelineFilters(
-  overrides: Partial<HistoryTimelineFilters> = {},
+  overrides: HistoryTimelineFilterInput = {},
 ): HistoryTimelineFilters {
   return normalizeHistoryTimelineFilters({
     createdFrom: null,
@@ -47,22 +77,22 @@ export function createHistoryTimelineFilters(
 }
 
 export function normalizeHistoryTimelineFilters(
-  filters: HistoryTimelineFilters,
+  filters: HistoryTimelineFilterInput,
 ): HistoryTimelineFilters {
   return {
-    createdFrom: normalizeOptionalText(filters.createdFrom),
-    createdTo: normalizeOptionalText(filters.createdTo),
-    layerKey: normalizeOptionalText(filters.layerKey),
-    eventTypes: normalizeUniqueSortedTextList(filters.eventTypes),
-    actor: normalizeOptionalText(filters.actor),
-    origin: normalizeHistoryOrigin(filters.origin),
-    sourceProjectId: normalizePositiveInteger(filters.sourceProjectId),
+    createdFrom: normalizeOptionalText(filters.createdFrom ?? null),
+    createdTo: normalizeOptionalText(filters.createdTo ?? null),
+    layerKey: normalizeOptionalText(filters.layerKey ?? null),
+    eventTypes: normalizeUniqueSortedEventTypes(filters.eventTypes ?? []),
+    actor: normalizeOptionalText(filters.actor ?? null),
+    origin: normalizeHistoryOrigin(filters.origin ?? null),
+    sourceProjectId: normalizePositiveInteger(filters.sourceProjectId ?? null),
   }
 }
 
 export function historyTimelineQueryKey(
   projectId: number,
-  filters: HistoryTimelineFilters,
+  filters: HistoryTimelineFilterInput,
 ): readonly unknown[] {
   return ['history', projectId, 'timeline', normalizeHistoryTimelineFilters(filters)]
 }
@@ -84,7 +114,7 @@ export function historyCellHistoryQueryKey(
 }
 
 export function buildHistoryTimelineQueryString(
-  filters: HistoryTimelineFilters,
+  filters: HistoryTimelineFilterInput,
   options: HistoryTimelineQueryOptions = {},
 ): string {
   const query = new URLSearchParams()
@@ -153,17 +183,23 @@ function normalizeRequiredText(value: string, label: string): string {
   return normalized
 }
 
-function normalizeUniqueSortedTextList(values: readonly string[]): readonly string[] {
-  const seen = new Set<string>()
-  const normalized: string[] = []
+function normalizeUniqueSortedEventTypes(
+  values: readonly string[],
+): readonly HistoryEventType[] {
+  const seen = new Set<HistoryEventType>()
+  const normalized: HistoryEventType[] = []
   for (const value of values) {
     const item = value.trim()
-    if (item === '' || seen.has(item)) continue
+    if (!isHistoryEventType(item) || seen.has(item)) continue
     seen.add(item)
     normalized.push(item)
   }
   normalized.sort()
   return normalized
+}
+
+function isHistoryEventType(value: string): value is HistoryEventType {
+  return (HISTORY_EVENT_TYPES as readonly string[]).includes(value)
 }
 
 function normalizeHistoryOrigin(origin: HistoryOrigin | null): HistoryOrigin | null {

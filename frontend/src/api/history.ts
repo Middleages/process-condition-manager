@@ -9,17 +9,18 @@ import {
   type HistoryCellHistoryQueryOptions,
   type HistoryDetailQueryOptions,
   type HistoryOrigin,
-  type HistoryTimelineFilters,
+  type HistoryTimelineFilterInput,
   type HistoryTimelineQueryOptions,
-} from '@/features/sheets/historyQuery'
+} from './historyQuery'
 
 export type {
   HistoryCellHistoryQueryOptions,
   HistoryDetailQueryOptions,
   HistoryOrigin,
+  HistoryTimelineFilterInput,
   HistoryTimelineFilters,
   HistoryTimelineQueryOptions,
-} from '@/features/sheets/historyQuery'
+} from './historyQuery'
 
 export interface HistoryCoverageOut {
   legacy_unresolved_layer_count: number
@@ -129,7 +130,7 @@ export interface HistoryCellHistoryOut {
 
 export async function getHistoryTimeline(
   projectId: number,
-  filters: HistoryTimelineFilters,
+  filters: HistoryTimelineFilterInput,
   options: HistoryTimelineQueryOptions = {},
 ): Promise<HistoryTimelineOut> {
   const response = await apiClient.get<HistoryTimelineOut>(
