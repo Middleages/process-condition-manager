@@ -132,6 +132,8 @@ interface BackboneDiffQueryAuthorityLane {
 
 interface BackboneDiffRootQueryAuthorityLane extends BackboneDiffQueryAuthorityLane {
   sequence: number
+  revisionFenceByProjectId: Record<number, number>
+  basisFenceMarkerByProjectId: Map<number, unknown>
 }
 
 export interface BackboneDiffAuthorityLedger {
@@ -141,6 +143,7 @@ export interface BackboneDiffAuthorityLedger {
 }
 
 const backboneDiffAuthorityLedgerByQueryClient = new WeakMap<QueryClient, BackboneDiffAuthorityLedger>()
+const backboneDiffAuthorityLedgerSubscriptionByQueryClient = new WeakSet<QueryClient>()
 
 interface BackboneDiffRootAuthority {
   readonly enabled: boolean
@@ -205,6 +208,8 @@ function createBackboneDiffAuthorityLedger(): BackboneDiffAuthorityLedger {
       sequence: 0,
       issuedByKey: {},
       acceptedByKey: {},
+      revisionFenceByProjectId: {},
+      basisFenceMarkerByProjectId: new Map<number, unknown>(),
     },
     branch: {
       issuedByKey: {},
@@ -217,14 +222,140 @@ function createBackboneDiffAuthorityLedger(): BackboneDiffAuthorityLedger {
   }
 }
 
+function parseBackboneDiffQueryKeyFingerprint(
+  keyFingerprint: string,
+): readonly unknown[] | null {
+  try {
+    const parsed = JSON.parse(keyFingerprint) as unknown
+    return Array.isArray(parsed) ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+function isBackboneDiffRootQueryKeyForProject(
+  keyFingerprint: string,
+  projectId: number,
+): boolean {
+  const queryKey = parseBackboneDiffQueryKeyFingerprint(keyFingerprint)
+  if (queryKey === null) return false
+
+  try {
+    return parseBackboneDiffWorkbenchRootQueryKey(queryKey).projectId === projectId
+  } catch {
+    return false
+  }
+}
+
+function clearBackboneDiffAuthorityEntryForKey(
+  authorityLane: BackboneDiffQueryAuthorityLane,
+  keyFingerprint: string,
+): void {
+  delete authorityLane.issuedByKey[keyFingerprint]
+  delete authorityLane.acceptedByKey[keyFingerprint]
+}
+
+function clearBackboneDiffAuthorityEntriesForRemovedQuery(
+  ledger: BackboneDiffAuthorityLedger,
+  queryKey: readonly unknown[],
+): void {
+  const keyFingerprint = JSON.stringify(queryKey)
+  try {
+    parseBackboneDiffWorkbenchRootQueryKey(queryKey)
+    clearBackboneDiffAuthorityEntryForKey(ledger.root, keyFingerprint)
+    return
+  } catch {}
+
+  try {
+    parseBackboneDiffWorkbenchBranchQueryKey(queryKey)
+    clearBackboneDiffAuthorityEntryForKey(ledger.branch, keyFingerprint)
+    return
+  } catch {}
+
+  try {
+    parseBackboneDiffWorkbenchCellQueryKey(queryKey)
+    clearBackboneDiffAuthorityEntryForKey(ledger.cell, keyFingerprint)
+  } catch {}
+}
+
+type BackboneDiffRootFence =
+  | {
+      readonly kind: 'revision'
+      readonly revision: number
+    }
+  | {
+      readonly kind: 'basis-error'
+      readonly marker: unknown
+    }
+
+export function fenceBackboneDiffRootAuthorityLedger(
+  ledger: BackboneDiffAuthorityLedger,
+  projectId: number,
+  fence: BackboneDiffRootFence,
+): boolean {
+  if (fence.kind === 'revision') {
+    if (ledger.root.revisionFenceByProjectId[projectId] === fence.revision) {
+      return false
+    }
+    ledger.root.revisionFenceByProjectId[projectId] = fence.revision
+  } else {
+    if (ledger.root.basisFenceMarkerByProjectId.get(projectId) === fence.marker) {
+      return false
+    }
+    ledger.root.basisFenceMarkerByProjectId.set(projectId, fence.marker)
+  }
+
+  const rootKeys = new Set<string>()
+  let nextIssuedToken = ledger.root.sequence
+
+  for (const [keyFingerprint, issuedToken] of Object.entries(ledger.root.issuedByKey)) {
+    if (!isBackboneDiffRootQueryKeyForProject(keyFingerprint, projectId)) continue
+    rootKeys.add(keyFingerprint)
+    nextIssuedToken = Math.max(nextIssuedToken, issuedToken, ledger.root.acceptedByKey[keyFingerprint] ?? 0)
+  }
+
+  for (const [keyFingerprint, acceptedToken] of Object.entries(ledger.root.acceptedByKey)) {
+    if (!isBackboneDiffRootQueryKeyForProject(keyFingerprint, projectId)) continue
+    rootKeys.add(keyFingerprint)
+    nextIssuedToken = Math.max(nextIssuedToken, acceptedToken, ledger.root.issuedByKey[keyFingerprint] ?? 0)
+  }
+
+  const nextFenceToken = nextIssuedToken + 1
+  ledger.root.sequence = nextFenceToken
+
+  for (const keyFingerprint of rootKeys) {
+    ledger.root.issuedByKey[keyFingerprint] = nextFenceToken
+    delete ledger.root.acceptedByKey[keyFingerprint]
+  }
+
+  return true
+}
+
+function subscribeBackboneDiffAuthorityLedgerToQueryCache(
+  queryClient: QueryClient,
+  ledger: BackboneDiffAuthorityLedger,
+): void {
+  if (backboneDiffAuthorityLedgerSubscriptionByQueryClient.has(queryClient)) return
+  backboneDiffAuthorityLedgerSubscriptionByQueryClient.add(queryClient)
+
+  queryClient.getQueryCache().subscribe((event) => {
+    if (event.type !== 'removed') return
+    clearBackboneDiffAuthorityEntriesForRemovedQuery(ledger, event.query.queryKey)
+  })
+}
+
 export function getBackboneDiffAuthorityLedger(
   queryClient: QueryClient,
 ): BackboneDiffAuthorityLedger {
   const cached = backboneDiffAuthorityLedgerByQueryClient.get(queryClient)
-  if (cached !== undefined) return cached
+  if (cached !== undefined) {
+    subscribeBackboneDiffAuthorityLedgerToQueryCache(queryClient, cached)
+    return cached
+  }
 
   const created = createBackboneDiffAuthorityLedger()
   backboneDiffAuthorityLedgerByQueryClient.set(queryClient, created)
+  subscribeBackboneDiffAuthorityLedgerToQueryCache(queryClient, created)
   return created
 }
 
@@ -816,20 +947,37 @@ export function useBackboneDiffWorkbenchController(
     authorityLedger.root.issuedByKey[key] = Math.max(currentIssuedToken, cachedToken)
   }, [rootQueryKeyFingerprint])
 
-  const handleBasisChanged = useCallback(() => {
-    rootBasisTokenRef.current += 1
-    setOuterGeneration((current) => current + 1)
-    commitState((latest) =>
-      announceBackboneDiffNavigation(clearBackboneDiffOpenScopes(latest), BASIS_CHANGED_MESSAGE),
-    )
-    clearBackboneDiffBranchAndCellQueries(queryClient, projectId)
-    authorityLedger.root.acceptedByKey[rootQueryKeyFingerprintRef.current] = 0
-    void queryClient.invalidateQueries({
-      queryKey: rootQueryKey,
-    })
-    branchBasisFailureCountRef.current = 0
-    cellBasisFailureCountRef.current = 0
-  }, [commitState, queryClient, rootQueryKey, projectId])
+  const handleBasisChanged = useCallback(
+    (fence: BackboneDiffRootFence) => {
+      const didFence = fenceBackboneDiffRootAuthorityLedger(authorityLedger, projectId, fence)
+      rootBasisTokenRef.current += 1
+      setOuterGeneration((current) => current + 1)
+      commitState((latest) =>
+        announceBackboneDiffNavigation(clearBackboneDiffOpenScopes(latest), BASIS_CHANGED_MESSAGE),
+      )
+      branchBasisFailureCountRef.current = 0
+      cellBasisFailureCountRef.current = 0
+      if (!didFence) {
+        return
+      }
+      clearBackboneDiffBranchAndCellQueries(queryClient, projectId)
+      void queryClient.invalidateQueries({
+        queryKey: rootQueryKey,
+      })
+    },
+    [authorityLedger, commitState, projectId, queryClient, rootQueryKey],
+  )
+
+  const handleBasisChangedFromError = useCallback((error: unknown) => {
+    handleBasisChanged({ kind: 'basis-error', marker: error })
+  }, [handleBasisChanged])
+
+  const handleBasisChangedFromRevision = useCallback(
+    (nextRevision: number) => {
+      handleBasisChanged({ kind: 'revision', revision: nextRevision })
+    },
+    [handleBasisChanged],
+  )
   useIsomorphicLayoutEffect(() => {
     const enabledChanged = previousEnabledRef.current !== enabled
     const revisionChanged = previousRevisionRef.current !== revision
@@ -850,18 +998,9 @@ export function useBackboneDiffWorkbenchController(
     }
 
     if (revisionChanged) {
-      const key = rootQueryKeyFingerprintRef.current
-      authorityLedger.root.acceptedByKey[key] = 0
-      rootBasisTokenRef.current += 1
-      commitState((latest) =>
-        announceBackboneDiffNavigation(clearBackboneDiffOpenScopes(latest), BASIS_CHANGED_MESSAGE),
-      )
-      clearBackboneDiffBranchAndCellQueries(queryClient, projectId)
-      void queryClient.invalidateQueries({ queryKey: rootQueryKey })
-      branchBasisFailureCountRef.current = 0
-      cellBasisFailureCountRef.current = 0
+      handleBasisChangedFromRevision(revision)
     }
-  }, [commitState, enabled, revision, queryClient, rootQueryKey, projectId])
+  }, [commitState, enabled, handleBasisChangedFromRevision, revision])
 
   const rootEnabled = backboneDiffRootQueryEnabled(enabled)
   const rootAuthority = useMemo(
@@ -1006,8 +1145,8 @@ export function useBackboneDiffWorkbenchController(
       return
     }
     branchBasisFailureCountRef.current = branchQuery.failureCount
-    handleBasisChanged()
-  }, [branchQuery.error, branchQuery.failureCount, branchQuery.isError, handleBasisChanged])
+    handleBasisChangedFromError(branchQuery.error)
+  }, [branchQuery.error, branchQuery.failureCount, branchQuery.isError, handleBasisChangedFromError])
 
   const branchAuthority = useMemo(
     () =>
@@ -1136,8 +1275,8 @@ export function useBackboneDiffWorkbenchController(
       return
     }
     cellBasisFailureCountRef.current = cellQuery.failureCount
-    handleBasisChanged()
-  }, [cellQuery.error, cellQuery.failureCount, cellQuery.isError, handleBasisChanged])
+    handleBasisChangedFromError(cellQuery.error)
+  }, [cellQuery.error, cellQuery.failureCount, cellQuery.isError, handleBasisChangedFromError])
 
   const cellAuthority = useMemo(
     () =>
@@ -1215,9 +1354,8 @@ export function useBackboneDiffWorkbenchController(
 
       clearBackboneDiffBranchAndCellQueries(queryClient, projectId)
       commitState(() => next)
-      authorityLedger.root.acceptedByKey[rootQueryKeyFingerprintRef.current] = 0
     },
-    [authorityLedger.root.acceptedByKey, commitState, queryClient, projectId],
+    [commitState, queryClient, projectId],
   )
 
   const onModeChange = useCallback(
@@ -1295,27 +1433,21 @@ export function useBackboneDiffWorkbenchController(
 
   const onRetryRoot = useCallback(() => {
     if (rootEnabled) {
-      const key = rootQueryKeyFingerprintRef.current
-      authorityLedger.root.sequence = Math.max(authorityLedger.root.sequence, authorityLedger.root.issuedByKey[key] ?? 0)
       void rootQuery.refetch()
     }
-  }, [authorityLedger.root.issuedByKey, authorityLedger.root.sequence, rootEnabled, rootQuery])
+  }, [rootEnabled, rootQuery])
 
   const onRetryBranch = useCallback(() => {
     if (branchEnabled) {
-      const key = branchQueryKeyFingerprintRef.current
-      authorityLedger.branch.issuedByKey[key] = (authorityLedger.branch.issuedByKey[key] ?? 0) + 1
       void branchQuery.refetch()
     }
-  }, [authorityLedger.branch.issuedByKey, branchEnabled, branchQuery])
+  }, [branchEnabled, branchQuery])
 
   const onRetryCell = useCallback(() => {
     if (cellEnabled) {
-      const key = cellQueryKeyFingerprintRef.current
-      authorityLedger.cell.issuedByKey[key] = (authorityLedger.cell.issuedByKey[key] ?? 0) + 1
       void cellQuery.refetch()
     }
-  }, [authorityLedger.cell.issuedByKey, cellEnabled, cellQuery])
+  }, [cellEnabled, cellQuery])
 
   return {
     state,
