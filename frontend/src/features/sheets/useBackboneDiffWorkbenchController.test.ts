@@ -26,6 +26,7 @@ import {
   createBackboneDiffWorkbenchBranchQueryKey,
   createBackboneDiffWorkbenchCellQueryKey,
   createBackboneDiffWorkbenchRootQueryKey,
+  fenceBackboneDiffRootAuthorityLedger,
   getBackboneDiffAuthorityLedger,
   isCurrentBackboneDiffBranchAuthority,
   isCurrentBackboneDiffCellAuthority,
@@ -212,6 +213,115 @@ describe('useBackboneDiffWorkbenchController seams', () => {
       }),
     ).toBe(true)
     expect(acceptedTokenByKeyRef.current[key]).toBe(2)
+  })
+
+  it('fences all root keys for a project exactly once per marker', () => {
+    const queryClient = new QueryClient()
+    const authorityLedger = getBackboneDiffAuthorityLedger(queryClient)
+
+    const rootA = createBackboneDiffWorkbenchRootQueryKey(7, {
+      previewLimit: 20,
+      classification: ['added'],
+      layerKey: null,
+      categoryCode: null,
+      parameterCode: null,
+      includeUnchanged: false,
+    })
+    const rootB = createBackboneDiffWorkbenchRootQueryKey(7, {
+      previewLimit: 20,
+      classification: ['removed'],
+      layerKey: null,
+      categoryCode: null,
+      parameterCode: null,
+      includeUnchanged: false,
+    })
+    const otherProjectRoot = createBackboneDiffWorkbenchRootQueryKey(8, {
+      previewLimit: 20,
+      classification: ['changed'],
+      layerKey: null,
+      categoryCode: null,
+      parameterCode: null,
+      includeUnchanged: false,
+    })
+
+    const rootAFingerprint = JSON.stringify(rootA)
+    const rootBFingerprint = JSON.stringify(rootB)
+    const otherProjectFingerprint = JSON.stringify(otherProjectRoot)
+
+    authorityLedger.root.sequence = 8
+    authorityLedger.root.issuedByKey[rootAFingerprint] = 8
+    authorityLedger.root.acceptedByKey[rootAFingerprint] = 8
+    authorityLedger.root.issuedByKey[rootBFingerprint] = 4
+    authorityLedger.root.acceptedByKey[rootBFingerprint] = 4
+    authorityLedger.root.issuedByKey[otherProjectFingerprint] = 2
+    authorityLedger.root.acceptedByKey[otherProjectFingerprint] = 2
+
+    expect(fenceBackboneDiffRootAuthorityLedger(authorityLedger, 7, 'revision:3')).toBe(true)
+    expect(authorityLedger.root.sequence).toBe(9)
+    expect(authorityLedger.root.issuedByKey[rootAFingerprint]).toBe(9)
+    expect(authorityLedger.root.issuedByKey[rootBFingerprint]).toBe(9)
+    expect(authorityLedger.root.acceptedByKey[rootAFingerprint]).toBeUndefined()
+    expect(authorityLedger.root.acceptedByKey[rootBFingerprint]).toBeUndefined()
+    expect(authorityLedger.root.issuedByKey[otherProjectFingerprint]).toBe(2)
+    expect(authorityLedger.root.acceptedByKey[otherProjectFingerprint]).toBe(2)
+
+    expect(fenceBackboneDiffRootAuthorityLedger(authorityLedger, 7, 'revision:3')).toBe(false)
+    expect(authorityLedger.root.sequence).toBe(9)
+    expect(authorityLedger.root.issuedByKey[rootAFingerprint]).toBe(9)
+  })
+
+  it('keeps retry handlers refetch-only and lets same-key query intents dedupe to one issuance', async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, staleTime: 0 },
+      },
+    })
+    queryClient.mount()
+    const authorityLedger = getBackboneDiffAuthorityLedger(queryClient)
+
+    const rootKey = createBackboneDiffWorkbenchRootQueryKey(7, {
+      previewLimit: 20,
+      classification: ['added'],
+      layerKey: null,
+      categoryCode: null,
+      parameterCode: null,
+      includeUnchanged: false,
+    })
+    const rootFingerprint = JSON.stringify(rootKey)
+    const rootRequest = deferred<BackboneDiffRootOut>()
+    const rootSpy = vi
+      .spyOn(backboneDiffApi, 'getBackboneDiffRoot')
+      .mockImplementation(async () => rootRequest.promise)
+
+    const rootQueryFn = createBackboneDiffWorkbenchRootQueryFn(queryClient, authorityLedger.root)
+
+    try {
+      const first = queryClient.fetchInfiniteQuery({
+        queryKey: rootKey,
+        queryFn: rootQueryFn,
+        initialPageParam: null as string | null,
+      })
+      const second = queryClient.fetchInfiniteQuery({
+        queryKey: rootKey,
+        queryFn: rootQueryFn,
+        initialPageParam: null as string | null,
+      })
+
+      await vi.waitFor(() => expect(rootSpy).toHaveBeenCalledTimes(1))
+      expect(authorityLedger.root.issuedByKey[rootFingerprint]).toBe(1)
+      expect(authorityLedger.root.acceptedByKey[rootFingerprint]).toBeUndefined()
+
+      rootRequest.resolve(createRootOut('scope-dedup', 'hash-dedup'))
+      const [firstData, secondData] = await Promise.all([first, second])
+      expect(firstData.pages[0]?.token).toBe(1)
+      expect(secondData.pages[0]?.token).toBe(1)
+      expect(rootSpy).toHaveBeenCalledTimes(1)
+      expect(authorityLedger.root.issuedByKey[rootFingerprint]).toBe(1)
+    } finally {
+      rootSpy.mockRestore()
+      queryClient.clear()
+      queryClient.unmount()
+    }
   })
 
   it('rejects stale authorities when revision/generation/token/context changes', () => {
@@ -1036,6 +1146,94 @@ describe('useBackboneDiffWorkbenchController seams', () => {
     expect(queryClient.getQueryData(rootKey)).toEqual({ pages: [] })
   })
 
+  it('purges exact authority entries on removeQueries and clear without cross-client leakage', () => {
+    const clientA = new QueryClient()
+    const clientB = new QueryClient()
+    const ledgerA = getBackboneDiffAuthorityLedger(clientA)
+    const ledgerB = getBackboneDiffAuthorityLedger(clientB)
+
+    const rootKey = createBackboneDiffWorkbenchRootQueryKey(7, {
+      previewLimit: 20,
+      classification: ['added'],
+      layerKey: null,
+      categoryCode: null,
+      parameterCode: null,
+      includeUnchanged: false,
+    })
+    const branchKey = createBackboneDiffWorkbenchBranchQueryKey(
+      7,
+      'root-s',
+      'hash-1',
+      {
+        classification: [],
+        layerKey: null,
+        categoryCode: null,
+        parameterCode: null,
+        includeUnchanged: false,
+        previewLimit: 20,
+      },
+      'L1::10::ETCH',
+      'scope-x',
+    )
+    const cellKey = createBackboneDiffWorkbenchCellQueryKey(
+      7,
+      'root-s',
+      'hash-1',
+      {
+        classification: [],
+        layerKey: null,
+        categoryCode: null,
+        parameterCode: null,
+        includeUnchanged: false,
+        previewLimit: 20,
+      },
+      'L1::10::ETCH',
+      'R1',
+      'scope-x',
+    )
+
+    const rootFingerprint = JSON.stringify(rootKey)
+    const branchFingerprint = JSON.stringify(branchKey)
+    const cellFingerprint = JSON.stringify(cellKey)
+
+    ledgerA.root.issuedByKey[rootFingerprint] = 1
+    ledgerA.root.acceptedByKey[rootFingerprint] = 1
+    ledgerA.branch.issuedByKey[branchFingerprint] = 2
+    ledgerA.branch.acceptedByKey[branchFingerprint] = 2
+    ledgerA.cell.issuedByKey[cellFingerprint] = 3
+    ledgerA.cell.acceptedByKey[cellFingerprint] = 3
+
+    ledgerB.root.issuedByKey[rootFingerprint] = 11
+    ledgerB.root.acceptedByKey[rootFingerprint] = 11
+    ledgerB.branch.issuedByKey[branchFingerprint] = 12
+    ledgerB.branch.acceptedByKey[branchFingerprint] = 12
+    ledgerB.cell.issuedByKey[cellFingerprint] = 13
+    ledgerB.cell.acceptedByKey[cellFingerprint] = 13
+
+    clientA.setQueryData(rootKey, { pages: [] })
+    clientA.setQueryData(branchKey, { pages: [] })
+    clientA.setQueryData(cellKey, { pages: [] })
+    clientB.setQueryData(rootKey, { pages: [] })
+    clientB.setQueryData(branchKey, { pages: [] })
+    clientB.setQueryData(cellKey, { pages: [] })
+
+    clientA.removeQueries({ queryKey: rootKey, exact: true })
+    expect(ledgerA.root.issuedByKey[rootFingerprint]).toBeUndefined()
+    expect(ledgerA.root.acceptedByKey[rootFingerprint]).toBeUndefined()
+    expect(ledgerB.root.issuedByKey[rootFingerprint]).toBe(11)
+    expect(ledgerB.root.acceptedByKey[rootFingerprint]).toBe(11)
+
+    clientA.clear()
+    expect(ledgerA.branch.issuedByKey[branchFingerprint]).toBeUndefined()
+    expect(ledgerA.branch.acceptedByKey[branchFingerprint]).toBeUndefined()
+    expect(ledgerA.cell.issuedByKey[cellFingerprint]).toBeUndefined()
+    expect(ledgerA.cell.acceptedByKey[cellFingerprint]).toBeUndefined()
+    expect(ledgerB.branch.issuedByKey[branchFingerprint]).toBe(12)
+    expect(ledgerB.cell.acceptedByKey[cellFingerprint]).toBe(13)
+
+    clientB.clear()
+  })
+
   it('clears stale in-flight branch/cell query work when filters are replaced', async () => {
     const queryClient = new QueryClient({
       defaultOptions: {
@@ -1138,6 +1336,11 @@ describe('useBackboneDiffWorkbenchController seams', () => {
     expect(source).toContain('authorityLedger.root')
     expect(source).toContain('authorityLedger.branch')
     expect(source).toContain('authorityLedger.cell')
+    expect(source).toContain('handleBasisChangedFromRevision(revision)')
+    expect(source).toContain('handleBasisChangedFromError()')
+    expect(source).toContain('void rootQuery.refetch()')
+    expect(source).toContain('void branchQuery.refetch()')
+    expect(source).toContain('void cellQuery.refetch()')
     expect(source).toContain('branchQuery.data === void 0')
     expect(source).toContain('cellQuery.data === void 0')
     expect(source).not.toContain('rootQueryTokenRef')
@@ -1149,6 +1352,10 @@ describe('useBackboneDiffWorkbenchController seams', () => {
     expect(source).not.toContain('!rootQuery.isSuccess')
     expect(source).not.toContain('!branchQuery.isSuccess')
     expect(source).not.toContain('!cellQuery.isSuccess')
+    expect(source).not.toContain('acceptedByKey[rootQueryKeyFingerprintRef.current] = 0')
+    expect(source).not.toContain('authorityLedger.root.sequence = Math.max')
+    expect(source).not.toContain('authorityLedger.branch.issuedByKey[key] = (authorityLedger.branch.issuedByKey[key] ?? 0) + 1')
+    expect(source).not.toContain('authorityLedger.cell.issuedByKey[key] = (authorityLedger.cell.issuedByKey[key] ?? 0) + 1')
   })
 })
 
