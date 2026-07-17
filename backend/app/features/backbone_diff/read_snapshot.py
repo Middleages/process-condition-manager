@@ -9,18 +9,25 @@ from app.core.db import app_engine
 from app.features.backbone_diff.contracts import DiffInput
 from app.features.backbone_diff.repository import BackboneDiffRepository
 
-_READ_ONLY_ENGINE: AsyncEngine
-if app_engine.dialect.name == "postgresql":
-    _READ_ONLY_ENGINE = app_engine.execution_options(
-        isolation_level="REPEATABLE READ"
+
+def build_read_only_sessionmaker(
+    engine: AsyncEngine,
+) -> async_sessionmaker[AsyncSession]:
+    """Create a repeatable-read sessionmaker that shares the engine pool."""
+
+    read_only_engine = (
+        engine.execution_options(isolation_level="REPEATABLE READ")
+        if engine.dialect.name == "postgresql"
+        else engine
     )
-else:
-    _READ_ONLY_ENGINE = app_engine
-ReadOnlySessionLocal = async_sessionmaker(
-    _READ_ONLY_ENGINE,
-    expire_on_commit=False,
-    class_=AsyncSession,
-)
+    return async_sessionmaker(
+        read_only_engine,
+        expire_on_commit=False,
+        class_=AsyncSession,
+    )
+
+
+ReadOnlySessionLocal = build_read_only_sessionmaker(app_engine)
 
 
 async def load_diff_input(project_id: int) -> DiffInput:
