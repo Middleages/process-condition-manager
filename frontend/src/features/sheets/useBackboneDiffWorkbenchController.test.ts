@@ -1,5 +1,5 @@
-import { QueryClient } from '@tanstack/react-query'
-import { describe, expect, it } from 'vitest'
+import { QueryClient, onlineManager } from '@tanstack/react-query'
+import { describe, expect, it, vi } from 'vitest'
 
 import {
   backboneDiffBranchQueryKey,
@@ -33,6 +33,9 @@ import {
   mergeBackboneDiffCellPages,
   mergeBackboneDiffRootPages,
   clearBackboneDiffBranchAndCellQueries,
+  parseBackboneDiffWorkbenchBranchQueryKey,
+  parseBackboneDiffWorkbenchCellQueryKey,
+  parseBackboneDiffWorkbenchRootQueryKey,
   shouldHandleDiffBasisChangedQueryError,
   shouldHandleDiffBasisChangedQueryErrorWithAuthority,
 } from './useBackboneDiffWorkbenchController'
@@ -297,6 +300,309 @@ describe('useBackboneDiffWorkbenchController seams', () => {
         latestToken: latestTokenByKey[JSON.stringify(rootA)] ?? 0,
       }),
     ).toBe(true)
+  })
+
+  it('seeds remount root token authority from cached root token so first fresh response is accepted', () => {
+    const projectId = 7
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, staleTime: 30_000 },
+      },
+    })
+
+    const rootKey = createBackboneDiffWorkbenchRootQueryKey(projectId, {
+      previewLimit: 20,
+      classification: ['added'],
+      layerKey: null,
+      categoryCode: null,
+      parameterCode: null,
+      includeUnchanged: false,
+    })
+    const queryFingerprint = JSON.stringify(rootKey)
+
+    const cachedToken = 7
+    queryClient.setQueryData(rootKey, {
+      pages: [
+        {
+          token: cachedToken,
+          result: createRootOut('scope-cached', 'hash-cached'),
+        },
+      ],
+      pageParams: [null],
+    })
+
+    const acceptedByKey: Record<string, number> = {}
+
+    // Simulate initial remount: controller-local token refs start from zero even though cache is warm.
+    let localToken = 0
+    const cachedQueryData =
+      (queryClient.getQueryData(rootKey) as {
+        pages: { token: number; result: BackboneDiffRootOut }[]
+      } | undefined) ?? { pages: [] }
+    const tokenFromCache = cachedQueryData.pages[cachedQueryData.pages.length - 1]?.token ?? 0
+    expect(isBackboneDiffQueryPageCurrent({ dataToken: tokenFromCache, latestToken: 0 })).toBe(true)
+    acceptedByKey[queryFingerprint] = tokenFromCache
+
+    // Old logic after remount (token ref reset to 0) would reject the first fresh token.
+    expect(
+      isBackboneDiffQueryPageCurrent({
+        dataToken: 1,
+        latestToken: acceptedByKey[queryFingerprint] ?? 0,
+      }),
+    ).toBe(false)
+
+    // A same-QueryClient remount should treat cached token as authoritative state.
+    const seededToken = Math.max(acceptedByKey[queryFingerprint] ?? 0, tokenFromCache)
+    localToken = Math.max(localToken, seededToken)
+    const freshToken = ++localToken
+
+    expect(seededToken).toBe(7)
+    expect(freshToken).toBe(8)
+
+    queryClient.setQueryData(rootKey, {
+      pages: [{ token: freshToken, result: createRootOut('scope-fresh', 'hash-fresh') }],
+      pageParams: [null],
+    })
+
+    const latestFromCache =
+      queryClient.getQueryData(rootKey) as { pages: { token: number }[] } | undefined
+    const latestFromCacheToken = latestFromCache?.pages[latestFromCache?.pages.length - 1]?.token ?? 0
+
+    expect(
+      isBackboneDiffQueryPageCurrent({
+        dataToken: latestFromCacheToken,
+        latestToken: acceptedByKey[queryFingerprint] ?? 0,
+      }),
+    ).toBe(true)
+
+    const latestToken = latestFromCacheToken
+    acceptedByKey[queryFingerprint] = latestToken
+
+    expect(acceptedByKey[queryFingerprint]).toBeGreaterThan(tokenFromCache)
+    expect(acceptedByKey[queryFingerprint]).toBe( freshToken)
+  })
+
+  it('binds root/branch/cell requests to immutable query-key descriptors after offline resume', async () => {
+    const projectId = 7
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, staleTime: 0 },
+      },
+    })
+    queryClient.mount()
+
+    const rootA = createBackboneDiffWorkbenchRootQueryKey(projectId, {
+      previewLimit: 20,
+      classification: ['added'],
+      layerKey: null,
+      categoryCode: null,
+      parameterCode: null,
+      includeUnchanged: false,
+    })
+    const rootB = createBackboneDiffWorkbenchRootQueryKey(projectId, {
+      previewLimit: 20,
+      classification: ['removed'],
+      layerKey: null,
+      categoryCode: null,
+      parameterCode: null,
+      includeUnchanged: false,
+    })
+    const branchA = createBackboneDiffWorkbenchBranchQueryKey(
+      projectId,
+      'root-a',
+      'hash-a',
+      {
+        classification: ['added'],
+        layerKey: null,
+        categoryCode: null,
+        parameterCode: null,
+        includeUnchanged: false,
+        previewLimit: 20,
+      },
+      'L1::10::ETCH',
+      'scope-a',
+    )
+    const branchB = createBackboneDiffWorkbenchBranchQueryKey(
+      projectId,
+      'root-b',
+      'hash-b',
+      {
+        classification: ['removed'],
+        layerKey: null,
+        categoryCode: null,
+        parameterCode: null,
+        includeUnchanged: false,
+        previewLimit: 20,
+      },
+      'L1::10::ETCH',
+      'scope-b',
+    )
+    const cellA = createBackboneDiffWorkbenchCellQueryKey(
+      projectId,
+      'root-a',
+      'hash-a',
+      {
+        classification: ['added'],
+        layerKey: null,
+        categoryCode: null,
+        parameterCode: null,
+        includeUnchanged: false,
+        previewLimit: 20,
+      },
+      'L1::10::ETCH',
+      'R-1',
+      'scope-a',
+    )
+    const cellB = createBackboneDiffWorkbenchCellQueryKey(
+      projectId,
+      'root-b',
+      'hash-b',
+      {
+        classification: ['removed'],
+        layerKey: null,
+        categoryCode: null,
+        parameterCode: null,
+        includeUnchanged: false,
+        previewLimit: 20,
+      },
+      'L1::10::ETCH',
+      'R-2',
+      'scope-b',
+    )
+    const rootAResult = deferred<BackboneDiffRootOut>()
+    const rootBResult = deferred<BackboneDiffRootOut>()
+    const branchAResult = deferred<BackboneDiffConditionPageOut>()
+    const branchBResult = deferred<BackboneDiffConditionPageOut>()
+    const cellAResult = deferred<BackboneDiffCellPageOut>()
+    const cellBResult = deferred<BackboneDiffCellPageOut>()
+    const onlineState = onlineManager.isOnline()
+    const rootCalls: string[] = []
+    const branchCalls: string[] = []
+    const cellCalls: string[] = []
+
+    const rootQueryFn = vi.fn(async ({ queryKey }) => {
+      const descriptor = parseBackboneDiffWorkbenchRootQueryKey(queryKey)
+      const branch = descriptor.queryOptions.classification.join(',')
+      rootCalls.push(branch)
+      if (branch === 'added') {
+        const result = await rootAResult.promise
+        return { token: rootCalls.filter((value) => value === 'added').length, result }
+      }
+      if (branch === 'removed') {
+        const result = await rootBResult.promise
+        return { token: rootCalls.filter((value) => value === 'removed').length, result }
+      }
+      throw new Error(`Unexpected root classification ${branch}`)
+    })
+    const branchQueryFn = vi.fn(async ({ queryKey }) => {
+      const descriptor = parseBackboneDiffWorkbenchBranchQueryKey(queryKey)
+      branchCalls.push(descriptor.scope)
+      if (descriptor.scope === 'scope-a') {
+        const result = await branchAResult.promise
+        return { token: branchCalls.filter((value) => value === 'scope-a').length, result }
+      }
+      if (descriptor.scope === 'scope-b') {
+        const result = await branchBResult.promise
+        return { token: branchCalls.filter((value) => value === 'scope-b').length, result }
+      }
+      throw new Error(`Unexpected branch scope ${descriptor.scope}`)
+    })
+    const cellQueryFn = vi.fn(async ({ queryKey }) => {
+      const descriptor = parseBackboneDiffWorkbenchCellQueryKey(queryKey)
+      cellCalls.push(`${descriptor.rowRef}/${descriptor.scope}`)
+      if (descriptor.rowRef === 'R-1' && descriptor.scope === 'scope-a') {
+        const result = await cellAResult.promise
+        return { token: cellCalls.filter((value) => value === 'R-1/scope-a').length, result }
+      }
+      if (descriptor.rowRef === 'R-2' && descriptor.scope === 'scope-b') {
+        const result = await cellBResult.promise
+        return { token: cellCalls.filter((value) => value === 'R-2/scope-b').length, result }
+      }
+      throw new Error(`Unexpected cell descriptor ${descriptor.rowRef}/${descriptor.scope}`)
+    })
+
+    try {
+      onlineManager.setOnline(false)
+
+      const rootRequestA = queryClient.fetchInfiniteQuery({
+        queryKey: rootA,
+        queryFn: rootQueryFn,
+        initialPageParam: null as string | null,
+      })
+      const rootRequestB = queryClient.fetchInfiniteQuery({
+        queryKey: rootB,
+        queryFn: rootQueryFn,
+        initialPageParam: null as string | null,
+      })
+      const branchRequestA = queryClient.fetchInfiniteQuery({
+        queryKey: branchA,
+        queryFn: branchQueryFn,
+        initialPageParam: null as string | null,
+      })
+      const branchRequestB = queryClient.fetchInfiniteQuery({
+        queryKey: branchB,
+        queryFn: branchQueryFn,
+        initialPageParam: null as string | null,
+      })
+      const cellRequestA = queryClient.fetchInfiniteQuery({
+        queryKey: cellA,
+        queryFn: cellQueryFn,
+        initialPageParam: null as string | null,
+      })
+      const cellRequestB = queryClient.fetchInfiniteQuery({
+        queryKey: cellB,
+        queryFn: cellQueryFn,
+        initialPageParam: null as string | null,
+      })
+
+      await Promise.resolve()
+
+      expect(rootQueryFn).toHaveBeenCalledTimes(0)
+      expect(branchQueryFn).toHaveBeenCalledTimes(0)
+      expect(cellQueryFn).toHaveBeenCalledTimes(0)
+
+      onlineManager.setOnline(true)
+
+      await Promise.resolve()
+
+      await vi.waitFor(() => {
+        expect(rootCalls).toEqual(expect.arrayContaining(['added', 'removed']))
+        expect(branchCalls).toEqual(expect.arrayContaining(['scope-a', 'scope-b']))
+        expect(cellCalls).toEqual(expect.arrayContaining(['R-1/scope-a', 'R-2/scope-b']))
+      })
+
+      rootAResult.resolve(createRootOut('scope-a', 'hash-a'))
+      rootBResult.resolve(createRootOut('scope-b', 'hash-b'))
+      branchAResult.resolve(createConditionPage('R-a-1'))
+      branchBResult.resolve(createConditionPage('R-b-1'))
+      cellAResult.resolve(createCellPage('P-a-1'))
+      cellBResult.resolve(createCellPage('P-b-1'))
+
+      const rootAData = await rootRequestA
+      const rootBData = await rootRequestB
+      const branchAData = await branchRequestA
+      const branchBData = await branchRequestB
+      const cellAData = await cellRequestA
+      const cellBData = await cellRequestB
+
+      expect(rootAData.pages[0]?.result.scope).toBe('scope-a')
+      expect(rootBData.pages[0]?.result.scope).toBe('scope-b')
+      expect(branchAData.pages[0]?.result.scope).toBe('scope-x')
+      expect(branchBData.pages[0]?.result.scope).toBe('scope-x')
+      expect(cellAData.pages[0]?.result.row_ref).toBe('R1')
+      expect(cellBData.pages[0]?.result.row_ref).toBe('R1')
+
+      expect(queryClient.getQueryData(rootA)).toEqual(rootAData)
+      expect(queryClient.getQueryData(rootB)).toEqual(rootBData)
+      expect(queryClient.getQueryData(branchA)).toEqual(branchAData)
+      expect(queryClient.getQueryData(branchB)).toEqual(branchBData)
+      expect(queryClient.getQueryData(cellA)).toEqual(cellAData)
+      expect(queryClient.getQueryData(cellB)).toEqual(cellBData)
+    } finally {
+      onlineManager.setOnline(onlineState)
+      queryClient.clear()
+      queryClient.unmount()
+    }
   })
 
   it('requires explicit announcement clear before emitting the same refresh message again', () => {
