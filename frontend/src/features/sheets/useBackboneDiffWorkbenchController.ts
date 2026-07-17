@@ -159,9 +159,123 @@ interface BackboneDiffCellAuthority {
   readonly rootBasisToken: number
 }
 
+interface BackboneDiffWorkbenchRootQueryDescriptor {
+  readonly projectId: number
+  readonly queryOptions: BackboneDiffRootQueryOptions
+}
+
+interface BackboneDiffWorkbenchBranchQueryDescriptor {
+  readonly projectId: number
+  readonly layerKey: string
+  readonly scope: string
+}
+
+interface BackboneDiffWorkbenchCellQueryDescriptor {
+  readonly projectId: number
+  readonly layerKey: string
+  readonly rowRef: string
+  readonly scope: string
+}
+
 const BASIS_CHANGED_MESSAGE = '백본 비교 기준이 변경되어 새로고침합니다.'
 const BACKBONE_DIFF_BRANCH_QUERY_PREFIX = 'branch'
 const BACKBONE_DIFF_CELL_QUERY_PREFIX = 'cell'
+
+export function parseBackboneDiffWorkbenchRootQueryKey(
+  queryKey: readonly unknown[],
+): BackboneDiffWorkbenchRootQueryDescriptor {
+  const projectId = queryKey[1]
+  const queryType = queryKey[2]
+  const queryOptions = queryKey[3]
+  if (queryType !== 'root' || typeof projectId !== 'number' || !isBackboneDiffRootQueryOptions(queryOptions)) {
+    throw new TypeError('Invalid backbone-diff root query key')
+  }
+
+  return { projectId, queryOptions }
+}
+
+export function parseBackboneDiffWorkbenchBranchQueryKey(
+  queryKey: readonly unknown[],
+): BackboneDiffWorkbenchBranchQueryDescriptor {
+  const projectId = queryKey[1]
+  const queryType = queryKey[2]
+  const layerKey = queryKey[3]
+  const branchOptions = queryKey[4]
+  if (
+    queryType !== 'branch' ||
+    typeof projectId !== 'number' ||
+    typeof layerKey !== 'string' ||
+    !isBackboneDiffBranchQueryOptions(branchOptions)
+  ) {
+    throw new TypeError('Invalid backbone-diff branch query key')
+  }
+
+  return { projectId, layerKey, scope: branchOptions.scope }
+}
+
+export function parseBackboneDiffWorkbenchCellQueryKey(
+  queryKey: readonly unknown[],
+): BackboneDiffWorkbenchCellQueryDescriptor {
+  const projectId = queryKey[1]
+  const queryType = queryKey[2]
+  const layerKey = queryKey[3]
+  const rowRef = queryKey[4]
+  const cellOptions = queryKey[5]
+  if (
+    queryType !== 'cell' ||
+    typeof projectId !== 'number' ||
+    typeof layerKey !== 'string' ||
+    typeof rowRef !== 'string' ||
+    !isBackboneDiffCellQueryOptions(cellOptions)
+  ) {
+    throw new TypeError('Invalid backbone-diff cell query key')
+  }
+
+  return { projectId, layerKey, rowRef, scope: cellOptions.scope }
+}
+
+function isBackboneDiffRootQueryOptions(
+  value: unknown,
+): value is BackboneDiffRootQueryOptions {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    Array.isArray((value as BackboneDiffRootQueryOptions).classification) &&
+    typeof (value as BackboneDiffRootQueryOptions).layerKey !== 'undefined'
+  )
+}
+
+function isBackboneDiffBranchQueryOptions(
+  value: unknown,
+): value is { readonly scope: string; readonly cursor: string | null; readonly limit: number } {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as { scope: unknown }).scope === 'string'
+  )
+}
+
+function isBackboneDiffCellQueryOptions(
+  value: unknown,
+): value is { readonly scope: string; readonly cursor: string | null; readonly limit: number } {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as { scope: unknown }).scope === 'string'
+  )
+}
+
+function readRootQueryTokenFromCache(
+  queryClient: QueryClient,
+  queryKey: readonly unknown[],
+): number {
+  const cached = queryClient.getQueryData<
+    InfiniteData<BackboneDiffRootQueryPage, BackboneDiffPageParam>
+  >(queryKey)
+  const latest = cached?.pages[cached.pages.length - 1]
+  if (latest === undefined) return 0
+  return typeof latest.token === 'number' ? latest.token : 0
+}
 
 export function clearBackboneDiffBranchAndCellQueries(
   queryClient: QueryClient,
@@ -533,8 +647,12 @@ export function useBackboneDiffWorkbenchController(
 
   useIsomorphicLayoutEffect(() => {
     rootQueryKeyFingerprintRef.current = rootQueryKeyFingerprint
-    if (rootQueryTokenByKeyRef.current[rootQueryKeyFingerprint] === undefined) {
-      rootQueryTokenByKeyRef.current[rootQueryKeyFingerprint] = 0
+    const cachedToken = readRootQueryTokenFromCache(queryClient, rootQueryKey)
+    const currentToken = rootQueryTokenByKeyRef.current[rootQueryKeyFingerprint] ?? 0
+    const nextToken = Math.max(currentToken, cachedToken)
+    rootQueryTokenByKeyRef.current[rootQueryKeyFingerprint] = nextToken
+    if (rootQueryTokenRef.current < nextToken) {
+      rootQueryTokenRef.current = nextToken
     }
   }, [rootQueryKeyFingerprint])
 
@@ -607,10 +725,17 @@ export function useBackboneDiffWorkbenchController(
     queryKey: rootQueryKey,
     initialPageParam: null as string | null,
     enabled: rootEnabled,
-    queryFn: async () => {
+    queryFn: async ({ queryKey }) => {
+      const { projectId, queryOptions } = parseBackboneDiffWorkbenchRootQueryKey(queryKey)
+      const key = JSON.stringify(queryKey)
+      const cachedToken = rootQueryTokenByKeyRef.current[key] ?? 0
+      const clientCachedToken = readRootQueryTokenFromCache(queryClient, queryKey)
+      const nextTokenSeed = Math.max(rootQueryTokenRef.current, cachedToken, clientCachedToken)
+      if (rootQueryTokenRef.current < nextTokenSeed) {
+        rootQueryTokenRef.current = nextTokenSeed
+      }
       const token = ++rootQueryTokenRef.current
-      const current = stateRef.current
-      const result = await getBackboneDiffRoot(projectId, current.filters)
+      const result = await getBackboneDiffRoot(projectId, queryOptions)
       return { token, result }
     },
     getNextPageParam: () => null,
@@ -692,20 +817,13 @@ export function useBackboneDiffWorkbenchController(
     initialPageParam: null as string | null,
     enabled: branchEnabled,
     retry: false,
-    queryFn: async ({ pageParam }) => {
-      const { rootScope, openLayerKey, branchScope } = stateRef.current
-      if (openLayerKey === null || branchScope === null || rootScope === null) {
-        throw new TypeError('Backbone diff branch scope is unavailable')
-      }
+    queryFn: async ({ pageParam, queryKey }) => {
+      const { projectId, layerKey, scope } = parseBackboneDiffWorkbenchBranchQueryKey(queryKey)
       const normalized = createBackboneDiffBranchQueryOptions({
-        scope: branchScope,
+        scope,
         cursor: pageParam,
       })
-      const result = await getBackboneDiffConditions(
-        projectId,
-        openLayerKey,
-        normalized,
-      )
+      const result = await getBackboneDiffConditions(projectId, layerKey, normalized)
       return { token: ++branchQueryTokenRef.current, result }
     },
     getNextPageParam: (page) => page.result.next_cursor,
@@ -821,27 +939,13 @@ export function useBackboneDiffWorkbenchController(
     initialPageParam: null as string | null,
     enabled: cellEnabled,
     retry: false,
-    queryFn: async ({ pageParam }) => {
-      const { openLayerKey, openCellRowRef, openCellScope, rootScope } = stateRef.current
-      if (
-        openLayerKey === null ||
-        openCellRowRef === null ||
-        openCellScope === null ||
-        rootScope === null
-      ) {
-        throw new TypeError('Backbone diff cell scope is unavailable')
-      }
-
+    queryFn: async ({ pageParam, queryKey }) => {
+      const { projectId, layerKey, rowRef, scope } = parseBackboneDiffWorkbenchCellQueryKey(queryKey)
       const normalized = createBackboneDiffCellQueryOptions({
-        scope: openCellScope,
+        scope,
         cursor: pageParam,
       })
-      const result = await getBackboneDiffCells(
-        projectId,
-        openLayerKey,
-        openCellRowRef,
-        normalized,
-      )
+      const result = await getBackboneDiffCells(projectId, layerKey, rowRef, normalized)
       return { token: ++cellQueryTokenRef.current, result }
     },
     getNextPageParam: (page) => page.result.next_cursor,
