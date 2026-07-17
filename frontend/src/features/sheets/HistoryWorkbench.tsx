@@ -78,7 +78,6 @@ export function HistoryWorkbench({
   onModeChange,
   onBatchToggle,
   onActivateTarget,
-  onRequestCellHistory,
   onLoadMore,
   onRetry,
 }: HistoryWorkbenchProps) {
@@ -150,7 +149,7 @@ export function HistoryWorkbench({
     const detailUnavailableCopy = describeHistoryDetailStatus(item)
     const targetUnavailableCopy = describeHistoryJumpTarget(item.jump_target)
     const canToggleBatch = item.kind === 'batch' && item.detail_status === 'available'
-    const shouldRequestDetail = shouldRequestHistoryBatchDetail(state, item)
+    const shouldRequestDetail = !isExpanded && shouldRequestHistoryBatchDetail(state, item)
     const actorLabel = resolveHistoryActorLabel(item.actors)
     const jumpTarget = item.jump_target
 

@@ -1,16 +1,16 @@
 import type {
-  HistoryCellHistoryOut,
+  HistoryCellHistoryItemOut,
   HistoryCoverageOut,
   HistoryDetailOut,
   HistoryJumpTargetOut,
   HistoryTimelineItemOut,
 } from '@/api/history'
 import {
-  createHistoryTimelineFilters,
   historyCellHistoryQueryKey,
   historyDetailQueryKey,
   historyTimelineQueryKey,
   normalizeHistoryTimelineFilters,
+  type HistoryEventType,
   type HistoryTimelineFilterInput,
   type HistoryTimelineFilters,
 } from '@/api/historyQuery'
@@ -53,7 +53,18 @@ export type HistoryWorkbenchAction =
   | { readonly type: 'close-cell-scope' }
   | { readonly type: 'announce-navigation'; readonly message: string | null }
 
-const HISTORY_EVENT_TYPE_LABELS: Readonly<Record<string, string>> = {
+export const HISTORY_EVENT_TYPES: readonly HistoryEventType[] = [
+  'project_create',
+  'project_profile_update',
+  'backbone_copy',
+  'backbone_layer_replace',
+  'cell_update',
+  'condition_add',
+  'condition_remove',
+  'por_change',
+]
+
+const HISTORY_EVENT_TYPE_LABELS: Readonly<Record<HistoryEventType, string>> = {
   project_create: '프로젝트 생성',
   project_profile_update: '프로젝트 정보 변경',
   backbone_copy: 'backbone 복사',
@@ -137,12 +148,26 @@ export function appendHistoryWorkbenchPage(
   page: HistoryTimelinePage,
 ): HistoryWorkbenchState {
   const timeline = appendHistoryTimelinePage(state, page)
-  return { ...timeline, mode: state.mode, expandedBatchKey: state.expandedBatchKey, batchDetailCache: state.batchDetailCache, cellScope: state.cellScope, navigationAnnouncement: state.navigationAnnouncement }
+  return {
+    ...timeline,
+    mode: state.mode,
+    expandedBatchKey: state.expandedBatchKey,
+    batchDetailCache: state.batchDetailCache,
+    cellScope: state.cellScope,
+    navigationAnnouncement: state.navigationAnnouncement,
+  }
 }
 
 export function resetHistoryWorkbenchPages(state: HistoryWorkbenchState): HistoryWorkbenchState {
   const timeline = resetHistoryTimelinePages(state)
-  return { ...timeline, mode: state.mode, expandedBatchKey: state.expandedBatchKey, batchDetailCache: state.batchDetailCache, cellScope: state.cellScope, navigationAnnouncement: state.navigationAnnouncement }
+  return {
+    ...timeline,
+    mode: state.mode,
+    expandedBatchKey: state.expandedBatchKey,
+    batchDetailCache: state.batchDetailCache,
+    cellScope: state.cellScope,
+    navigationAnnouncement: state.navigationAnnouncement,
+  }
 }
 
 export function updateHistoryWorkbenchFilters(
@@ -150,6 +175,12 @@ export function updateHistoryWorkbenchFilters(
   filters: HistoryTimelineFilterInput,
 ): HistoryWorkbenchState {
   return reduceHistoryWorkbenchState(state, { type: 'replace-filters', filters })
+}
+
+export function normalizeHistoryWorkbenchFilters(
+  filters: HistoryTimelineFilterInput,
+): HistoryTimelineFilters {
+  return normalizeHistoryTimelineFilters(filters)
 }
 
 export function openHistoryCellScope(
@@ -207,17 +238,26 @@ export function getHistoryBatchDetailCacheKey(scope: string, batchId: string): s
 
 export function getHistoryTimelineItemKey(item: HistoryTimelineItemOut): string {
   return item.kind === 'batch'
-    ? getHistoryBatchDetailCacheKey(item.detail_scope ?? 'detail', item.batch_id ?? String(item.cursor_id))
+    ? getHistoryBatchDetailCacheKey(
+        item.detail_scope ?? 'detail',
+        item.batch_id ?? String(item.cursor_id),
+      )
     : `event::${item.cursor_id}`
 }
 
-export function shouldRequestHistoryBatchDetail(
+export function hasHistoryBatchDetailCache(
   state: HistoryWorkbenchState,
   item: HistoryTimelineItemOut,
 ): boolean {
-  if (item.kind !== 'batch' || item.detail_status !== 'available') return false
-  const batchKey = getHistoryTimelineItemKey(item)
-  return state.expandedBatchKey === batchKey && state.batchDetailCache[batchKey] === undefined
+  if (item.kind !== 'batch') return false
+  return state.batchDetailCache[getHistoryTimelineItemKey(item)] !== undefined
+}
+
+export function shouldRequestHistoryBatchDetailOnOpen(
+  state: HistoryWorkbenchState,
+  item: HistoryTimelineItemOut,
+): boolean {
+  return item.kind === 'batch' && item.detail_status === 'available' && !hasHistoryBatchDetailCache(state, item)
 }
 
 export function resolveHistoryActorLabel(
@@ -261,6 +301,19 @@ export function describeHistoryJumpTarget(target: HistoryJumpTargetOut | null): 
   return null
 }
 
+export function buildHistoryCellActivationTarget(
+  scope: HistoryCellScope,
+  item: HistoryCellHistoryItemOut,
+): HistoryJumpTargetOut {
+  return {
+    layer_key: item.layer_key,
+    condition_id: scope.conditionId,
+    parameter_code: scope.parameterCode,
+    cell_ref: null,
+    jump_status: item.jump_status,
+  }
+}
+
 export function handleHistoryWorkbenchItemActivationKey(
   key: string,
   repeat: boolean,
@@ -273,12 +326,6 @@ export function handleHistoryWorkbenchItemActivationKey(
   onActivate()
 }
 
-export function historyEventTypeLabel(eventType: string): string {
-  return HISTORY_EVENT_TYPE_LABELS[eventType] ?? eventType
-}
-
-export function normalizeHistoryWorkbenchFilters(
-  filters: HistoryTimelineFilterInput,
-): HistoryTimelineFilters {
-  return normalizeHistoryTimelineFilters(filters)
+export function historyEventTypeLabel(eventType: HistoryEventType): string {
+  return HISTORY_EVENT_TYPE_LABELS[eventType]
 }
