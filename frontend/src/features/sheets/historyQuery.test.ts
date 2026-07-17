@@ -143,6 +143,20 @@ describe('history query helpers', () => {
 
     expect(() =>
       normalizeHistoryTimelineFilters({
+        createdFrom: '2026-07-17T00:00:00',
+        createdTo: '2026-07-17T01:00:00+01:00',
+      }),
+    ).toThrow(TypeError)
+
+    expect(() =>
+      normalizeHistoryTimelineFilters({
+        createdFrom: '0000-01-01T00:00:00Z',
+        createdTo: '0000-01-02T00:00:00Z',
+      }),
+    ).toThrow(TypeError)
+
+    expect(() =>
+      normalizeHistoryTimelineFilters({
         origin: 'expanded' as unknown as HistoryTimelineFilters['origin'],
       }),
     ).toThrow(TypeError)
