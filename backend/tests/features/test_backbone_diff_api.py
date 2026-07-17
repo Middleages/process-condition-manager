@@ -1708,6 +1708,13 @@ async def test_backbone_diff_route_rejects_noncanonical_and_malformed_tokens_bef
     assert scope_response.status_code == 422
     assert scope_response.json()["code"] == "invalid_scope"
 
+    whitespace_scope_response = await db_client.get(
+        f"/api/projects/{project.id}/backbone-diff/layers/L1::PROC_A::010::ACT/conditions",
+        params={"scope": f" {branch_scope} "},
+    )
+    assert whitespace_scope_response.status_code == 422
+    assert whitespace_scope_response.json()["code"] == "invalid_scope"
+
     malformed_row_ref_payload = _decode_token_payload(row_ref)
     malformed_row_ref_payload["project_id"] = 0
     malformed_row_ref = _encode_token_payload(malformed_row_ref_payload)
@@ -1718,16 +1725,15 @@ async def test_backbone_diff_route_rejects_noncanonical_and_malformed_tokens_bef
     assert row_ref_response.status_code == 422
     assert row_ref_response.json()["code"] == "invalid_row_ref"
 
-    malformed_cursor_payload = _decode_token_payload(
-        encode_backbone_diff_cursor(
-            BackboneDiffCursor(
-                version=1,
-                kind="branch",
-                scope=decode_backbone_diff_scope(branch_scope),
-                sort_key=(1, 1, 1),
-            )
+    valid_cursor = encode_backbone_diff_cursor(
+        BackboneDiffCursor(
+            version=1,
+            kind="branch",
+            scope=decode_backbone_diff_scope(branch_scope),
+            sort_key=(1, 1, 1),
         )
     )
+    malformed_cursor_payload = _decode_token_payload(valid_cursor)
     malformed_cursor_payload["sort_key"] = [1, "bad"]
     malformed_cursor = _encode_token_payload(malformed_cursor_payload)
     cursor_response = await db_client.get(
@@ -1736,6 +1742,13 @@ async def test_backbone_diff_route_rejects_noncanonical_and_malformed_tokens_bef
     )
     assert cursor_response.status_code == 422
     assert cursor_response.json()["code"] == "invalid_cursor"
+
+    whitespace_cursor_response = await db_client.get(
+        f"/api/projects/{project.id}/backbone-diff/layers/L1::PROC_A::010::ACT/conditions",
+        params={"scope": branch_scope, "cursor": f" {valid_cursor} "},
+    )
+    assert whitespace_cursor_response.status_code == 422
+    assert whitespace_cursor_response.json()["code"] == "invalid_cursor"
 
 
 @pytest.mark.asyncio

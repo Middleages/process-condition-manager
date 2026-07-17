@@ -16,7 +16,7 @@ from pydantic import (
 from app.features.backbone_diff.cursor import BackboneDiffClassification, BackboneDiffRowStatus
 
 OpaqueTokenText = Annotated[
-    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=4096)
+    str, StringConstraints(min_length=1, max_length=4096)
 ]
 BasisHashText = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=128)
