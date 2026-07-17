@@ -270,6 +270,94 @@ describe('backbone diff workbench state', () => {
     const clearedAgain = clearBackboneDiffOpenScopes(cleared)
     expect(clearedAgain).toBe(cleared)
   })
+
+  it('does not republish branch pages when cursor and page array reference are unchanged', () => {
+    const openBranch = openBackboneDiffBranch(createBackboneDiffWorkbenchState(), 'L1::10::ETCH', 'branch-scope')
+    const branchPage = createConditionPageOut({
+      row_ref: 'row-1',
+      row_status: 'added',
+    })
+    const loaded = setBackboneDiffBranchPages(openBranch, [branchPage], 'cursor-1')
+    const same = setBackboneDiffBranchPages(loaded, loaded.branchPages, 'cursor-1')
+
+    expect(same).toBe(loaded)
+  })
+
+  it('updates branch pages when cursor matches but payload is new', () => {
+    const openBranch = openBackboneDiffBranch(createBackboneDiffWorkbenchState(), 'L1::10::ETCH', 'branch-scope')
+    const firstPages = [
+      createConditionPageOut({
+        row_ref: 'row-1',
+        row_status: 'added',
+      }),
+    ] as readonly BackboneDiffConditionPage[]
+    const loaded = setBackboneDiffBranchPages(openBranch, firstPages, 'cursor-1')
+    const nextPages: readonly BackboneDiffConditionPage[] = [
+      {
+        ...firstPages[0],
+        items: [
+          {
+            ...firstPages[0].items[0],
+            row_status: 'removed',
+          },
+        ],
+      },
+    ]
+
+    const changed = setBackboneDiffBranchPages(loaded, nextPages, 'cursor-1')
+
+    expect(changed).not.toBe(loaded)
+    expect(changed.branchPages[0]?.items[0]?.row_status).toBe('removed')
+  })
+
+  it('does not republish cell pages when cursor and page array reference are unchanged', () => {
+    const openCell = openBackboneDiffCell(
+      openBackboneDiffBranch(createBackboneDiffWorkbenchState(), 'L1::10::ETCH', 'branch-scope'),
+      'L1::10::ETCH',
+      'row-1',
+      'cell-scope',
+    )
+    const cellPage = createCellPageOut({
+      parameter_code: 'param-1',
+      classification: 'added',
+    })
+    const loaded = setBackboneDiffCellPages(openCell, [cellPage], 'cell-cursor-1')
+    const same = setBackboneDiffCellPages(loaded, loaded.cellPages, 'cell-cursor-1')
+
+    expect(same).toBe(loaded)
+  })
+
+  it('updates cell pages when cursor matches but payload is new', () => {
+    const openCell = openBackboneDiffCell(
+      openBackboneDiffBranch(createBackboneDiffWorkbenchState(), 'L1::10::ETCH', 'branch-scope'),
+      'L1::10::ETCH',
+      'row-1',
+      'cell-scope',
+    )
+    const firstPages = [
+      createCellPageOut({
+        parameter_code: 'param-1',
+        classification: 'added',
+      }),
+    ] as readonly BackboneDiffCellPage[]
+    const loaded = setBackboneDiffCellPages(openCell, firstPages, 'cell-cursor-1')
+    const nextPages: readonly BackboneDiffCellPage[] = [
+      {
+        ...firstPages[0],
+        items: [
+          {
+            ...firstPages[0].items[0],
+            jump_status: 'deleted',
+          },
+        ],
+      },
+    ]
+
+    const changed = setBackboneDiffCellPages(loaded, nextPages, 'cell-cursor-1')
+
+    expect(changed).not.toBe(loaded)
+    expect(changed.cellPages[0]?.items[0]?.jump_status).toBe('changed')
+  })
 })
 
 function createRootOut(overrides: Partial<BackboneDiffRootOut> = {}): BackboneDiffRootOut {
@@ -280,6 +368,54 @@ function createRootOut(overrides: Partial<BackboneDiffRootOut> = {}): BackboneDi
     layer_summaries: [],
     changed_preview: [],
     ...overrides,
+  }
+}
+
+function createConditionPageOut(
+  partial: Partial<BackboneDiffConditionItemOut> = {},
+): BackboneDiffConditionPage {
+  return {
+    items: [
+      {
+        row_ref: partial.row_ref ?? 'row-1',
+        row_status: partial.row_status ?? 'added',
+        effective_condition_index: partial.effective_condition_index ?? 1,
+        identity: partial.identity ?? 1,
+        baseline_condition: null,
+        current_condition: null,
+        row_metadata: {
+          label_changed: partial.row_metadata?.label_changed ?? false,
+          index_changed: partial.row_metadata?.index_changed ?? false,
+          por_changed: partial.row_metadata?.por_changed ?? false,
+        },
+        filtered_cell_count: partial.filtered_cell_count ?? 0,
+        full_cell_count: partial.full_cell_count ?? 0,
+        jump_status: partial.jump_status ?? 'available',
+        cell_scope: partial.cell_scope ?? null,
+      } as BackboneDiffConditionItemOut,
+    ],
+    nextCursor: null,
+  }
+}
+
+function createCellPageOut(
+  partial: Omit<Partial<BackboneDiffCellItemOut>, 'row_ref'> = {},
+): BackboneDiffCellPage {
+  return {
+    items: [
+      {
+        classification: partial.classification ?? 'added',
+        reason: 'init',
+        parameter_code: partial.parameter_code ?? 'param-1',
+        parameter_sort: partial.parameter_sort ?? 1,
+        baseline_value: partial.baseline_value ?? null,
+        current_value: partial.current_value ?? 'X',
+        baseline_metadata: null,
+        current_metadata: null,
+        jump_status: partial.jump_status ?? 'deleted',
+      } as BackboneDiffCellItemOut,
+    ],
+    nextCursor: null,
   }
 }
 

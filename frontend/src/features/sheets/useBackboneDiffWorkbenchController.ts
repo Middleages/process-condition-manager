@@ -295,6 +295,26 @@ export function shouldHandleDiffBasisChangedQueryError(
   )
 }
 
+export function shouldHandleDiffBasisChangedQueryErrorWithAuthority(
+  input: {
+    error: unknown
+    isError: boolean
+    failureCount: number
+    previousFailureCount: number
+    isAuthoritative: boolean
+  },
+): boolean {
+  return (
+    input.isAuthoritative &&
+    shouldHandleDiffBasisChangedQueryError({
+      error: input.error,
+      isError: input.isError,
+      failureCount: input.failureCount,
+      previousFailureCount: input.previousFailureCount,
+    })
+  )
+}
+
 export function isBackboneDiffQueryPageCurrent(input: {
   dataToken: number
   latestToken: number
@@ -697,25 +717,25 @@ export function useBackboneDiffWorkbenchController(
     if (branchQueryKeyRef.current !== branchQueryKeyFingerprint) {
       branchQueryTokenRef.current = 0
       branchQueryKeyRef.current = branchQueryKeyFingerprint
+      branchBasisFailureCountRef.current = 0
     }
   }, [branchQueryKeyFingerprint])
 
   useIsomorphicLayoutEffect(() => {
+    const current = stateRef.current
     if (
-      !shouldHandleDiffBasisChangedQueryError({
+      !shouldHandleDiffBasisChangedQueryErrorWithAuthority({
         error: branchQuery.error,
         isError: branchQuery.isError,
         failureCount: branchQuery.failureCount,
         previousFailureCount: branchBasisFailureCountRef.current,
+        isAuthoritative: current.mode === 'branch' || current.mode === 'cell',
       })
     ) {
       return
     }
     branchBasisFailureCountRef.current = branchQuery.failureCount
-    const current = stateRef.current
-    if (current.mode === 'branch' || current.mode === 'cell') {
-      handleBasisChanged()
-    }
+    handleBasisChanged()
   }, [branchQuery.error, branchQuery.failureCount, branchQuery.isError, handleBasisChanged])
 
   const branchAuthority = useMemo(
@@ -833,24 +853,25 @@ export function useBackboneDiffWorkbenchController(
     if (cellQueryKeyRef.current !== cellQueryKeyFingerprint) {
       cellQueryTokenRef.current = 0
       cellQueryKeyRef.current = cellQueryKeyFingerprint
+      cellBasisFailureCountRef.current = 0
     }
   }, [cellQueryKeyFingerprint])
 
   useIsomorphicLayoutEffect(() => {
+    const current = stateRef.current
     if (
-      !shouldHandleDiffBasisChangedQueryError({
+      !shouldHandleDiffBasisChangedQueryErrorWithAuthority({
         error: cellQuery.error,
         isError: cellQuery.isError,
         failureCount: cellQuery.failureCount,
         previousFailureCount: cellBasisFailureCountRef.current,
+        isAuthoritative: current.mode === 'cell',
       })
     ) {
       return
     }
     cellBasisFailureCountRef.current = cellQuery.failureCount
-    if (stateRef.current.mode === 'cell') {
-      handleBasisChanged()
-    }
+    handleBasisChanged()
   }, [cellQuery.error, cellQuery.failureCount, cellQuery.isError, handleBasisChanged])
 
   const cellAuthority = useMemo(

@@ -34,6 +34,7 @@ import {
   mergeBackboneDiffRootPages,
   clearBackboneDiffBranchAndCellQueries,
   shouldHandleDiffBasisChangedQueryError,
+  shouldHandleDiffBasisChangedQueryErrorWithAuthority,
 } from './useBackboneDiffWorkbenchController'
 import {
   announceBackboneDiffNavigation,
@@ -354,6 +355,73 @@ describe('useBackboneDiffWorkbenchController seams', () => {
         isError: true,
         failureCount: 1,
         previousFailureCount: 0,
+      }),
+    ).toBe(false)
+  })
+
+  it('handles basis-change failure counts independently per query key and only when authoritative', () => {
+    const basisError = {
+      isAxiosError: true,
+      response: {
+        status: 409,
+        data: {
+          code: 'diff_basis_changed',
+        },
+      },
+    } as const
+
+    let branchFailureCount = 0
+    let cellFailureCount = 0
+
+    expect(
+      shouldHandleDiffBasisChangedQueryErrorWithAuthority({
+        error: basisError,
+        isError: true,
+        failureCount: 1,
+        previousFailureCount: branchFailureCount,
+        isAuthoritative: true,
+      }),
+    ).toBe(true)
+    branchFailureCount = 1
+
+    expect(
+      shouldHandleDiffBasisChangedQueryErrorWithAuthority({
+        error: basisError,
+        isError: true,
+        failureCount: 1,
+        previousFailureCount: cellFailureCount,
+        isAuthoritative: false,
+      }),
+    ).toBe(false)
+
+    expect(
+      shouldHandleDiffBasisChangedQueryErrorWithAuthority({
+        error: basisError,
+        isError: true,
+        failureCount: 1,
+        previousFailureCount: cellFailureCount,
+        isAuthoritative: true,
+      }),
+    ).toBe(true)
+    cellFailureCount = 1
+
+    expect(
+      shouldHandleDiffBasisChangedQueryErrorWithAuthority({
+        error: basisError,
+        isError: true,
+        failureCount: 1,
+        previousFailureCount: branchFailureCount,
+        isAuthoritative: false,
+      }),
+    ).toBe(false)
+
+    expect(
+      shouldHandleDiffBasisChangedQueryErrorWithAuthority({
+        error: basisError,
+        isError: true,
+        failureCount: 1,
+        previousFailureCount: cellFailureCount,
+        isAuthoritative: true,
       }),
     ).toBe(false)
   })
