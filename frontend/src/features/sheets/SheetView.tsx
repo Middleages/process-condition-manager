@@ -17,6 +17,7 @@ import type { HistoryJumpTargetOut } from '@/api/history'
 import { getProject } from '@/api/projects'
 import { getSheet } from '@/api/sheets'
 import type { CellsPatchOut, ProjectOut, SheetOut } from '@/api/types'
+import type { BackboneDiffCountsOut } from '@/api/backboneDiffQuery'
 import { GlideConditionGrid } from '@/grid'
 import type {
   ConditionGridCallbacks,
@@ -105,6 +106,22 @@ type BackboneDiffFilterPayload = Omit<BackboneDiffFilter, 'layerKey' | 'category
 }
 
 const BACKBONE_DIFF_ROOT_UNAVAILABLE_MESSAGE = '백본 비교 기준 중 기준 백본이 더 이상 존재하지 않아 일부 데이터는 표시되지 않습니다.'
+
+const BACKBONE_DIFF_EMPTY_COUNTS: BackboneDiffCountsOut = {
+  layer_count: 0,
+  available_layer_count: 0,
+  unavailable_layer_count: 0,
+  row_count: 0,
+  cell_count: 0,
+  full_row_count: 0,
+  full_cell_count: 0,
+  ambiguous_lineage_count: 0,
+  added_count: 0,
+  changed_count: 0,
+  cleared_count: 0,
+  removed_count: 0,
+  unchanged_count: 0,
+}
 
 function mapBackboneDiffConditionClassification(
   status: 'added' | 'removed' | 'matched',
@@ -861,6 +878,7 @@ function SheetEditor({
   )
 
   const backboneDiffWorkbenchState = backboneDiffWorkbench.state
+  const backboneDiffRootCounts = backboneDiffWorkbenchState.rootCounts ?? BACKBONE_DIFF_EMPTY_COUNTS
   const backboneDiffRoot = useMemo<BackboneDiffRoot | null>(() => {
     if (
       backboneDiffWorkbenchState.rootScope === null ||
@@ -869,24 +887,23 @@ function SheetEditor({
     ) {
       return null
     }
-    const rootCounts = backboneDiffWorkbenchState.rootCounts
     return {
       scope: backboneDiffWorkbenchState.rootScope,
       basisHash: backboneDiffWorkbenchState.rootBasisHash,
       counts: {
-        layerCount: rootCounts.layer_count,
-        availableLayerCount: rootCounts.available_layer_count,
-        unavailableLayerCount: rootCounts.unavailable_layer_count,
-        rowCount: rootCounts.row_count,
-        cellCount: rootCounts.cell_count,
-        fullRowCount: rootCounts.full_row_count,
-        fullCellCount: rootCounts.full_cell_count,
-        ambiguousLineageCount: rootCounts.ambiguous_lineage_count,
-        addedCount: rootCounts.added_count,
-        changedCount: rootCounts.changed_count,
-        clearedCount: rootCounts.cleared_count,
-        removedCount: rootCounts.removed_count,
-        unchangedCount: rootCounts.unchanged_count,
+        layerCount: backboneDiffRootCounts.layer_count,
+        availableLayerCount: backboneDiffRootCounts.available_layer_count,
+        unavailableLayerCount: backboneDiffRootCounts.unavailable_layer_count,
+        rowCount: backboneDiffRootCounts.row_count,
+        cellCount: backboneDiffRootCounts.cell_count,
+        fullRowCount: backboneDiffRootCounts.full_row_count,
+        fullCellCount: backboneDiffRootCounts.full_cell_count,
+        ambiguousLineageCount: backboneDiffRootCounts.ambiguous_lineage_count,
+        addedCount: backboneDiffRootCounts.added_count,
+        changedCount: backboneDiffRootCounts.changed_count,
+        clearedCount: backboneDiffRootCounts.cleared_count,
+        removedCount: backboneDiffRootCounts.removed_count,
+        unchangedCount: backboneDiffRootCounts.unchanged_count,
       },
       changedPreview: backboneDiffWorkbenchState.previewItems.map((preview) => ({
         itemKind: preview.item_kind,
@@ -1092,14 +1109,9 @@ function SheetEditor({
     [backboneDiffWorkbenchState.filters],
   )
   const backboneDiffRootUnavailableCopy = useMemo(() => {
-    if (
-      backboneDiffWorkbenchState.rootCounts === null ||
-      backboneDiffWorkbenchState.rootCounts.unavailable_layer_count <= 0
-    ) {
-      return null
-    }
+    if (backboneDiffRootCounts.unavailable_layer_count <= 0) return null
     return BACKBONE_DIFF_ROOT_UNAVAILABLE_MESSAGE
-  }, [backboneDiffWorkbenchState.rootCounts])
+  }, [backboneDiffRootCounts.unavailable_layer_count])
 
   return (
     <SheetFocusFrame
