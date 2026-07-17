@@ -6,6 +6,7 @@ import {
   buildHistoryTimelineQueryString,
   createHistoryTimelineFilters,
   type HistoryEventType,
+  type HistoryTimelineFilters,
   historyCellHistoryQueryKey,
   historyDetailQueryKey,
   historyTimelineQueryKey,
@@ -117,5 +118,70 @@ describe('history query helpers', () => {
     ).toThrow(TypeError)
     expect(() => buildHistoryDetailQueryString('scope', { limit: 0 })).toThrow(TypeError)
     expect(() => buildHistoryCellHistoryQueryString(0, 'ETCH_P001')).toThrow(TypeError)
+  })
+
+  it('rejects widened timeline query inputs before serialization', () => {
+    expect(() =>
+      normalizeHistoryTimelineFilters({
+        sourceProjectId: 0,
+      }),
+    ).toThrow(TypeError)
+
+    expect(() =>
+      normalizeHistoryTimelineFilters({
+        origin: 'expanded' as unknown as HistoryTimelineFilters['origin'],
+      }),
+    ).toThrow(TypeError)
+
+    expect(() =>
+      buildHistoryTimelineQueryString(
+        {
+          createdFrom: '2026-07-18T00:00:00Z',
+          createdTo: '2026-07-17T00:00:00Z',
+          layerKey: null,
+          eventTypes: [],
+          actor: null,
+          origin: null,
+          sourceProjectId: null,
+        },
+        { cursor: 'cursor-1' },
+      ),
+    ).toThrow(TypeError)
+
+    expect(() =>
+      buildHistoryTimelineQueryString(
+        {
+          createdFrom: 'not-a-datetime',
+          createdTo: '2026-07-18T00:00:00Z',
+          layerKey: null,
+          eventTypes: [],
+          actor: null,
+          origin: null,
+          sourceProjectId: null,
+        },
+        { cursor: 'cursor-1' },
+      ),
+    ).toThrow(TypeError)
+
+    expect(() =>
+      buildHistoryTimelineQueryString(
+        {
+          createdFrom: null,
+          createdTo: null,
+          layerKey: 'L'.repeat(257),
+          eventTypes: [],
+          actor: 'A'.repeat(129),
+          origin: null,
+          sourceProjectId: null,
+        },
+        { cursor: 'C'.repeat(4097) },
+      ),
+    ).toThrow(TypeError)
+
+    expect(() =>
+      buildHistoryDetailQueryString('S'.repeat(4097), { cursor: 'C'.repeat(4097) }),
+    ).toThrow(TypeError)
+
+    expect(() => buildHistoryCellHistoryQueryString(11, 'P'.repeat(65))).toThrow(TypeError)
   })
 })
