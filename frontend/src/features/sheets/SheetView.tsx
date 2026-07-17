@@ -63,13 +63,10 @@ import { resolveSheetInteraction } from './sheetInteraction'
 import { SheetFocusFrame } from './SheetFocusFrame'
 import { SheetWorkbenchPanel, SheetWorkbenchToggle, useSheetWorkbenchState } from './SheetWorkbench'
 import {
-  activateBackboneJumpTarget,
   BackboneDiffWorkbench,
   type BackboneDiffConditionItem,
   type BackboneDiffFilter,
   type BackboneDiffJumpTarget,
-  type BackboneDiffLayerSummary,
-  type BackboneDiffPreviewItem,
   type BackboneDiffRoot,
   type BackboneDiffCellItem,
   type BranchState,
@@ -99,10 +96,58 @@ import {
   type WorkbenchCoordinate,
 } from './workbenchCoordinateNavigation'
 import { useHistoryWorkbenchController } from './useHistoryWorkbenchController'
-import {
-  useBackboneDiffWorkbenchController,
-  type BackboneDiffWorkbenchController,
-} from './useBackboneDiffWorkbenchController'
+import { useBackboneDiffWorkbenchController } from './useBackboneDiffWorkbenchController'
+
+type BackboneDiffFilterPayload = Omit<BackboneDiffFilter, 'layerKey' | 'categoryCode' | 'parameterCode'> & {
+  layerKey: string | null
+  categoryCode: string | null
+  parameterCode: string | null
+}
+
+const BACKBONE_DIFF_ROOT_UNAVAILABLE_MESSAGE = '백본 비교 기준 중 기준 백본이 더 이상 존재하지 않아 일부 데이터는 표시되지 않습니다.'
+
+function mapBackboneDiffConditionClassification(
+  status: 'added' | 'removed' | 'matched',
+): 'added' | 'changed' | 'cleared' | 'removed' | 'unchanged' {
+  if (status === 'added') return 'added'
+  if (status === 'removed') return 'removed'
+  return 'unchanged'
+}
+
+function mapBackboneDiffConditionMetadata(
+  metadata: {
+    readonly condition_id: number | null
+    readonly source_condition_id: number | null
+    readonly label: string | null
+    readonly condition_index: number | null
+    readonly is_por: boolean | null
+  },
+): {
+  readonly conditionId: number | null
+  readonly sourceConditionId: number | null
+  readonly label: string | null
+  readonly conditionIndex: number | null
+  readonly isPor: boolean | null
+} {
+  return {
+    conditionId: metadata.condition_id,
+    sourceConditionId: metadata.source_condition_id,
+    label: metadata.label,
+    conditionIndex: metadata.condition_index,
+    isPor: metadata.is_por,
+  }
+}
+
+function mapBackboneDiffFilterPayload(
+  input: BackboneDiffFilter,
+): BackboneDiffFilterPayload {
+  return {
+    ...input,
+    layerKey: input.layerKey === '' ? null : input.layerKey,
+    categoryCode: input.categoryCode === '' ? null : input.categoryCode,
+    parameterCode: input.parameterCode === '' ? null : input.parameterCode,
+  }
+}
 
 const COLUMN_SEARCH_STATUS_ID = 'sheet-column-search-status'
 const VALIDATION_DEFINITIONS_STATUS_ID = 'validation-definitions-status'
@@ -389,6 +434,21 @@ function SheetEditor({
     workbenchState.mode === 'history',
     historyMutationRevision,
   )
+  const backboneDiffWorkbench = useBackboneDiffWorkbenchController(
+    projectId,
+    workbenchState.mode === 'backbone-diff',
+  )
+  const [backboneDiffRefreshAnnouncement, setBackboneDiffRefreshAnnouncement] = useState<string | null>(
+    null,
+  )
+
+  useEffect(() => {
+    setBackboneDiffRefreshAnnouncement(backboneDiffWorkbench.state.navigationAnnouncement)
+  }, [backboneDiffWorkbench.state.navigationAnnouncement])
+  const onBackboneRefreshAnnouncementReset = useCallback(() => {
+    setBackboneDiffRefreshAnnouncement(null)
+  }, [])
+
   const previousValidationIssueCountRef = useRef(0)
 
   useEffect(() => {
@@ -800,6 +860,265 @@ function SheetEditor({
     [activateWorkbenchJumpTarget],
   )
 
+  const backboneDiffWorkbenchState = backboneDiffWorkbench.state
+  const backboneDiffRoot = useMemo<BackboneDiffRoot | null>(() => {
+    if (backboneDiffWorkbenchState.rootScope === null || backboneDiffWorkbenchState.rootBasisHash === null) {
+      return null
+    }
+    const rootCounts = backboneDiffWorkbenchState.rootCounts ?? {
+      layer_count: 0,
+      available_layer_count: 0,
+      unavailable_layer_count: 0,
+      row_count: 0,
+      cell_count: 0,
+      full_row_count: 0,
+      full_cell_count: 0,
+      ambiguous_lineage_count: 0,
+      added_count: 0,
+      changed_count: 0,
+      cleared_count: 0,
+      removed_count: 0,
+      unchanged_count: 0,
+    }
+    return {
+      scope: backboneDiffWorkbenchState.rootScope,
+      basisHash: backboneDiffWorkbenchState.rootBasisHash,
+      counts: {
+        layerCount: rootCounts.layer_count,
+        availableLayerCount: rootCounts.available_layer_count,
+        unavailableLayerCount: rootCounts.unavailable_layer_count,
+        rowCount: rootCounts.row_count,
+        cellCount: rootCounts.cell_count,
+        fullRowCount: rootCounts.full_row_count,
+        fullCellCount: rootCounts.full_cell_count,
+        ambiguousLineageCount: rootCounts.ambiguous_lineage_count,
+        addedCount: rootCounts.added_count,
+        changedCount: rootCounts.changed_count,
+        clearedCount: rootCounts.cleared_count,
+        removedCount: rootCounts.removed_count,
+        unchangedCount: rootCounts.unchanged_count,
+      },
+      changedPreview: backboneDiffWorkbenchState.previewItems.map((preview) => ({
+        itemKind: preview.item_kind,
+        classification: preview.classification,
+        layerKey: preview.layer_key,
+        effectiveConditionIndex: preview.effective_condition_index,
+        itemSortKey: preview.item_sort_key,
+        rowRef: preview.row_ref,
+        cellScope: preview.cell_scope,
+      })),
+      layerSummaries: backboneDiffWorkbenchState.layerSummaries.map((summary) => ({
+        layerKey: summary.layer_key,
+        layerStatus: summary.layer_status,
+        baselineConditionCount: summary.baseline_condition_count,
+        currentConditionCount: summary.current_condition_count,
+        rowCount: summary.row_count,
+        cellCount: summary.cell_count,
+        fullRowCount: summary.full_row_count,
+        fullCellCount: summary.full_cell_count,
+        ambiguousLineageCount: summary.ambiguous_lineage_count,
+        changedCount: summary.changed_count,
+      })),
+    }
+  }, [backboneDiffWorkbenchState])
+  const backboneDiffLayerScopeByLayer = useMemo(() => {
+    const byLayer = new Map<string, string | null>()
+    for (const summary of backboneDiffWorkbenchState.layerSummaries) {
+      byLayer.set(summary.layer_key, summary.branch_scope)
+    }
+    return byLayer
+  }, [backboneDiffWorkbenchState.layerSummaries])
+
+  const backboneDiffBranchConditionItems = useMemo(
+    () =>
+      backboneDiffWorkbenchState.branchPages.flatMap((page) =>
+        page.items.map((condition) => ({
+          rowRef: condition.row_ref,
+          rowStatus: mapBackboneDiffConditionClassification(condition.row_status),
+          effectiveConditionIndex: condition.effective_condition_index,
+          identity: condition.identity,
+          baselineCondition:
+            condition.baseline_condition === null ? null : mapBackboneDiffConditionMetadata(condition.baseline_condition),
+          currentCondition:
+            condition.current_condition === null ? null : mapBackboneDiffConditionMetadata(condition.current_condition),
+          filteredCellCount: condition.filtered_cell_count,
+          fullCellCount: condition.full_cell_count,
+          jumpStatus: condition.jump_status,
+          cellScope: condition.cell_scope,
+        })),
+      ),
+    [backboneDiffWorkbenchState.branchPages],
+  )
+  const backboneDiffCellItems = useMemo(
+    () =>
+      backboneDiffWorkbenchState.cellPages.flatMap((page) =>
+        page.items.map((cell) => ({
+          classification: cell.classification,
+          reason: cell.reason,
+          parameterCode: cell.parameter_code,
+          parameterSort: cell.parameter_sort,
+          baselineValue: cell.baseline_value,
+          currentValue: cell.current_value,
+          jumpStatus: cell.jump_status,
+        })),
+      ),
+    [backboneDiffWorkbenchState.cellPages],
+  )
+  const backboneDiffLayerConditionBranches = useMemo<Record<string, BranchState<BackboneDiffConditionItem>>>(() => {
+    if (backboneDiffWorkbenchState.openLayerKey === null) return {}
+    if (backboneDiffWorkbenchState.rootBasisHash === null) return {}
+    if (backboneDiffWorkbenchState.branchScope === null) return {}
+
+    return {
+      [backboneDiffWorkbenchState.openLayerKey]: {
+        status: backboneDiffWorkbench.branchStatus,
+        basisHash: backboneDiffWorkbenchState.rootBasisHash,
+        scope: backboneDiffWorkbenchState.branchScope,
+        items: backboneDiffBranchConditionItems,
+        nextCursor: backboneDiffWorkbenchState.branchNextCursor,
+        error: backboneDiffWorkbench.branchError,
+        nextPageError: backboneDiffWorkbench.branchNextPageError,
+      },
+    }
+  }, [
+    backboneDiffWorkbenchState.branchNextCursor,
+    backboneDiffWorkbenchState.branchScope,
+    backboneDiffWorkbench.branchStatus,
+    backboneDiffWorkbenchState.openLayerKey,
+    backboneDiffWorkbenchState.rootBasisHash,
+    backboneDiffWorkbench.branchError,
+    backboneDiffWorkbench.branchNextPageError,
+    backboneDiffBranchConditionItems,
+  ])
+  const branchRowCellScopeByRef = useMemo(() => {
+    const byRowRef = new Map<string, string | null>()
+    for (const condition of backboneDiffBranchConditionItems) {
+      byRowRef.set(condition.rowRef, condition.cellScope)
+    }
+    return byRowRef
+  }, [backboneDiffBranchConditionItems])
+  const backboneDiffCellBranches = useMemo<Record<string, BranchState<BackboneDiffCellItem>>>(() => {
+    if (backboneDiffWorkbenchState.openCellRowRef === null) return {}
+    if (backboneDiffWorkbenchState.rootBasisHash === null) return {}
+    if (backboneDiffWorkbenchState.openCellScope === null) return {}
+
+    return {
+      [backboneDiffWorkbenchState.openCellRowRef]: {
+        status: backboneDiffWorkbench.cellStatus,
+        basisHash: backboneDiffWorkbenchState.rootBasisHash,
+        scope: backboneDiffWorkbenchState.openCellScope,
+        items: backboneDiffCellItems,
+        nextCursor: backboneDiffWorkbenchState.cellNextCursor,
+        error: backboneDiffWorkbench.cellError,
+        nextPageError: backboneDiffWorkbench.cellNextPageError,
+      },
+    }
+  }, [
+    backboneDiffWorkbenchState.openCellRowRef,
+    backboneDiffWorkbenchState.openCellScope,
+    backboneDiffWorkbenchState.rootBasisHash,
+    backboneDiffWorkbenchState.cellNextCursor,
+    backboneDiffWorkbench.cellError,
+    backboneDiffWorkbench.cellNextPageError,
+    backboneDiffWorkbench.cellStatus,
+    backboneDiffCellItems,
+  ])
+
+  const onBackboneFiltersChange = useCallback(
+    (nextFilters: BackboneDiffFilter) => {
+      const payload = mapBackboneDiffFilterPayload(nextFilters)
+      backboneDiffWorkbench.onFiltersChange({
+        classification: payload.classification,
+        layerKey: payload.layerKey,
+        categoryCode: payload.categoryCode,
+        parameterCode: payload.parameterCode,
+        includeUnchanged: payload.includeUnchanged,
+        previewLimit: backboneDiffWorkbenchState.filters.previewLimit,
+      })
+    },
+    [backboneDiffWorkbench, backboneDiffWorkbenchState.filters.previewLimit],
+  )
+  const onBackboneOpenLayer = useCallback((layerKey: string) => {
+    const branchScope = backboneDiffLayerScopeByLayer.get(layerKey)
+    if (branchScope === undefined || branchScope === null) return
+    backboneDiffWorkbench.onOpenBranch(layerKey, branchScope)
+  }, [backboneDiffWorkbench, backboneDiffLayerScopeByLayer])
+  const onBackboneLoadMoreConditions = useCallback(
+    (_layerKey: string, cursor: string | null) => {
+      backboneDiffWorkbench.onLoadMoreConditions(cursor)
+    },
+    [backboneDiffWorkbench],
+  )
+  const onBackboneRetryConditions = useCallback(
+    (_layerKey: string) => {
+      backboneDiffWorkbench.onRetryBranch()
+    },
+    [backboneDiffWorkbench],
+  )
+  const onBackboneOpenCells = useCallback(
+    (rowRef: string) => {
+      if (backboneDiffWorkbenchState.openLayerKey === null) return
+      const scope = branchRowCellScopeByRef.get(rowRef)
+      if (scope === undefined || scope === null) return
+      backboneDiffWorkbench.onOpenCell(backboneDiffWorkbenchState.openLayerKey, rowRef, scope)
+    },
+    [backboneDiffWorkbench, backboneDiffWorkbenchState.openLayerKey, branchRowCellScopeByRef],
+  )
+  const onBackboneLoadMoreCells = useCallback(
+    (_rowRef: string, cursor: string | null) => {
+      backboneDiffWorkbench.onLoadMoreCells(cursor)
+    },
+    [backboneDiffWorkbench],
+  )
+  const onBackboneRetryCells = useCallback(
+    (_rowRef: string) => {
+      backboneDiffWorkbench.onRetryCell()
+    },
+    [backboneDiffWorkbench],
+  )
+  const onBackboneActivateTarget = useCallback(
+    (target: BackboneDiffJumpTarget) => {
+      activateWorkbenchJumpTarget({
+        condition_id: target.conditionId,
+        parameter_code: target.parameterCode,
+      })
+    },
+    [activateWorkbenchJumpTarget],
+  )
+  const onBackboneRetryRoot = useCallback(() => {
+    backboneDiffWorkbench.onRetryRoot()
+  }, [backboneDiffWorkbench])
+
+  const backboneDiffFilters: BackboneDiffFilter = useMemo(
+    () => ({
+      classification: backboneDiffWorkbenchState.filters.classification,
+      layerKey: backboneDiffWorkbenchState.filters.layerKey ?? '',
+      categoryCode: backboneDiffWorkbenchState.filters.categoryCode ?? '',
+      parameterCode: backboneDiffWorkbenchState.filters.parameterCode ?? '',
+      includeUnchanged: backboneDiffWorkbenchState.filters.includeUnchanged,
+    }),
+    [backboneDiffWorkbenchState.filters],
+  )
+  const backboneDiffRootUnavailableCopy = useMemo(() => {
+    const rootCounts = backboneDiffWorkbenchState.rootCounts ?? {
+      layer_count: 0,
+      available_layer_count: 0,
+      unavailable_layer_count: 0,
+      row_count: 0,
+      cell_count: 0,
+      full_row_count: 0,
+      full_cell_count: 0,
+      ambiguous_lineage_count: 0,
+      added_count: 0,
+      changed_count: 0,
+      cleared_count: 0,
+      removed_count: 0,
+      unchanged_count: 0,
+    }
+    if (rootCounts.unavailable_layer_count <= 0) return null
+    return BACKBONE_DIFF_ROOT_UNAVAILABLE_MESSAGE
+  }, [backboneDiffWorkbenchState.rootCounts])
+
   return (
     <SheetFocusFrame
       header={
@@ -1054,7 +1373,35 @@ function SheetEditor({
               />
             }
             backboneDiffContent={
-              <BackboneDiffWorkbenchStub onActivateTarget={activateWorkbenchJumpTarget} />
+              <BackboneDiffWorkbench
+                root={backboneDiffRoot}
+                rootStatus={backboneDiffWorkbench.rootStatus}
+                rootError={backboneDiffWorkbench.rootError}
+                onRetryRoot={onBackboneRetryRoot}
+                onRefreshAnnouncementReset={onBackboneRefreshAnnouncementReset}
+                refreshAnnouncement={backboneDiffRefreshAnnouncement}
+                filters={backboneDiffFilters}
+                onFiltersChange={onBackboneFiltersChange}
+                preview={{
+                  status: backboneDiffWorkbench.rootStatus,
+                  items: backboneDiffRoot?.changedPreview ?? [],
+                  nextCursor: null,
+                  error: backboneDiffWorkbench.rootError,
+                  nextPageError: backboneDiffWorkbench.rootNextPageError,
+                }}
+                onLoadMorePreview={() => undefined}
+                onRetry={onBackboneRetryRoot}
+                layerConditionBranches={backboneDiffLayerConditionBranches}
+                onOpenLayer={onBackboneOpenLayer}
+                onLoadMoreConditions={onBackboneLoadMoreConditions}
+                onRetryConditions={onBackboneRetryConditions}
+                cellBranches={backboneDiffCellBranches}
+                onOpenCells={onBackboneOpenCells}
+                onLoadMoreCells={onBackboneLoadMoreCells}
+                onRetryCells={onBackboneRetryCells}
+                onActivateTarget={onBackboneActivateTarget}
+                baselineUnavailableCopy={backboneDiffRootUnavailableCopy}
+              />
             }
           />
         ) : undefined
@@ -1074,35 +1421,6 @@ function SheetEditor({
         />
       </div>
     </SheetFocusFrame>
-  )
-}
-
-function BackboneDiffWorkbenchStub({
-  onActivateTarget,
-}: {
-  onActivateTarget: (target: {
-    readonly condition_id: string | number | null
-    readonly parameter_code: string | null
-  }) => void
-}) {
-  return (
-    <div
-      className="min-h-0 min-w-0 rounded-md border border-dashed border-border-subtle bg-canvas p-3 text-xs text-muted"
-      data-backbone-diff-workbench
-    >
-      <button
-        aria-label="백본 비교 동기화 준비"
-        className="hidden"
-        onClick={() => {
-          onActivateTarget({ condition_id: null, parameter_code: null })
-        }}
-        type="button"
-      >
-        더미 버튼
-      </button>
-      <strong>백본 비교</strong>
-      <p>준비 중입니다.</p>
-    </div>
   )
 }
 
