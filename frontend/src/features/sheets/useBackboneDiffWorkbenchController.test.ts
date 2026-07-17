@@ -1,4 +1,4 @@
-import { QueryClient, onlineManager } from '@tanstack/react-query'
+import { InfiniteQueryObserver, QueryClient, onlineManager } from '@tanstack/react-query'
 import { describe, expect, it, vi } from 'vitest'
 
 import * as backboneDiffApi from '@/api/backboneDiff'
@@ -39,6 +39,8 @@ import {
   createBackboneDiffWorkbenchBranchQueryFn,
   createBackboneDiffWorkbenchCellQueryFn,
   createBackboneDiffWorkbenchRootQueryFn,
+  broadcastBackboneDiffProjectFence,
+  registerBackboneDiffProjectFenceListener,
   useBackboneDiffWorkbenchController,
   acceptBackboneDiffQueryPage,
   shouldAcceptBackboneDiffQueryPage,
@@ -298,6 +300,194 @@ describe('useBackboneDiffWorkbenchController seams', () => {
       }),
     ).toBe(false)
     expect(authorityLedger.root.sequence).toBe(10)
+  })
+
+  it('broadcasts project root fences across mounted controllers and refetches every active filter root once', async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, staleTime: 0 },
+      },
+    })
+    const otherQueryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, staleTime: 0 },
+      },
+    })
+    queryClient.mount()
+    otherQueryClient.mount()
+
+    const authorityLedger = getBackboneDiffAuthorityLedger(queryClient)
+    const otherAuthorityLedger = getBackboneDiffAuthorityLedger(otherQueryClient)
+
+    let project7Calls = 0
+    let project8Calls = 0
+    const rootSpy = vi.spyOn(backboneDiffApi, 'getBackboneDiffRoot').mockImplementation(async (projectId, query = {}) => {
+      if (projectId === 7) project7Calls += 1
+      if (projectId === 8) project8Calls += 1
+      const label = query.classification?.[0] ?? 'all'
+      return createRootOut(`scope-${projectId}-${label}`, `basis-${projectId}-${label}`)
+    })
+
+    const rootKeyA = createBackboneDiffWorkbenchRootQueryKey(7, {
+      previewLimit: 20,
+      classification: ['added'],
+      layerKey: null,
+      categoryCode: null,
+      parameterCode: null,
+      includeUnchanged: false,
+    })
+    const rootKeyB = createBackboneDiffWorkbenchRootQueryKey(7, {
+      previewLimit: 20,
+      classification: ['removed'],
+      layerKey: null,
+      categoryCode: null,
+      parameterCode: null,
+      includeUnchanged: false,
+    })
+    const otherRootKey = createBackboneDiffWorkbenchRootQueryKey(8, {
+      previewLimit: 20,
+      classification: ['changed'],
+      layerKey: null,
+      categoryCode: null,
+      parameterCode: null,
+      includeUnchanged: false,
+    })
+
+    const observerA = new InfiniteQueryObserver(queryClient, {
+      queryKey: rootKeyA,
+      initialPageParam: null as string | null,
+      enabled: true,
+      queryFn: createBackboneDiffWorkbenchRootQueryFn(queryClient, authorityLedger.root),
+      getNextPageParam: () => null,
+      retry: false,
+    })
+    const observerB = new InfiniteQueryObserver(queryClient, {
+      queryKey: rootKeyB,
+      initialPageParam: null as string | null,
+      enabled: true,
+      queryFn: createBackboneDiffWorkbenchRootQueryFn(queryClient, authorityLedger.root),
+      getNextPageParam: () => null,
+      retry: false,
+    })
+    const observerOther = new InfiniteQueryObserver(otherQueryClient, {
+      queryKey: otherRootKey,
+      initialPageParam: null as string | null,
+      enabled: true,
+      queryFn: createBackboneDiffWorkbenchRootQueryFn(otherQueryClient, otherAuthorityLedger.root),
+      getNextPageParam: () => null,
+      retry: false,
+    })
+
+    const cleanupCounts = { a: 0, b: 0, other: 0 }
+    const makeFenceListener = (slot: 'a' | 'b' | 'other') => {
+      let lastRevision: number | null = null
+      let lastBasisMarker: unknown = Symbol(`${slot}-initial`)
+      return {
+        applyFence(fence: { kind: 'revision'; revision: number } | { kind: 'basis-error'; marker: unknown }) {
+          if (fence.kind === 'revision') {
+            if (lastRevision === fence.revision) return false
+            lastRevision = fence.revision
+          } else {
+            if (lastBasisMarker === fence.marker) return false
+            lastBasisMarker = fence.marker
+          }
+          cleanupCounts[slot] += 1
+          return true
+        },
+      }
+    }
+
+    const unregisterA = registerBackboneDiffProjectFenceListener(queryClient, 7, makeFenceListener('a'))
+    const unregisterB = registerBackboneDiffProjectFenceListener(queryClient, 7, makeFenceListener('b'))
+    const unregisterOther = registerBackboneDiffProjectFenceListener(otherQueryClient, 8, makeFenceListener('other'))
+
+    const unsubscribeA = observerA.subscribe(() => {})
+    const unsubscribeB = observerB.subscribe(() => {})
+    const unsubscribeOther = observerOther.subscribe(() => {})
+
+    try {
+      await vi.waitFor(() => {
+        expect(project7Calls).toBe(2)
+        expect(project8Calls).toBe(1)
+        expect(observerA.getCurrentResult().data?.pages[0]?.token).toBeGreaterThan(0)
+        expect(observerB.getCurrentResult().data?.pages[0]?.token).toBeGreaterThan(0)
+        expect(observerOther.getCurrentResult().data?.pages[0]?.token).toBeGreaterThan(0)
+      })
+      const initialTokenA = observerA.getCurrentResult().data?.pages[0]?.token ?? 0
+      const initialTokenB = observerB.getCurrentResult().data?.pages[0]?.token ?? 0
+      const initialTokenOther = observerOther.getCurrentResult().data?.pages[0]?.token ?? 0
+      expect(cleanupCounts).toEqual({ a: 0, b: 0, other: 0 })
+
+      const revisionFence = { kind: 'revision', revision: 5 } as const
+      expect(fenceBackboneDiffRootAuthorityLedger(authorityLedger, 7, revisionFence)).toBe(true)
+      expect(broadcastBackboneDiffProjectFence(queryClient, 7, revisionFence)).toBe(true)
+      await queryClient.invalidateQueries({ queryKey: ['backboneDiff', 7, 'root'], exact: false })
+      await vi.waitFor(() => {
+        expect(project7Calls).toBe(4)
+        expect(project8Calls).toBe(1)
+        expect(observerA.getCurrentResult().data?.pages[0]?.token).toBeGreaterThan(initialTokenA)
+        expect(observerB.getCurrentResult().data?.pages[0]?.token).toBeGreaterThan(initialTokenB)
+        expect(observerOther.getCurrentResult().data?.pages[0]?.token).toBe(initialTokenOther)
+      })
+      const revisionTokenA = observerA.getCurrentResult().data?.pages[0]?.token ?? initialTokenA
+      const revisionTokenB = observerB.getCurrentResult().data?.pages[0]?.token ?? initialTokenB
+      expect(cleanupCounts).toEqual({ a: 1, b: 1, other: 0 })
+
+      expect(fenceBackboneDiffRootAuthorityLedger(authorityLedger, 7, revisionFence)).toBe(false)
+      expect(broadcastBackboneDiffProjectFence(queryClient, 7, revisionFence)).toBe(false)
+      expect(cleanupCounts).toEqual({ a: 1, b: 1, other: 0 })
+
+      const basisMarker = new Error('basis-changed')
+      const basisFence = { kind: 'basis-error', marker: basisMarker } as const
+      expect(fenceBackboneDiffRootAuthorityLedger(authorityLedger, 7, basisFence)).toBe(true)
+      expect(broadcastBackboneDiffProjectFence(queryClient, 7, basisFence)).toBe(true)
+      await queryClient.invalidateQueries({ queryKey: ['backboneDiff', 7, 'root'], exact: false })
+      await vi.waitFor(() => {
+        expect(project7Calls).toBe(6)
+        expect(project8Calls).toBe(1)
+        expect(observerA.getCurrentResult().data?.pages[0]?.token).toBeGreaterThan(revisionTokenA)
+        expect(observerB.getCurrentResult().data?.pages[0]?.token).toBeGreaterThan(revisionTokenB)
+      })
+      const basisTokenA = observerA.getCurrentResult().data?.pages[0]?.token ?? revisionTokenA
+      expect(cleanupCounts).toEqual({ a: 2, b: 2, other: 0 })
+
+      expect(fenceBackboneDiffRootAuthorityLedger(authorityLedger, 7, basisFence)).toBe(false)
+      expect(broadcastBackboneDiffProjectFence(queryClient, 7, basisFence)).toBe(false)
+      expect(cleanupCounts).toEqual({ a: 2, b: 2, other: 0 })
+
+      unregisterB()
+      unsubscribeB()
+
+      const revisionFence2 = { kind: 'revision', revision: 6 } as const
+      expect(fenceBackboneDiffRootAuthorityLedger(authorityLedger, 7, revisionFence2)).toBe(true)
+      expect(broadcastBackboneDiffProjectFence(queryClient, 7, revisionFence2)).toBe(true)
+      await queryClient.invalidateQueries({ queryKey: ['backboneDiff', 7, 'root'], exact: false })
+      await vi.waitFor(() => {
+        expect(project7Calls).toBe(7)
+        expect(project8Calls).toBe(1)
+        expect(observerA.getCurrentResult().data?.pages[0]?.token).toBeGreaterThan(basisTokenA)
+      })
+      expect(cleanupCounts).toEqual({ a: 3, b: 2, other: 0 })
+
+      const otherRevision = { kind: 'revision', revision: 1 } as const
+      expect(fenceBackboneDiffRootAuthorityLedger(otherAuthorityLedger, 8, otherRevision)).toBe(true)
+      expect(broadcastBackboneDiffProjectFence(otherQueryClient, 8, otherRevision)).toBe(true)
+      await otherQueryClient.invalidateQueries({ queryKey: ['backboneDiff', 8, 'root'], exact: false })
+      await vi.waitFor(() => {
+        expect(project8Calls).toBe(2)
+      })
+      expect(cleanupCounts.other).toBe(1)
+    } finally {
+      unsubscribeA()
+      unsubscribeOther()
+      unregisterA()
+      unregisterOther()
+      rootSpy.mockRestore()
+      queryClient.clear()
+      otherQueryClient.clear()
+      queryClient.unmount()
+      otherQueryClient.unmount()
+    }
   })
 
   it('keeps retry handlers refetch-only and lets same-key query intents dedupe to one issuance', async () => {
@@ -1416,6 +1606,10 @@ describe('useBackboneDiffWorkbenchController seams', () => {
     expect(source).toContain('authorityLedger.root')
     expect(source).toContain('authorityLedger.branch')
     expect(source).toContain('authorityLedger.cell')
+    expect(source).toContain('registerBackboneDiffProjectFenceListener(queryClient, projectId, {')
+    expect(source).toContain('broadcastBackboneDiffProjectFence(queryClient, projectId, fence)')
+    expect(source).toContain('queryKey: ["backboneDiff", projectId, "root"]')
+    expect(source).toContain('exact: false')
     expect(source).toContain('handleBasisChangedFromRevision(revision)')
     expect(source).toContain('handleBasisChangedFromError(branchQuery.error)')
     expect(source).toContain('handleBasisChangedFromError(cellQuery.error)')

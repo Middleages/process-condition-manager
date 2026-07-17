@@ -136,6 +136,10 @@ interface BackboneDiffRootQueryAuthorityLane extends BackboneDiffQueryAuthorityL
   basisFenceMarkerByProjectId: Map<number, unknown>
 }
 
+interface BackboneDiffProjectFenceListener {
+  readonly applyFence: (fence: BackboneDiffRootFence) => boolean
+}
+
 export interface BackboneDiffAuthorityLedger {
   readonly root: BackboneDiffRootQueryAuthorityLane
   readonly branch: BackboneDiffQueryAuthorityLane
@@ -144,6 +148,10 @@ export interface BackboneDiffAuthorityLedger {
 
 const backboneDiffAuthorityLedgerByQueryClient = new WeakMap<QueryClient, BackboneDiffAuthorityLedger>()
 const backboneDiffAuthorityLedgerSubscriptionByQueryClient = new WeakSet<QueryClient>()
+const backboneDiffProjectFenceListenersByQueryClient = new WeakMap<
+  QueryClient,
+  Map<number, Set<BackboneDiffProjectFenceListener>>
+>()
 
 interface BackboneDiffRootAuthority {
   readonly enabled: boolean
@@ -297,6 +305,58 @@ function clearBackboneDiffAuthorityEntriesForRemovedQuery(
     parseBackboneDiffWorkbenchCellQueryKey(queryKey)
     clearBackboneDiffAuthorityEntryForKey(ledger.cell, keyFingerprint)
   } catch {}
+}
+
+function getBackboneDiffProjectFenceListeners(
+  queryClient: QueryClient,
+  projectId: number,
+): Set<BackboneDiffProjectFenceListener> {
+  let listenersByProject = backboneDiffProjectFenceListenersByQueryClient.get(queryClient)
+  if (listenersByProject === undefined) {
+    listenersByProject = new Map<number, Set<BackboneDiffProjectFenceListener>>()
+    backboneDiffProjectFenceListenersByQueryClient.set(queryClient, listenersByProject)
+  }
+
+  let listeners = listenersByProject.get(projectId)
+  if (listeners === undefined) {
+    listeners = new Set<BackboneDiffProjectFenceListener>()
+    listenersByProject.set(projectId, listeners)
+  }
+
+  return listeners
+}
+
+export function registerBackboneDiffProjectFenceListener(
+  queryClient: QueryClient,
+  projectId: number,
+  listener: BackboneDiffProjectFenceListener,
+): () => void {
+  const listeners = getBackboneDiffProjectFenceListeners(queryClient, projectId)
+  listeners.add(listener)
+
+  return () => {
+    const listenersByProject = backboneDiffProjectFenceListenersByQueryClient.get(queryClient)
+    const currentListeners = listenersByProject?.get(projectId)
+    currentListeners?.delete(listener)
+    if (currentListeners !== undefined && currentListeners.size === 0) {
+      listenersByProject?.delete(projectId)
+    }
+  }
+}
+
+export function broadcastBackboneDiffProjectFence(
+  queryClient: QueryClient,
+  projectId: number,
+  fence: BackboneDiffRootFence,
+): boolean {
+  const listeners = backboneDiffProjectFenceListenersByQueryClient.get(queryClient)?.get(projectId)
+  if (listeners === undefined || listeners.size === 0) return false
+
+  let handledAny = false
+  for (const listener of listeners) {
+    handledAny = listener.applyFence(fence) || handledAny
+  }
+  return handledAny
 }
 
 type BackboneDiffRootFence =
@@ -931,6 +991,8 @@ export function useBackboneDiffWorkbenchController(
   const branchQueryKeyFingerprintRef = useRef('')
   const cellQueryKeyFingerprintRef = useRef('')
   const rootBasisTokenRef = useRef(0)
+  const lastRevisionFenceRef = useRef<number | null>(null)
+  const lastBasisFenceMarkerRef = useRef<unknown>(Symbol('backbone-diff-no-basis-marker'))
   const branchBasisFailureCountRef = useRef(0)
   const cellBasisFailureCountRef = useRef(0)
 
@@ -968,9 +1030,20 @@ export function useBackboneDiffWorkbenchController(
     authorityLedger.root.issuedByKey[key] = Math.max(currentIssuedToken, cachedToken)
   }, [rootQueryKeyFingerprint])
 
-  const handleBasisChanged = useCallback(
+  const applyProjectFence = useCallback(
     (fence: BackboneDiffRootFence) => {
-      const didFence = fenceBackboneDiffRootAuthorityLedger(authorityLedger, projectId, fence)
+      const hasSeenFence =
+        fence.kind === 'revision'
+          ? lastRevisionFenceRef.current === fence.revision
+          : lastBasisFenceMarkerRef.current === fence.marker
+      if (hasSeenFence) return false
+
+      if (fence.kind === 'revision') {
+        lastRevisionFenceRef.current = fence.revision
+      } else {
+        lastBasisFenceMarkerRef.current = fence.marker
+      }
+
       rootBasisTokenRef.current += 1
       setOuterGeneration((current) => current + 1)
       commitState((latest) =>
@@ -978,15 +1051,25 @@ export function useBackboneDiffWorkbenchController(
       )
       branchBasisFailureCountRef.current = 0
       cellBasisFailureCountRef.current = 0
-      if (!didFence) {
-        return
-      }
-      clearBackboneDiffBranchAndCellQueries(queryClient, projectId)
-      void queryClient.invalidateQueries({
-        queryKey: rootQueryKey,
-      })
+      return true
     },
-    [authorityLedger, commitState, projectId, queryClient, rootQueryKey],
+    [commitState],
+  )
+
+  const handleBasisChanged = useCallback(
+    (fence: BackboneDiffRootFence) => {
+      const didFence = fenceBackboneDiffRootAuthorityLedger(authorityLedger, projectId, fence)
+      applyProjectFence(fence)
+      if (didFence) {
+        broadcastBackboneDiffProjectFence(queryClient, projectId, fence)
+        clearBackboneDiffBranchAndCellQueries(queryClient, projectId)
+        void queryClient.invalidateQueries({
+          queryKey: ['backboneDiff', projectId, 'root'],
+          exact: false,
+        })
+      }
+    },
+    [authorityLedger, applyProjectFence, projectId, queryClient],
   )
 
   const handleBasisChangedFromError = useCallback((error: unknown) => {
@@ -999,6 +1082,10 @@ export function useBackboneDiffWorkbenchController(
     },
     [handleBasisChanged],
   )
+
+  useIsomorphicLayoutEffect(() => registerBackboneDiffProjectFenceListener(queryClient, projectId, {
+    applyFence: applyProjectFence,
+  }), [applyProjectFence, projectId, queryClient])
   useIsomorphicLayoutEffect(() => {
     const enabledChanged = previousEnabledRef.current !== enabled
     const revisionChanged = previousRevisionRef.current !== revision
