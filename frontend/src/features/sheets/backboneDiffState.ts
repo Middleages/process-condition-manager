@@ -158,6 +158,15 @@ export function reduceBackboneDiffWorkbenchState(
       const result = action.result
       const nextRootScope = result.scope
       const nextBasisHash = result.basis_hash
+      const isIdenticalRootPublication =
+        state.rootScope === nextRootScope &&
+        state.rootBasisHash === nextBasisHash &&
+        state.rootCounts === result.counts &&
+        state.layerSummaries === result.layer_summaries &&
+        state.previewItems === result.changed_preview
+
+      if (isIdenticalRootPublication) return state
+
       const scopeOrBasisChanged =
         state.rootScope !== nextRootScope || state.rootBasisHash !== nextBasisHash
       const shouldAnnounceBasisChange =

@@ -4,6 +4,7 @@ import type {
   BackboneDiffCellItemOut,
   BackboneDiffConditionItemOut,
   BackboneDiffCountsOut,
+  BackboneDiffLayerSummaryOut,
   BackboneDiffRootOut,
 } from '@/api/backboneDiff'
 
@@ -157,6 +158,62 @@ describe('backbone diff workbench state', () => {
       previewItems: loaded.previewItems,
       rootScope: loaded.rootScope,
       rootBasisHash: loaded.rootBasisHash,
+    })
+  })
+
+  it('does not republish root result when scope/basis and result payload references are identical', () => {
+    const rootOut = createRootOut()
+    const loaded = setBackboneDiffRootResult(createBackboneDiffWorkbenchState(), rootOut)
+    const same = setBackboneDiffRootResult(loaded, rootOut)
+
+    expect(same).toBe(loaded)
+  })
+
+  it('updates root payload when same scope/basis arrives with changed references', () => {
+    const payload = createRootOut()
+    const loaded = setBackboneDiffRootResult(createBackboneDiffWorkbenchState(), payload)
+    const mutated = setBackboneDiffRootResult(
+      loaded,
+      {
+        ...payload,
+        counts: {
+          ...payload.counts,
+          changed_count: 1,
+        },
+        layer_summaries: [
+          {
+            layer_key: 'new-layer',
+            layer_sort: 1,
+            layer_status: 'available',
+            baseline_condition_count: 0,
+            current_condition_count: 0,
+            row_count: 1,
+            cell_count: 1,
+            full_row_count: 0,
+            full_cell_count: 0,
+            ambiguous_lineage_count: 0,
+            changed_count: 0,
+            branch_scope: null,
+          } as BackboneDiffLayerSummaryOut,
+        ],
+        changed_preview: [],
+      },
+    )
+
+    expect(mutated).not.toBe(loaded)
+    expect(mutated).toMatchObject({
+      rootScope: payload.scope,
+      rootBasisHash: payload.basis_hash,
+      rootCounts: {
+        changed_count: 1,
+      },
+      revision: loaded.revision,
+      layerSummaries: [
+        {
+          layer_key: 'new-layer',
+        },
+      ],
+      previewItems: [],
     })
   })
 
