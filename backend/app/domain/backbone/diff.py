@@ -360,6 +360,8 @@ def compare_backbone_layer(layer_input: BackboneDiffLayerInput) -> BackboneDiffL
     current_descriptor_by_code = {parameter.code: parameter for parameter in current_descriptors}
     current_universe = set(current_descriptor_by_code)
 
+    _validate_parameter_type_compatibility(baseline_columns, current_descriptor_by_code)
+
     current_candidates: dict[int, list[BackboneDiffCurrentCondition]] = defaultdict(list)
     for condition in layer_input.current_conditions:
         if condition.source_condition_id is not None:
@@ -524,6 +526,7 @@ def _layer_basis_payload(layer_input: BackboneDiffLayerInput) -> dict[str, Any]:
         if layer_input.baseline_snapshot is None
         else {column.parameter_code: column for column in layer_input.baseline_snapshot.columns}
     )
+    _validate_parameter_type_compatibility(baseline_columns, current_descriptor_by_code)
     current_payload = [
         {
             "id": condition.id,
@@ -902,6 +905,20 @@ def _source_payload(source: BackboneDiffCurrentLayerSource) -> dict[str, Any]:
     }
 
 
+def _ensure_parameter_type_match(
+    parameter_code: str,
+    baseline_column: BackboneSnapshotColumn,
+    current_descriptor: BackboneDiffCurrentParameter,
+) -> None:
+    baseline_type = _coerce_value_type(baseline_column.value_type)
+    current_type = _coerce_value_type(current_descriptor.value_type)
+    if baseline_type is not current_type:
+        _diff_basis_invalid(
+            f"type mismatch for parameter {parameter_code}: "
+            f"{baseline_type.value} vs {current_type.value}"
+        )
+
+
 def _require_text(value: Any, field_name: str) -> str:
     if not isinstance(value, str) or value == "":
         _diff_basis_invalid(f"{field_name} must be a non-empty string")
@@ -958,13 +975,7 @@ def _descriptor_for_code(
     baseline_column = baseline_columns.get(parameter_code)
     if current_descriptor is not None:
         if baseline_column is not None:
-            baseline_type = _coerce_value_type(baseline_column.value_type)
-            current_type = _coerce_value_type(current_descriptor.value_type)
-            if baseline_type is not current_type:
-                _diff_basis_invalid(
-                    f"type mismatch for parameter {parameter_code}: "
-                    f"{baseline_type.value} vs {current_type.value}"
-                )
+            _ensure_parameter_type_match(parameter_code, baseline_column, current_descriptor)
         return current_descriptor
     if baseline_column is not None:
         return baseline_column
@@ -981,6 +992,9 @@ def _descriptor_for_added_or_removed_code(
 ) -> BackboneDiffCurrentParameter | BackboneSnapshotColumn:
     current_descriptor = current_descriptor_by_code.get(parameter_code)
     if current_descriptor is not None:
+        baseline_column = baseline_columns.get(parameter_code)
+        if baseline_column is not None:
+            _ensure_parameter_type_match(parameter_code, baseline_column, current_descriptor)
         return current_descriptor
     baseline_column = baseline_columns.get(parameter_code)
     if baseline_column is not None:
@@ -1007,6 +1021,18 @@ def _selected_current_descriptors(
             _unresolved_parameter_metadata(f"missing current descriptor for parameter {code}")
         selected.append(parameter)
     return tuple(sorted(selected, key=_current_parameter_sort_key))
+
+
+def _validate_parameter_type_compatibility(
+    baseline_columns: dict[str, BackboneSnapshotColumn],
+    current_descriptor_by_code: dict[str, BackboneDiffCurrentParameter],
+) -> None:
+    for parameter_code in sorted(baseline_columns.keys() & current_descriptor_by_code.keys()):
+        _ensure_parameter_type_match(
+            parameter_code,
+            baseline_columns[parameter_code],
+            current_descriptor_by_code[parameter_code],
+        )
 
 
 def _ordered_coordinate_codes(

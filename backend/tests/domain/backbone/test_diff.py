@@ -12,6 +12,7 @@ from app.domain.backbone.diff import (
     BackboneDiffCurrentLayerSource,
     BackboneDiffCurrentParameter,
     BackboneDiffLayerInput,
+    backbone_diff_basis_hash,
     backbone_diff_layer_basis_hash,
     compare_backbone,
     compare_backbone_layer,
@@ -656,6 +657,86 @@ def test_compare_backbone_layer_fails_closed(
     with pytest.raises(RuleViolationError) as exc_info:
         compare_backbone_layer(layer_factory())
     assert exc_info.value.code == expected_code
+
+
+def _zero_condition_mismatch_layer() -> BackboneDiffLayerInput:
+    return replace(
+        _matched_layer_input(),
+        baseline_snapshot=replace(_baseline_snapshot(), conditions=()),
+        current_conditions=(),
+        current_parameters=(
+            BackboneDiffCurrentParameter(
+                "shared_number_equal", ValueType.TEXT, "Number equal", None, 2, True
+            ),
+        ),
+    )
+
+
+def _added_only_mismatch_layer() -> BackboneDiffLayerInput:
+    return replace(
+        _matched_layer_input(),
+        baseline_snapshot=replace(_baseline_snapshot(), conditions=()),
+        current_conditions=(
+            BackboneDiffCurrentCondition(
+                id=301,
+                source_condition_id=None,
+                label="Added row",
+                condition_index=3,
+                is_por=False,
+                cells=(BackboneDiffCurrentCell("shared_number_equal", "1.0"),),
+            ),
+        ),
+        current_parameters=(
+            BackboneDiffCurrentParameter(
+                "shared_number_equal", ValueType.TEXT, "Number equal", None, 2, True
+            ),
+            BackboneDiffCurrentParameter(
+                "current_only", ValueType.TEXT, "Current only", None, 10, True
+            ),
+        ),
+    )
+
+
+def _removed_only_mismatch_layer() -> BackboneDiffLayerInput:
+    return replace(
+        _matched_layer_input(),
+        current_conditions=(),
+        current_parameters=(
+            BackboneDiffCurrentParameter(
+                "shared_number_equal", ValueType.TEXT, "Number equal", None, 2, True
+            ),
+        ),
+    )
+
+
+@pytest.mark.parametrize(
+    ("layer_factory", "case_name"),
+    [
+        (_zero_condition_mismatch_layer, "zero_conditions"),
+        (_added_only_mismatch_layer, "added_only"),
+        (_removed_only_mismatch_layer, "removed_only"),
+        (_mismatch_layer, "matched_mismatch"),
+    ],
+)
+def test_compare_backbone_layer_and_hash_fail_closed_on_type_mismatch(
+    layer_factory: Callable[[], BackboneDiffLayerInput], case_name: str
+) -> None:
+    layer = layer_factory()
+    with pytest.raises(RuleViolationError) as exc_info:
+        compare_backbone_layer(layer)
+    assert exc_info.value.code == DIFF_BASIS_INVALID, case_name
+
+    with pytest.raises(RuleViolationError) as exc_info:
+        backbone_diff_layer_basis_hash(layer)
+    assert exc_info.value.code == DIFF_BASIS_INVALID, case_name
+
+    with pytest.raises(RuleViolationError) as exc_info:
+        compare_backbone((layer,))
+    assert exc_info.value.code == DIFF_BASIS_INVALID, case_name
+
+    with pytest.raises(RuleViolationError) as exc_info:
+        backbone_diff_basis_hash((layer,))
+    assert exc_info.value.code == DIFF_BASIS_INVALID, case_name
 
 
 def _mutated_layer_parameter_display_name(layer: BackboneDiffLayerInput) -> BackboneDiffLayerInput:
