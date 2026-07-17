@@ -347,7 +347,7 @@ describe('backbone diff workbench state', () => {
         items: [
           {
             ...firstPages[0].items[0],
-            jump_status: 'deleted',
+            jump_status: 'available',
           },
         ],
       },
@@ -356,7 +356,7 @@ describe('backbone diff workbench state', () => {
     const changed = setBackboneDiffCellPages(loaded, nextPages, 'cell-cursor-1')
 
     expect(changed).not.toBe(loaded)
-    expect(changed.cellPages[0]?.items[0]?.jump_status).toBe('changed')
+    expect(changed.cellPages[0]?.items[0]?.jump_status).toBe('available')
   })
 })
 
