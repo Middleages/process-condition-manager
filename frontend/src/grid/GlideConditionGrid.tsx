@@ -17,20 +17,24 @@
 import {
   forwardRef,
   useCallback,
+  useEffect,
   useImperativeHandle,
   useMemo,
   useRef,
   useState,
+  type KeyboardEvent as ReactKeyboardEvent,
 } from 'react'
 import {
   CompactSelection,
   DataEditor,
   GridCellKind,
+  type CellClickedEventArgs,
   type DataEditorRef,
   type DrawCellCallback,
   type EditableGridCell,
   type GridCell,
   type GridColumn,
+  type GridKeyEventArgs,
   type GridMouseEventArgs,
   type GridSelection,
   type Item,
@@ -139,6 +143,50 @@ function selectionForCell(col: number, row: number): GridSelection {
   }
 }
 
+export interface CellHistoryRequest {
+  conditionId: string
+  parameterCode: string
+}
+
+export interface CellHistoryMenuState {
+  target: CellHistoryRequest
+  x: number
+  y: number
+}
+
+/** Translate a Glide coordinate to the domain-only history request boundary. */
+export function resolveCellHistoryRequest(
+  item: Item,
+  visibleColumns: readonly ConditionGridColumn[],
+  rows: readonly ConditionGridRow[],
+): CellHistoryRequest | null {
+  return resolveCellTarget(
+    item[0],
+    item[1],
+    visibleColumns,
+    rows,
+    IDENTITY_COLUMN_COUNT,
+  )
+}
+
+export function isCellHistoryMenuInvocation(key: string, shiftKey: boolean): boolean {
+  return key === 'ContextMenu' || key === 'Menu' || (key === 'F10' && shiftKey)
+}
+
+export function cellHistoryMenuActionForKey(
+  key: string,
+): 'activate' | 'close' | null {
+  if (key === 'Enter') return 'activate'
+  if (key === 'Escape') return 'close'
+  return null
+}
+
+export function closeCellHistoryMenuState(
+  current: CellHistoryMenuState | null,
+): { next: null; restoreFocus: boolean } {
+  return { next: null, restoreFocus: current !== null }
+}
+
 export type CellStatusVisualPriority = 'error' | 'warning' | 'dirty' | 'comment' | null
 
 /** Surface priority only; the composite status object keeps every independent marker fact. */
@@ -222,6 +270,17 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
   const gridRef = useRef<DataEditorRef>(null)
   const requestedFocusRef = useRef<Item | null>(null)
   const restoreGridFocus = useCallback(() => gridRef.current?.focus(), [])
+  const cellHistoryMenuElementRef = useRef<HTMLDivElement>(null)
+  const cellHistoryMenuItemRef = useRef<HTMLButtonElement>(null)
+  const cellHistoryMenuStateRef = useRef<CellHistoryMenuState | null>(null)
+  const [cellHistoryMenu, setCellHistoryMenu] = useState<CellHistoryMenuState | null>(null)
+  const closeCellHistoryMenu = useCallback(() => {
+    const transition = closeCellHistoryMenuState(cellHistoryMenuStateRef.current)
+    if (!transition.restoreFocus) return
+    cellHistoryMenuStateRef.current = transition.next
+    setCellHistoryMenu(transition.next)
+    restoreGridFocus()
+  }, [restoreGridFocus])
   const readOnly = view?.readOnly ?? false
   const rows = data.rows
 
@@ -233,6 +292,21 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
   const visibleColumns = useMemo(
     () => visibleParameterColumns(data.columns, view?.activeCategory),
     [data.columns, view?.activeCategory],
+  )
+  const openCellHistoryMenu = useCallback(
+    (
+      target: CellHistoryRequest,
+      bounds: { x: number; y: number; height: number } | undefined,
+    ) => {
+      const menu = {
+        target,
+        x: bounds?.x ?? 8,
+        y: bounds === undefined ? 8 : bounds.y + bounds.height,
+      }
+      cellHistoryMenuStateRef.current = menu
+      setCellHistoryMenu(menu)
+    },
+    [],
   )
   const layoutAuthority = useMemo(
     () => gridLayoutAuthority(visibleColumns, rows),
@@ -251,6 +325,21 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
     (selection: GridSelection) => setSelectionState({ layoutAuthority, selection }),
     [layoutAuthority],
   )
+
+  useIsomorphicLayoutEffect(() => {
+    if (cellHistoryMenu !== null) cellHistoryMenuItemRef.current?.focus()
+  }, [cellHistoryMenu])
+
+  useEffect(() => {
+    if (cellHistoryMenu === null) return
+    const handleOutsidePointerDown = (event: PointerEvent) => {
+      const target = event.target
+      if (target instanceof Node && cellHistoryMenuElementRef.current?.contains(target)) return
+      closeCellHistoryMenu()
+    }
+    document.addEventListener('pointerdown', handleOutsidePointerDown)
+    return () => document.removeEventListener('pointerdown', handleOutsidePointerDown)
+  }, [cellHistoryMenu, closeCellHistoryMenu])
 
   // A controlled raw coordinate must never survive a category/column or row-identity layout.
   // The render already supplies EMPTY_GRID_SELECTION; this commit adopts the new authority.
@@ -462,6 +551,52 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
     [readOnly, visibleColumns, rows, callbacks, pasteCallbackGeneration],
   )
 
+  const handleCellContextMenu = useCallback(
+    (item: Item, event: CellClickedEventArgs) => {
+      const target = resolveCellHistoryRequest(item, visibleColumns, rows)
+      if (target === null) return
+      event.preventDefault()
+      openCellHistoryMenu(target, event.bounds)
+    },
+    [visibleColumns, rows, openCellHistoryMenu],
+  )
+
+  const handleGridKeyDown = useCallback(
+    (event: GridKeyEventArgs) => {
+      if (!isCellHistoryMenuInvocation(event.key, event.shiftKey)) return
+      const item = event.location ?? effectiveGridSelection.current?.cell
+      if (item === undefined) return
+      const target = resolveCellHistoryRequest(item, visibleColumns, rows)
+      if (target === null) return
+      event.cancel()
+      event.preventDefault()
+      event.stopPropagation()
+      openCellHistoryMenu(target, event.bounds)
+    },
+    [effectiveGridSelection.current?.cell, visibleColumns, rows, openCellHistoryMenu],
+  )
+
+  const requestCellHistory = useCallback(() => {
+    if (cellHistoryMenu === null) return
+    callbacks?.onCellHistoryRequest?.(cellHistoryMenu.target)
+    closeCellHistoryMenu()
+  }, [callbacks, cellHistoryMenu, closeCellHistoryMenu])
+
+  const handleCellHistoryMenuKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+      const action = cellHistoryMenuActionForKey(event.key)
+      if (action === null) return
+      event.preventDefault()
+      event.stopPropagation()
+      if (action === 'activate') {
+        requestCellHistory()
+      } else {
+        closeCellHistoryMenu()
+      }
+    },
+    [requestCellHistory, closeCellHistoryMenu],
+  )
+
   const handleItemHovered = useCallback(
     (args: GridMouseEventArgs) => {
       if (args.kind === 'cell') {
@@ -614,6 +749,8 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
         onGridSelectionChange={handleGridSelectionChange}
         onCellEdited={readOnly ? undefined : handleCellEdited}
         onCellClicked={readOnly ? undefined : handleCellClicked}
+        onCellContextMenu={handleCellContextMenu}
+        onKeyDown={handleGridKeyDown}
         onPaste={handlePaste}
         onItemHovered={handleItemHovered}
         getCellsForSelection
@@ -649,6 +786,46 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
           }}
         >
           {tooltip.text}
+        </div>
+      ) : null}
+      {cellHistoryMenu !== null ? (
+        <div
+          ref={cellHistoryMenuElementRef}
+          role="menu"
+          aria-label="셀 작업"
+          style={{
+            position: 'fixed',
+            left: cellHistoryMenu.x,
+            top: cellHistoryMenu.y,
+            zIndex: 60,
+            minWidth: 152,
+            border: `1px solid ${GRID_COLORS.border}`,
+            borderRadius: 6,
+            background: GRID_COLORS.surface,
+            padding: 4,
+            boxShadow: `0 8px 24px ${GRID_COLORS.border}`,
+          }}
+          onContextMenu={(event) => event.preventDefault()}
+        >
+          <button
+            ref={cellHistoryMenuItemRef}
+            type="button"
+            role="menuitem"
+            onClick={requestCellHistory}
+            onKeyDown={handleCellHistoryMenuKeyDown}
+            style={{
+              width: '100%',
+              border: 0,
+              borderRadius: 4,
+              background: 'transparent',
+              color: GRID_COLORS.ink,
+              cursor: 'pointer',
+              padding: '7px 10px',
+              textAlign: 'left',
+            }}
+          >
+            변경 이력 보기
+          </button>
         </div>
       ) : null}
     </div>
