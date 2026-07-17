@@ -191,6 +191,9 @@ function formatFactValue(value: string | number | boolean | null | undefined): s
   if (value === null || value === undefined) {
     return '미지정'
   }
+  if (value === '') {
+    return '비움'
+  }
   if (typeof value === 'boolean') {
     return value ? 'O' : 'X'
   }
@@ -214,11 +217,11 @@ function formatRowFactDiff({
   const normalizedCurrent = formatFactValue(currentValue)
 
   const displayedBaseline =
-    baselineValue === null || baselineValue === undefined || baselineValue === ''
+    baselineValue === null || baselineValue === undefined
       ? defaultBaselineValue
       : normalizedBaseline
   const displayedCurrent =
-    currentValue === null || currentValue === undefined || currentValue === ''
+    currentValue === null || currentValue === undefined
       ? defaultCurrentValue
       : normalizedCurrent
 
