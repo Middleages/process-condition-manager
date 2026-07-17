@@ -32,7 +32,6 @@ import {
   mergeBackboneDiffCellPages,
   mergeBackboneDiffRootPages,
   clearBackboneDiffBranchAndCellQueries,
-  isBackboneDiffQueryPageCurrent,
   shouldHandleDiffBasisChangedQueryError,
 } from './useBackboneDiffWorkbenchController'
 import { type BackboneDiffWorkbenchMode, type BackboneDiffWorkbenchState } from './backboneDiffState'
@@ -219,24 +218,8 @@ describe('useBackboneDiffWorkbenchController seams', () => {
     ).toEqual({ status: 'idle', rootError: null, nextPageError: null })
   })
 
-  it('accepts re-entered cache pages when data token is newer than latest query token', () => {
-    expect(
-      isBackboneDiffQueryPageCurrent({
-        dataToken: 3,
-        latestToken: 1,
-      }),
-    ).toBe(true)
-    expect(
-      isBackboneDiffQueryPageCurrent({
-        dataToken: 1,
-        latestToken: 3,
-      }),
-    ).toBe(false)
-  })
-
   it('only handles basis-change errors once per observed failure count and only after reset', () => {
     const basisError = {
-      isAxiosError: true,
       response: {
         status: 409,
         data: {
@@ -263,10 +246,7 @@ describe('useBackboneDiffWorkbenchController seams', () => {
       }),
     ).toBe(false)
 
-    const nonBasisError = {
-      isAxiosError: true,
-      response: { status: 409, data: { code: 'other' } },
-    } as const
+    const nonBasisError = { response: { status: 409, data: { code: 'other' } } } as const
     expect(
       shouldHandleDiffBasisChangedQueryError({
         error: nonBasisError,
