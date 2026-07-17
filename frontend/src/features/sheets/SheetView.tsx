@@ -754,21 +754,34 @@ function SheetEditor({
     [interaction.canSwitchCategory, data.columns, displayRows, activeCategory],
   )
 
-  const activateValidationIssue = useCallback(
-    (issue: ValidationWorkbenchIssue) => {
-      activateWorkbenchCoordinate(issue)
-    },
-    [activateWorkbenchCoordinate],
-  )
-
-  const activateHistoryJumpTarget = useCallback(
-    (target: HistoryJumpTargetOut) => {
+  const activateWorkbenchJumpTarget = useCallback(
+    (target: { readonly condition_id: string | number | null; readonly parameter_code: string | null }) => {
+      if (target.condition_id === null || target.parameter_code === null) {
+        return
+      }
       activateWorkbenchCoordinate({
         conditionId: target.condition_id,
         parameterCode: target.parameter_code,
       })
     },
     [activateWorkbenchCoordinate],
+  )
+
+  const activateValidationIssue = useCallback(
+    (issue: ValidationWorkbenchIssue) => {
+      activateWorkbenchJumpTarget({
+        condition_id: issue.conditionId,
+        parameter_code: issue.parameterCode,
+      })
+    },
+    [activateWorkbenchJumpTarget],
+  )
+
+  const activateHistoryJumpTarget = useCallback(
+    (target: HistoryJumpTargetOut) => {
+      activateWorkbenchJumpTarget(target)
+    },
+    [activateWorkbenchJumpTarget],
   )
 
   return (
@@ -1024,6 +1037,9 @@ function SheetEditor({
                 onRetryCell={historyWorkbench.onRetryCell}
               />
             }
+            backboneDiffContent={
+              <BackboneDiffWorkbenchStub onActivateTarget={activateWorkbenchJumpTarget} />
+            }
           />
         ) : undefined
       }
@@ -1042,6 +1058,35 @@ function SheetEditor({
         />
       </div>
     </SheetFocusFrame>
+  )
+}
+
+function BackboneDiffWorkbenchStub({
+  onActivateTarget,
+}: {
+  onActivateTarget: (target: {
+    readonly condition_id: string | number | null
+    readonly parameter_code: string | null
+  }) => void
+}) {
+  return (
+    <div
+      className="min-h-0 min-w-0 rounded-md border border-dashed border-border-subtle bg-canvas p-3 text-xs text-muted"
+      data-backbone-diff-workbench
+    >
+      <button
+        aria-label="백본 비교 동기화 준비"
+        className="hidden"
+        onClick={() => {
+          onActivateTarget({ condition_id: null, parameter_code: null })
+        }}
+        type="button"
+      >
+        더미 버튼
+      </button>
+      <strong>백본 비교</strong>
+      <p>준비 중입니다.</p>
+    </div>
   )
 }
 

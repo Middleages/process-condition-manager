@@ -773,6 +773,45 @@ describe('SheetView focus shell integration', () => {
     expect(html).toContain('aria-expanded="true"')
   })
 
+  it('renders the backbone diff workbench in the same shared host without a second resizer', () => {
+    mockSheetWorkbenchState = createMockSheetWorkbenchState('backbone-diff')
+
+    const queryClient = client()
+    queryClient.setQueryData(['project', 7], project)
+    queryClient.setQueryData(['sheet', 7], sheet)
+
+    const html = renderSheet(queryClient)
+
+    expect(html).toContain('data-sheet-workbench')
+    expect(html).toContain('data-backbone-diff-workbench')
+    expect(html).toContain('role="tabpanel"')
+    expect(html).toContain('id="sheet-workbench-panel-backbone-diff"')
+    expect(html).toContain('aria-controls="sheet-workbench-panel-backbone-diff"')
+    expect(html).toContain('id="sheet-workbench-tab-backbone-diff"')
+    expect(html).toContain('aria-selected="true"')
+    expect(html).toContain('role="separator"')
+  })
+
+  it('renders one host/resizer and keeps workbench content closed until opened', () => {
+    const queryClient = client()
+    queryClient.setQueryData(['project', 7], project)
+    queryClient.setQueryData(['sheet', 7], sheet)
+
+    const unopened = renderSheet(queryClient)
+
+    expect(unopened).not.toContain('data-backbone-diff-workbench')
+    expect(unopened).not.toContain('role="separator"')
+    expect(unopened).not.toContain('data-sheet-workbench')
+
+    mockSheetWorkbenchState = createMockSheetWorkbenchState('backbone-diff')
+    const opened = renderSheet(queryClient)
+
+    const separatorCount = (opened.match(/role="separator"/g) ?? []).length
+    expect(separatorCount).toBe(1)
+    expect(opened).toContain('data-sheet-workbench')
+    expect(opened).not.toContain('data-history-workbench')
+  })
+
   it('keeps history selected while passively showing a newly available validation issue count', () => {
     mockSheetWorkbenchState = createMockSheetWorkbenchState('history')
     const queryClient = client()
@@ -812,6 +851,14 @@ describe('SheetView focus shell integration', () => {
     expect(validationTab).toContain('aria-selected="false"')
     expect(historyTab).toContain('aria-selected="true"')
     expect(html).toContain('data-history-workbench')
+  })
+
+  it('wires a shared jump seam into validation, history, and backbone-diff workbench content', () => {
+    expect(sheetViewSource).toContain('const activateWorkbenchJumpTarget = useCallback(')
+    expect(sheetViewSource).toContain('onIssueActivate={activateValidationIssue}')
+    expect(sheetViewSource).toContain('onActivateTarget={activateWorkbenchJumpTarget}')
+    expect(sheetViewSource).toContain('backboneDiffContent={')
+    expect(sheetViewSource).toContain('<BackboneDiffWorkbenchStub')
   })
 
   it('orders hidden validation navigation across a committed category change without timer races', () => {
