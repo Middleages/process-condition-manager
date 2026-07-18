@@ -53,10 +53,6 @@ type BackboneDiffWorkbenchAction =
   | { readonly type: 'replace-filters'; readonly filters: BackboneDiffRootQueryInput }
   | { readonly type: 'set-root-result'; readonly result: BackboneDiffRootOut }
   | {
-      readonly type: 'set-root-status'
-      readonly result: Pick<BackboneDiffWorkbenchState, 'rootScope' | 'rootBasisHash' | 'filters'>
-    }
-  | {
       readonly type: 'open-branch'
       readonly layerKey: string
       readonly scope: string
@@ -199,35 +195,6 @@ export function reduceBackboneDiffWorkbenchState(
                 : {}),
             }
           : {}),
-      }
-    }
-
-    case 'set-root-status': {
-      const next = {
-        ...state,
-        filters: normalizeRootQueryFromProjection(action.result.filters, state.filters),
-        rootScope: action.result.rootScope,
-        rootBasisHash: action.result.rootBasisHash,
-      }
-      if (
-        next.rootScope === state.rootScope &&
-        next.rootBasisHash === state.rootBasisHash &&
-        sameRootQuery(next.filters, state.filters)
-      ) {
-        return state
-      }
-      return {
-        ...next,
-        revision: state.revision + 1,
-        openLayerKey: null,
-        branchScope: null,
-        branchPages: [],
-        branchNextCursor: null,
-        openCellLayerKey: null,
-        openCellRowRef: null,
-        openCellScope: null,
-        cellPages: [],
-        cellNextCursor: null,
       }
     }
 
@@ -489,14 +456,4 @@ function sameCellPages(
   nextCursor: string | null,
 ): boolean {
   return currentNextCursor === nextCursor && currentPages === nextPages
-}
-
-function normalizeRootQueryFromProjection(
-  filters: BackboneDiffRootQueryOptions,
-  fallback: BackboneDiffRootQueryOptions,
-): BackboneDiffRootQueryOptions {
-  if ((filters as unknown as { includeUnchanged?: boolean }) === undefined) {
-    return fallback
-  }
-  return createBackboneDiffRootQueryOptions(filters)
 }

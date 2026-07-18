@@ -24,8 +24,8 @@
 | [Phase 2.5 UI/UX 설계](../docs/superpowers/specs/2026-07-13-phase-2-5-ui-ux-design.md) — 구조개편 + 디자인 시스템 | 구현 완료 (2026-07-14, [브라우저 QA 근거](../docs/superpowers/evidence/2026-07-13-phase-2-5-browser-qa.md)) |
 | [Phase 2.6 Project Profile + Managed Choice 설계](../docs/superpowers/specs/2026-07-14-phase-2-6-project-profile-managed-choice-design.md) — 고정 프로젝트 기본정보 + 공유 선택지 | 구현 완료 (2026-07-15, [브라우저 QA 근거](../docs/superpowers/evidence/2026-07-14-phase-2-6-browser-qa.md)) |
 | [phase-3-tasks.md](./phase-3-tasks.md) — 검증 엔진 | 설계 승인 (2026-07-15, [상세 설계](../docs/superpowers/specs/2026-07-15-phase-3-validation-engine-design.md)) |
-| [phase-4-tasks.md](./phase-4-tasks.md) — 변경 이력 + 백본 기준 비교 | 계획 (immutable 전체 diff handoff 승인) |
-| [phase-5-tasks.md](./phase-5-tasks.md) — 승인 + Revision | 계획 |
+| [phase-4-tasks.md](./phase-4-tasks.md) — 변경 이력 + 백본 기준 비교 | 구현·검증 완료 (2026-07-18, [검증 근거](../docs/evidence/phase-4-history-backbone-diff/README.md), EC1~EC6 충족) |
+| [phase-5-tasks.md](./phase-5-tasks.md) — 승인 + Revision | 계획 (D-10 SSO 인증 구조 확정 후 T6 RBAC 착수) |
 | [phase-6-tasks.md](./phase-6-tasks.md) — 전산 출력 | 계획 |
 
 ## 재구축 배경

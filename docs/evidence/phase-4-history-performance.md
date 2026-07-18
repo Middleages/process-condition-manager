@@ -18,11 +18,11 @@ history records SQL but gates latency and its coordinate plan, as required by th
 
 ```bash
 cd backend
-APP_TEST_DATABASE_URL=postgresql+asyncpg://pcm_user:pcm_pass@127.0.0.1:15432/pcm \
+APP_TEST_DATABASE_URL='<guard-admin-url>' \
   PYTHONPATH="$PWD" uv run pytest -q -c pyproject.toml \
   tests/performance/test_history_performance_pg.py::test_history_production_service_repository_gate -s
 
-APP_TEST_DATABASE_URL=postgresql+asyncpg://pcm_user:pcm_pass@127.0.0.1:15432/pcm \
+APP_TEST_DATABASE_URL='<guard-admin-url>' \
   PYTHONPATH="$PWD" uv run python scripts/benchmark_history.py \
   --compare-paste-overhead --warmup 1 --samples 5 --emit-json
 ```

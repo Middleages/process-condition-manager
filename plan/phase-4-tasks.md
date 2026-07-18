@@ -1,4 +1,4 @@
-# Phase 4 — 변경 이력 + 백본 기준 비교 (작업 계획)
+# Phase 4 — 변경 이력 + 백본 기준 비교 (완료 기록)
 
 > 목표: Phase 1~3에서 append-only로 쌓아 온 `change_event`를 사용자에게 보여주고, 프로젝트
 > 생성·layer 교체 당시의 immutable backbone snapshot과 현재 조건표 전체를 비교한다. 타임라인은
@@ -11,12 +11,15 @@ Phase 3 workbench·셀 점프 계약을 재사용한다.
 
 ## 완료 기준 (Exit Criteria)
 
-- [ ] EC1. Phase 1~3 이벤트(backbone_copy / backbone_layer_replace / cell_update / 조건/POR)가 타임라인에 정확히 나타난다
-- [ ] EC2. 임의 셀의 값 변천사를 추적할 수 있다 (셀 우클릭 → 해당 셀의 변경 연대기)
-- [ ] EC3. 타임라인 필터(layer / 이벤트 유형 / 사용자 / 소스)가 동작하고 항목에서 해당 셀로 점프한다
-- [ ] EC4. 벌크 이벤트(백본 복사, 엑셀 붙여넣기)가 배치 단위로 묶이고 펼치면 셀 상세가 보인다
-- [ ] EC5. 복사·교체 시점 backbone 값이 이후 source 프로젝트 수정과 무관하게 immutable baseline으로 남는다
-- [ ] EC6. baseline과 현재의 모든 조건 행·셀을 `added/changed/cleared/removed/unchanged`로 일괄 비교하고 drill-down할 수 있다
+- [x] EC1. Phase 1~3 이벤트(backbone_copy / backbone_layer_replace / cell_update / 조건/POR)가 타임라인에 정확히 나타난다
+- [x] EC2. 임의 셀의 값 변천사를 추적할 수 있다 (셀 우클릭 → 해당 셀의 변경 연대기)
+- [x] EC3. 타임라인 필터(layer / 이벤트 유형 / 사용자 / 소스)가 동작하고 항목에서 해당 셀로 점프한다
+- [x] EC4. 벌크 이벤트(백본 복사, 엑셀 붙여넣기)가 배치 단위로 묶이고 펼치면 셀 상세가 보인다
+- [x] EC5. 복사·교체 시점 backbone 값이 이후 source 프로젝트 수정과 무관하게 immutable baseline으로 남는다
+- [x] EC6. baseline과 현재의 모든 조건 행·셀을 `added/changed/cleared/removed/unchanged`로 일괄 비교하고 drill-down할 수 있다
+
+완료 근거: [Phase 4 검증 인덱스](../docs/evidence/phase-4-history-backbone-diff/README.md)와
+[G006 최종 실행 기록](../docs/evidence/phase-4-history-backbone-diff/G006/README.md).
 
 ## 확정 결정
 
@@ -113,11 +116,11 @@ flowchart LR
 
 산출물: pure diff engine, API, drill-down UI, immutable-source regression tests. **EC6 충족.**
 
-## 실행 순서 요약
+## 완료 순서 요약
 
 1. T0 baseline snapshot migration + creation/replacement capture
 2. T1 timeline API + T4 index/performance 기반
 3. T2 cell history API / T5 pure diff + API
 4. T3 History UI / T5 diff UI
 5. EC1~EC6 및 source-project mutation independence 검증
-6. Phase 5 Review/Approval 착수 판단
+6. Phase 5 Review/Approval handoff — D-10 SSO 인증 구조를 먼저 확정한 뒤 T6 RBAC 착수

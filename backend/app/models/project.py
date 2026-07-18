@@ -15,6 +15,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    literal_column,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -221,13 +222,79 @@ class ChangeEvent(Base):
     """Phase 1부터 쌓는 append-only 변경 이벤트."""
 
     __tablename__ = "change_event"
+    __table_args__ = (
+        Index(
+            "ix_change_event_project_id_id_desc",
+            "project_id",
+            literal_column("id").desc(),
+        ),
+        Index(
+            "ix_change_event_project_type_id_desc",
+            "project_id",
+            "event_type",
+            literal_column("id").desc(),
+        ),
+        Index(
+            "ix_change_event_project_cell_id_desc",
+            "project_id",
+            "condition_id",
+            "parameter_code",
+            literal_column("id").desc(),
+            postgresql_where=text("condition_id IS NOT NULL AND parameter_code IS NOT NULL"),
+        ),
+        Index(
+            "ix_change_event_project_condition_id_desc",
+            "project_id",
+            "condition_id",
+            literal_column("id").desc(),
+            postgresql_where=text("condition_id IS NOT NULL"),
+        ),
+        Index(
+            "ix_change_event_project_layer_id_desc",
+            "project_id",
+            "layer_key",
+            literal_column("id").desc(),
+            postgresql_where=text("layer_key IS NOT NULL"),
+        ),
+        Index(
+            "ix_change_event_project_actor_id_desc",
+            "project_id",
+            "actor",
+            literal_column("id").desc(),
+        ),
+        Index(
+            "ix_change_event_project_origin_id_desc",
+            "project_id",
+            "origin",
+            literal_column("id").desc(),
+            postgresql_where=text("origin IS NOT NULL"),
+        ),
+        Index(
+            "ix_change_event_project_source_id_desc",
+            "project_id",
+            "source_project_id",
+            literal_column("id").desc(),
+            postgresql_where=text("source_project_id IS NOT NULL"),
+        ),
+        Index(
+            "ix_change_event_project_created_id_desc",
+            "project_id",
+            literal_column("created_at").desc(),
+            literal_column("id").desc(),
+        ),
+        Index(
+            "ix_change_event_project_batch_id_desc",
+            "project_id",
+            "batch_id",
+            literal_column("id").desc(),
+            postgresql_where=text("batch_id IS NOT NULL"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    project_id: Mapped[int] = mapped_column(
-        ForeignKey("project.id", ondelete="CASCADE"), index=True
-    )
+    project_id: Mapped[int] = mapped_column(ForeignKey("project.id", ondelete="CASCADE"))
     event_type: Mapped[ChangeEventType] = mapped_column(
-        Enum(ChangeEventType, native_enum=False, length=64), index=True
+        Enum(ChangeEventType, native_enum=False, length=64)
     )
     actor: Mapped[str] = mapped_column(String(128), default="system", server_default="system")
     payload: Mapped[dict] = mapped_column(_JSON_PAYLOAD, default=dict)

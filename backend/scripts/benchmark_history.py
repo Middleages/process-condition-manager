@@ -98,6 +98,10 @@ _REQUIRED_INDEXES = {
     "ix_change_event_project_created_id_desc",
     "ix_change_event_project_batch_id_desc",
 }
+_RETIRED_INDEXES = {
+    "ix_change_event_project_id",
+    "ix_change_event_event_type",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -1144,6 +1148,13 @@ def _plan_failures(evidence: PlanEvidence) -> list[str]:
     return failures
 
 
+def _retired_index_failures(index_names: set[str]) -> list[str]:
+    retired_indexes = sorted(_RETIRED_INDEXES & index_names)
+    if not retired_indexes:
+        return []
+    return [f"index_definitions.retired_legacy_present: {retired_indexes!r}"]
+
+
 async def _collect_plan_evidence(
     factory: async_sessionmaker[AsyncSession], fixture: HistoryFixture
 ) -> tuple[dict[str, PlanEvidence], set[str]]:
@@ -1353,9 +1364,7 @@ async def _measure_paste_overhead(
         with temporary_postgres_database() as database:
             migration_db = _prepare_database(database, target=revision)
             try:
-                project_id, condition_id = _seed_overhead_fixture(
-                    migration_db.connection
-                )
+                project_id, condition_id = _seed_overhead_fixture(migration_db.connection)
                 database_url = database.async_url
             finally:
                 migration_db.connection.close()
@@ -1507,6 +1516,7 @@ async def _build_report(
     missing_indexes = sorted(_REQUIRED_INDEXES - index_names)
     if missing_indexes:
         failures.append(f"index_definitions.missing: {missing_indexes!r}")
+    failures.extend(_retired_index_failures(index_names))
     for plan in plans.values():
         failures.extend(_plan_failures(plan))
 
@@ -1544,7 +1554,7 @@ async def _build_report(
 
 
 def _json_default(value: object) -> object:
-    if isinstance(value, (QueryBenchmark, PlanEvidence, WriteBenchmark)):
+    if isinstance(value, QueryBenchmark | PlanEvidence | WriteBenchmark):
         return asdict(value)
     if isinstance(value, datetime):
         return value.isoformat()

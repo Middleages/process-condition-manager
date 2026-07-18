@@ -14,10 +14,12 @@ from scripts.benchmark_history import (
     _LAYER_COUNT,
     _PARAMETER_COUNT,
     _PASTE_BATCH_SIZE,
+    _RETIRED_INDEXES,
     _TIMED_RUNS,
     _WARMUP_RUNS,
     QueryBenchmark,
     _build_report,
+    _retired_index_failures,
 )
 
 _PG_URL = os.environ.get("APP_TEST_DATABASE_URL")
@@ -34,6 +36,38 @@ def test_history_contract_constants_are_exact() -> None:
     assert _PASTE_BATCH_SIZE == 200
     assert _WARMUP_RUNS == 1
     assert _TIMED_RUNS == 5
+    assert _RETIRED_INDEXES == {
+        "ix_change_event_project_id",
+        "ix_change_event_event_type",
+    }
+
+
+@pytest.mark.parametrize(
+    ("index_names", "expected"),
+    [
+        (
+            {"ix_change_event_project_id"},
+            "index_definitions.retired_legacy_present: ['ix_change_event_project_id']",
+        ),
+        (
+            {"ix_change_event_event_type"},
+            "index_definitions.retired_legacy_present: ['ix_change_event_event_type']",
+        ),
+        (
+            {"ix_change_event_project_id", "ix_change_event_event_type"},
+            (
+                "index_definitions.retired_legacy_present: "
+                "['ix_change_event_event_type', 'ix_change_event_project_id']"
+            ),
+        ),
+    ],
+)
+def test_history_benchmark_rejects_retired_legacy_indexes(
+    index_names: set[str],
+    expected: str,
+) -> None:
+    failures = _retired_index_failures(index_names)
+    assert failures == [expected]
 
 
 @pytest.mark.asyncio

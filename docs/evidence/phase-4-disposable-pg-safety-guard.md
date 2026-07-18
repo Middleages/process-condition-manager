@@ -35,7 +35,7 @@ Added a runtime probe that:
 
 ## Verification
 
-Commands run from `backend/` with `APP_TEST_DATABASE_URL=postgresql+asyncpg://pcm_user:pcm_pass@127.0.0.1:15432/pcm`:
+Commands ran from `backend/` with `APP_TEST_DATABASE_URL='<guard-admin-url>'`:
 
 - `uv run ruff check tests/postgres_database.py tests/test_postgres_database_guard.py tests/test_postgres_database_runtime.py tests/features/test_choice_consumers_pg.py tests/features/test_choice_sets_pg.py tests/features/test_locks_pg.py tests/features/test_projects_pg_writer_contracts.py`
 - `uv run pyright tests/postgres_database.py tests/test_postgres_database_guard.py tests/test_postgres_database_runtime.py tests/features/test_choice_consumers_pg.py tests/features/test_choice_sets_pg.py tests/features/test_locks_pg.py tests/features/test_projects_pg_writer_contracts.py`

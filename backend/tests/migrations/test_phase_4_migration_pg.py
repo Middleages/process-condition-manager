@@ -494,9 +494,7 @@ def _seed_malformed_scalar_fixture(connection: Connection) -> dict[str, int]:
             project_id=project_id,
             event_type="backbone_copy",
             actor="system",
-            payload=json.dumps(
-                {"batch_id": "batch-object", "backbone_project_id": {"bad": True}}
-            ),
+            payload=json.dumps({"batch_id": "batch-object", "backbone_project_id": {"bad": True}}),
         ),
         "backbone_layer_replace_string_backbone_id": _insert_event_raw_payload(
             connection,
@@ -517,9 +515,7 @@ def _seed_malformed_scalar_fixture(connection: Connection) -> dict[str, int]:
             project_id=project_id,
             event_type="condition_add",
             actor="system",
-            payload=json.dumps(
-                {"layer_key": overlong_layer_key, "condition_id": [1, 2, 3]}
-            ),
+            payload=json.dumps({"layer_key": overlong_layer_key, "condition_id": [1, 2, 3]}),
         ),
         "condition_remove_zero_condition_id": _insert_event_raw_payload(
             connection,
@@ -547,9 +543,7 @@ def _seed_malformed_scalar_fixture(connection: Connection) -> dict[str, int]:
             project_id=project_id,
             event_type="por_change",
             actor="system",
-            payload=json.dumps(
-                {"layer_key": "layer-ok", "new_por_condition_id": 2_147_483_648}
-            ),
+            payload=json.dumps({"layer_key": "layer-ok", "new_por_condition_id": 2_147_483_648}),
         ),
     }
     connection.commit()
@@ -615,6 +609,74 @@ def _index_validity(connection: Connection) -> dict[str, bool]:
         )
     ).all()
     return {row[0]: bool(row[1]) for row in rows}
+
+
+def _reconnect_migration_db(migration_db: MigrationDatabase) -> sa.engine.Engine:
+    migration_db.connection.close()
+    engine = sa.create_engine(migration_db.database.sync_url)
+    migration_db.connection = engine.connect()
+    return engine
+
+
+def _assert_head_history_indexes(connection: Connection) -> None:
+    indexes = _index_defs(connection)
+    validities = _index_validity(connection)
+    expected_fragments = {
+        "ix_change_event_project_id_id_desc": ["(project_id, id desc)"],
+        "ix_change_event_project_type_id_desc": ["(project_id, event_type, id desc)"],
+        "ix_change_event_project_cell_id_desc": [
+            "(project_id, condition_id, parameter_code, id desc)",
+            "where ((condition_id is not null) and (parameter_code is not null))",
+        ],
+        "ix_change_event_project_condition_id_desc": [
+            "(project_id, condition_id, id desc)",
+            "where (condition_id is not null)",
+        ],
+        "ix_change_event_project_layer_id_desc": [
+            "(project_id, layer_key, id desc)",
+            "where (layer_key is not null)",
+        ],
+        "ix_change_event_project_actor_id_desc": ["(project_id, actor, id desc)"],
+        "ix_change_event_project_origin_id_desc": [
+            "(project_id, origin, id desc)",
+            "where (origin is not null)",
+        ],
+        "ix_change_event_project_source_id_desc": [
+            "(project_id, source_project_id, id desc)",
+            "where (source_project_id is not null)",
+        ],
+        "ix_change_event_project_created_id_desc": ["(project_id, created_at desc, id desc)"],
+        "ix_change_event_project_batch_id_desc": [
+            "(project_id, batch_id, id desc)",
+            "where (batch_id is not null)",
+        ],
+    }
+    assert set(indexes) == set(expected_fragments) | {"change_event_pkey"}
+    for name, fragments in expected_fragments.items():
+        assert validities[name] is True
+        for fragment in fragments:
+            assert fragment in indexes[name]
+    assert {
+        "ix_change_event_project_id",
+        "ix_change_event_event_type",
+    }.isdisjoint(indexes)
+
+
+def _assert_0006_legacy_indexes(connection: Connection) -> None:
+    remaining_indexes = _index_defs(connection)
+    assert {
+        "change_event_pkey",
+        "ix_change_event_project_id",
+        "ix_change_event_event_type",
+    } == set(remaining_indexes)
+    assert (
+        remaining_indexes["ix_change_event_project_id"]
+        == "create index ix_change_event_project_id on change_event (project_id)"
+    )
+    assert (
+        remaining_indexes["ix_change_event_event_type"]
+        == "create index ix_change_event_event_type on change_event (event_type)"
+    )
 
 
 def test_history_columns_backfill_repeatable_upgrade_downgrade_upgrade(
@@ -799,43 +861,7 @@ def test_history_columns_backfill_repeatable_upgrade_downgrade_upgrade(
         == 0
     )
 
-    indexes = _index_defs(migration_db.connection)
-    validities = _index_validity(migration_db.connection)
-    expected_fragments = {
-        "ix_change_event_project_id_id_desc": ["(project_id, id desc)"],
-        "ix_change_event_project_type_id_desc": ["(project_id, event_type, id desc)"],
-        "ix_change_event_project_cell_id_desc": [
-            "(project_id, condition_id, parameter_code, id desc)",
-            "where ((condition_id is not null) and (parameter_code is not null))",
-        ],
-        "ix_change_event_project_condition_id_desc": [
-            "(project_id, condition_id, id desc)",
-            "where (condition_id is not null)",
-        ],
-        "ix_change_event_project_layer_id_desc": [
-            "(project_id, layer_key, id desc)",
-            "where (layer_key is not null)",
-        ],
-        "ix_change_event_project_actor_id_desc": ["(project_id, actor, id desc)"],
-        "ix_change_event_project_origin_id_desc": [
-            "(project_id, origin, id desc)",
-            "where (origin is not null)",
-        ],
-        "ix_change_event_project_source_id_desc": [
-            "(project_id, source_project_id, id desc)",
-            "where (source_project_id is not null)",
-        ],
-        "ix_change_event_project_created_id_desc": ["(project_id, created_at desc, id desc)"],
-        "ix_change_event_project_batch_id_desc": [
-            "(project_id, batch_id, id desc)",
-            "where (batch_id is not null)",
-        ],
-    }
-    for name, fragments in expected_fragments.items():
-        assert name in indexes
-        assert validities[name] is True
-        for fragment in fragments:
-            assert fragment in indexes[name]
+    _assert_head_history_indexes(migration_db.connection)
 
     migration_db.downgrade("0005")
     assert migration_db.current_revision() == "0005"
@@ -859,7 +885,7 @@ def test_history_columns_backfill_repeatable_upgrade_downgrade_upgrade(
         row[:5] + row[6:] for row in _event_rows(migration_db.connection)
     ]
     assert before_counts == _table_counts(migration_db.connection)
-    assert autocommit_calls == 30
+    assert autocommit_calls == 36
 
 
 def test_0007_upgrade_100k_change_events_stays_within_lock_budget(
@@ -935,21 +961,155 @@ def test_0007_retry_rebuilds_mismatched_index_after_partial_interruption(
     assert indexes["ix_change_event_project_origin_id_desc"].endswith("where (origin is not null)")
     assert indexes["ix_change_event_project_id_id_desc"].endswith("(project_id, id desc)")
     assert indexes["ix_change_event_project_batch_id_desc"].endswith("where (batch_id is not null)")
+    assert {
+        "ix_change_event_project_id",
+        "ix_change_event_event_type",
+    }.isdisjoint(indexes)
 
     migration_db.downgrade("0006")
-    remaining_indexes = _index_defs(migration_db.connection)
-    assert {
-        "ix_change_event_project_id_id_desc",
-        "ix_change_event_project_type_id_desc",
-        "ix_change_event_project_cell_id_desc",
-        "ix_change_event_project_condition_id_desc",
-        "ix_change_event_project_layer_id_desc",
-        "ix_change_event_project_actor_id_desc",
-        "ix_change_event_project_origin_id_desc",
-        "ix_change_event_project_source_id_desc",
-        "ix_change_event_project_created_id_desc",
-        "ix_change_event_project_batch_id_desc",
-    }.isdisjoint(remaining_indexes)
+    _assert_0006_legacy_indexes(migration_db.connection)
+
+
+def test_0007_upgrade_retry_after_legacy_drop_interrupt_preserves_0006_state(
+    migration_db: MigrationDatabase,
+) -> None:
+    migration_db.upgrade("0005")
+    _seed_history_fixture(migration_db.connection)
+    before_counts = _table_counts(migration_db.connection)
+    before_events = _event_rows(migration_db.connection)
+
+    interrupted = False
+
+    def _interrupt_after_first_legacy_drop(
+        _conn,
+        _cursor,
+        statement,
+        _parameters,
+        _context,
+        _executemany,
+    ) -> None:
+        nonlocal interrupted
+        if (
+            not interrupted
+            and "DROP INDEX CONCURRENTLY IF EXISTS" in statement
+            and "ix_change_event_project_id" in statement
+        ):
+            interrupted = True
+            raise RuntimeError("simulated interruption after the first legacy index drop")
+
+    event.listen(
+        migration_db.connection,
+        "after_cursor_execute",
+        _interrupt_after_first_legacy_drop,
+    )
+    try:
+        with pytest.raises(RuntimeError, match="simulated interruption"):
+            migration_db.upgrade("head")
+    finally:
+        event.remove(
+            migration_db.connection,
+            "after_cursor_execute",
+            _interrupt_after_first_legacy_drop,
+        )
+
+    retry_engine = _reconnect_migration_db(migration_db)
+    try:
+        assert migration_db.current_revision() == "0006"
+        assert before_counts == _table_counts(migration_db.connection)
+        assert [row[:5] + row[6:] for row in before_events] == [
+            row[:5] + row[6:] for row in _event_rows(migration_db.connection)
+        ]
+
+        index_defs = _index_defs(migration_db.connection)
+        index_validity = _index_validity(migration_db.connection)
+        assert set(index_defs) == {
+            "change_event_pkey",
+            "ix_change_event_event_type",
+            "ix_change_event_project_id_id_desc",
+            "ix_change_event_project_type_id_desc",
+            "ix_change_event_project_cell_id_desc",
+            "ix_change_event_project_condition_id_desc",
+            "ix_change_event_project_layer_id_desc",
+            "ix_change_event_project_actor_id_desc",
+            "ix_change_event_project_origin_id_desc",
+            "ix_change_event_project_source_id_desc",
+            "ix_change_event_project_created_id_desc",
+            "ix_change_event_project_batch_id_desc",
+        }
+        assert all(index_validity.values())
+        assert "ix_change_event_project_id" not in index_defs
+
+        migration_db.upgrade("head")
+        assert migration_db.current_revision() == "0007"
+        _assert_head_history_indexes(migration_db.connection)
+    finally:
+        migration_db.connection.close()
+        retry_engine.dispose()
+
+
+def test_0007_downgrade_retry_after_new_drop_interrupt_preserves_0007_state(
+    migration_db: MigrationDatabase,
+) -> None:
+    migration_db.upgrade("0005")
+    _seed_history_fixture(migration_db.connection)
+    before_counts = _table_counts(migration_db.connection)
+    before_events = _event_rows(migration_db.connection)
+
+    migration_db.upgrade("head")
+    assert migration_db.current_revision() == "0007"
+
+    interrupted = False
+
+    def _interrupt_after_first_new_drop(
+        _conn,
+        _cursor,
+        statement,
+        _parameters,
+        _context,
+        _executemany,
+    ) -> None:
+        nonlocal interrupted
+        if (
+            not interrupted
+            and "DROP INDEX CONCURRENTLY IF EXISTS" in statement
+            and "ix_change_event_project_batch_id_desc" in statement
+        ):
+            interrupted = True
+            raise RuntimeError("simulated interruption after the first new index drop")
+
+    event.listen(migration_db.connection, "after_cursor_execute", _interrupt_after_first_new_drop)
+    try:
+        with pytest.raises(RuntimeError, match="simulated interruption"):
+            migration_db.downgrade("0006")
+    finally:
+        event.remove(
+            migration_db.connection,
+            "after_cursor_execute",
+            _interrupt_after_first_new_drop,
+        )
+
+    retry_engine = _reconnect_migration_db(migration_db)
+    try:
+        assert migration_db.current_revision() == "0007"
+        assert before_counts == _table_counts(migration_db.connection)
+        assert [row[:5] + row[6:] for row in before_events] == [
+            row[:5] + row[6:] for row in _event_rows(migration_db.connection)
+        ]
+
+        validities = _index_validity(migration_db.connection)
+        assert {
+            "ix_change_event_project_id",
+            "ix_change_event_event_type",
+        } <= set(_index_defs(migration_db.connection))
+        assert validities["ix_change_event_project_id"] is True
+        assert validities["ix_change_event_event_type"] is True
+
+        migration_db.downgrade("0006")
+        assert migration_db.current_revision() == "0006"
+        _assert_0006_legacy_indexes(migration_db.connection)
+    finally:
+        migration_db.connection.close()
+        retry_engine.dispose()
 
 
 def test_0006_malformed_scalar_backfill_leaves_unsupported_values_null(

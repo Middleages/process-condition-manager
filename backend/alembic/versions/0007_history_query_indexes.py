@@ -147,6 +147,17 @@ _INDEX_SPECS = [
     ),
 ]
 
+_LEGACY_INDEX_SPECS = [
+    (
+        "ix_change_event_project_id",
+        sa.Index("ix_change_event_project_id", _change_event.c.project_id),
+    ),
+    (
+        "ix_change_event_event_type",
+        sa.Index("ix_change_event_event_type", _change_event.c.event_type),
+    ),
+]
+
 
 def _normalize_index_sql(sql: str) -> str:
     normalized = sql.lower().replace('"', "").replace("public.", "")
@@ -219,19 +230,39 @@ def _assert_all_indexes_ready() -> None:
             raise RuntimeError(f"unexpected index definition after migration: {name}")
 
 
+def _assert_legacy_indexes_removed() -> None:
+    for name, _index in _LEGACY_INDEX_SPECS:
+        valid, current_sql = _fetch_index_state(name)
+        if valid or current_sql is not None:
+            raise RuntimeError(f"legacy index still present after migration: {name}")
+
+
+def _assert_legacy_indexes_ready() -> None:
+    for spec in _LEGACY_INDEX_SPECS:
+        name, index = spec
+        valid, current_sql = _fetch_index_state(name)
+        if not valid or current_sql is None:
+            raise RuntimeError(f"missing or invalid legacy index after downgrade: {name}")
+        if _normalize_index_sql(current_sql) != _expected_index_sql(index):
+            raise RuntimeError(f"unexpected legacy index definition after downgrade: {name}")
+
+
 def upgrade() -> None:
     _require_online()
     for spec in _INDEX_SPECS:
         _ensure_index(spec)
     _assert_all_indexes_ready()
+    for name, _index in _LEGACY_INDEX_SPECS:
+        with op.get_context().autocommit_block():
+            _drop_index_concurrently(name)
+    _assert_legacy_indexes_removed()
 
 
 def downgrade() -> None:
     _require_online()
-    for spec in reversed(_INDEX_SPECS):
-        name, _index = spec
-        _valid, current_sql = _fetch_index_state(name)
-        if current_sql is None:
-            continue
+    for spec in _LEGACY_INDEX_SPECS:
+        _ensure_index(spec)
+    _assert_legacy_indexes_ready()
+    for name, _index in reversed(_INDEX_SPECS):
         with op.get_context().autocommit_block():
             _drop_index_concurrently(name)

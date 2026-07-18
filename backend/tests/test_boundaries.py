@@ -291,6 +291,81 @@ def test_phase_4_metadata_exposes_backbone_snapshot_and_history_columns() -> Non
     ]
 
 
+def test_phase_4_metadata_retains_only_head_history_indexes() -> None:
+    from sqlalchemy import Table
+    from sqlalchemy.dialects.postgresql import dialect
+    from sqlalchemy.schema import CreateIndex
+
+    from app.models import Base
+
+    change_event = cast(Table, Base.metadata.tables["change_event"])
+    assert {index.name for index in change_event.indexes} == {
+        "ix_change_event_project_id_id_desc",
+        "ix_change_event_project_type_id_desc",
+        "ix_change_event_project_cell_id_desc",
+        "ix_change_event_project_condition_id_desc",
+        "ix_change_event_project_layer_id_desc",
+        "ix_change_event_project_actor_id_desc",
+        "ix_change_event_project_origin_id_desc",
+        "ix_change_event_project_source_id_desc",
+        "ix_change_event_project_created_id_desc",
+        "ix_change_event_project_batch_id_desc",
+    }
+    expected_sql = {
+        "ix_change_event_project_id_id_desc": (
+            "create index ix_change_event_project_id_id_desc on change_event (project_id, id desc)"
+        ),
+        "ix_change_event_project_type_id_desc": (
+            "create index ix_change_event_project_type_id_desc on change_event "
+            "(project_id, event_type, id desc)"
+        ),
+        "ix_change_event_project_cell_id_desc": (
+            "create index ix_change_event_project_cell_id_desc on change_event "
+            "(project_id, condition_id, parameter_code, id desc) "
+            "where condition_id is not null and parameter_code is not null"
+        ),
+        "ix_change_event_project_condition_id_desc": (
+            "create index ix_change_event_project_condition_id_desc on change_event "
+            "(project_id, condition_id, id desc) where condition_id is not null"
+        ),
+        "ix_change_event_project_layer_id_desc": (
+            "create index ix_change_event_project_layer_id_desc on change_event "
+            "(project_id, layer_key, id desc) where layer_key is not null"
+        ),
+        "ix_change_event_project_actor_id_desc": (
+            "create index ix_change_event_project_actor_id_desc on change_event "
+            "(project_id, actor, id desc)"
+        ),
+        "ix_change_event_project_origin_id_desc": (
+            "create index ix_change_event_project_origin_id_desc on change_event "
+            "(project_id, origin, id desc) where origin is not null"
+        ),
+        "ix_change_event_project_source_id_desc": (
+            "create index ix_change_event_project_source_id_desc on change_event "
+            "(project_id, source_project_id, id desc) where source_project_id is not null"
+        ),
+        "ix_change_event_project_created_id_desc": (
+            "create index ix_change_event_project_created_id_desc on change_event "
+            "(project_id, created_at desc, id desc)"
+        ),
+        "ix_change_event_project_batch_id_desc": (
+            "create index ix_change_event_project_batch_id_desc on change_event "
+            "(project_id, batch_id, id desc) where batch_id is not null"
+        ),
+    }
+    for index in change_event.indexes:
+        name = cast(str, index.name)
+        compiled = str(CreateIndex(index).compile(dialect=dialect()))
+        normalized = " ".join(
+            compiled.lower()
+            .replace('"', "")
+            .replace("public.", "")
+            .replace("using btree", "")
+            .split()
+        )
+        assert normalized == expected_sql[name]
+
+
 def test_fixed_profile_choice_set_mapping_is_exact() -> None:
     from app.domain.choices.constants import PROFILE_CHOICE_SET_FIELDS
 

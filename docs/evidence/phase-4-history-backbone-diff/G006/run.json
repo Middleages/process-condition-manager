@@ -1,0 +1,160 @@
+{
+  "schema_version": 1,
+  "status": "passed",
+  "captured_at_utc": "2026-07-18T03:25:19Z",
+  "source": {
+    "verification_git_sha": "ee38cac8579c1e0f1664250ad6a9c5a18c5f6dec",
+    "python": "3.14.3",
+    "g003_immutable": {
+      "README.md": "42ce310f681d30e2a88a60a3e0c165d9f2f61556bf3ed725fac02d9752d7f3de",
+      "run.json": "e1eef5bf5c699239493e4d389bd7ef52193e8f90f8822882eda775157759ea14"
+    }
+  },
+  "backend_baseline": {
+    "ruff": "passed",
+    "pyright": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "pytest": {
+      "passed": 733,
+      "skipped": 1,
+      "warnings": 57,
+      "duration_seconds": 1430.29
+    }
+  },
+  "frontend_baseline": {
+    "typecheck": "passed",
+    "build": "passed",
+    "vitest": {
+      "files": 93,
+      "tests": 984,
+      "status": "passed"
+    },
+    "browser": {
+      "viewports": [1024, 1440, 1920],
+      "available_actions": 30,
+      "unavailable_actions": 30,
+      "console_errors": 0,
+      "runtime_errors": 0,
+      "loading_errors": 0,
+      "horizontal_overflow": false,
+      "h1_ring": false,
+      "status": "passed"
+    },
+    "ci_audit": {
+      "backend": "configured",
+      "frontend": "configured",
+      "browser_viewport_qa": "local_release_gate"
+    }
+  },
+  "history": {
+    "protocol": {
+      "warmup_runs": 1,
+      "measured_runs": 5,
+      "paste_overhead_ratio_max": 0.2
+    },
+    "initial_focused_suite": {
+      "status": "failed",
+      "passed": 35,
+      "failed": 1,
+      "warnings": 22,
+      "duration_seconds": 554.79,
+      "paste_overhead_ratio": 0.268353,
+      "pre_samples_ms": [90.864, 156.993, 93.99, 97.366, 98.091],
+      "post_samples_ms": [121.743, 123.719, 182.448, 123.495, 95.864]
+    },
+    "standalone_attempts": [
+      {
+        "attempt": 1,
+        "status": "failed",
+        "paste_overhead_ratio": 0.36203861369010976,
+        "pre_samples_ms": [33.355, 32.863, 33.407, 34.53, 34.737],
+        "post_samples_ms": [50.638, 45.501, 76.317, 38.976, 42.102]
+      },
+      {
+        "attempt": 2,
+        "status": "passed",
+        "paste_overhead_ratio": 0.082221474953739,
+        "pre_samples_ms": [35.594, 34.11, 33.741, 33.754, 33.064],
+        "post_samples_ms": [36.53, 39.645, 61.912, 34.11, 35.743],
+        "failures": []
+      },
+      {
+        "attempt": 3,
+        "status": "passed",
+        "paste_overhead_ratio": -0.020004114015582018,
+        "pre_samples_ms": [39.793, 39.917, 34.363, 35.628, 38.568],
+        "post_samples_ms": [36.893, 35.502, 54.038, 45.984, 37.796],
+        "failures": []
+      }
+    ],
+    "focused_green_reruns": [
+      {"passed": 36, "warnings": 22, "duration_seconds": 231.89},
+      {"passed": 36, "warnings": 22, "duration_seconds": 206.14}
+    ],
+    "indexes": {
+      "present": [
+        "change_event_pkey",
+        "ix_change_event_project_actor_id_desc",
+        "ix_change_event_project_batch_id_desc",
+        "ix_change_event_project_cell_id_desc",
+        "ix_change_event_project_condition_id_desc",
+        "ix_change_event_project_created_id_desc",
+        "ix_change_event_project_id_id_desc",
+        "ix_change_event_project_layer_id_desc",
+        "ix_change_event_project_origin_id_desc",
+        "ix_change_event_project_source_id_desc",
+        "ix_change_event_project_type_id_desc"
+      ],
+      "retired_absent": [
+        "ix_change_event_project_id",
+        "ix_change_event_event_type"
+      ],
+      "expected_composite_plans_used": true,
+      "change_event_sequential_scans": []
+    }
+  },
+  "backbone_diff_attempts": [
+    {
+      "attempt": 1,
+      "status": "passed",
+      "failures": [],
+      "p95_ms": {
+        "pure_diff_20k": 188.488,
+        "root_preview_20": 525.351945,
+        "condition_limit_50": 451.111564,
+        "cell_limit_100": 505.627053
+      }
+    },
+    {
+      "attempt": 2,
+      "status": "passed",
+      "failures": [],
+      "p95_ms": {
+        "pure_diff_20k": 180.278295,
+        "root_preview_20": 489.203253,
+        "condition_limit_50": 457.734004,
+        "cell_limit_100": 531.924766
+      }
+    }
+  ],
+  "thresholds": {
+    "paste_overhead_ratio_max": 0.2,
+    "pure_diff_20k_p95_ms_max": 250.0,
+    "http_each_p95_ms_max": 600.0
+  },
+  "safety": {
+    "orphan_disposable_database_count": 0,
+    "admin_non_system_tables": [],
+    "admin_non_system_views": [],
+    "protected_services_unchanged": true,
+    "protected_sqlite_counts": {
+      "project": 1,
+      "parameter": 60,
+      "change_event": 198,
+      "choice_set": 5
+    }
+  },
+  "failures": []
+}
