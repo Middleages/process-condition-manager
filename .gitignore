@@ -178,6 +178,7 @@ secret-*.*
 # Node.js (for docs/Nextra)
 # ===========================================
 node_modules/
+node_modules
 *.tsbuildinfo
 .tscache/
 .next/

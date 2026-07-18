@@ -1,0 +1,245 @@
+{
+  "command": "cd backend && APP_TEST_DATABASE_URL='<guard-admin-url>' uv run python -m scripts.measure_backbone_diff_perf",
+  "database": {
+    "database_name": "pcm_phase26_test_8b72b6e2bbb142b6b185ce2857c47e8c",
+    "dropped": true,
+    "guarded": true,
+    "transaction": {
+      "isolation": "repeatable read",
+      "read_only": "on",
+      "setup_statement": "SET TRANSACTION READ ONLY"
+    }
+  },
+  "failures": [],
+  "fixture": {
+    "changed_coordinate_count": 2000,
+    "choice_parameter_count": 50,
+    "cleared_coordinate_count": 1000,
+    "condition_count": 100,
+    "coordinate_count": 20000,
+    "layer_count": 100,
+    "non_unchanged_coordinate_count": 3000,
+    "non_unchanged_ratio": 0.15,
+    "null_coordinate_count": 1000,
+    "number_parameter_count": 50,
+    "parameter_count": 200,
+    "project_count": 1,
+    "seed": 20260717,
+    "text_parameter_count": 100,
+    "value_kinds": [
+      "number",
+      "text",
+      "choice",
+      "null"
+    ]
+  },
+  "metrics": {
+    "cell_limit_100": {
+      "item_count": 100,
+      "max_ms": 545.402543,
+      "max_response_bytes": 49205,
+      "max_round_trips": 6,
+      "max_select_count": 5,
+      "measured_runs": 5,
+      "p50_ms": 515.841917,
+      "p95_ms": 545.402543,
+      "path": "/api/projects/1/backbone-diff/layers/layer-000/conditions/eyJiYXNlbGluZV9jb25kaXRpb25faWQiOjEwMDAwLCJjdXJyZW50X2NvbmRpdGlvbl9pZCI6MSwia2luZCI6InJvd19yZWYiLCJsYXllcl9rZXkiOiJsYXllci0wMDAiLCJwcm9qZWN0X2lkIjoxLCJyb3dfc3RhdHVzIjoibWF0Y2hlZCIsInZlcnNpb24iOjF9/cells",
+      "requested_limit": 100,
+      "response_bytes": [
+        49205,
+        49205,
+        49205,
+        49205,
+        49205
+      ],
+      "round_trips": [
+        6,
+        6,
+        6,
+        6,
+        6
+      ],
+      "samples_ms": [
+        515.841917,
+        473.647496,
+        519.71109,
+        545.402543,
+        508.488532
+      ],
+      "select_counts": [
+        5,
+        5,
+        5,
+        5,
+        5
+      ],
+      "setup_statement_first": true,
+      "status_codes": [
+        200,
+        200,
+        200,
+        200,
+        200
+      ],
+      "warmup_runs": 1
+    },
+    "condition_limit_50": {
+      "item_count": 1,
+      "max_ms": 482.642314,
+      "max_response_bytes": 1708,
+      "max_round_trips": 6,
+      "max_select_count": 5,
+      "measured_runs": 5,
+      "p50_ms": 450.756129,
+      "p95_ms": 482.642314,
+      "path": "/api/projects/1/backbone-diff/layers/layer-000/conditions",
+      "requested_limit": 50,
+      "response_bytes": [
+        1708,
+        1708,
+        1708,
+        1708,
+        1708
+      ],
+      "round_trips": [
+        6,
+        6,
+        6,
+        6,
+        6
+      ],
+      "samples_ms": [
+        424.427393,
+        450.756129,
+        457.813873,
+        482.642314,
+        413.120991
+      ],
+      "select_counts": [
+        5,
+        5,
+        5,
+        5,
+        5
+      ],
+      "setup_statement_first": true,
+      "status_codes": [
+        200,
+        200,
+        200,
+        200,
+        200
+      ],
+      "warmup_runs": 1
+    },
+    "pure_diff_20k": {
+      "classification_counts": {
+        "added": 0,
+        "changed": 2000,
+        "cleared": 1000,
+        "removed": 0,
+        "unchanged": 17000
+      },
+      "coordinate_count": 20000,
+      "current_bytes": 2213472,
+      "layer_count": 100,
+      "max_ms": 186.310214,
+      "measured_runs": 5,
+      "p50_ms": 183.159927,
+      "p95_ms": 186.310214,
+      "peak_bytes": 31567429,
+      "samples_ms": [
+        183.27743,
+        179.187419,
+        186.310214,
+        183.159927,
+        182.681914
+      ],
+      "warmup_runs": 1
+    },
+    "root_preview_20": {
+      "item_count": 20,
+      "max_ms": 501.089652,
+      "max_response_bytes": 80472,
+      "max_round_trips": 6,
+      "max_select_count": 5,
+      "measured_runs": 5,
+      "p50_ms": 482.128034,
+      "p95_ms": 501.089652,
+      "path": "/api/projects/1/backbone-diff",
+      "requested_preview_limit": 20,
+      "response_bytes": [
+        80472,
+        80472,
+        80472,
+        80472,
+        80472
+      ],
+      "round_trips": [
+        6,
+        6,
+        6,
+        6,
+        6
+      ],
+      "samples_ms": [
+        457.368724,
+        492.742279,
+        501.089652,
+        468.918157,
+        482.128034
+      ],
+      "select_counts": [
+        5,
+        5,
+        5,
+        5,
+        5
+      ],
+      "setup_statement_first": true,
+      "status_codes": [
+        200,
+        200,
+        200,
+        200,
+        200
+      ],
+      "warmup_runs": 1
+    }
+  },
+  "protocol": {
+    "measured_runs": 5,
+    "percentile_method": "nearest-rank-ceiling",
+    "pure_timing_gc_enabled": false,
+    "warmup_runs": 1
+  },
+  "runtime": {
+    "captured_at_utc": "2026-07-17T06:14:08.431017Z",
+    "cpu_count": 6,
+    "load_average": [
+      3.7470703125,
+      3.361328125,
+      3.4814453125
+    ],
+    "platform": "Linux-6.18.35.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+    "python": "3.14.3"
+  },
+  "schema_version": 1,
+  "source": {
+    "git_sha": "335a5ebf9aa5475c78c55c85ea28129973a247dc",
+    "git_status_short": []
+  },
+  "status": "passed",
+  "thresholds": {
+    "http_each": {
+      "p95_ms_max": 600.0,
+      "response_bytes_max": 262144,
+      "round_trips_max": 9,
+      "select_count_max": 8
+    },
+    "pure_diff_20k": {
+      "p95_ms_max": 250.0,
+      "peak_bytes_max": 67108864
+    }
+  }
+}

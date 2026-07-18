@@ -5,6 +5,11 @@ import {
   type ValidationSeverity,
 } from '@/shared/domain/validation'
 
+import {
+  resolveWorkbenchCoordinateNavigation,
+  type WorkbenchCoordinateNavigation,
+} from './workbenchCoordinateNavigation'
+
 export const VALIDATION_WORKBENCH_MIN_HEIGHT = 180
 export const VALIDATION_WORKBENCH_MAX_HEIGHT = 520
 export const VALIDATION_WORKBENCH_DEFAULT_HEIGHT = 300
@@ -73,34 +78,17 @@ export interface ValidationWorkbenchIssue {
 }
 
 export interface ValidationWorkbenchState {
-  readonly expanded: boolean
-  readonly panelHeight: number
   readonly showErrors: boolean
   readonly showWarnings: boolean
   readonly selectedIssueKey: string | null
 }
 
 export type ValidationWorkbenchAction =
-  | { readonly type: 'toggle-expanded' }
   | { readonly type: 'toggle-severity'; readonly severity: ValidationSeverity }
   | { readonly type: 'select-issue'; readonly key: string }
-  | { readonly type: 'resize-by'; readonly delta: -1 | 1 }
-  | { readonly type: 'set-height'; readonly height: number }
 
-export function createValidationWorkbenchState({
-  expanded = false,
-  panelHeight = VALIDATION_WORKBENCH_DEFAULT_HEIGHT,
-}: {
-  expanded?: boolean
-  panelHeight?: number
-} = {}): ValidationWorkbenchState {
-  return {
-    expanded,
-    panelHeight: clampValidationWorkbenchHeight(panelHeight),
-    showErrors: true,
-    showWarnings: true,
-    selectedIssueKey: null,
-  }
+export function createValidationWorkbenchState(): ValidationWorkbenchState {
+  return { showErrors: true, showWarnings: true, selectedIssueKey: null }
 }
 
 export function reduceValidationWorkbenchState(
@@ -108,8 +96,6 @@ export function reduceValidationWorkbenchState(
   action: ValidationWorkbenchAction,
 ): ValidationWorkbenchState {
   switch (action.type) {
-    case 'toggle-expanded':
-      return { ...state, expanded: !state.expanded }
     case 'toggle-severity':
       return action.severity === 'error'
         ? { ...state, showErrors: !state.showErrors }
@@ -119,15 +105,6 @@ export function reduceValidationWorkbenchState(
         ...state,
         selectedIssueKey: state.selectedIssueKey === action.key ? null : action.key,
       }
-    case 'resize-by':
-      return {
-        ...state,
-        panelHeight: clampValidationWorkbenchHeight(
-          state.panelHeight + action.delta * VALIDATION_WORKBENCH_RESIZE_STEP,
-        ),
-      }
-    case 'set-height':
-      return { ...state, panelHeight: clampValidationWorkbenchHeight(action.height) }
   }
 }
 
@@ -143,6 +120,14 @@ export function shouldMountValidationWorkbench(
   explicitValidationCompleted: boolean,
 ): boolean {
   return issues.length > 0 || explicitValidationCompleted
+}
+
+export function shouldAutoOpenValidationWorkbench(
+  previousIssueCount: number,
+  currentIssueCount: number,
+  hasActiveMode: boolean,
+): boolean {
+  return previousIssueCount === 0 && currentIssueCount > 0 && !hasActiveMode
 }
 
 export function filterValidationWorkbenchIssues(
@@ -208,17 +193,7 @@ export function enrichValidationIssues(
   })
 }
 
-export type ValidationIssueNavigation =
-  | { readonly kind: 'missing-target' }
-  | {
-      readonly kind: 'direct'
-      readonly target: { readonly conditionId: string; readonly parameterCode: string }
-    }
-  | {
-      readonly kind: 'reveal-category'
-      readonly categoryCode: string | null
-      readonly target: { readonly conditionId: string; readonly parameterCode: string }
-    }
+export type ValidationIssueNavigation = WorkbenchCoordinateNavigation
 
 /** Resolves domain coordinates only. React commit ordering and the grid library stay with callers. */
 export function resolveValidationIssueNavigation(
@@ -229,20 +204,18 @@ export function resolveValidationIssueNavigation(
   rows: readonly ConditionGridRow[],
   activeCategory: string | null,
 ): ValidationIssueNavigation {
-  const conditionId =
-    'conditionId' in issue ? issue.conditionId : String(issue.condition_id)
-  const parameterCode =
-    'parameterCode' in issue ? issue.parameterCode : issue.parameter_code
-  const column = columns.find((candidate) => candidate.key === parameterCode)
-  if (column === undefined || !rows.some((row) => row.id === conditionId)) {
-    return { kind: 'missing-target' }
-  }
+  const coordinate =
+    'conditionId' in issue
+      ? {
+          conditionId: issue.conditionId,
+          parameterCode: issue.parameterCode,
+        }
+      : {
+          conditionId: issue.condition_id,
+          parameterCode: issue.parameter_code,
+        }
 
-  const target = { conditionId, parameterCode: column.key }
-  const visible = activeCategory === null || column.categoryCode === activeCategory
-  return visible
-    ? { kind: 'direct', target }
-    : { kind: 'reveal-category', categoryCode: column.categoryCode, target }
+  return resolveWorkbenchCoordinateNavigation(coordinate, columns, rows, activeCategory)
 }
 
 export function isValidationTileActivationKey(key: string): boolean {

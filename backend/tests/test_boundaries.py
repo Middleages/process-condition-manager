@@ -27,6 +27,7 @@ from app.core.errors import (
     register_exception_handlers,
 )
 from app.core.locks import require_edit_lock
+from app.core.maintenance import require_project_mutations_enabled
 from app.features.cells import router as cells_router
 from app.features.choice_sets import router as choice_sets_router
 from app.features.conditions import router as conditions_router
@@ -109,9 +110,7 @@ def test_transactional_dependencies_finalize_before_response(
     assert scopes == ["function"] * len(scopes)
 
     if shares_edit_session:
-        edit_session = _depends(
-            get_type_hints(require_edit_lock, include_extras=True)["session"]
-        )
+        edit_session = _depends(get_type_hints(require_edit_lock, include_extras=True)["session"])
         assert (
             edit_session.dependency,
             edit_session.scope,
@@ -147,14 +146,64 @@ def test_locked_routes_reuse_the_transaction_session() -> None:
             if dependency.call is get_app_session
         )
         service_session = next(
-            dependency
-            for dependency in service.dependencies
-            if dependency.call is get_app_session
+            dependency for dependency in service.dependencies if dependency.call is get_app_session
         )
 
         assert edit_session.use_cache is service_session.use_cache is True
         assert edit_session.cache_key == service_session.cache_key
         assert edit_session.cache_key == (get_app_session, (), "function")
+
+
+def test_phase4_writer_mutation_gate_covers_all_project_truth_write_routes() -> None:
+    """Route enumeration must force explicit coverage for every truth-mutation surface."""
+
+    blocked_routes = {
+        ("POST", "/projects"),
+        ("POST", "/projects/{project_id}/layers/{layer_key}/backbone-replace"),
+        ("PATCH", "/projects/{project_id}/profile"),
+        ("PATCH", "/projects/{project_id}/cells"),
+        ("POST", "/projects/{project_id}/layers/{layer_key}/conditions"),
+        ("DELETE", "/projects/{project_id}/conditions/{condition_id}"),
+        ("PUT", "/projects/{project_id}/conditions/{condition_id}/por"),
+        ("POST", "/projects/{project_id}/lock"),
+        ("POST", "/projects/{project_id}/lock/heartbeat"),
+    }
+    allowed_routes = {
+        ("POST", "/projects/backbone-preview"),
+        ("DELETE", "/projects/{project_id}/lock"),
+        ("POST", "/projects/{project_id}/lock/release"),
+    }
+
+    seen: set[tuple[str, str]] = set()
+    for router in (
+        projects_router.router,
+        cells_router.router,
+        conditions_router.router,
+        locks_router.router,
+    ):
+        for route in router.routes:
+            if not isinstance(route, APIRoute):
+                continue
+            methods = route.methods or set()
+            method = next(iter(methods))
+            if method == "GET":
+                continue
+            spec = (method, route.path)
+            if spec in blocked_routes:
+                assert any(
+                    dependency.call is require_project_mutations_enabled
+                    for dependency in route.dependant.dependencies
+                ), spec
+            elif spec in allowed_routes:
+                assert all(
+                    dependency.call is not require_project_mutations_enabled
+                    for dependency in route.dependant.dependencies
+                ), spec
+            else:
+                pytest.fail(f"Unhandled non-GET project-truth route: {spec}")
+            seen.add(spec)
+
+    assert seen == blocked_routes | allowed_routes
 
 
 def test_app_database_url_sync_swaps_driver() -> None:
@@ -198,9 +247,7 @@ def test_validation_rule_model_is_registered_with_strict_storage_contract() -> N
         "ix_validation_rule_active_code",
         "ix_validation_rule_code",
     }
-    assert next(
-        index for index in table.indexes if index.name == "ix_validation_rule_code"
-    ).unique
+    assert next(index for index in table.indexes if index.name == "ix_validation_rule_code").unique
 
 
 def test_phase_2_6_metadata_has_no_legacy_option_or_project_description() -> None:
@@ -214,6 +261,109 @@ def test_phase_2_6_metadata_has_no_legacy_option_or_project_description() -> Non
     assert "description" not in Base.metadata.tables["project"].c
     assert isinstance(Base.metadata.tables["parameter"].c.min_value.type, Numeric)
     assert isinstance(Base.metadata.tables["parameter"].c.max_value.type, Numeric)
+
+
+def test_phase_4_metadata_exposes_backbone_snapshot_and_history_columns() -> None:
+    from sqlalchemy import JSON, Enum, Table
+    from sqlalchemy.dialects.postgresql import JSONB, dialect
+
+    from app.models import Base
+
+    sheet_layer = cast(Table, Base.metadata.tables["sheet_layer"])
+    change_event = cast(Table, Base.metadata.tables["change_event"])
+
+    assert isinstance(sheet_layer.c.backbone_snapshot.type, JSON)
+    assert isinstance(sheet_layer.c.backbone_snapshot.type.dialect_impl(dialect()), JSONB)
+    assert sheet_layer.c.backbone_snapshot.nullable is True
+
+    assert {"layer_key", "batch_id", "origin", "source_project_id", "source_layer_key"} <= set(
+        change_event.c.keys()
+    )
+    assert cast(Enum, change_event.c.event_type.type).enums == [
+        "PROJECT_CREATE",
+        "PROJECT_PROFILE_UPDATE",
+        "BACKBONE_COPY",
+        "BACKBONE_LAYER_REPLACE",
+        "CELL_UPDATE",
+        "CONDITION_ADD",
+        "CONDITION_REMOVE",
+        "POR_CHANGE",
+    ]
+
+
+def test_phase_4_metadata_retains_only_head_history_indexes() -> None:
+    from sqlalchemy import Table
+    from sqlalchemy.dialects.postgresql import dialect
+    from sqlalchemy.schema import CreateIndex
+
+    from app.models import Base
+
+    change_event = cast(Table, Base.metadata.tables["change_event"])
+    assert {index.name for index in change_event.indexes} == {
+        "ix_change_event_project_id_id_desc",
+        "ix_change_event_project_type_id_desc",
+        "ix_change_event_project_cell_id_desc",
+        "ix_change_event_project_condition_id_desc",
+        "ix_change_event_project_layer_id_desc",
+        "ix_change_event_project_actor_id_desc",
+        "ix_change_event_project_origin_id_desc",
+        "ix_change_event_project_source_id_desc",
+        "ix_change_event_project_created_id_desc",
+        "ix_change_event_project_batch_id_desc",
+    }
+    expected_sql = {
+        "ix_change_event_project_id_id_desc": (
+            "create index ix_change_event_project_id_id_desc on change_event (project_id, id desc)"
+        ),
+        "ix_change_event_project_type_id_desc": (
+            "create index ix_change_event_project_type_id_desc on change_event "
+            "(project_id, event_type, id desc)"
+        ),
+        "ix_change_event_project_cell_id_desc": (
+            "create index ix_change_event_project_cell_id_desc on change_event "
+            "(project_id, condition_id, parameter_code, id desc) "
+            "where condition_id is not null and parameter_code is not null"
+        ),
+        "ix_change_event_project_condition_id_desc": (
+            "create index ix_change_event_project_condition_id_desc on change_event "
+            "(project_id, condition_id, id desc) where condition_id is not null"
+        ),
+        "ix_change_event_project_layer_id_desc": (
+            "create index ix_change_event_project_layer_id_desc on change_event "
+            "(project_id, layer_key, id desc) where layer_key is not null"
+        ),
+        "ix_change_event_project_actor_id_desc": (
+            "create index ix_change_event_project_actor_id_desc on change_event "
+            "(project_id, actor, id desc)"
+        ),
+        "ix_change_event_project_origin_id_desc": (
+            "create index ix_change_event_project_origin_id_desc on change_event "
+            "(project_id, origin, id desc) where origin is not null"
+        ),
+        "ix_change_event_project_source_id_desc": (
+            "create index ix_change_event_project_source_id_desc on change_event "
+            "(project_id, source_project_id, id desc) where source_project_id is not null"
+        ),
+        "ix_change_event_project_created_id_desc": (
+            "create index ix_change_event_project_created_id_desc on change_event "
+            "(project_id, created_at desc, id desc)"
+        ),
+        "ix_change_event_project_batch_id_desc": (
+            "create index ix_change_event_project_batch_id_desc on change_event "
+            "(project_id, batch_id, id desc) where batch_id is not null"
+        ),
+    }
+    for index in change_event.indexes:
+        name = cast(str, index.name)
+        compiled = str(CreateIndex(index).compile(dialect=dialect()))
+        normalized = " ".join(
+            compiled.lower()
+            .replace('"', "")
+            .replace("public.", "")
+            .replace("using btree", "")
+            .split()
+        )
+        assert normalized == expected_sql[name]
 
 
 def test_fixed_profile_choice_set_mapping_is_exact() -> None:

@@ -81,7 +81,7 @@ def test_existing_parameters_upgrade_with_safe_validation_defaults(
     )
     migration_db.connection.commit()
 
-    migration_db.upgrade("head")
+    migration_db.upgrade("0005")
 
     assert migration_db.current_revision() == "0005"
     rows = migration_db.connection.execute(

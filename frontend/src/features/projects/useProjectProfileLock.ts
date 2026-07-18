@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
+import { invalidateProjectHistoryAfterMutation } from '@/api/historyCache'
 import { acquireLock, heartbeatLock, releaseLock, releaseLockOnUnload } from '@/api/locks'
 import { getProjectProfile, patchProjectProfile } from '@/api/projects'
 import type { ProjectOut, ProjectProfilePatchIn } from '@/api/types'
@@ -60,6 +61,7 @@ export function useProjectProfileLock(projectId: number): ProjectProfileLockSess
             current ? { ...current, profile } : current,
           )
           await Promise.all([
+            invalidateProjectHistoryAfterMutation(queryClient, id),
             queryClient.invalidateQueries({ queryKey: ['project', id], exact: true }),
             queryClient.invalidateQueries({
               queryKey: ['project-profile', id],

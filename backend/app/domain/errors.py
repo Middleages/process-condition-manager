@@ -9,10 +9,18 @@ class DomainError(Exception):
     """도메인 규칙 위반 기본 예외."""
 
     code: str = "domain_error"
+    details: dict[str, object] | None
 
-    def __init__(self, message: str, *, code: str | None = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str | None = None,
+        details: dict[str, object] | None = None,
+    ) -> None:
         super().__init__(message)
         self.message = message
+        self.details = details
         if code is not None:
             self.code = code
 

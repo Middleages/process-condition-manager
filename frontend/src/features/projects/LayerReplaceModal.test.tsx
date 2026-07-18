@@ -107,4 +107,23 @@ describe('LayerReplaceModal semantic UI contract', () => {
     expect(loadingButtonHtml).toMatch(/<span class="[^"]*opacity-0[^"]*">교체 적용<\/span>/)
     expect(loadingButtonHtml).toContain('aria-hidden="true"')
   })
+
+  it('invalidates the replaced project history prefix before closing', () => {
+    const successBody = layerReplaceModalSource.match(
+      /onSuccess: async \(\) => \{[\s\S]*?onClose\(\)/,
+    )?.[0]
+
+    expect(successBody).toContain(
+      'invalidateProjectHistoryAfterMutation(queryClient, project.id)',
+    )
+    expect(successBody).toContain(
+      'invalidateProjectBackboneDiffAfterMutation(queryClient, project.id)',
+    )
+    expect(successBody?.indexOf('invalidateProjectHistoryAfterMutation')).toBeLessThan(
+      successBody?.indexOf('onClose()') ?? -1,
+    )
+    expect(successBody?.indexOf('invalidateProjectBackboneDiffAfterMutation')).toBeLessThan(
+      successBody?.indexOf('onClose()') ?? -1,
+    )
+  })
 })

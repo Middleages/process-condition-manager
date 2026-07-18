@@ -266,6 +266,34 @@ async def test_patch_cells_paste_origin_recorded(
     assert events[0].payload["origin"] == "paste"
 
 
+async def test_patch_cells_populates_structured_event_envelope_columns(
+    db_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """셀 업데이트는 layer_key/origin/batch_id 구조화 컬럼도 함께 채운다."""
+    project_id, cond1, cond2 = await _seed_project(db_session)
+    token = await _acquire(db_client, project_id)
+
+    resp = await _patch(
+        db_client,
+        project_id,
+        [
+            {"condition_id": cond1, "parameter_code": "spin_speed", "value": "1500"},
+            {"condition_id": cond2, "parameter_code": "spin_speed", "value": "900"},
+        ],
+        token=token,
+        origin="paste",
+    )
+
+    assert resp.status_code == 200, resp.text
+    events = await _cell_events(db_session, project_id)
+    assert len(events) == 2
+    assert {event.batch_id for event in events} == {resp.json()["batch_id"]}
+    assert {event.origin for event in events} == {"paste"}
+    assert all(event.layer_key == "L1::PROC_X::010::ACT" for event in events)
+    assert all(event.source_project_id is None for event in events)
+    assert all(event.source_layer_key is None for event in events)
+
+
 # --- 변경 없는 셀 -----------------------------------------------------------
 
 

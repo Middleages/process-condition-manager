@@ -1,11 +1,16 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  cellHistoryMenuActionForKey,
+  closeCellHistoryMenuState,
   cellStatusMarkerFacts,
   cellStatusTooltip,
   cellStatusVisualPriority,
   currentGridSelectionForLayout,
   gridLayoutAuthority,
+  isCellHistoryMenuInvocation,
+  resolveCellHistoryMenuPosition,
+  resolveCellHistoryRequest,
 } from './GlideConditionGrid'
 import source from './GlideConditionGrid.tsx?raw'
 
@@ -115,6 +120,115 @@ describe('composite cell status rendering priority', () => {
     expect(source).toContain('layoutAuthority, selection: selectionForCell(target.col, target.row)')
     expect(source).toMatch(
       /selectionState\.layoutAuthority !== layoutAuthority[\s\S]*?setSelectionState\(\{[\s\S]*?layoutAuthority,[\s\S]*?selection: EMPTY_GRID_SELECTION/,
+    )
+  })
+})
+
+describe('cell-history context action boundary', () => {
+  const columns = [
+    {
+      key: 'amount',
+      headerName: 'Amount',
+      valueType: 'number' as const,
+      categoryCode: null,
+      choiceSetCode: null,
+      choiceSetVersion: null,
+    },
+  ]
+  const rows = [
+    {
+      id: 'condition-11',
+      layerKey: 'layer-1',
+      layerLabel: 'Layer 1',
+      conditionLabel: 'Condition 11',
+      isPor: true,
+      values: { amount: '7' },
+    },
+  ]
+
+  it('resolves only parameter cells to a domain coordinate', () => {
+    expect(resolveCellHistoryRequest([3, 0], columns, rows)).toEqual({
+      conditionId: 'condition-11',
+      parameterCode: 'amount',
+    })
+    expect(resolveCellHistoryRequest([0, 0], columns, rows)).toBeNull()
+    expect(resolveCellHistoryRequest([1, 0], columns, rows)).toBeNull()
+    expect(resolveCellHistoryRequest([2, 0], columns, rows)).toBeNull()
+    expect(resolveCellHistoryRequest([3, 1], columns, rows)).toBeNull()
+  })
+
+  it('recognizes both accessible context-menu keyboard conventions', () => {
+    expect(isCellHistoryMenuInvocation('F10', true)).toBe(true)
+    expect(isCellHistoryMenuInvocation('ContextMenu', false)).toBe(true)
+    expect(isCellHistoryMenuInvocation('Menu', false)).toBe(true)
+    expect(isCellHistoryMenuInvocation('F10', false)).toBe(false)
+    expect(isCellHistoryMenuInvocation('Enter', false)).toBe(false)
+  })
+
+  it('clamps the fixed menu horizontally and flips above a bottom-edge anchor', () => {
+    expect(
+      resolveCellHistoryMenuPosition(
+        { x: 980, y: 730, height: 30 },
+        { width: 1024, height: 768 },
+      ),
+    ).toEqual({ x: 864, y: 682 })
+    expect(
+      resolveCellHistoryMenuPosition(
+        { x: -20, y: 120, height: 28 },
+        { width: 1024, height: 768 },
+      ),
+    ).toEqual({ x: 8, y: 148 })
+  })
+
+  it('clamps vertically when neither the below nor above placement fits', () => {
+    expect(
+      resolveCellHistoryMenuPosition(
+        { x: 20, y: 20, height: 30 },
+        { width: 320, height: 60 },
+      ),
+    ).toEqual({ x: 20, y: 8 })
+  })
+
+  it('maps Enter to activation and Escape to one idempotent focus-restoring close', () => {
+    expect(cellHistoryMenuActionForKey('Enter')).toBe('activate')
+    expect(cellHistoryMenuActionForKey('Escape')).toBe('close')
+    expect(cellHistoryMenuActionForKey('ArrowDown')).toBeNull()
+
+    const open = {
+      target: { conditionId: 'condition-11', parameterCode: 'amount' },
+      x: 10,
+      y: 20,
+    }
+    const firstClose = closeCellHistoryMenuState(open)
+    expect(firstClose).toEqual({ next: null, restoreFocus: true })
+    expect(closeCellHistoryMenuState(firstClose.next)).toEqual({
+      next: null,
+      restoreFocus: false,
+    })
+  })
+
+  it('keeps Glide events and pixel positions local while wiring mouse and keyboard access', () => {
+    expect(source).toContain('onCellContextMenu={handleCellContextMenu}')
+    expect(source).toContain('onKeyDown={handleGridKeyDown}')
+    expect(source).toContain("role=\"menu\"")
+    expect(source).toContain("role=\"menuitem\"")
+    expect(source).toContain('변경 이력 보기')
+    expect(source).toMatch(
+      /handleCellContextMenu[\s\S]*?resolveCellHistoryRequest[\s\S]*?event\.preventDefault\(\)/,
+    )
+    expect(source).toContain('callbacks?.onCellHistoryRequest?.(cellHistoryMenu.target)')
+    expect(source).toContain("document.addEventListener('pointerdown', handleOutsidePointerDown)")
+    expect(source).toContain('closeCellHistoryMenu()')
+    const openMenu = source.slice(
+      source.indexOf('const openCellHistoryMenu = useCallback('),
+      source.indexOf('const layoutAuthority = useMemo('),
+    )
+    expect(openMenu.match(/resolveCellHistoryMenuPosition/g)).toHaveLength(1)
+    expect(source).toMatch(
+      /handleCellContextMenu[\s\S]*?openCellHistoryMenu\(target, event\.bounds\)/,
+    )
+    expect(source).toMatch(
+      /handleGridKeyDown[\s\S]*?openCellHistoryMenu\(target, event\.bounds\)/,
     )
   })
 })

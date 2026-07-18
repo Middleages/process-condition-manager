@@ -9,9 +9,12 @@ from fastapi import APIRouter, FastAPI
 from app.core.config import settings
 from app.core.db import app_engine, ingest_engine
 from app.core.errors import register_exception_handlers
+from app.core.maintenance import Phase4WriterHealthOut, get_phase4_writer_health
+from app.features.backbone_diff.router import router as backbone_diff_router
 from app.features.cells.router import router as cells_router
 from app.features.choice_sets.router import router as choice_sets_router
 from app.features.conditions.router import router as conditions_router
+from app.features.history.router import router as history_router
 from app.features.locks.router import router as locks_router
 from app.features.parameters.router import router as parameters_router
 from app.features.processes.router import router as processes_router
@@ -28,6 +31,12 @@ async def health() -> dict[str, str]:
     return {"status": "ok", "app": settings.app_name}
 
 
+@health_router.get("/health/phase4-writer", response_model=Phase4WriterHealthOut)
+async def phase4_writer_health() -> Phase4WriterHealthOut:
+    """Phase 4 writer canary / rollback-only health attestation."""
+    return await get_phase4_writer_health()
+
+
 def create_app() -> FastAPI:
     """앱 인스턴스를 생성/조립한다."""
     app = FastAPI(title=settings.app_name, debug=settings.debug)
@@ -42,10 +51,12 @@ def create_app() -> FastAPI:
     api_router.include_router(parameters_router)
     api_router.include_router(processes_router)
     api_router.include_router(projects_router)
+    api_router.include_router(backbone_diff_router)
     api_router.include_router(sheets_router)
     api_router.include_router(locks_router)
     api_router.include_router(cells_router)
     api_router.include_router(conditions_router)
+    api_router.include_router(history_router)
     api_router.include_router(validation_router)
     app.include_router(api_router)
 

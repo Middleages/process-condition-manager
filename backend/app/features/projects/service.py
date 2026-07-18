@@ -1,16 +1,30 @@
 """프로젝트 생성/백본 서비스."""
 
-import uuid
 from dataclasses import asdict, dataclass
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy.exc import IntegrityError
 
 from app.core.errors import ConflictError, DomainValidationError, NotFoundError
 from app.core.locks import utcnow
-from app.domain.backbone import LayerMatchInput, ManualOverride, MatchResult, match_layers
+from app.domain.backbone import (
+    BackboneSnapshot,
+    BackboneSnapshotCell,
+    BackboneSnapshotColumn,
+    BackboneSnapshotCondition,
+    BackboneSnapshotSource,
+    LayerMatchInput,
+    ManualOverride,
+    MatchResult,
+    format_captured_at,
+    match_layers,
+    new_capture_batch_id,
+    serialize_backbone_snapshot,
+)
 from app.domain.choices.rules import ResolvedChoice, normalize_choice_code
 from app.domain.decimal_values import normalize_optional_decimal
+from app.domain.errors import RuleViolationError
 from app.features.choice_sets.repository import ChoiceSetRepository
 from app.features.projects.repository import ProjectRepository, ProjectSummary
 from app.features.projects.schema import (
@@ -90,16 +104,11 @@ _PATCH_FIELD_ORDER = (
     "metal_layer_count",
 )
 
-
 @dataclass(frozen=True, slots=True)
-class _ConditionSnapshot:
-    """복사 원본이 자기 자신일 때도 안전하도록 조건 행을 값으로 떠 둔다."""
+class _CapturedLayer:
+    """한 source layer의 immutable backbone snapshot."""
 
-    label: str
-    condition_index: int
-    is_por: bool
-    source_condition_id: int | None
-    cells: tuple[tuple[str, str | None], ...]
+    snapshot: BackboneSnapshot
 
 
 class ProjectService:
@@ -237,7 +246,7 @@ class ProjectService:
         process_name = _normalize_required_text(process.display_name, "Process 이름")
         target_layers = await self.reader.get_layers(line_id, process_id)
         backbone = (
-            await self.get_project(data.backbone_project_id)
+            await self.repo.capture_source_project(data.backbone_project_id)
             if data.backbone_project_id is not None
             else None
         )
@@ -246,6 +255,17 @@ class ProjectService:
         elif data.manual_overrides:
             raise DomainValidationError("백본 없이 수동 매칭을 지정할 수 없다")
 
+        batch_id = new_capture_batch_id()
+        captured_at = utcnow()
+        captured_layers = (
+            await self._capture_layers(
+                backbone,
+                batch_id=batch_id,
+                captured_at=captured_at,
+            )
+            if backbone is not None
+            else {}
+        )
         match_result = match_layers(
             _match_inputs_from_ingest(target_layers),
             _match_inputs_from_sheet(backbone.layers) if backbone else [],
@@ -278,26 +298,41 @@ class ProjectService:
             status=ProjectStatus.DRAFT,
             profile=ProjectProfile(process_name=process_name, **final_values),
         )
+        project_layers: list[SheetLayer] = []
         for index, layer_info in enumerate(target_layers, start=1):
             layer = _sheet_layer_from_ingest(layer_info, index)
             match = match_by_target[layer_info.key]
             if match.source_layer_key is None:
                 layer.conditions.append(LayerCondition(label="base", condition_index=1))
             else:
+                captured = captured_layers[match.source_layer_key]
                 source_layer = source_layer_by_key[match.source_layer_key]
                 layer.source_project_id = backbone.id if backbone else None
                 layer.source_layer_key = source_layer.layer_key
-                _apply_snapshots(_snapshot_conditions(source_layer), layer)
+                layer.backbone_snapshot = serialize_backbone_snapshot(captured.snapshot)
+                _apply_snapshots(captured.snapshot.conditions, layer)
+            project_layers.append(layer)
             project.layers.append(layer)
 
-        batch_id = uuid.uuid4().hex
         profile_final = {"process_name": process_name, **final_values}
-        project.events.append(
+
+        self.repo.add(project)
+        await self._flush_or_conflict()
+
+        self.repo.session.add(
             ChangeEvent(
+                project_id=project.id,
                 event_type=ChangeEventType.PROJECT_CREATE,
                 actor=actor,
+                batch_id=batch_id,
+                origin="system",
+                source_project_id=backbone.id if backbone is not None else None,
+                source_layer_key=None,
+                layer_key=None,
                 payload={
                     "batch_id": batch_id,
+                    "captured_at": format_captured_at(captured_at),
+                    "payload_schema_version": 2,
                     "identity": {
                         "line_id": line_id,
                         "process_id": process_id,
@@ -312,22 +347,38 @@ class ProjectService:
             )
         )
         if backbone is not None:
-            project.events.append(
-                ChangeEvent(
-                    event_type=ChangeEventType.BACKBONE_COPY,
-                    actor=actor,
-                    payload={
-                        "batch_id": batch_id,
-                        "backbone_project_id": data.backbone_project_id,
-                        "auto_count": match_result.auto_count,
-                        "manual_count": match_result.manual_count,
-                        "unmatched_count": match_result.unmatched_count,
-                    },
+            for target_layer, match in zip(
+                project_layers, match_result.matches, strict=True
+            ):
+                if match.source_layer_key is None:
+                    continue
+                captured = captured_layers[match.source_layer_key]
+                source_snapshot = captured.snapshot
+                self.repo.session.add(
+                    ChangeEvent(
+                        project_id=project.id,
+                        event_type=ChangeEventType.BACKBONE_COPY,
+                        actor=actor,
+                        batch_id=batch_id,
+                        origin="backbone",
+                        layer_key=target_layer.layer_key,
+                        source_project_id=backbone.id,
+                        source_layer_key=source_snapshot.source.layer_key
+                        if source_snapshot.source is not None
+                        else None,
+                        payload=_backbone_copy_payload(
+                            batch_id=batch_id,
+                            captured_at=captured_at,
+                            backbone_project_id=backbone.id,
+                            source_snapshot=source_snapshot,
+                            target_layer=target_layer,
+                            auto_count=match_result.auto_count,
+                            manual_count=match_result.manual_count,
+                            unmatched_count=match_result.unmatched_count,
+                        ),
+                    )
                 )
-            )
-
-        self.repo.add(project)
-        await self._flush_or_conflict()
+        await self.repo.session.flush()
         return await self.get_project(project.id)
 
     async def get_profile_out(self, project_id: int) -> ProjectProfileOut:
@@ -414,6 +465,11 @@ class ProjectService:
                 project=project,
                 event_type=ChangeEventType.PROJECT_PROFILE_UPDATE,
                 actor=actor,
+                origin="manual",
+                layer_key=None,
+                batch_id=None,
+                source_project_id=None,
+                source_layer_key=None,
                 payload={"changes": changes},
             )
         )
@@ -467,16 +523,30 @@ class ProjectService:
     async def replace_layer_backbone(
         self, project_id: int, layer_key: str, data: BackboneReplaceIn, actor: str
     ) -> Project:
-        project = await self.get_project(project_id)
-        source_project = await self.get_project(data.source_project_id)
+        project = await self.repo.get_for_update(project_id)
+        if project is None:
+            raise NotFoundError(f"프로젝트를 찾을 수 없다: {project_id}")
+        source_project = await self.repo.capture_source_project(
+            data.source_project_id,
+            locked_target=project if data.source_project_id == project.id else None,
+        )
+        if source_project is None:
+            raise NotFoundError(f"프로젝트를 찾을 수 없다: {data.source_project_id}")
         target_layer = _find_layer(project.layers, layer_key)
         source_layer = _find_layer(source_project.layers, data.source_layer_key)
 
         if source_layer.id == target_layer.id:
             raise DomainValidationError("같은 layer를 자기 자신으로 교체할 수 없다")
 
-        # 소스가 같은 프로젝트일 수 있으므로 삭제 전에 값으로 떠 둔다.
-        snapshots = _snapshot_conditions(source_layer)
+        batch_id = new_capture_batch_id()
+        captured_at = utcnow()
+        captured = await self._capture_layer(
+            source_project,
+            source_layer,
+            batch_id=batch_id,
+            captured_at=captured_at,
+        )
+        snapshots = captured.snapshot.conditions
         before = {
             "condition_count": len(target_layer.conditions),
             "cell_count": sum(len(condition.cell_values) for condition in target_layer.conditions),
@@ -487,7 +557,9 @@ class ProjectService:
         target_layer.conditions.clear()
         target_layer.source_project_id = source_project.id
         target_layer.source_layer_key = source_layer.layer_key
+        target_layer.backbone_snapshot = serialize_backbone_snapshot(captured.snapshot)
         _apply_snapshots(snapshots, target_layer)
+        await self.repo.session.flush()
         after = {
             "condition_count": len(snapshots),
             "cell_count": sum(len(snap.cells) for snap in snapshots),
@@ -497,13 +569,22 @@ class ProjectService:
                 project_id=project.id,
                 event_type=ChangeEventType.BACKBONE_LAYER_REPLACE,
                 actor=actor,
+                batch_id=batch_id,
+                origin="backbone",
+                layer_key=layer_key,
+                source_project_id=source_project.id,
+                source_layer_key=source_layer.layer_key,
                 payload={
-                    "batch_id": uuid.uuid4().hex,
+                    "batch_id": batch_id,
+                    "captured_at": format_captured_at(captured_at),
+                    "payload_schema_version": 2,
                     "target_layer_key": layer_key,
                     "source_project_id": source_project.id,
                     "source_layer_key": source_layer.layer_key,
                     "before": before,
                     "after": after,
+                    "capture": serialize_backbone_snapshot(captured.snapshot),
+                    "detail": _layer_copy_detail(target_layer, snapshots),
                 },
             )
         )
@@ -517,6 +598,117 @@ class ProjectService:
         except IntegrityError as exc:
             await self.repo.session.rollback()
             raise ConflictError("이미 존재하는 프로젝트 identity") from exc
+
+    async def _capture_layers(
+        self, source_project: Project, *, batch_id: str, captured_at: datetime
+    ) -> dict[str, _CapturedLayer]:
+        columns_by_code = await self._load_parameter_columns(
+            {
+                cell.parameter_code
+                for layer in source_project.layers
+                for condition in layer.conditions
+                for cell in condition.cell_values
+                if cell.value_text is not None
+            }
+        )
+        captured: dict[str, _CapturedLayer] = {}
+        for layer in source_project.layers:
+            captured[layer.layer_key] = await self._capture_layer(
+                source_project,
+                layer,
+                batch_id=batch_id,
+                captured_at=captured_at,
+                columns_by_code=columns_by_code,
+            )
+        return captured
+
+    async def _capture_layer(
+        self,
+        source_project: Project,
+        source_layer: SheetLayer,
+        *,
+        batch_id: str,
+        captured_at: datetime,
+        columns_by_code: dict[str, BackboneSnapshotColumn] | None = None,
+    ) -> _CapturedLayer:
+        current_codes = {
+            cell.parameter_code
+            for condition in source_layer.conditions
+            for cell in condition.cell_values
+            if cell.value_text is not None
+        }
+        if columns_by_code is None:
+            columns_by_code = await self._load_parameter_columns(current_codes)
+        layer_columns = tuple(
+            sorted(
+                (
+                    column
+                    for column in columns_by_code.values()
+                    if column.active_at_capture or column.parameter_code in current_codes
+                ),
+                key=_snapshot_column_sort_key,
+            )
+        )
+
+        snapshot = BackboneSnapshot(
+            capture_batch_id=batch_id,
+            captured_at=captured_at,
+            source=BackboneSnapshotSource(
+                project_id=source_project.id,
+                sheet_layer_id=source_layer.id,
+                layer_key=source_layer.layer_key,
+                step_seq=source_layer.step_seq,
+                layer_id=source_layer.layer_id,
+            ),
+            columns=layer_columns,
+            conditions=tuple(
+                BackboneSnapshotCondition(
+                    source_condition_id=condition.id,
+                    label=condition.label,
+                    condition_index=condition.condition_index,
+                    is_por=condition.is_por,
+                    cells=tuple(
+                        BackboneSnapshotCell(
+                            parameter_code=cell.parameter_code,
+                            value=cell.value_text,
+                        )
+                        for cell in condition.cell_values
+                        if cell.value_text is not None
+                    ),
+                )
+                for condition in source_layer.conditions
+            ),
+        )
+        return _CapturedLayer(snapshot=snapshot)
+
+    async def _load_parameter_columns(
+        self, parameter_codes: set[str]
+    ) -> dict[str, BackboneSnapshotColumn]:
+        columns: dict[str, BackboneSnapshotColumn] = {}
+        registry = await self.repo.capture_parameter_registry(parameter_codes)
+        if registry.unresolved_codes:
+            raise ConflictError(
+                "백본 컬럼 메타데이터를 찾을 수 없다",
+                code="unresolved_parameter_metadata",
+                details={"parameter_codes": list(registry.unresolved_codes)},
+            )
+        for parameter in registry.parameters:
+            try:
+                columns[parameter.parameter_code] = BackboneSnapshotColumn(
+                    parameter_code=parameter.parameter_code,
+                    value_type=parameter.value_type,
+                    display_name=parameter.display_name,
+                    category_code=parameter.category_code,
+                    sort_order=parameter.sort_order,
+                    active_at_capture=parameter.active_at_capture,
+                )
+            except RuleViolationError as exc:
+                raise ConflictError(
+                    "백본 컬럼 메타데이터를 해석할 수 없다",
+                    code="unresolved_parameter_metadata",
+                    details={"parameter_codes": [parameter.parameter_code]},
+                ) from exc
+        return columns
 
 
 def normalize_optional_text(raw: str | None) -> str | None:
@@ -707,23 +899,12 @@ def _sheet_layer_from_ingest(layer: LayerInfo, index: int) -> SheetLayer:
     )
 
 
-def _snapshot_conditions(source_layer: SheetLayer) -> list[_ConditionSnapshot]:
-    return [
-        _ConditionSnapshot(
-            label=condition.label,
-            condition_index=condition.condition_index,
-            is_por=condition.is_por,
-            source_condition_id=condition.id,
-            cells=tuple(
-                (cell.parameter_code, cell.value_text) for cell in condition.cell_values
-            ),
-        )
-        for condition in source_layer.conditions
-    ]
+def _snapshot_column_sort_key(column: BackboneSnapshotColumn) -> tuple[int, str]:
+    return column.sort_order, column.parameter_code
 
 
 def _apply_snapshots(
-    snapshots: list[_ConditionSnapshot], target_layer: SheetLayer
+    snapshots: tuple[BackboneSnapshotCondition, ...], target_layer: SheetLayer
 ) -> None:
     for snap in snapshots:
         copied = LayerCondition(
@@ -733,7 +914,8 @@ def _apply_snapshots(
             source_condition_id=snap.source_condition_id,
         )
         copied.cell_values.extend(
-            CellValue(parameter_code=code, value_text=value) for code, value in snap.cells
+            CellValue(parameter_code=cell.parameter_code, value_text=cell.value)
+            for cell in snap.cells
         )
         target_layer.conditions.append(copied)
 
@@ -743,3 +925,60 @@ def _find_layer(layers: list[SheetLayer], layer_key: str) -> SheetLayer:
         if layer.layer_key == layer_key:
             return layer
     raise NotFoundError(f"layer를 찾을 수 없다: {layer_key}")
+
+
+def _backbone_copy_payload(
+    *,
+    batch_id: str,
+    captured_at: datetime,
+    backbone_project_id: int | None,
+    source_snapshot: BackboneSnapshot,
+    target_layer: SheetLayer,
+    auto_count: int,
+    manual_count: int,
+    unmatched_count: int,
+) -> dict[str, Any]:
+    source = source_snapshot.source
+    if source is None:
+        raise DomainValidationError("백본 snapshot의 source가 없다")
+    return {
+        "payload_schema_version": 2,
+        "batch_id": batch_id,
+        "captured_at": format_captured_at(captured_at),
+        "backbone_project_id": backbone_project_id,
+        "capture": serialize_backbone_snapshot(source_snapshot),
+        "target_layer_key": target_layer.layer_key,
+        "source_layer_key": source.layer_key,
+        "auto_count": auto_count,
+        "manual_count": manual_count,
+        "unmatched_count": unmatched_count,
+        "condition_count": len(source_snapshot.conditions),
+        "cell_count": sum(len(condition.cells) for condition in source_snapshot.conditions),
+        "detail": _layer_copy_detail(target_layer, source_snapshot.conditions),
+    }
+
+
+def _layer_copy_detail(
+    target_layer: SheetLayer,
+    source_conditions: tuple[BackboneSnapshotCondition, ...],
+) -> list[dict[str, Any]]:
+    target_conditions = list(target_layer.conditions)
+    if len(target_conditions) != len(source_conditions):
+        raise DomainValidationError(
+            "조건 행 복사 개수가 snapshot과 일치하지 않는다",
+        )
+    detail: list[dict[str, Any]] = []
+    for target_condition, source_condition in zip(
+        target_conditions, source_conditions, strict=True
+    ):
+        detail.append(
+            {
+                "target_condition_id": target_condition.id,
+                "source_condition_id": source_condition.source_condition_id,
+                "label": source_condition.label,
+                "condition_index": source_condition.condition_index,
+                "is_por": source_condition.is_por,
+                "cell_count": len(source_condition.cells),
+            }
+        )
+    return detail

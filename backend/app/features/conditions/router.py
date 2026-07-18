@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import UserContext, get_current_user
 from app.core.db import get_app_session
 from app.core.locks import require_edit_lock
+from app.core.maintenance import require_project_mutations_enabled
 from app.features.conditions.repository import ConditionRepository
 from app.features.conditions.schema import ConditionCreateIn, ConditionOut
 from app.features.conditions.service import ConditionService
@@ -22,7 +23,11 @@ from app.features.conditions.service import ConditionService
 router = APIRouter(
     prefix="/projects",
     tags=["conditions"],
-    dependencies=[Depends(get_current_user), Depends(require_edit_lock)],
+    dependencies=[
+        Depends(get_current_user),
+        Depends(require_project_mutations_enabled),
+        Depends(require_edit_lock),
+    ],
 )
 
 
