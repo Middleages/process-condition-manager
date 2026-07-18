@@ -5,6 +5,7 @@ from dataclasses import replace
 
 import pytest  # pyright: ignore[reportMissingImports]
 
+from app.domain.backbone import diff as diff_module
 from app.domain.backbone.diff import (
     DIFF_BASIS_INVALID,
     BackboneDiffCurrentCell,
@@ -216,6 +217,121 @@ def _added_current_condition() -> BackboneDiffCurrentCondition:
         is_por=False,
         cells=(BackboneDiffCurrentCell("current_only", "fresh"),),
     )
+
+
+def test_database_graph_assembly_matches_public_constructor_contracts() -> None:
+    cells = diff_module._current_cells_by_condition_from_database_rows(
+        [(101, "alpha", "one"), (101, "beta", None)]
+    )[101]
+    condition = diff_module._current_condition_from_canonical_database_values(
+        id=101,
+        source_condition_id=10,
+        label="Line A",
+        condition_index=0,
+        is_por=True,
+        cells=cells,
+    )
+    parameters = diff_module._canonicalize_current_parameters(
+        (
+            BackboneDiffCurrentParameter("alpha", ValueType.TEXT, "Alpha", None, 1, True),
+            BackboneDiffCurrentParameter("beta", ValueType.TEXT, "Beta", None, 2, True),
+        )
+    )
+    source = _current_source()
+
+    assembled = diff_module._layer_input_from_canonical_database_graph(
+        layer_key=source.layer_key,
+        layer_sort_order=source.sort_order,
+        current_source=source,
+        baseline_snapshot=None,
+        current_conditions=(condition,),
+        current_parameters=parameters,
+    )
+    public = BackboneDiffLayerInput(
+        layer_key=source.layer_key,
+        layer_sort_order=source.sort_order,
+        current_source=source,
+        baseline_snapshot=None,
+        current_conditions=(
+            BackboneDiffCurrentCondition(
+                id=101,
+                source_condition_id=10,
+                label="Line A",
+                condition_index=0,
+                is_por=True,
+                cells=(
+                    BackboneDiffCurrentCell("alpha", "one"),
+                    BackboneDiffCurrentCell("beta", None),
+                ),
+            ),
+        ),
+        current_parameters=parameters,
+    )
+
+    assert assembled == public
+    assert assembled.current_conditions[0].cells is cells
+    assert assembled.current_parameters is parameters
+
+    with pytest.raises(RuleViolationError) as exc_info:
+        diff_module._current_cells_by_condition_from_database_rows([(101, "", None)])
+    assert exc_info.value.code == DIFF_BASIS_INVALID
+
+    with pytest.raises(RuleViolationError) as exc_info:
+        diff_module._current_condition_from_canonical_database_values(
+            id=0,
+            source_condition_id=None,
+            label="Line A",
+            condition_index=0,
+            is_por=True,
+            cells=(),
+        )
+    assert exc_info.value.code == DIFF_BASIS_INVALID
+
+
+@pytest.mark.parametrize(
+    "rows",
+    [
+        [(102, "alpha", "one"), (101, "alpha", "two")],
+        [(101, "beta", "one"), (101, "alpha", "two")],
+        [(101, "alpha", "one"), (101, "alpha", "two")],
+    ],
+)
+def test_database_cell_assembly_rejects_noncanonical_rows(
+    rows: list[tuple[int, str, str | None]],
+) -> None:
+    with pytest.raises(RuleViolationError) as exc_info:
+        diff_module._current_cells_by_condition_from_database_rows(rows)
+    assert exc_info.value.code == DIFF_BASIS_INVALID
+
+
+def test_current_condition_public_constructor_sorts_cells_and_rejects_duplicates() -> None:
+    canonical = BackboneDiffCurrentCondition(
+        id=101,
+        source_condition_id=10,
+        label="Line A",
+        condition_index=0,
+        is_por=True,
+        cells=(
+            BackboneDiffCurrentCell("beta", "two"),
+            BackboneDiffCurrentCell("alpha", "one"),
+        ),
+    )
+
+    assert [cell.parameter_code for cell in canonical.cells] == ["alpha", "beta"]
+
+    with pytest.raises(RuleViolationError) as exc_info:
+        BackboneDiffCurrentCondition(
+            id=101,
+            source_condition_id=10,
+            label="Line A",
+            condition_index=0,
+            is_por=True,
+            cells=(
+                BackboneDiffCurrentCell("alpha", "one"),
+                BackboneDiffCurrentCell("alpha", "two"),
+            ),
+        )
+    assert exc_info.value.code == DIFF_BASIS_INVALID
 
 
 def _matched_layer_input(

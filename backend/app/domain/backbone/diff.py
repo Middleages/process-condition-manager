@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections import defaultdict
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any, Literal, NoReturn, cast
 
@@ -197,25 +197,119 @@ class BackboneDiffLayerInput:
                 _diff_basis_invalid(
                     "current_conditions must contain BackboneDiffCurrentCondition values"
                 )
-        for parameter in parameters:
-            if not isinstance(parameter, BackboneDiffCurrentParameter):
-                _diff_basis_invalid(
-                    "current_parameters must contain BackboneDiffCurrentParameter values"
-                )
         if len({condition.id for condition in conditions}) != len(conditions):
             _diff_basis_invalid("duplicate current condition id")
-        parameter_by_code = {parameter.code: parameter for parameter in parameters}
-        if len(parameter_by_code) != len(parameters):
-            _diff_basis_invalid("duplicate current parameter code")
         object.__setattr__(
             self, "current_conditions", tuple(sorted(conditions, key=_current_condition_sort_key))
         )
-        canonical_parameters = tuple(sorted(parameters, key=_current_parameter_sort_key))
-        # A project-level registry is already canonical and immutable. Retain that tuple so
-        # every layer can share one descriptor graph instead of copying it per layer.
-        if parameters == canonical_parameters:
-            canonical_parameters = parameters
+        canonical_parameters = _canonicalize_current_parameters(parameters)
         object.__setattr__(self, "current_parameters", canonical_parameters)
+
+
+def _current_cells_by_condition_from_database_rows(
+    rows: Iterable[tuple[int, str, str | None]],
+) -> dict[int, tuple[BackboneDiffCurrentCell, ...]]:
+    """Validate and assemble rows canonical under DB UNIQUE plus loader ORDER BY."""
+
+    grouped: dict[int, tuple[BackboneDiffCurrentCell, ...]] = {}
+    current_condition_id: int | None = None
+    current_cells: list[BackboneDiffCurrentCell] = []
+    previous_parameter_code: str | None = None
+    set_value = object.__setattr__
+
+    for condition_id, parameter_code, value in rows:
+        if condition_id != current_condition_id:
+            canonical_condition_id = _require_positive_int(condition_id, "condition_id")
+            if current_condition_id is not None and canonical_condition_id <= current_condition_id:
+                _diff_basis_invalid("database current cells are not ordered by condition_id")
+            if current_condition_id is not None:
+                grouped[current_condition_id] = tuple(current_cells)
+            current_condition_id = canonical_condition_id
+            current_cells = []
+            previous_parameter_code = None
+
+        canonical_parameter_code = _require_text(parameter_code, "parameter_code")
+        if (
+            previous_parameter_code is not None
+            and canonical_parameter_code <= previous_parameter_code
+        ):
+            _diff_basis_invalid(
+                "database current cells are not unique and ordered by parameter_code"
+            )
+        if value is not None and not isinstance(value, str):
+            _diff_basis_invalid("current cell value must be a string or null")
+
+        cell = object.__new__(BackboneDiffCurrentCell)
+        set_value(cell, "parameter_code", canonical_parameter_code)
+        set_value(cell, "value", value)
+        current_cells.append(cell)
+        previous_parameter_code = canonical_parameter_code
+
+    if current_condition_id is not None:
+        grouped[current_condition_id] = tuple(current_cells)
+    return grouped
+
+
+def _current_condition_from_canonical_database_values(
+    *,
+    id: int,
+    source_condition_id: int | None,
+    label: str,
+    condition_index: int,
+    is_por: bool,
+    cells: tuple[BackboneDiffCurrentCell, ...],
+) -> BackboneDiffCurrentCondition:
+    """Assemble cells validated once and canonical under DB UNIQUE plus loader ORDER BY."""
+
+    condition = object.__new__(BackboneDiffCurrentCondition)
+    object.__setattr__(condition, "id", _require_positive_int(id, "id"))
+    if source_condition_id is not None:
+        source_condition_id = _require_positive_int(
+            source_condition_id,
+            "source_condition_id",
+        )
+    object.__setattr__(condition, "source_condition_id", source_condition_id)
+    object.__setattr__(condition, "label", _require_text(label, "label"))
+    object.__setattr__(
+        condition,
+        "condition_index",
+        _require_non_negative_int(condition_index, "condition_index"),
+    )
+    object.__setattr__(condition, "is_por", _require_bool(is_por, "is_por"))
+    object.__setattr__(condition, "cells", cells)
+    return condition
+
+
+def _layer_input_from_canonical_database_graph(
+    *,
+    layer_key: str,
+    layer_sort_order: int,
+    current_source: BackboneDiffCurrentLayerSource,
+    baseline_snapshot: BackboneSnapshot | None,
+    current_conditions: tuple[BackboneDiffCurrentCondition, ...],
+    current_parameters: tuple[BackboneDiffCurrentParameter, ...],
+) -> BackboneDiffLayerInput:
+    """Assemble a DB-ordered graph after its shared registry was canonicalized once."""
+
+    canonical_layer_key = _require_text(layer_key, "layer_key")
+    canonical_sort_order = _require_non_negative_int(layer_sort_order, "layer_sort_order")
+    if not isinstance(current_source, BackboneDiffCurrentLayerSource):
+        _diff_basis_invalid("current_source must be BackboneDiffCurrentLayerSource")
+    if current_source.layer_key != canonical_layer_key:
+        _diff_basis_invalid("current_source.layer_key must match layer_key")
+    if current_source.sort_order != canonical_sort_order:
+        _diff_basis_invalid("current_source.sort_order must match layer_sort_order")
+    if baseline_snapshot is not None and not isinstance(baseline_snapshot, BackboneSnapshot):
+        _diff_basis_invalid("baseline_snapshot must be BackboneSnapshot or null")
+
+    layer_input = object.__new__(BackboneDiffLayerInput)
+    object.__setattr__(layer_input, "layer_key", canonical_layer_key)
+    object.__setattr__(layer_input, "layer_sort_order", canonical_sort_order)
+    object.__setattr__(layer_input, "current_source", current_source)
+    object.__setattr__(layer_input, "baseline_snapshot", baseline_snapshot)
+    object.__setattr__(layer_input, "current_conditions", current_conditions)
+    object.__setattr__(layer_input, "current_parameters", current_parameters)
+    return layer_input
 
 
 @dataclass(frozen=True, slots=True)
@@ -1152,6 +1246,22 @@ def _current_condition_sort_key(condition: BackboneDiffCurrentCondition) -> tupl
 
 def _current_parameter_sort_key(parameter: BackboneDiffCurrentParameter) -> tuple[int, str]:
     return (parameter.sort_order, parameter.code)
+
+
+def _canonicalize_current_parameters(
+    parameters: tuple[BackboneDiffCurrentParameter, ...],
+) -> tuple[BackboneDiffCurrentParameter, ...]:
+    for parameter in parameters:
+        if not isinstance(parameter, BackboneDiffCurrentParameter):
+            _diff_basis_invalid(
+                "current_parameters must contain BackboneDiffCurrentParameter values"
+            )
+    if len({parameter.code for parameter in parameters}) != len(parameters):
+        _diff_basis_invalid("duplicate current parameter code")
+    canonical_parameters = tuple(sorted(parameters, key=_current_parameter_sort_key))
+    # A project-level registry is already canonical and immutable. Retain that tuple so
+    # every layer can share one descriptor graph instead of copying it per layer.
+    return parameters if parameters == canonical_parameters else canonical_parameters
 
 
 def _descriptor_for_code(

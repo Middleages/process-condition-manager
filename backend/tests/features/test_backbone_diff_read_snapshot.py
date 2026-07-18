@@ -20,6 +20,7 @@ from sqlalchemy.pool import StaticPool
 import app.models  # noqa: F401 -- register all models for metadata
 from app.core.db import Base
 from app.core.errors import NotFoundError
+from app.domain.backbone import diff as diff_module
 from app.domain.backbone.snapshot import (
     BackboneSnapshot,
     BackboneSnapshotCell,
@@ -293,6 +294,56 @@ async def test_load_diff_input_sqlite_freezes_graph_without_lazy_queries(
     assert _source_fingerprint(loaded_layer.current_source) != _source_fingerprint(
         mutated.current_source
     )
+
+
+async def test_load_diff_input_does_not_revalidate_canonical_condition_and_layer_graphs(
+    sqlite_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async with sqlite_factory() as session:
+        await _seed_parameters(session)
+        project, _ = await _seed_project(session)
+
+    def repeated_validation(_value: object) -> None:
+        raise AssertionError("repository repeated validation of a canonical database graph")
+
+    monkeypatch.setattr(
+        diff_module.BackboneDiffCurrentCell,
+        "__post_init__",
+        repeated_validation,
+    )
+    monkeypatch.setattr(
+        diff_module.BackboneDiffCurrentCondition,
+        "__post_init__",
+        repeated_validation,
+    )
+    monkeypatch.setattr(
+        diff_module.BackboneDiffLayerInput,
+        "__post_init__",
+        repeated_validation,
+    )
+
+    loaded = await load_diff_input_with_session_factory(project.id, sqlite_factory)
+
+    assert [condition.label for condition in loaded.layers[0].current_conditions] == [
+        "base",
+        "base-dup",
+        "orphan",
+        "blank",
+    ]
+    assert loaded.layers[0].current_conditions[0].cells_by_code() == {
+        "alpha": "new",
+        "legacy": "stored",
+    }
+    assert [cell.parameter_code for cell in loaded.layers[0].current_conditions[0].cells] == [
+        "alpha",
+        "legacy",
+    ]
+    assert [parameter.code for parameter in loaded.layers[0].current_parameters] == [
+        "alpha",
+        "legacy",
+        "gamma",
+    ]
 
 
 async def test_load_diff_input_missing_project_raises_not_found(

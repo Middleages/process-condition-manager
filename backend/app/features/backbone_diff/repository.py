@@ -14,10 +14,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.errors import ConflictError, NotFoundError
 from app.domain.backbone.diff import (
     BackboneDiffCurrentCell,
-    BackboneDiffCurrentCondition,
     BackboneDiffCurrentLayerSource,
     BackboneDiffCurrentParameter,
     BackboneDiffLayerInput,
+    _canonicalize_current_parameters,
+    _current_cells_by_condition_from_database_rows,
+    _current_condition_from_canonical_database_values,
+    _layer_input_from_canonical_database_graph,
 )
 from app.domain.backbone.snapshot import (
     BackboneSnapshot,
@@ -240,16 +243,8 @@ class BackboneDiffRepository:
                     cell_table.c.id,
                 )
             )
-        ).all()
-        grouped: dict[int, list[BackboneDiffCurrentCell]] = defaultdict(list)
-        for row in rows:
-            grouped[row.condition_id].append(
-                BackboneDiffCurrentCell(
-                    parameter_code=row.parameter_code,
-                    value=row.value_text,
-                )
-            )
-        return {condition_id: tuple(cell_rows) for condition_id, cell_rows in grouped.items()}
+        ).tuples()
+        return _current_cells_by_condition_from_database_rows(rows)
 
     async def _load_parameter_registry(
         self, requested_codes: set[str]
@@ -284,16 +279,18 @@ class BackboneDiffRepository:
         unresolved_codes = tuple(
             code for code in sorted(requested_codes) if code not in rows_by_code
         )
-        parameters = tuple(
-            BackboneDiffCurrentParameter(
-                code=row.code,
-                value_type=row.value_type,
-                display_name=row.display_name,
-                category_code=row.category_code,
-                sort_order=row.sort_order,
-                active=row.is_active,
+        parameters = _canonicalize_current_parameters(
+            tuple(
+                BackboneDiffCurrentParameter(
+                    code=row.code,
+                    value_type=row.value_type,
+                    display_name=row.display_name,
+                    category_code=row.category_code,
+                    sort_order=row.sort_order,
+                    active=row.is_active,
+                )
+                for row in rows
             )
-            for row in rows
         )
         return BackboneDiffCurrentParameterRegistry(
             parameters=parameters,
@@ -328,7 +325,7 @@ class BackboneDiffRepository:
         current_parameters: tuple[BackboneDiffCurrentParameter, ...],
     ) -> BackboneDiffLayerInput:
         layer_conditions = tuple(
-            BackboneDiffCurrentCondition(
+            _current_condition_from_canonical_database_values(
                 id=condition.id,
                 source_condition_id=condition.source_condition_id,
                 label=condition.label,
@@ -338,7 +335,7 @@ class BackboneDiffRepository:
             )
             for condition in current_conditions
         )
-        return BackboneDiffLayerInput(
+        return _layer_input_from_canonical_database_graph(
             layer_key=layer.layer_key,
             layer_sort_order=layer.sort_order,
             current_source=BackboneDiffCurrentLayerSource(
