@@ -29,16 +29,22 @@ changed-file review와 CI 결과를 따른다.
 
 ## 최종 검증 요약
 
-- Backend final full suite: `742 passed, 1 skipped`; Ruff와 Pyright 통과.
+- Backend final full suite: `748 passed, 1 skipped, 64 warnings in 748.03s`
+  (Python 3.14.3); Ruff와 Pyright 통과.
 - Frontend: 93 test files / 984 tests, typecheck와 production build 통과.
 - Production browser QA: available/unavailable fixture 각각 1024/1440/1920 viewport에서
   drill-down, 셀 이동, keyboard/focus, 오류·overflow·H1 ring 부재를 확인했다.
 - History gate: 변동으로 인한 실패를 보존한 뒤 standalone gate 2회 연속 성공, focused
   PostgreSQL suite 2회 연속 성공.
-- Backbone diff gate: 기존 2회와 최적화 후 clean-parent 2회 모두 통과. 마지막 두 실행의
-  root/cell p95는 `427.216757/429.662717 ms`, `431.531921/445.704138 ms`였다.
-- PR CI: latency red 2회를 보존하고 hot path를 수정한 뒤 run `29631000932`에서 backend
-  `742 passed, 1 skipped`와 frontend gate가 모두 통과했다.
+- Backbone diff gate: 기존 2회, 첫 최적화 후 2회, 최종 production parent `02ca7d48`
+  2회가 모두 통과했다. 마지막 두 실행의 root/cell p95는
+  `393.201673/401.535542 ms`, `389.726005/419.474759 ms`였다. 별도 loader gate도
+  unchanged `180 ms` ceiling 아래 p95 `47.55055542336777 ms`로 3회 연속 통과했다.
+- PR CI: latency red `29630137199`, `29630283047` 뒤 중간 green `29631000932`를
+  확보했지만, evidence-only head의 `29631427345`가 loader p95
+  `186.4622539999914 ms > 180.0 ms`로 다시 실패했다. 세 failed CI를 모두 보존하고 실제
+  두 번째 production hot path를 수정한 뒤 `29632201906`에서 backend
+  `748 passed, 1 skipped, 64 warnings`와 frontend gate가 모두 통과했다.
 - 종료 안전성: disposable DB orphan 0, admin non-system table/view 없음, 보호 서비스와
   SQLite review data가 사전 기준에서 변하지 않았다.
 
