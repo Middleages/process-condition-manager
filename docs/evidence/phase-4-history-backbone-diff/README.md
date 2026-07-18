@@ -29,7 +29,7 @@ changed-file review와 CI 결과를 따른다.
 
 ## 최종 검증 요약
 
-- Backend broad suite: `733 passed, 1 skipped`; Ruff와 Pyright 통과.
+- Backend final full suite: `739 passed, 1 skipped`; Ruff와 Pyright 통과.
 - Frontend: 93 test files / 984 tests, typecheck와 production build 통과.
 - Production browser QA: available/unavailable fixture 각각 1024/1440/1920 viewport에서
   drill-down, 셀 이동, keyboard/focus, 오류·overflow·H1 ring 부재를 확인했다.

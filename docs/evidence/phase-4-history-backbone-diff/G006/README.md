@@ -4,15 +4,20 @@
 
 ## 검증 대상
 
-- 성능 검증 source: `ee38cac8579c1e0f1664250ad6a9c5a18c5f6dec`
+- 최종 delivery 검증 parent: `5fa05095e39409843ee07ac2c3fe271ecbcd0e89`
 - Backend frozen runtime: Python 3.14.3
 - PostgreSQL 검증은 guard가 만든 `pcm_phase26_test_<uuid>` disposable DB에서만 실행했다.
 - 기준선 `G003/README.md`와 `G003/run.json`의 내용은 변경하지 않았다.
 
+위 parent는 remote PR branch에서 조회할 수 있는, 이 evidence-only 후속 변경의 직접 부모다.
+최종 full suite가 같은 parent를 검증했다. 앞선 controlled sample 실행 이후 parent까지
+history runtime/migration/benchmark 계약은 유지됐고, 이후 변경은 중복 assertion 삭제와
+portable evidence 정리에 한정됐다.
+
 ## Backend / frontend 기준선
 
-- Backend: frozen sync, Ruff, Pyright 통과; broad guarded suite
-  `733 passed, 1 skipped, 57 warnings in 1430.29s`.
+- Backend: frozen sync, Ruff, Pyright 통과; 최종 guarded full suite
+  `739 passed, 1 skipped, 64 warnings in 777.96s`.
 - Frontend: `npm ci`, typecheck, production build 통과; 93 files / 984 tests 통과.
 - Browser: available/unavailable production fixture를 각각 1024/1440/1920 viewport에서
   확인했다. 계층 drill-down, 셀 이동, lazy detail, Shift+F10/Escape focus, unavailable action
