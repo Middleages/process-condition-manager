@@ -29,14 +29,16 @@ changed-file review와 CI 결과를 따른다.
 
 ## 최종 검증 요약
 
-- Backend final full suite: `739 passed, 1 skipped`; Ruff와 Pyright 통과.
+- Backend final full suite: `742 passed, 1 skipped`; Ruff와 Pyright 통과.
 - Frontend: 93 test files / 984 tests, typecheck와 production build 통과.
 - Production browser QA: available/unavailable fixture 각각 1024/1440/1920 viewport에서
   drill-down, 셀 이동, keyboard/focus, 오류·overflow·H1 ring 부재를 확인했다.
 - History gate: 변동으로 인한 실패를 보존한 뒤 standalone gate 2회 연속 성공, focused
   PostgreSQL suite 2회 연속 성공.
-- Backbone diff gate: 두 controlled run 모두 통과; `cell_limit_100` p95는
-  `505.627053 ms`, `531.924766 ms`로 `600 ms` 예산 이내였다.
+- Backbone diff gate: 기존 2회와 최적화 후 clean-parent 2회 모두 통과. 마지막 두 실행의
+  root/cell p95는 `427.216757/429.662717 ms`, `431.531921/445.704138 ms`였다.
+- PR CI: latency red 2회를 보존하고 hot path를 수정한 뒤 run `29631000932`에서 backend
+  `742 passed, 1 skipped`와 frontend gate가 모두 통과했다.
 - 종료 안전성: disposable DB orphan 0, admin non-system table/view 없음, 보호 서비스와
   SQLite review data가 사전 기준에서 변하지 않았다.
 
