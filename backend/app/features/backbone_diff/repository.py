@@ -19,7 +19,11 @@ from app.domain.backbone.diff import (
     BackboneDiffCurrentParameter,
     BackboneDiffLayerInput,
 )
-from app.domain.backbone.snapshot import BackboneSnapshot, parse_backbone_snapshot
+from app.domain.backbone.snapshot import (
+    BackboneSnapshot,
+    BackboneSnapshotParseCache,
+    parse_backbone_snapshot,
+)
 from app.features.backbone_diff.contracts import BackboneDiffProjectInput
 from app.models.parameter import Parameter, ParameterCategory
 from app.models.project import CellValue, LayerCondition, Project, SheetLayer
@@ -66,9 +70,10 @@ class BackboneDiffRepository:
         layers = await self._load_layers(project.id)
         conditions_by_layer_id = await self._load_conditions({layer.id for layer in layers})
         cells_by_condition_id = await self._load_cells(conditions_by_layer_id.values())
+        snapshot_parse_cache = BackboneSnapshotParseCache()
         baseline_snapshot_by_layer_id: dict[int, BackboneSnapshot | None] = {
             layer.id: (
-                parse_backbone_snapshot(layer.backbone_snapshot)
+                parse_backbone_snapshot(layer.backbone_snapshot, cache=snapshot_parse_cache)
                 if layer.backbone_snapshot is not None
                 else None
             )
@@ -176,9 +181,7 @@ class BackboneDiffRepository:
             for row in rows
         )
 
-    async def _load_conditions(
-        self, layer_ids: set[int]
-    ) -> dict[int, tuple[_ConditionRow, ...]]:
+    async def _load_conditions(self, layer_ids: set[int]) -> dict[int, tuple[_ConditionRow, ...]]:
         if not layer_ids:
             return {}
         condition_table = LayerCondition.__table__
@@ -218,9 +221,7 @@ class BackboneDiffRepository:
         self, condition_groups: Iterable[tuple[_ConditionRow, ...]]
     ) -> dict[int, tuple[BackboneDiffCurrentCell, ...]]:
         condition_ids = {
-            condition.id
-            for condition_group in condition_groups
-            for condition in condition_group
+            condition.id for condition_group in condition_groups for condition in condition_group
         }
         if not condition_ids:
             return {}

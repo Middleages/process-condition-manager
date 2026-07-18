@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from datetime import UTC, datetime, timedelta, timezone
+from importlib import import_module
 from typing import Any
 
 import pytest
@@ -29,6 +30,8 @@ from app.domain.backbone.snapshot import (
 )
 from app.domain.errors import RuleViolationError
 from app.domain.parameters.types import ValueType
+
+snapshot_module = import_module("app.domain.backbone.snapshot")
 
 
 def _raw_snapshot(overrides: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -368,6 +371,85 @@ def test_snapshot_serializes_exact_contract_from_shuffled_input() -> None:
     assert backbone_snapshot_hash(raw) == backbone_snapshot_hash(parsed)
 
 
+def test_raw_snapshot_parser_does_not_recanonicalize_the_validated_graph(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    expected = serialize_backbone_snapshot(_semantic_snapshot_a())
+    canonicalize_calls = 0
+    canonicalize_conditions = snapshot_module._canonicalize_conditions
+
+    def counted_canonicalize_conditions(*args, **kwargs):
+        nonlocal canonicalize_calls
+        canonicalize_calls += 1
+        return canonicalize_conditions(*args, **kwargs)
+
+    monkeypatch.setattr(
+        snapshot_module,
+        "_canonicalize_conditions",
+        counted_canonicalize_conditions,
+    )
+
+    parsed = parse_backbone_snapshot(_raw_snapshot())
+
+    assert serialize_backbone_snapshot(parsed) == expected
+    assert canonicalize_calls == 0
+
+
+def test_raw_snapshot_parser_does_not_repeat_nested_dataclass_validation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    expected = serialize_backbone_snapshot(_semantic_snapshot_a())
+
+    def repeated_validation(_value: object) -> None:
+        raise AssertionError("raw parser repeated validated nested construction")
+
+    for value_type in (
+        BackboneSnapshotSource,
+        BackboneSnapshotColumn,
+        BackboneSnapshotCondition,
+        BackboneSnapshotCell,
+    ):
+        monkeypatch.setattr(value_type, "__post_init__", repeated_validation)
+
+    parsed = parse_backbone_snapshot(_raw_snapshot())
+
+    assert serialize_backbone_snapshot(parsed) == expected
+
+
+def test_request_parse_cache_reuses_only_identical_validated_column_graphs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cache = snapshot_module.BackboneSnapshotParseCache()
+    parse_columns = snapshot_module._parse_columns
+    parse_calls = 0
+
+    def counted_parse_columns(raw: object):
+        nonlocal parse_calls
+        parse_calls += 1
+        return parse_columns(raw)
+
+    monkeypatch.setattr(snapshot_module, "_parse_columns", counted_parse_columns)
+    first_raw = _raw_snapshot()
+    second_raw = deepcopy(first_raw)
+    second_raw["source"] = {
+        **second_raw["source"],
+        "sheet_layer_id": 8,
+        "layer_key": "L1::PROC_ALPHA::020::ACT",
+        "step_seq": "020",
+    }
+
+    first = parse_backbone_snapshot(first_raw, cache=cache)
+    second = parse_backbone_snapshot(second_raw, cache=cache)
+
+    assert first.columns is second.columns
+    assert first.source != second.source
+    assert (
+        serialize_backbone_snapshot(first)["columns"]
+        == serialize_backbone_snapshot(second)["columns"]
+    )
+    assert parse_calls == 1
+
+
 @pytest.mark.parametrize(
     ("mutate", "code"),
     [
@@ -496,17 +578,16 @@ def test_snapshot_contract_helpers_and_hashing_are_canonical() -> None:
     with pytest.raises(RuleViolationError):
         normalize_capture_batch_id("0123456789ABCDEF0123456789ABCDEF")
 
-    assert normalize_captured_at(
-        datetime(2026, 7, 16, 4, 17, 58, 715000, tzinfo=UTC)
-    ) == datetime(2026, 7, 16, 4, 17, 58, 715000, tzinfo=UTC)
-    assert format_captured_at(
-        datetime(2026, 7, 16, 4, 17, 58, 715000, tzinfo=UTC)
-    ) == "2026-07-16T04:17:58.715000Z"
+    assert normalize_captured_at(datetime(2026, 7, 16, 4, 17, 58, 715000, tzinfo=UTC)) == datetime(
+        2026, 7, 16, 4, 17, 58, 715000, tzinfo=UTC
+    )
+    assert (
+        format_captured_at(datetime(2026, 7, 16, 4, 17, 58, 715000, tzinfo=UTC))
+        == "2026-07-16T04:17:58.715000Z"
+    )
 
     with pytest.raises(RuleViolationError):
-        normalize_captured_at(
-            datetime(2026, 7, 16, 4, 17, 58, tzinfo=timezone(timedelta(hours=9)))
-        )
+        normalize_captured_at(datetime(2026, 7, 16, 4, 17, 58, tzinfo=timezone(timedelta(hours=9))))
 
     assert serialize_backbone_snapshot(snapshot_a) == serialize_backbone_snapshot(snapshot_b)
     assert backbone_snapshot_hash(snapshot_a) == backbone_snapshot_hash(snapshot_b)

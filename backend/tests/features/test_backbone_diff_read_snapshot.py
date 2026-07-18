@@ -25,6 +25,7 @@ from app.domain.backbone.snapshot import (
     BackboneSnapshotCell,
     BackboneSnapshotColumn,
     BackboneSnapshotCondition,
+    BackboneSnapshotParseCache,
     BackboneSnapshotSource,
     serialize_backbone_snapshot,
 )
@@ -51,7 +52,6 @@ def _source_fingerprint(source) -> tuple[object | None, ...]:
     )
 
 
-
 @pytest.fixture
 async def sqlite_engine() -> AsyncIterator[AsyncEngine]:
     engine = create_async_engine(
@@ -70,7 +70,6 @@ async def sqlite_engine() -> AsyncIterator[AsyncEngine]:
 
 
 @pytest.fixture
-
 def sqlite_factory(sqlite_engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
     return async_sessionmaker(sqlite_engine, expire_on_commit=False, class_=AsyncSession)
 
@@ -89,7 +88,6 @@ async def pg_engine() -> AsyncIterator[AsyncEngine]:
 
 
 @pytest.fixture
-
 def pg_factory(pg_engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
     return async_sessionmaker(pg_engine, expire_on_commit=False, class_=AsyncSession)
 
@@ -249,9 +247,7 @@ async def test_load_diff_input_sqlite_freezes_graph_without_lazy_queries(
     assert loaded.process_id == "PROC_A"
     assert loaded.part_id == "PART_A"
     assert len(statements) == 5
-    assert sum(
-        statement.lstrip().upper().startswith("SELECT") for statement in statements
-    ) == 5
+    assert sum(statement.lstrip().upper().startswith("SELECT") for statement in statements) == 5
 
     loaded_layer = loaded.layers[0]
     assert loaded_layer.layer_key == layer.layer_key
@@ -389,9 +385,13 @@ async def test_load_diff_input_parses_each_baseline_once(
     parse_calls: list[dict] = []
     real_parse = repository_module.parse_backbone_snapshot
 
-    def count_parse(payload: dict):
+    def count_parse(
+        payload: dict,
+        *,
+        cache: BackboneSnapshotParseCache | None = None,
+    ):
         parse_calls.append(payload)
-        return real_parse(payload)
+        return real_parse(payload, cache=cache)
 
     monkeypatch.setattr(repository_module, "parse_backbone_snapshot", count_parse)
 

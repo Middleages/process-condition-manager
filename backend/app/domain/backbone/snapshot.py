@@ -75,9 +75,13 @@ def normalize_captured_at(value: Any) -> datetime:
 def format_captured_at(value: datetime) -> str:
     if value.tzinfo is None or value.utcoffset() != timedelta(0):
         _invalid("captured_at must be UTC")
-    return value.astimezone(UTC).isoformat(timespec="microseconds").replace(
-        "+00:00",
-        "Z",
+    return (
+        value.astimezone(UTC)
+        .isoformat(timespec="microseconds")
+        .replace(
+            "+00:00",
+            "Z",
+        )
     )
 
 
@@ -232,7 +236,18 @@ class BackboneSnapshot:
         _validate_snapshot_graph(self)
 
 
-def parse_backbone_snapshot(raw: Any) -> BackboneSnapshot:
+@dataclass(slots=True)
+class BackboneSnapshotParseCache:
+    """Request-local reuse for identical immutable column payloads."""
+
+    columns_by_payload: dict[str, tuple[BackboneSnapshotColumn, ...]] = field(default_factory=dict)
+
+
+def parse_backbone_snapshot(
+    raw: Any,
+    *,
+    cache: BackboneSnapshotParseCache | None = None,
+) -> BackboneSnapshot:
     """Parse and validate an exact backbone snapshot JSON document."""
     if raw is None:
         _baseline_unavailable()
@@ -253,17 +268,38 @@ def parse_backbone_snapshot(raw: Any) -> BackboneSnapshot:
         "snapshot",
     )
     source = _parse_source(mapping["source"])
-    columns = _parse_columns(mapping["columns"])
+    columns = _parse_columns_cached(mapping["columns"], cache)
     column_by_code = {column.parameter_code: column for column in columns}
     conditions = _parse_conditions(mapping["conditions"], column_by_code)
-    return BackboneSnapshot(
-        schema_version=mapping["schema_version"],
-        capture_batch_id=mapping["capture_batch_id"],
-        captured_at=mapping["captured_at"],
+    return _snapshot_from_parsed_graph(
+        schema_version=_require_exact_schema_version(mapping["schema_version"]),
+        capture_batch_id=normalize_capture_batch_id(mapping["capture_batch_id"]),
+        captured_at=normalize_captured_at(mapping["captured_at"]),
         source=source,
         columns=columns,
         conditions=conditions,
     )
+
+
+def _snapshot_from_parsed_graph(
+    *,
+    schema_version: int,
+    capture_batch_id: str,
+    captured_at: datetime,
+    source: BackboneSnapshotSource,
+    columns: tuple[BackboneSnapshotColumn, ...],
+    conditions: tuple[BackboneSnapshotCondition, ...],
+) -> BackboneSnapshot:
+    """Assemble a graph whose raw parser has already validated and canonicalized every field."""
+
+    snapshot_value = object.__new__(BackboneSnapshot)
+    object.__setattr__(snapshot_value, "schema_version", schema_version)
+    object.__setattr__(snapshot_value, "capture_batch_id", capture_batch_id)
+    object.__setattr__(snapshot_value, "captured_at", captured_at)
+    object.__setattr__(snapshot_value, "source", source)
+    object.__setattr__(snapshot_value, "columns", columns)
+    object.__setattr__(snapshot_value, "conditions", conditions)
+    return snapshot_value
 
 
 def serialize_backbone_snapshot(
@@ -281,10 +317,7 @@ def serialize_backbone_snapshot(
         "capture_batch_id": parsed.capture_batch_id,
         "captured_at": format_captured_at(captured_at),
         "source": _source_out(source),
-        "columns": [
-            _column_out(column)
-            for column in sorted(parsed.columns, key=_column_sort_key)
-        ],
+        "columns": [_column_out(column) for column in sorted(parsed.columns, key=_column_sort_key)],
         "conditions": [
             _condition_out(condition)
             for condition in sorted(parsed.conditions, key=_condition_sort_key)
@@ -313,18 +346,25 @@ def _parse_source(raw: Any) -> BackboneSnapshotSource:
         {"project_id", "sheet_layer_id", "layer_key", "step_seq", "layer_id"},
         "source",
     )
-    return BackboneSnapshotSource(
-        project_id=mapping["project_id"],
-        sheet_layer_id=mapping["sheet_layer_id"],
-        layer_key=mapping["layer_key"],
-        step_seq=mapping["step_seq"],
-        layer_id=mapping["layer_id"],
+    source = object.__new__(BackboneSnapshotSource)
+    object.__setattr__(
+        source, "project_id", _require_positive_int(mapping["project_id"], "project_id")
     )
+    object.__setattr__(
+        source,
+        "sheet_layer_id",
+        _require_positive_int(mapping["sheet_layer_id"], "sheet_layer_id"),
+    )
+    object.__setattr__(source, "layer_key", _require_text(mapping["layer_key"], "layer_key"))
+    object.__setattr__(source, "step_seq", _require_text(mapping["step_seq"], "step_seq"))
+    object.__setattr__(source, "layer_id", _require_text(mapping["layer_id"], "layer_id"))
+    return source
 
 
 def _parse_columns(raw: Any) -> tuple[BackboneSnapshotColumn, ...]:
     items = _require_sequence(raw, "columns")
     parsed: list[BackboneSnapshotColumn] = []
+    set_parsed_value = object.__setattr__
     for item in items:
         mapping = _require_mapping(item, "column")
         _require_exact_keys(
@@ -339,18 +379,58 @@ def _parse_columns(raw: Any) -> tuple[BackboneSnapshotColumn, ...]:
             },
             "column",
         )
-        parsed.append(
-            BackboneSnapshotColumn(
-                parameter_code=mapping["parameter_code"],
-                value_type=mapping["value_type"],
-                display_name=mapping["display_name"],
-                category_code=mapping["category_code"],
-                sort_order=mapping["sort_order"],
-                active_at_capture=mapping["active_at_capture"],
-            )
+        category_code = mapping["category_code"]
+        if category_code is not None:
+            category_code = _require_text(category_code, "category_code")
+        column = object.__new__(BackboneSnapshotColumn)
+        set_parsed_value(
+            column,
+            "parameter_code",
+            _require_text(mapping["parameter_code"], "parameter_code"),
         )
+        set_parsed_value(column, "value_type", _coerce_value_type(mapping["value_type"]))
+        set_parsed_value(
+            column,
+            "display_name",
+            _require_text(mapping["display_name"], "display_name"),
+        )
+        set_parsed_value(column, "category_code", category_code)
+        set_parsed_value(
+            column,
+            "sort_order",
+            _require_non_negative_int(mapping["sort_order"], "sort_order"),
+        )
+        set_parsed_value(
+            column,
+            "active_at_capture",
+            _require_bool(mapping["active_at_capture"], "active_at_capture"),
+        )
+        parsed.append(column)
     _validate_unique(parsed, lambda item: item.parameter_code, "duplicate parameter_code")
     return tuple(sorted(parsed, key=_column_sort_key))
+
+
+def _parse_columns_cached(
+    raw: Any,
+    cache: BackboneSnapshotParseCache | None,
+) -> tuple[BackboneSnapshotColumn, ...]:
+    if cache is None:
+        return _parse_columns(raw)
+    try:
+        payload_key = json.dumps(
+            raw,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+    except (TypeError, ValueError):
+        return _parse_columns(raw)
+    cached = cache.columns_by_payload.get(payload_key)
+    if cached is not None:
+        return cached
+    columns = _parse_columns(raw)
+    cache.columns_by_payload[payload_key] = columns
+    return columns
 
 
 def _parse_conditions(
@@ -359,6 +439,7 @@ def _parse_conditions(
 ) -> tuple[BackboneSnapshotCondition, ...]:
     items = _require_sequence(raw, "conditions")
     parsed: list[BackboneSnapshotCondition] = []
+    set_parsed_value = object.__setattr__
     for item in items:
         mapping = _require_mapping(item, "condition")
         _require_exact_keys(
@@ -373,25 +454,33 @@ def _parse_conditions(
                 _invalid(f"unknown parameter_code in snapshot cell: {parameter_code}")
             column = column_by_code[parameter_code]
             value_type = _coerce_value_type(column.value_type)
-            cells.append(
-                BackboneSnapshotCell(
-                    parameter_code=parameter_code,
-                    value=_canonical_cell_value(
-                        value_type,
-                        cells_raw[parameter_code],
-                        parameter_code,
-                    ),
-                )
+            cell = object.__new__(BackboneSnapshotCell)
+            set_parsed_value(cell, "parameter_code", parameter_code)
+            set_parsed_value(
+                cell,
+                "value",
+                _canonical_cell_value(
+                    value_type,
+                    cells_raw[parameter_code],
+                    parameter_code,
+                ),
             )
-        parsed.append(
-            BackboneSnapshotCondition(
-                source_condition_id=mapping["source_condition_id"],
-                label=mapping["label"],
-                condition_index=mapping["condition_index"],
-                is_por=mapping["is_por"],
-                cells=tuple(cells),
-            )
+            cells.append(cell)
+        condition = object.__new__(BackboneSnapshotCondition)
+        set_parsed_value(
+            condition,
+            "source_condition_id",
+            _require_positive_int(mapping["source_condition_id"], "source_condition_id"),
         )
+        set_parsed_value(condition, "label", _require_text(mapping["label"], "label"))
+        set_parsed_value(
+            condition,
+            "condition_index",
+            _require_non_negative_int(mapping["condition_index"], "condition_index"),
+        )
+        set_parsed_value(condition, "is_por", _require_bool(mapping["is_por"], "is_por"))
+        set_parsed_value(condition, "cells", tuple(cells))
+        parsed.append(condition)
     _validate_unique(parsed, lambda item: item.source_condition_id, "duplicate source_condition_id")
     _validate_unique(parsed, lambda item: item.condition_index, "duplicate condition_index")
     return tuple(sorted(parsed, key=_condition_sort_key))
@@ -587,6 +676,7 @@ __all__ = [
     "BackboneSnapshotCell",
     "BackboneSnapshotColumn",
     "BackboneSnapshotCondition",
+    "BackboneSnapshotParseCache",
     "BackboneSnapshotSource",
     "INVALID_BACKBONE_SNAPSHOT",
     "SNAPSHOT_VERSION",
