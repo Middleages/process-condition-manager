@@ -1440,7 +1440,11 @@ async def test_approved_coordinate_proof_uses_frozen_parameter_codes(
 
         event.listen(sqlite_engine.sync_engine, "before_cursor_execute", _capture_sql)
         try:
-            proofs = await HistoryRepository(session).prove_cell_coordinates(
+            repo = HistoryRepository(session)
+            descriptor = await repo.describe_batch(
+                fixture.project_id, fixture.batch_detail_id
+            )
+            proofs = await repo.prove_cell_coordinates(
                 fixture.project_id,
                 (
                     (fixture.current_condition_id, "param_000"),
@@ -1452,11 +1456,13 @@ async def test_approved_coordinate_proof_uses_frozen_parameter_codes(
 
         assert (fixture.current_condition_id, "param_000") in proofs
         assert (fixture.current_condition_id, "param_001") not in proofs
+        assert descriptor.batch_exists is True
+        assert len(statements) == 2
         assert all(" join parameter " not in statement for statement in statements)
 
 
 @pytest.mark.skipif(_PG_URL is None, reason="APP_TEST_DATABASE_URL 미설정")
-async def test_postgres_capture_descriptor_payload_sort_and_bulk_proof_use_four_queries(
+async def test_postgres_capture_descriptor_reuses_definition_for_three_queries(
     pg_engine: AsyncEngine,
     pg_factory: async_sessionmaker[AsyncSession],
 ) -> None:
@@ -1491,7 +1497,7 @@ async def test_postgres_capture_descriptor_payload_sort_and_bulk_proof_use_four_
             event.remove(pg_engine.sync_engine, "before_cursor_execute", _capture_sql)
 
         projection = project_backbone_capture(rows)
-        assert len(statements) == 4
+        assert len(statements) == 3
         assert descriptor.project_exists is True
         assert descriptor.batch_exists is True
         assert descriptor.total_event_count == 2

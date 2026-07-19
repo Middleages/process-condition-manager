@@ -198,8 +198,12 @@ def test_phase5_migration_backfill_and_unique_identities(migration_db: Migration
         include_workflow_columns=True,
     )
     assert archived_one != archived_two
-    with migration_db.connection.begin_nested():
-        with pytest.raises(IntegrityError):
+    # Keep the savepoint inside the expected-error scope.  PostgreSQL marks the
+    # savepoint transaction failed after a constraint violation, so swallowing
+    # the IntegrityError before ``begin_nested`` exits would make SQLAlchemy try
+    # to release an aborted savepoint.
+    with pytest.raises(IntegrityError):
+        with migration_db.connection.begin_nested():
             _insert_project(
                 connection=migration_db.connection,
                 line_id="LN-100",
@@ -222,8 +226,8 @@ def test_phase5_migration_backfill_and_unique_identities(migration_db: Migration
         include_workflow_columns=True,
     )
 
-    with migration_db.connection.begin_nested():
-        with pytest.raises(IntegrityError):
+    with pytest.raises(IntegrityError):
+        with migration_db.connection.begin_nested():
             _insert_project(
                 connection=migration_db.connection,
                 line_id="LN-301",
@@ -237,8 +241,8 @@ def test_phase5_migration_backfill_and_unique_identities(migration_db: Migration
                 include_workflow_columns=True,
             )
 
-    with migration_db.connection.begin_nested():
-        with pytest.raises(IntegrityError):
+    with pytest.raises(IntegrityError):
+        with migration_db.connection.begin_nested():
             _insert_project(
                 connection=migration_db.connection,
                 line_id="LN-302",

@@ -27,7 +27,7 @@ from sqlalchemy.ext.asyncio import (
 )
 
 import app.models  # noqa: F401 -- register models for metadata.create_all
-from app.core.auth import UserContext, get_current_user
+from app.core.auth import Permission, Role, UserContext, get_current_user
 from app.core.db import Base, get_app_session
 from app.features.cells.repository import CellRepository
 from app.features.cells.schema import CellsPatchIn, CellUpdateIn
@@ -76,7 +76,11 @@ def pg_factory(pg_engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
 
 
 async def _dev_user() -> UserContext:
-    return UserContext(id="dev-admin")
+    return UserContext(
+        id="dev-admin",
+        roles=(Role.ADMIN,),
+        permissions=tuple(Permission),
+    )
 
 
 @asynccontextmanager

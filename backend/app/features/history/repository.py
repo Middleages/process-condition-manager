@@ -146,6 +146,12 @@ _DETAIL_EVENT_COLUMNS = (
 class HistoryRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
+        # Batch detail always describes the project before proving coordinates.
+        # Keep the immutable/live parameter boundary from that descriptor query so
+        # coordinate proof does not need a second project lookup in the same read.
+        self._project_definition_by_project: dict[
+            int, tuple[ProjectStatus, Mapping[str, object] | None]
+        ] = {}
 
     async def project_exists(self, project_id: int) -> bool:
         result = await self.session.execute(
@@ -178,6 +184,8 @@ class HistoryRepository:
         stmt = (
             select(
                 Project.id.label("project_id"),
+                Project.status.label("project_status"),
+                Project.parameter_snapshot.label("parameter_snapshot"),
                 func.count(ChangeEvent.id).label("total_event_count"),
                 func.coalesce(func.sum(case((cell_match, 1), else_=0)), 0).label(
                     "cell_event_count"
@@ -211,6 +219,10 @@ class HistoryRepository:
                 other_event_count=0,
             )
         total_event_count = int(row["total_event_count"])
+        self._project_definition_by_project[project_id] = (
+            row["project_status"],
+            row["parameter_snapshot"],
+        )
         return HistoryBatchDescriptor(
             project_id=project_id,
             batch_id=batch_id,
@@ -603,22 +615,33 @@ class HistoryRepository:
 
         condition_ids = tuple(sorted({condition_id for condition_id, _ in normalized}))
         parameter_codes = tuple(sorted({parameter_code for _, parameter_code in normalized}))
-        project_definition = (
-            await self.session.execute(
-                select(Project.status, Project.parameter_snapshot).where(Project.id == project_id)
+        if project_id in self._project_definition_by_project:
+            project_status, parameter_snapshot = self._project_definition_by_project[
+                project_id
+            ]
+            frozen_parameter_codes = self._frozen_parameter_codes(
+                project_status, parameter_snapshot
             )
-        ).one_or_none()
-        frozen_parameter_codes: set[str] | None = None
-        if (
-            project_definition is not None
-            and project_definition.status in {ProjectStatus.APPROVED, ProjectStatus.ARCHIVED}
-        ):
-            frozen_parameter_codes = {
-                str(column["code"])
-                for column in DefinitionView.from_snapshot(
-                    project_definition.parameter_snapshot
-                ).columns()
-            }
+        else:
+            project_definition = (
+                await self.session.execute(
+                    select(Project.status, Project.parameter_snapshot).where(
+                        Project.id == project_id
+                    )
+                )
+            ).one_or_none()
+            if project_definition is not None:
+                project_status = project_definition.status
+                parameter_snapshot = project_definition.parameter_snapshot
+                self._project_definition_by_project[project_id] = (
+                    project_status,
+                    parameter_snapshot,
+                )
+                frozen_parameter_codes = self._frozen_parameter_codes(
+                    project_status, parameter_snapshot
+                )
+            else:
+                frozen_parameter_codes = None
         null_event_id = sa_cast(literal(None), ChangeEvent.__table__.c.id.type)
         null_parameter_code = sa_cast(literal(None), String)
         null_payload_text = sa_cast(literal(None), String)
@@ -819,6 +842,18 @@ class HistoryRepository:
                 latest_event_id=cell_event[0] if cell_event is not None else None,
             )
         return proofs
+
+    @staticmethod
+    def _frozen_parameter_codes(
+        status: ProjectStatus,
+        parameter_snapshot: Mapping[str, object] | None,
+    ) -> frozenset[str] | None:
+        if status not in {ProjectStatus.APPROVED, ProjectStatus.ARCHIVED}:
+            return None
+        return frozenset(
+            str(column["code"])
+            for column in DefinitionView.from_snapshot(parameter_snapshot).columns()
+        )
 
     async def _count_batch_members(
         self,

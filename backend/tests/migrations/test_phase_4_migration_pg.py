@@ -700,7 +700,7 @@ def test_history_columns_backfill_repeatable_upgrade_downgrade_upgrade(
     before_counts = _table_counts(migration_db.connection)
     before_events = _event_rows(migration_db.connection)
 
-    migration_db.upgrade("head")
+    migration_db.upgrade("0007")
 
     assert migration_db.current_revision() == "0007"
 
@@ -879,7 +879,7 @@ def test_history_columns_backfill_repeatable_upgrade_downgrade_upgrade(
         column["name"] for column in sa.inspect(migration_db.connection).get_columns("sheet_layer")
     }
 
-    migration_db.upgrade("head")
+    migration_db.upgrade("0007")
     assert migration_db.current_revision() == "0007"
     assert [row[:5] + row[6:] for row in before_events] == [
         row[:5] + row[6:] for row in _event_rows(migration_db.connection)
@@ -897,7 +897,7 @@ def test_0007_upgrade_100k_change_events_stays_within_lock_budget(
     assert migration_db.connection.scalar(sa.text("SHOW lock_timeout")) == "5s"
 
     started = time.perf_counter()
-    migration_db.upgrade("head")
+    migration_db.upgrade("0007")
     elapsed = time.perf_counter() - started
 
     assert migration_db.current_revision() == "0007"
@@ -940,7 +940,7 @@ def test_0007_retry_rebuilds_mismatched_index_after_partial_interruption(
     try:
         with pytest.raises(RuntimeError, match="simulated interruption"):
             with ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(migration_db.upgrade, "head")
+                future = executor.submit(migration_db.upgrade, "0007")
                 future.result(timeout=30)
         assert migration_db.current_revision() == "0006"
     finally:
@@ -952,7 +952,7 @@ def test_0007_retry_rebuilds_mismatched_index_after_partial_interruption(
         in _index_defs(migration_db.connection)["ix_change_event_project_origin_id_desc"]
     )
 
-    migration_db.upgrade("head")
+    migration_db.upgrade("0007")
     assert migration_db.current_revision() == "0007"
 
     indexes = _index_defs(migration_db.connection)
@@ -1004,7 +1004,7 @@ def test_0007_upgrade_retry_after_legacy_drop_interrupt_preserves_0006_state(
     )
     try:
         with pytest.raises(RuntimeError, match="simulated interruption"):
-            migration_db.upgrade("head")
+            migration_db.upgrade("0007")
     finally:
         event.remove(
             migration_db.connection,
@@ -1039,7 +1039,7 @@ def test_0007_upgrade_retry_after_legacy_drop_interrupt_preserves_0006_state(
         assert all(index_validity.values())
         assert "ix_change_event_project_id" not in index_defs
 
-        migration_db.upgrade("head")
+        migration_db.upgrade("0007")
         assert migration_db.current_revision() == "0007"
         _assert_head_history_indexes(migration_db.connection)
     finally:
@@ -1055,7 +1055,7 @@ def test_0007_downgrade_retry_after_new_drop_interrupt_preserves_0007_state(
     before_counts = _table_counts(migration_db.connection)
     before_events = _event_rows(migration_db.connection)
 
-    migration_db.upgrade("head")
+    migration_db.upgrade("0007")
     assert migration_db.current_revision() == "0007"
 
     interrupted = False
@@ -1118,7 +1118,7 @@ def test_0006_malformed_scalar_backfill_leaves_unsupported_values_null(
     migration_db.upgrade("0005")
     malformed_fixture = _seed_malformed_scalar_fixture(migration_db.connection)
 
-    migration_db.upgrade("head")
+    migration_db.upgrade("0007")
 
     rows = {
         row[0]: row
