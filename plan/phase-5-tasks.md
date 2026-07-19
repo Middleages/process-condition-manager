@@ -112,4 +112,4 @@ flowchart LR
 - D-10 계약, Approval/Revision PRD 및 테스트 명세를 확정했다.
 - T1~T6와 EC1~EC6 자동 검증을 완료했다.
 - 브라우저 QA는 production build + 결정적 API mock 경계에서 8/8 통과했다.
-- 실제 IdP tenant 적합성 및 PostgreSQL migration/race/performance 게이트는 외부 인프라가 없어 pending이며, 실행 절차와 상태는 `docs/phase-5-sso-gateway-runbook.md`, `docs/evidence/phase-5-sso-tenant-conformance.json`, `docs/evidence/phase-5-verification.md`에 기록한다.
+- PostgreSQL migration/race/performance 게이트는 PR CI에서 통과했다. 실제 IdP tenant 적합성만 외부 인프라 부재로 pending이며, 실행 절차와 상태는 `docs/phase-5-sso-gateway-runbook.md`, `docs/evidence/phase-5-sso-tenant-conformance.json`, `docs/evidence/phase-5-verification.md`에 기록한다.

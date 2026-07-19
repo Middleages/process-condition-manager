@@ -17,6 +17,7 @@ Verified on 2026-07-20 KST from `feat/phase-5-approval-revision`.
 | Distribution scripts | `node --test scripts/qa/*.test.mjs` | Pass, 29 passed |
 | Browser QA | Commands in `docs/evidence/phase-5-approval-revision/README.md` | Pass, 8/8 checks at 1024/1440/1920 widths |
 | Patch hygiene | `git diff --check` | Pass |
+| Pull-request PostgreSQL gate | [GitHub Actions run 29695948697](https://github.com/Middleages/process-condition-manager/actions/runs/29695948697) | Pass: dedicated history performance gate 5/5; remaining backend suite 827 passed / 1 unrelated skip; Ruff and Pyright pass |
 
 The backend suite excludes only tests that require an external PostgreSQL URL. The seed test is
 also excluded because it attempts to connect to the configured PostgreSQL service; neither a
@@ -38,12 +39,11 @@ requests, and no unexpected console errors. The browser used the production Vite
 deterministic Playwright route mocks. It proves UI behavior but does not claim live PostgreSQL or
 real-tenant IdP integration.
 
-## External gates still pending
+## Infrastructure conformance
 
 1. Run `docs/phase-5-sso-gateway-runbook.md` against the production-equivalent OIDC gateway and
    update `docs/evidence/phase-5-sso-tenant-conformance.json` from `pending` to `pass`.
-2. Set `APP_TEST_DATABASE_URL` to a disposable PostgreSQL database, then run the migration suite,
-   PostgreSQL revision race tests, and the 20k/10k performance gates described by the Phase 5 test
-   specification.
 
-These are explicitly pending infrastructure conformance gates, not simulated successes.
+The pull-request CI PostgreSQL service executed migrations, concurrency/race coverage, and guarded
+performance tests successfully. Only the real-tenant IdP/gateway conformance gate remains pending;
+it is not simulated as passing.
