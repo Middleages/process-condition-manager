@@ -50,8 +50,14 @@ jobs:
         run: uv run ruff check .
       - name: Pyright
         run: uv run pyright
+      # Run the guarded 100k-event latency gate before the rest of the PG suite.
+      # Later migration/race tests create and drop many databases on the shared
+      # service and can leave cluster maintenance I/O competing with five timed
+      # samples even though the production queries and plans are unchanged.
+      - name: PostgreSQL history performance gate
+        run: uv run pytest tests/performance/test_history_performance_pg.py
       - name: Pytest
-        run: uv run pytest
+        run: uv run pytest --ignore=tests/performance/test_history_performance_pg.py
 
   frontend:
     name: Frontend typecheck, build, test
