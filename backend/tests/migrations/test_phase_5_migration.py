@@ -213,7 +213,7 @@ def test_phase5_migration_backfill_and_unique_identities(migration_db: Migration
                 status="draft",
             )
 
-    _insert_project(
+    revision_one_id = _insert_project(
         connection=migration_db.connection,
         line_id="LN-300",
         process_id="PROC-R",
@@ -222,7 +222,7 @@ def test_phase5_migration_backfill_and_unique_identities(migration_db: Migration
         status="approved",
         version=2,
         revision_root_id=base_project_id,
-        revision_of_id=base_project_id,
+        revision_of_id=archived_two,
         include_workflow_columns=True,
     )
 
@@ -237,22 +237,38 @@ def test_phase5_migration_backfill_and_unique_identities(migration_db: Migration
                 status="approved",
                 version=2,
                 revision_root_id=base_project_id,
-                revision_of_id=base_project_id,
+                # Use the current tail so this assertion isolates the
+                # (revision_root_id, version) identity rather than also
+                # colliding with the direct-successor constraint.
+                revision_of_id=revision_one_id,
                 include_workflow_columns=True,
             )
+
+    _insert_project(
+        connection=migration_db.connection,
+        line_id="LN-302",
+        process_id="PROC-R",
+        part_id="R-C",
+        name="revision-2",
+        status="approved",
+        version=3,
+        revision_root_id=base_project_id,
+        revision_of_id=revision_one_id,
+        include_workflow_columns=True,
+    )
 
     with pytest.raises(IntegrityError):
         with migration_db.connection.begin_nested():
             _insert_project(
                 connection=migration_db.connection,
-                line_id="LN-302",
+                line_id="LN-303",
                 process_id="PROC-R",
-                part_id="R-C",
+                part_id="R-D",
                 name="revision-conflict-sibling",
                 status="approved",
-                version=3,
+                version=4,
                 revision_root_id=base_project_id,
-                revision_of_id=base_project_id,
+                revision_of_id=revision_one_id,
                 include_workflow_columns=True,
             )
 
