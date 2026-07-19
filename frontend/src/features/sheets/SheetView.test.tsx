@@ -25,6 +25,7 @@ vi.mock('@/grid', async (importOriginal) => {
         <div
           data-testid="rendered-condition-grid"
           data-validation-statuses={JSON.stringify(data.statuses ?? [])}
+          data-choice-resource-keys={JSON.stringify(Array.from(data.choiceResources?.keys() ?? []))}
         >
           grid
         </div>
@@ -115,6 +116,11 @@ const project: ProjectOut = {
   part_id: 'P-7',
   name: 'Etch qualification',
   status: 'draft',
+  version: 1,
+  revision_root_id: null,
+  predecessor_project_id: null,
+  successor_project_id: null,
+  allowed_actions: ['request_review', 'approve'],
   profile: {
     project_id: 7,
     process_name: 'Etch',
@@ -559,19 +565,12 @@ describe('SheetView focus shell integration', () => {
     expect(html).toContain('프로젝트 #7')
     expect(html).toContain('프로젝트 정보 조회에 실패')
     expect(html).toContain('metadata unavailable')
-    const editingStatusTag = html.match(
-      /<div[^>]*data-sheet-editing-status="true"[^>]*>/,
-    )?.[0]
-    expect(editingStatusTag).toBeDefined()
-    expect(editingStatusTag).toContain('role="status"')
-    expect(editingStatusTag).toContain('aria-live="polite"')
-    expect(editingStatusTag).toContain('aria-atomic="false"')
-    expect(html).toContain('data-sheet-editor="true"')
-    expect(html).toContain('data-sheet-editing-status="true"')
+    expect(html).toContain('data-sheet-read-only="true"')
+    expect(html).not.toContain('data-sheet-editor="true"')
+    expect(html).not.toContain('data-sheet-editing-status="true"')
     expect(html).toContain('data-testid="rendered-condition-grid"')
-    expect(html).toContain('data-testid="validation-configuration-alert"')
-    expect(html).toContain('bg-error-surface')
-    expect(html).not.toContain('bg-success-surface')
+    expect(html).not.toContain('data-testid="validation-definitions-pending"')
+    expect(html).not.toContain('data-testid="validation-configuration-alert"')
   })
 
   it('renders project definition loading neutrally and disables explicit validation', () => {
@@ -579,16 +578,10 @@ describe('SheetView focus shell integration', () => {
     queryClient.setQueryData(['sheet', 7], sheet)
 
     const html = renderSheet(queryClient)
-    const validationButton = html.match(
-      /<button[^>]*data-testid="sheet-explicit-validation"[^>]*>/,
-    )?.[0]
-
-    expect(html).toContain('data-testid="validation-definitions-pending"')
-    expect(html).toContain('검증 규칙을 불러오는 중')
+    expect(html).not.toContain('data-testid="validation-definitions-pending"')
+    expect(html).not.toContain('검증 규칙을 불러오는 중')
     expect(html).not.toContain('data-testid="validation-configuration-alert"')
-    expect(validationButton).toBeDefined()
-    expect(validationButton).toContain('aria-busy="true"')
-    expect(validationButton).toContain('disabled=""')
+    expect(html).not.toContain('data-testid="sheet-explicit-validation"')
   })
 
   it('keeps an error-free ChoiceSet load pending instead of reporting configuration failure', () => {
@@ -662,6 +655,118 @@ describe('SheetView focus shell integration', () => {
     )
   })
 
+  it('renders a dedicated read-only sheet path for non-draft project metadata', () => {
+    const queryClient = client()
+    const projectStatus = {
+      ...project,
+      status: 'approved' as const,
+      allowed_actions: [],
+    }
+    queryClient.setQueryData(['project', 7], projectStatus)
+    queryClient.setQueryData(['sheet', 7], {
+      ...sheet,
+      rows: [
+        {
+          ...sheet.rows[0],
+          condition_id: 21,
+          layer_label: 'RO-1',
+          condition_label: 'POR',
+          cells: { ETCH_P001: '42' },
+        },
+      ],
+    })
+
+    const html = renderSheet(queryClient)
+
+    expect(html).not.toContain('data-sheet-editor="true"')
+    expect(html).not.toContain('data-sheet-editing-status="true"')
+    expect(html).toContain('data-sheet-read-only')
+    expect(html).toContain('읽기 전용 모드입니다')
+    expect(html).toContain('data-testid="sheet-category-tabs"')
+    expect(html).not.toContain('data-testid="sheet-explicit-validation"')
+    expect(html).not.toContain('data-testid="condition-row-manager"')
+  })
+
+  it('uses frozen choice resources for read-only sheets without editor hooks', () => {
+    const queryClient = client()
+    queryClient.setQueryData(['project', 7], {
+      ...project,
+      status: 'approved' as const,
+      allowed_actions: [],
+    })
+    queryClient.setQueryData(['sheet', 7], {
+      ...sheet,
+      columns: [
+        {
+          ...sheet.columns[0],
+          value_type: 'choice',
+          choice_set_code: 'equipment_mode',
+          choice_set_version: 5,
+        },
+      ],
+      frozen_choice_sets: [
+        {
+          set_code: 'equipment_mode',
+          version: 5,
+          is_active: true,
+          items: [{ code: 'AUTO', label: 'Automatic', sort_order: 1, is_active: true }],
+        },
+      ],
+      rows: [
+        {
+          ...sheet.rows[0],
+          condition_id: 21,
+          layer_label: 'RO-1',
+          condition_label: 'POR',
+          cells: { ETCH_P001: 'AUTO' },
+        },
+      ],
+    })
+
+    const html = renderSheet(queryClient)
+
+    expect(html).toContain('data-choice-resource-keys="[&quot;equipment_mode&quot;]"')
+    expect(html).toContain('data-sheet-read-only')
+  })
+
+  it('fails closed when project metadata is unavailable (not draft)', () => {
+    const queryClient = client()
+    queryClient.setQueryData(['project', 7], { ...project, status: undefined } as unknown as ProjectOut)
+    queryClient.setQueryData(['sheet', 7], {
+      ...sheet,
+      columns: [
+        {
+          ...sheet.columns[0],
+          value_type: 'choice',
+          choice_set_code: 'equipment_mode',
+          choice_set_version: 5,
+        },
+      ],
+      frozen_choice_sets: [
+        {
+          set_code: 'equipment_mode',
+          version: 5,
+          is_active: true,
+          items: [{ code: 'AUTO', label: 'Automatic', sort_order: 1, is_active: true }],
+        },
+      ],
+      rows: [
+        {
+          ...sheet.rows[0],
+          condition_id: 21,
+          layer_label: 'RO-1',
+          condition_label: 'POR',
+          cells: { ETCH_P001: 'AUTO' },
+        },
+      ],
+    })
+
+    const html = renderSheet(queryClient)
+
+    expect(html).not.toContain('data-sheet-editor="true"')
+    expect(html).toContain('data-sheet-read-only')
+  })
+
   it('fails closed on malformed Sheet choice bindings before mounting the editing lock', () => {
     const queryClient = client()
     queryClient.setQueryData(['project', 7], project)
@@ -686,7 +791,8 @@ describe('SheetView focus shell integration', () => {
   })
 
   it('transports one shared resource map and reconciles canonical responses against request revisions', () => {
-    expect(sheetViewSource).toContain('useSheetChoiceSets(sheet.columns)')
+    expect(sheetViewSource.match(/useSheetChoiceSets\(sheet\.columns\)/g)).toHaveLength(1)
+    expect(sheetViewSource).toContain('buildReadOnlySheetChoiceResources(')
     expect(sheetViewSource).toContain('choiceResources')
     expect(sheetViewSource).toMatch(
       /buildPasteStaging\([\s\S]*?visibleColumns,[\s\S]*?displayRows,[\s\S]*?choiceResources/,

@@ -6,6 +6,7 @@ from enum import StrEnum
 from sqlalchemy import (
     JSON,
     Boolean,
+    CheckConstraint,
     DateTime,
     Enum,
     ForeignKey,
@@ -22,15 +23,10 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
+from app.domain.workflow import ProjectStatus
 
 # PostgreSQL에서는 JSONB(인덱싱/조회 우수), 그 외(SQLite 테스트)는 JSON으로 대체한다.
 _JSON_PAYLOAD = JSON().with_variant(JSONB(), "postgresql")
-
-
-class ProjectStatus(StrEnum):
-    """프로젝트 상태. Phase 1에서는 draft만 생성한다."""
-
-    DRAFT = "draft"
 
 
 class ChangeEventType(StrEnum):
@@ -40,6 +36,9 @@ class ChangeEventType(StrEnum):
     PROJECT_PROFILE_UPDATE = "project_profile_update"
     BACKBONE_COPY = "backbone_copy"
     BACKBONE_LAYER_REPLACE = "backbone_layer_replace"
+    STATUS_CHANGE = "status_change"
+    REVISION_CREATE = "revision_create"
+    COMMENT = "comment"
     # 셀 단위 편집 (P2-T3). 구조화 컬럼(condition_id/parameter_code/old_value/
     # new_value)을 채우고 payload에는 batch_id/origin만 싣는다.
     CELL_UPDATE = "cell_update"
@@ -56,7 +55,25 @@ class Project(Base):
 
     __tablename__ = "project"
     __table_args__ = (
-        UniqueConstraint("line_id", "process_id", "part_id", name="uq_project_process_part"),
+        CheckConstraint("version >= 1", name="ck_project_version"),
+        CheckConstraint(
+            "(version = 1 AND revision_of_id IS NULL) OR "
+            "(version > 1 AND revision_root_id IS NOT NULL AND "
+            "revision_root_id <> id AND revision_of_id IS NOT NULL AND revision_of_id <> id)",
+            name="ck_project_revision_lineage_shape",
+        ),
+        UniqueConstraint("revision_root_id", "version", name="uq_project_revision_root_version"),
+        UniqueConstraint("revision_of_id", name="uq_project_direct_successor"),
+        Index(
+            "ix_project_active_line_process_part",
+            "line_id",
+            "process_id",
+            "part_id",
+            unique=True,
+            sqlite_where=text("status != 'archived'"),
+            postgresql_where=text("status != 'archived'"),
+        ),
+        Index("ix_project_revision_root_id", "revision_root_id"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -65,13 +82,37 @@ class Project(Base):
     part_id: Mapped[str] = mapped_column(String(128), index=True)
     name: Mapped[str] = mapped_column(String(256))
     status: Mapped[ProjectStatus] = mapped_column(
-        Enum(ProjectStatus, native_enum=False, length=32),
+        Enum(
+            ProjectStatus,
+            native_enum=False,
+            length=32,
+            values_callable=lambda enum_type: [item.value for item in enum_type],
+        ),
         default=ProjectStatus.DRAFT,
         server_default=ProjectStatus.DRAFT.value,
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    revision_root_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("project.id", ondelete="SET NULL"), nullable=True
+    )
+    revision_of_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("project.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    parameter_snapshot: Mapped[dict | None] = mapped_column(_JSON_PAYLOAD, nullable=True)
+    review_basis_hash: Mapped[str | None] = mapped_column(String(71), nullable=True)
+    review_rule_versions: Mapped[dict | None] = mapped_column(_JSON_PAYLOAD, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
     )
 
     layers: Mapped[list["SheetLayer"]] = relationship(
@@ -89,6 +130,11 @@ class Project(Base):
         back_populates="project",
         cascade="all, delete-orphan",
         order_by="ChangeEvent.id",
+    )
+    comments: Mapped[list["ReviewComment"]] = relationship(
+        back_populates="project",
+        cascade="all, delete-orphan",
+        order_by="ReviewComment.id",
     )
 
 
@@ -334,3 +380,47 @@ class EditLock(Base):
     lock_token: Mapped[str] = mapped_column(String(64))
     locked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class ReviewComment(Base):
+    """프로젝트/셀 코멘트(소프트 삭제 포함)."""
+
+    __tablename__ = "review_comment"
+    __table_args__ = (
+        CheckConstraint(
+            "(condition_id IS NULL AND layer_key IS NULL AND parameter_code IS NULL) "
+            "OR (condition_id IS NOT NULL AND layer_key IS NOT NULL AND "
+            "parameter_code IS NOT NULL)",
+            name="ck_review_comment_target_xor",
+        ),
+        Index("ix_review_comment_project_id_id_desc", "project_id", literal_column("id").desc()),
+        Index(
+            "ix_review_comment_project_condition_id_desc",
+            "project_id",
+            "condition_id",
+            literal_column("id").desc(),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("project.id", ondelete="CASCADE"))
+    condition_id: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+    layer_key: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    parameter_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    author: Mapped[str] = mapped_column(String(128), nullable=False)
+    resolved: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    resolved_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    deleted_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    project: Mapped[Project] = relationship(back_populates="comments")

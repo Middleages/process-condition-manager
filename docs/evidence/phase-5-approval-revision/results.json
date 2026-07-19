@@ -1,0 +1,217 @@
+{
+  "schema_version": 1,
+  "started_at": "2026-07-19T16:11:57.868Z",
+  "completed_at": "2026-07-19T16:12:02.839Z",
+  "base_url": "http://127.0.0.1:4175",
+  "chromium": "/home/appuser/.cache/ms-playwright/chromium-1200/chrome-linux64/chrome",
+  "mock_boundary": "Browser/UI behavior only; API responses are deterministic Playwright route mocks.",
+  "checks": [
+    {
+      "name": "auth-and-draft-detail",
+      "status": "pass",
+      "duration_ms": 873,
+      "details": {
+        "status": "draft"
+      }
+    },
+    {
+      "name": "review-gate-error-no-state-change",
+      "status": "pass",
+      "duration_ms": 117,
+      "details": {
+        "status": "draft",
+        "review_attempts": 1
+      }
+    },
+    {
+      "name": "review-success-and-project-comment",
+      "status": "pass",
+      "duration_ms": 153,
+      "details": {
+        "status": "review",
+        "project_comment_count": 1
+      }
+    },
+    {
+      "name": "approval-to-read-only-frozen-sheet",
+      "status": "pass",
+      "duration_ms": 504,
+      "details": {
+        "status": "approved",
+        "forbidden_network_count": 0
+      }
+    },
+    {
+      "name": "keyboard-column-navigation-and-cell-comment",
+      "status": "pass",
+      "duration_ms": 305,
+      "details": {
+        "accessible_grid_cells": 5,
+        "cell_comment_count": 1,
+        "canvas": {
+          "x": 0,
+          "y": 141,
+          "width": 1440,
+          "height": 759
+        }
+      }
+    },
+    {
+      "name": "responsive-read-only-sheet",
+      "status": "pass",
+      "duration_ms": 409,
+      "details": {
+        "viewports": [
+          "1024x768",
+          "1440x900",
+          "1920x1080"
+        ]
+      }
+    },
+    {
+      "name": "revision-source-and-live-draft-lineage",
+      "status": "pass",
+      "duration_ms": 1409,
+      "details": {
+        "source_status": "archived",
+        "target_status": "draft",
+        "target_version": 2
+      }
+    },
+    {
+      "name": "responsive-revision-detail",
+      "status": "pass",
+      "duration_ms": 590,
+      "details": {
+        "viewports": [
+          "1024x768",
+          "1440x900",
+          "1920x1080"
+        ]
+      }
+    }
+  ],
+  "network": [
+    {
+      "method": "GET",
+      "pathname": "/auth/me",
+      "search": ""
+    },
+    {
+      "method": "GET",
+      "pathname": "/projects/7",
+      "search": ""
+    },
+    {
+      "method": "GET",
+      "pathname": "/projects/7/comments",
+      "search": "?target=project"
+    },
+    {
+      "method": "POST",
+      "pathname": "/projects/7/transitions",
+      "search": ""
+    },
+    {
+      "method": "POST",
+      "pathname": "/projects/7/transitions",
+      "search": ""
+    },
+    {
+      "method": "GET",
+      "pathname": "/projects/7",
+      "search": ""
+    },
+    {
+      "method": "POST",
+      "pathname": "/projects/7/comments",
+      "search": ""
+    },
+    {
+      "method": "GET",
+      "pathname": "/projects/7/comments",
+      "search": "?target=project"
+    },
+    {
+      "method": "POST",
+      "pathname": "/projects/7/transitions",
+      "search": ""
+    },
+    {
+      "method": "GET",
+      "pathname": "/projects/7",
+      "search": ""
+    },
+    {
+      "method": "GET",
+      "pathname": "/projects/7/sheet",
+      "search": ""
+    },
+    {
+      "method": "GET",
+      "pathname": "/projects/7/comments",
+      "search": "?target=cell&layer_key=L1::PHASE5::010::ETCH&parameter_code=equipment_mode&condition_id=711"
+    },
+    {
+      "method": "POST",
+      "pathname": "/projects/7/comments",
+      "search": ""
+    },
+    {
+      "method": "GET",
+      "pathname": "/projects/7/sheet",
+      "search": ""
+    },
+    {
+      "method": "GET",
+      "pathname": "/projects/7/comments",
+      "search": "?target=cell&layer_key=L1::PHASE5::010::ETCH&parameter_code=equipment_mode&condition_id=711"
+    },
+    {
+      "method": "GET",
+      "pathname": "/auth/me",
+      "search": ""
+    },
+    {
+      "method": "GET",
+      "pathname": "/projects/7",
+      "search": ""
+    },
+    {
+      "method": "GET",
+      "pathname": "/projects/7/comments",
+      "search": "?target=project"
+    },
+    {
+      "method": "POST",
+      "pathname": "/projects/7/revisions",
+      "search": ""
+    },
+    {
+      "method": "GET",
+      "pathname": "/projects/7",
+      "search": ""
+    },
+    {
+      "method": "GET",
+      "pathname": "/auth/me",
+      "search": ""
+    },
+    {
+      "method": "GET",
+      "pathname": "/projects/8",
+      "search": ""
+    },
+    {
+      "method": "GET",
+      "pathname": "/projects/8/comments",
+      "search": "?target=project"
+    }
+  ],
+  "unexpected_requests": [],
+  "console_errors": [],
+  "expected_console_errors": [
+    "Failed to load resource: the server responded with a status of 409 (Conflict)"
+  ],
+  "status": "pass"
+}

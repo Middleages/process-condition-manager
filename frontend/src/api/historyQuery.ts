@@ -5,6 +5,9 @@ export type HistoryEventType =
   | 'project_profile_update'
   | 'backbone_copy'
   | 'backbone_layer_replace'
+  | 'status_change'
+  | 'revision_create'
+  | 'comment'
   | 'cell_update'
   | 'condition_add'
   | 'condition_remove'
@@ -59,6 +62,9 @@ const HISTORY_EVENT_TYPES: readonly HistoryEventType[] = [
   'project_profile_update',
   'backbone_copy',
   'backbone_layer_replace',
+  'status_change',
+  'revision_create',
+  'comment',
   'cell_update',
   'condition_add',
   'condition_remove',

@@ -4,20 +4,39 @@ import type {
   BackboneReplaceIn,
   ManualOverrideIn,
   MatchPreviewOut,
+  ProjectCommentCreateIn,
+  ProjectCommentOut,
+  ProjectCommentPatchIn,
+  ProjectCommentListOut,
+  ProjectCommentResolvedFilter,
   ProjectCreate,
   ProjectListOut,
   ProjectOut,
   ProjectProfileOut,
   ProjectProfilePatchIn,
+  ProjectStatus,
+  ProjectTransitionIn,
+  ProjectTransitionOut,
+  ProjectRevisionOut,
 } from './types'
 
 export interface ListProjectsParams {
   query?: string
-  status?: string
+  status?: ProjectStatus | 'all'
   deviceTypeCode?: string
   projectCategoryCode?: string
   cursor?: number
   limit?: number
+}
+
+export interface ProjectCommentListParams {
+  beforeId?: number
+  limit?: number
+  resolved?: ProjectCommentResolvedFilter
+  target?: 'project' | 'cell'
+  layerKey?: string | null
+  parameterCode?: string | null
+  conditionId?: number | null
 }
 
 export async function listProjects(params: ListProjectsParams = {}): Promise<ProjectListOut> {
@@ -63,6 +82,66 @@ export async function patchProjectProfile(
 export async function createProject(payload: ProjectCreate): Promise<ProjectOut> {
   const response = await apiClient.post<ProjectOut>('/projects', payload)
   return response.data
+}
+
+export async function transitionProject(
+  projectId: number,
+  payload: ProjectTransitionIn,
+): Promise<ProjectTransitionOut> {
+  const response = await apiClient.post<ProjectTransitionOut>(
+    `/projects/${projectId}/transitions`,
+    payload,
+  )
+  return response.data
+}
+
+export async function createRevision(projectId: number): Promise<ProjectRevisionOut> {
+  const response = await apiClient.post<ProjectRevisionOut>(`/projects/${projectId}/revisions`)
+  return response.data
+}
+
+export async function listProjectComments(
+  projectId: number,
+  params: ProjectCommentListParams = {},
+): Promise<ProjectCommentListOut> {
+  const query: Record<string, string | number | boolean | null> = {
+    ...(params.beforeId === undefined ? {} : { before_id: params.beforeId }),
+    ...(params.limit === undefined ? {} : { limit: params.limit }),
+    ...(params.resolved === undefined ? {} : { resolved: params.resolved }),
+    ...(params.target === undefined ? {} : { target: params.target }),
+    ...(params.layerKey === undefined ? {} : { layer_key: params.layerKey }),
+    ...(params.parameterCode === undefined ? {} : { parameter_code: params.parameterCode }),
+    ...(params.conditionId === undefined ? {} : { condition_id: params.conditionId }),
+  }
+
+  const response = await apiClient.get<ProjectCommentListOut>(`/projects/${projectId}/comments`, {
+    params: query,
+  })
+  return response.data
+}
+
+export async function createProjectComment(
+  projectId: number,
+  payload: ProjectCommentCreateIn,
+): Promise<ProjectCommentOut> {
+  const response = await apiClient.post<ProjectCommentOut>(`/projects/${projectId}/comments`, payload)
+  return response.data
+}
+
+export async function patchProjectComment(
+  projectId: number,
+  commentId: number,
+  payload: ProjectCommentPatchIn,
+): Promise<ProjectCommentOut> {
+  const response = await apiClient.patch<ProjectCommentOut>(
+    `/projects/${projectId}/comments/${commentId}`,
+    payload,
+  )
+  return response.data
+}
+
+export async function deleteProjectComment(projectId: number, commentId: number): Promise<void> {
+  await apiClient.delete(`/projects/${projectId}/comments/${commentId}`)
 }
 
 export async function getBackboneCandidates(

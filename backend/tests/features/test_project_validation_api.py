@@ -10,11 +10,20 @@ from sqlalchemy import event, text, update
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.domain.parameters.types import ValueType
+from app.features.approval.repository import ApprovalRepository
+from app.features.approval.service import ApprovalService
 from app.models.choice import ChoiceOption, ChoiceSet
 from app.models.parameter import Parameter, ParameterCategory
-from app.models.project import CellValue, EditLock, LayerCondition, Project, SheetLayer
+from app.models.project import (
+    CellValue,
+    EditLock,
+    LayerCondition,
+    Project,
+    ProjectStatus,
+    SheetLayer,
+)
 from app.models.validation import ValidationRule
-from tests.factories import make_project_profile
+from tests.factories import make_project_profile, seed_required_profile_choice_sets
 
 _SAFE_CONFIGURATION_MESSAGE = (
     "검증 규칙을 불러오지 못했습니다. 관리자에게 확인을 요청해 주세요."
@@ -387,6 +396,53 @@ async def test_basis_hash_tracks_definitions_but_not_cell_values(
         "basis_hash"
     ]
     assert rule_changed != choice_changed
+
+
+async def test_approved_validation_uses_snapshot_after_live_definition_changes(
+    db_client: AsyncClient,
+    db_session: AsyncSession,
+    db_engine: AsyncEngine,
+) -> None:
+    project_id, _ = await _seed_validation_project(db_session)
+    await seed_required_profile_choice_sets(db_session)
+    await db_session.commit()
+    before = (await db_client.post(f"/api/projects/{project_id}/validate")).json()
+    approval = ApprovalService(ApprovalRepository(db_session))
+    basis = await approval.basis_loader.load(project_id)
+    frozen = await approval._snapshot_basis(basis)
+    project = await db_session.get(Project, project_id)
+    assert project is not None
+    project.status = ProjectStatus.APPROVED
+    project.parameter_snapshot = frozen
+    await db_session.commit()
+
+    await db_session.execute(
+        update(Parameter).where(Parameter.code == "amount").values(required=False)
+    )
+    await db_session.execute(
+        update(ChoiceSet).where(ChoiceSet.code == "yes_no").values(version=99)
+    )
+    await db_session.execute(
+        update(ValidationRule).where(ValidationRule.code == "prior_value").values(version=99)
+    )
+    await db_session.commit()
+
+    with _captured_statements(db_engine) as statements:
+        response = await db_client.post(f"/api/projects/{project_id}/validate")
+
+    assert response.status_code == 200, response.text
+    after = response.json()
+    assert after["basis_hash"] == frozen["validation_basis_hash"]
+    assert after["rule_versions"] == before["rule_versions"]
+    assert after["summary"] == before["summary"]
+    assert [issue["code"] for issue in after["issues"]] == [
+        issue["code"] for issue in before["issues"]
+    ]
+    sql = "\n".join(statements).lower()
+    assert " from parameter " not in sql
+    assert " from parameter_category " not in sql
+    assert " from validation_rule " not in sql
+    assert " from choice_set " not in sql
 
 
 async def test_validate_missing_project_is_404_and_empty_project_is_green(

@@ -12,7 +12,7 @@ export interface ProjectTableProps {
 export function ProjectTable({ projects, from, onProjectOpen }: ProjectTableProps) {
   return (
     <div className="max-w-full overflow-x-auto rounded-xl border border-border-subtle bg-surface">
-      <table className="w-full min-w-[920px] table-fixed text-left text-sm">
+      <table className="w-full min-w-[1120px] table-fixed text-left text-sm">
         <thead className="bg-canvas text-xs font-semibold uppercase tracking-wide text-muted">
           <tr className="h-9">
             <th className="w-[20%] whitespace-nowrap px-4 py-0" scope="col">
@@ -38,6 +38,12 @@ export function ProjectTable({ projects, from, onProjectOpen }: ProjectTableProp
             </th>
             <th className="w-[8%] whitespace-nowrap px-4 py-0" scope="col">
               상태
+            </th>
+            <th className="w-[14%] whitespace-nowrap px-4 py-0" scope="col">
+              Lineage
+            </th>
+            <th className="w-[18%] whitespace-nowrap px-4 py-0" scope="col">
+              허용 액션
             </th>
             <th
               className="hidden xl:table-cell w-[12%] whitespace-nowrap px-4 py-0"
@@ -84,7 +90,29 @@ export function ProjectTable({ projects, from, onProjectOpen }: ProjectTableProp
                 {project.layer_total ?? '-'}
               </td>
               <td className="min-w-0 overflow-hidden whitespace-nowrap px-4 py-0 align-middle">
-                <Badge tone="draft">초안</Badge>
+                <Badge tone={statusBadgeTone(project.status)}>{statusLabel(project.status)}</Badge>
+              </td>
+              <td className="min-w-0 overflow-hidden px-4 py-0.5 align-middle font-mono text-xs text-muted">
+                <span
+                  className="block min-w-0 truncate"
+                  title={`v${project.version} · root=${project.revision_root_id ?? '-'} · pred=${project.predecessor_project_id ?? '-'} · succ=${project.successor_project_id ?? '-'}`}
+                >
+                  v{project.version} · root:{project.revision_root_id ?? '-'} · pred:{
+                    project.predecessor_project_id ?? '-'
+                  } · succ:{project.successor_project_id ?? '-'}
+                </span>
+              </td>
+              <td className="min-w-0 overflow-hidden px-4 py-0 align-middle">
+                <div className="flex min-w-0 flex-wrap gap-1">
+                  {project.allowed_actions.length === 0 ? (
+                    <span className="text-xs text-muted">없음</span>
+                  ) : null}
+                  {project.allowed_actions.map((action) => (
+                    <Badge className="shrink-0" key={action} tone="neutral">
+                      {actionLabel(action)}
+                    </Badge>
+                  ))}
+                </div>
               </td>
               <td className="hidden xl:table-cell min-w-0 overflow-hidden whitespace-nowrap px-4 py-0 text-xs tabular-nums text-muted">
                 <time dateTime={project.updated_at}>{formatUpdatedAt(project.updated_at)}</time>
@@ -125,4 +153,41 @@ function formatUpdatedAt(value: string): string {
     dateStyle: 'short',
     timeStyle: 'short',
   }).format(instant)
+}
+
+function statusBadgeTone(status: ProjectSummaryOut['status']) {
+  if (status === 'draft') return 'draft'
+  if (status === 'approved') return 'neutral'
+  if (status === 'rejected') return 'error'
+  return 'read-only'
+}
+
+function statusLabel(status: ProjectSummaryOut['status']) {
+  switch (status) {
+    case 'draft':
+      return '초안'
+    case 'review':
+      return '검토중'
+    case 'approved':
+      return '승인'
+    case 'rejected':
+      return '반려'
+    case 'archived':
+      return '보존'
+  }
+}
+
+function actionLabel(action: ProjectSummaryOut['allowed_actions'][number]) {
+  switch (action) {
+    case 'request_review':
+      return '요청'
+    case 'approve':
+      return '승인'
+    case 'reject':
+      return '반려'
+    case 'return_to_draft':
+      return '초안복귀'
+    case 'create_revision':
+      return '리비전 생성'
+  }
 }

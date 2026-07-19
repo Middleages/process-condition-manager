@@ -5,11 +5,16 @@
 """
 
 from fastapi import APIRouter, FastAPI
+from fastapi.responses import JSONResponse
 
+from app.core.auth import get_auth_configuration_status
 from app.core.config import settings
 from app.core.db import app_engine, ingest_engine
 from app.core.errors import register_exception_handlers
 from app.core.maintenance import Phase4WriterHealthOut, get_phase4_writer_health
+from app.core.request_id import request_id_middleware
+from app.features.approval.router import router as approval_router
+from app.features.auth.router import router as auth_router
 from app.features.backbone_diff.router import router as backbone_diff_router
 from app.features.cells.router import router as cells_router
 from app.features.choice_sets.router import router as choice_sets_router
@@ -31,6 +36,28 @@ async def health() -> dict[str, str]:
     return {"status": "ok", "app": settings.app_name}
 
 
+@health_router.get("/health/ready", response_model=None)
+async def health_ready() -> dict[str, object] | JSONResponse:
+    status = get_auth_configuration_status()
+    if status.valid:
+        return {
+            "status": "ready",
+            "checks": {"auth": {"status": "pass"}},
+        }
+    return JSONResponse(
+        {
+            "status": "not_ready",
+            "checks": {
+                "auth": {
+                    "status": "fail",
+                    "reason_code": status.reason_code or "auth_not_configured",
+                }
+            },
+        },
+        status_code=503,
+    )
+
+
 @health_router.get("/health/phase4-writer", response_model=Phase4WriterHealthOut)
 async def phase4_writer_health() -> Phase4WriterHealthOut:
     """Phase 4 writer canary / rollback-only health attestation."""
@@ -41,6 +68,7 @@ def create_app() -> FastAPI:
     """앱 인스턴스를 생성/조립한다."""
     app = FastAPI(title=settings.app_name, debug=settings.debug)
     register_exception_handlers(app)
+    app.middleware("http")(request_id_middleware)
 
     # 헬스체크는 루트 유지 (컨테이너 헬스체크가 /health 직접 조회).
     app.include_router(health_router)
@@ -50,8 +78,10 @@ def create_app() -> FastAPI:
     api_router.include_router(choice_sets_router)
     api_router.include_router(parameters_router)
     api_router.include_router(processes_router)
+    api_router.include_router(auth_router)
     api_router.include_router(projects_router)
     api_router.include_router(backbone_diff_router)
+    api_router.include_router(approval_router)
     api_router.include_router(sheets_router)
     api_router.include_router(locks_router)
     api_router.include_router(cells_router)

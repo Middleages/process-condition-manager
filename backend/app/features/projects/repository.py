@@ -3,7 +3,7 @@
 from collections.abc import Collection
 from dataclasses import dataclass
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import Text, and_, cast, func, or_, select
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased, selectinload
@@ -30,6 +30,7 @@ class ProjectSummary:
     project_category: ResolvedChoice
     layer_count: int
     cell_count: int
+    successor_id: int | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -128,9 +129,7 @@ class ProjectRepository:
 
         rows = list((await self.session.execute(stmt)).scalars().all())
         rows_by_code = {row.code: row for row in rows}
-        unresolved_codes = tuple(
-            code for code in requested_codes if code not in rows_by_code
-        )
+        unresolved_codes = tuple(code for code in requested_codes if code not in rows_by_code)
         parameters = tuple(
             CapturedParameter(
                 parameter_code=row.code,
@@ -168,9 +167,7 @@ class ProjectRepository:
 
     async def processes_with_projects(self) -> set[tuple[str, str]]:
         """조건표(프로젝트)가 하나라도 있는 (line_id, process_id) 집합."""
-        rows = await self.session.execute(
-            select(Project.line_id, Project.process_id).distinct()
-        )
+        rows = await self.session.execute(select(Project.line_id, Project.process_id).distinct())
         return {(row[0], row[1]) for row in rows.all()}
 
     async def count_by_process(self, line_id: str, process_id: str) -> int:
@@ -179,15 +176,13 @@ class ProjectRepository:
         )
         return int((await self.session.execute(stmt)).scalar_one())
 
-    async def get_by_identity(
-        self, line_id: str, process_id: str, part_id: str
-    ) -> Project | None:
+    async def get_by_identity(self, line_id: str, process_id: str, part_id: str) -> Project | None:
         result = await self.session.execute(
             select(Project).where(
                 Project.line_id == line_id,
                 Project.process_id == process_id,
                 Project.part_id == part_id,
-            )
+            ).order_by(Project.version.desc(), Project.id.desc()).limit(1)
         )
         return result.scalar_one_or_none()
 
@@ -201,7 +196,7 @@ class ProjectRepository:
         cursor: int | None = None,
         limit: int = 50,
     ) -> tuple[list[ProjectSummary], int | None]:
-        """Resolve Profile choices and aggregate counts in one SQL page path."""
+        """Load a page without coupling frozen rows to live ChoiceSet joins."""
         layer_count = (
             select(func.count(SheetLayer.id))
             .where(SheetLayer.project_id == Project.id)
@@ -217,44 +212,63 @@ class ProjectRepository:
             .correlate(Project)
             .scalar_subquery()
         )
-
-        device_set = aliased(ChoiceSet, name="device_set")
-        device_option = aliased(ChoiceOption, name="device_option")
-        category_set = aliased(ChoiceSet, name="category_set")
-        category_option = aliased(ChoiceOption, name="category_option")
-        stmt = (
-            select(
-                Project,
-                ProjectProfile,
-                device_option.label.label("device_label"),
-                device_set.is_active.label("device_set_active"),
-                device_option.is_active.label("device_option_active"),
-                category_option.label.label("category_label"),
-                category_set.is_active.label("category_set_active"),
-                category_option.is_active.label("category_option_active"),
-                layer_count.label("layer_count"),
-                cell_count.label("cell_count"),
-            )
-            .join(ProjectProfile, ProjectProfile.project_id == Project.id)
-            .join(device_set, device_set.code == "device_type")
-            .join(
-                device_option,
-                and_(
-                    device_option.choice_set_id == device_set.id,
-                    device_option.code == ProjectProfile.device_type_code,
-                ),
-            )
-            .join(category_set, category_set.code == "project_category")
-            .join(
-                category_option,
-                and_(
-                    category_option.choice_set_id == category_set.id,
-                    category_option.code == ProjectProfile.project_category_code,
-                ),
-            )
+        successor = aliased(Project, name="successor")
+        successor_id = (
+            select(func.max(successor.id))
+            .where(successor.revision_of_id == Project.id)
+            .correlate(Project)
+            .scalar_subquery()
+            .label("successor_id")
         )
+
+        stmt = select(
+            Project,
+            ProjectProfile,
+            layer_count.label("layer_count"),
+            cell_count.label("cell_count"),
+            successor_id.label("successor_id"),
+        ).join(ProjectProfile, ProjectProfile.project_id == Project.id)
         if query is not None and (search := query.strip()):
             like = f"%{search}%"
+            frozen_statuses = ("approved", "archived")
+            label_predicates = []
+            if status not in frozen_statuses:
+                device_set = aliased(ChoiceSet, name="search_device_set")
+                device_option = aliased(ChoiceOption, name="search_device_option")
+                category_set = aliased(ChoiceSet, name="search_category_set")
+                category_option = aliased(ChoiceOption, name="search_category_option")
+                live_label_match = or_(
+                    select(1)
+                    .select_from(device_option)
+                    .join(device_set, device_option.choice_set_id == device_set.id)
+                    .where(
+                        device_set.code == "device_type",
+                        device_option.code == ProjectProfile.device_type_code,
+                        device_option.label.ilike(like),
+                    )
+                    .exists(),
+                    select(1)
+                    .select_from(category_option)
+                    .join(category_set, category_option.choice_set_id == category_set.id)
+                    .where(
+                        category_set.code == "project_category",
+                        category_option.code == ProjectProfile.project_category_code,
+                        category_option.label.ilike(like),
+                    )
+                    .exists(),
+                )
+                label_predicates.append(
+                    live_label_match
+                    if status is not None
+                    else and_(Project.status.not_in(frozen_statuses), live_label_match)
+                )
+            if status is None or status in frozen_statuses:
+                frozen_label_match = cast(Project.parameter_snapshot, Text).ilike(like)
+                label_predicates.append(
+                    frozen_label_match
+                    if status is not None
+                    else and_(Project.status.in_(frozen_statuses), frozen_label_match)
+                )
             stmt = stmt.where(
                 or_(
                     Project.name.ilike(like),
@@ -263,21 +277,16 @@ class ProjectRepository:
                     Project.part_id.ilike(like),
                     ProjectProfile.comment.ilike(like),
                     ProjectProfile.device_type_code.ilike(like),
-                    device_option.label.ilike(like),
                     ProjectProfile.project_category_code.ilike(like),
-                    category_option.label.ilike(like),
+                    *label_predicates,
                 )
             )
         if status:
             stmt = stmt.where(Project.status == status)
         if device_type_code is not None:
-            stmt = stmt.where(
-                ProjectProfile.device_type_code == device_type_code.strip()
-            )
+            stmt = stmt.where(ProjectProfile.device_type_code == device_type_code.strip())
         if project_category_code is not None:
-            stmt = stmt.where(
-                ProjectProfile.project_category_code == project_category_code.strip()
-            )
+            stmt = stmt.where(ProjectProfile.project_category_code == project_category_code.strip())
         if cursor is not None:
             stmt = stmt.where(Project.id < cursor)
         stmt = stmt.order_by(Project.id.desc()).limit(limit + 1)
@@ -292,19 +301,20 @@ class ProjectRepository:
                 device_type=ResolvedChoice(
                     set_code="device_type",
                     option_code=row[1].device_type_code,
-                    label=row.device_label,
-                    set_is_active=row.device_set_active,
-                    option_is_active=row.device_option_active,
+                    label=row[1].device_type_code,
+                    set_is_active=False,
+                    option_is_active=False,
                 ),
                 project_category=ResolvedChoice(
                     set_code="project_category",
                     option_code=row[1].project_category_code,
-                    label=row.category_label,
-                    set_is_active=row.category_set_active,
-                    option_is_active=row.category_option_active,
+                    label=row[1].project_category_code,
+                    set_is_active=False,
+                    option_is_active=False,
                 ),
                 layer_count=int(row.layer_count),
                 cell_count=int(row.cell_count),
+                successor_id=row.successor_id,
             )
             for row in rows
         ]

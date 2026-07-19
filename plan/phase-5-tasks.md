@@ -8,18 +8,18 @@
 
 ## 완료 기준 (Exit Criteria)
 
-- [ ] EC1. 승인 후 레지스트리에 파라미터를 추가하거나 Choice label을 바꿔도 승인본 시트·Project Profile 화면이 변하지 않는다 (snapshot v3 검증)
-- [ ] EC2. Revision 생성 시 새 Draft에는 새 파라미터가 나타난다 (live 복귀 검증)
-- [ ] EC3. 역할별 허용 동작이 테스트로 고정된다 (권한 매트릭스 테스트)
-- [ ] EC4. 검증 오류가 1건이라도 있으면 Review 요청이 거부되고, Approval은 같은 validation basis를 확인하거나 재검증한다
-- [ ] EC5. Approved/Archived 프로젝트는 편집 API가 전면 거부되고 UI가 읽기 전용으로 렌더링된다
-- [ ] EC6. 검토 코멘트를 프로젝트/셀 레벨로 남기고 조회할 수 있다
+- [x] EC1. 승인 후 레지스트리에 파라미터를 추가하거나 Choice label을 바꿔도 승인본 시트·Project Profile 화면이 변하지 않는다 (snapshot v3 검증)
+- [x] EC2. Revision 생성 시 새 Draft에는 새 파라미터가 나타난다 (live 복귀 검증)
+- [x] EC3. 역할별 허용 동작이 테스트로 고정된다 (권한 매트릭스 테스트)
+- [x] EC4. 검증 오류가 1건이라도 있으면 Review 요청이 거부되고, Approval은 같은 validation basis를 확인하거나 재검증한다
+- [x] EC5. Approved/Archived 프로젝트는 편집 API가 전면 거부되고 UI가 읽기 전용으로 렌더링된다
+- [x] EC6. 검토 코멘트를 프로젝트/셀 레벨로 남기고 조회할 수 있다
 
 ## 선행 확정 필요 (결정 항목)
 
 | # | 항목 | 내용 | 권고 |
 |---|------|------|------|
-| P5-D1 | SSO/RBAC 상세 | IdP 연동 방식, 역할 소스(IdP 클레임 vs PCM 자체 역할 테이블) | **외부 입력 필요** — 확정분 수신 후 T6 설계 확정. 스텁 교체 지점은 `core/auth` 어댑터 하나 |
+| P5-D1 | SSO/RBAC 상세 | IdP 연동 방식, 역할 소스(IdP 클레임 vs PCM 자체 역할 테이블) | **확정** — OIDC-aware gateway가 Authorization Code + PKCE와 세션을 소유하고 PCM은 정규화·서명된 헤더만 신뢰한다. 그룹→역할과 역할→권한은 서버 소유. 상세: `docs/phase-5-d10-sso-rbac.md` |
 | P5-D2 | Rejected 복귀 처리 | Rejected → Draft 복귀 시 기존 코멘트/검증 상태 처리 | 코멘트는 보존(resolve 표시), Draft 복귀는 status_change 이벤트만 |
 | P5-D3 | Revision 셀 복사 범위 | Archived 본에는 현재 비활성화된 파라미터의 셀 값이 있을 수 있음. 새 Draft는 live 레지스트리를 따르므로 이 값들의 처리 | **전체 복사** — narrow 테이블에서 무해하며 이력 연속성 유지. live 컬럼 정의에 없는 code는 화면에 나타나지 않을 뿐 데이터는 보존. 해당 파라미터 재활성화 시 값이 되살아나는 동작을 명세로 문서화 |
 | P5-D4 | Review 중 편집 잠금 | Review 상태에서 편집 불가는 상태 머신이 보장 — edit_lock과의 관계 정리 | Review 진입 시 기존 잠금 해제, Review/Approved/Archived에서는 잠금 획득 자체를 거부 |
@@ -106,3 +106,10 @@ flowchart LR
 6. T5 검토 코멘트
 7. T6 RBAC
 8. EC1~EC6 점검 → Phase 6 착수 판단
+
+## 완료 기록 (2026-07-20 KST)
+
+- D-10 계약, Approval/Revision PRD 및 테스트 명세를 확정했다.
+- T1~T6와 EC1~EC6 자동 검증을 완료했다.
+- 브라우저 QA는 production build + 결정적 API mock 경계에서 8/8 통과했다.
+- 실제 IdP tenant 적합성 및 PostgreSQL migration/race/performance 게이트는 외부 인프라가 없어 pending이며, 실행 절차와 상태는 `docs/phase-5-sso-gateway-runbook.md`, `docs/evidence/phase-5-sso-tenant-conformance.json`, `docs/evidence/phase-5-verification.md`에 기록한다.

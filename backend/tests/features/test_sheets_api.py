@@ -16,6 +16,7 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import DomainValidationError
+from app.domain.parameters.snapshot import snapshot_digest
 from app.domain.parameters.types import ValueType
 from app.features.sheets.service import _build_live_columns
 from app.models.parameter import Parameter, ParameterCategory
@@ -347,3 +348,174 @@ async def test_sheet_unknown_project_returns_404(db_client: AsyncClient) -> None
 
     assert resp.status_code == 404
     assert resp.json()["code"] == "not_found"
+
+
+def _make_parameter_snapshot() -> dict[str, object]:
+    result: dict[str, object] = {
+        "version": 3,
+        "categories": [{"code": "photo", "display_name": "PHOTO", "sort_order": 1}],
+        "parameters": [
+            {
+                "code": "spin_speed",
+                "display_name": "Spin Speed",
+                "value_type": "number",
+                "category_code": "photo",
+                "unit": "rpm",
+                "min_value": "0",
+                "max_value": "2000",
+                "required": True,
+                "pattern": None,
+                "pattern_hint": None,
+                "description": "회전속도",
+                "sort_order": 1,
+            },
+            {
+                "code": "pr_type",
+                "display_name": "PR Type",
+                "value_type": "choice",
+                "category_code": None,
+                "unit": None,
+                "min_value": None,
+                "max_value": None,
+                "required": False,
+                "pattern": None,
+                "pattern_hint": None,
+                "description": None,
+                "choice_set_code": "equipment_mode",
+                "sort_order": 2,
+            },
+        ],
+        "choice_sets": [
+            {
+                "code": "equipment_mode",
+                "display_name": "Equipment Mode",
+                "version": 1,
+                "is_active": True,
+                "options": [
+                    {
+                        "code": "A",
+                        "label": "A",
+                        "sort_order": 1,
+                        "is_active": True,
+                    }
+                ],
+            }
+        ],
+        "validation_rules": [
+            {
+                "code": "required-pr-type",
+                "name": "PR Type Required",
+                "severity": "error",
+                "version": 1,
+                "scope": {
+                    "line_ids": [],
+                    "process_ids": [],
+                    "layer_ids": [],
+                    "step_seqs": [],
+                    "eqp_types": [],
+                    "area_names": [],
+                },
+                "spec": {
+                    "type": "required_if",
+                    "schema_version": 1,
+                    "when_parameter_code": "spin_speed",
+                    "equals": "100",
+                    "required_parameter_code": "pr_type",
+                },
+            }
+        ],
+    }
+    result["validation_basis_hash"] = snapshot_digest(result)
+    return result
+
+
+async def _seed_approved_project_with_snapshot(
+    session: AsyncSession,
+) -> int:
+    project = Project(
+        line_id="L2",
+        process_id="PROC_Y",
+        part_id="PART-FROZEN",
+        name="Approved project with snapshot",
+        status=ProjectStatus.APPROVED,
+        parameter_snapshot=_make_parameter_snapshot(),
+        profile=make_project_profile(process_name="PROC_Y"),
+    )
+
+    layer = SheetLayer(
+        layer_key="L2::PROC_Y::010::CLN",
+        step_seq="010",
+        layer_id="CLN",
+        sort_order=1,
+    )
+    condition = LayerCondition(label="base", condition_index=1, is_por=True)
+    condition.cell_values.extend(
+        [
+            CellValue(parameter_code="spin_speed", value_text="999"),
+            CellValue(parameter_code="pr_type", value_text="A"),
+            CellValue(parameter_code="ghost_code", value_text="z"),
+        ]
+    )
+    layer.conditions.append(condition)
+    project.layers.append(layer)
+
+    session.add(project)
+    await session.flush()
+    await session.commit()
+    return project.id
+
+
+async def test_sheet_uses_definition_view_for_approved_project(
+    db_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    project_id = await _seed_approved_project_with_snapshot(db_session)
+
+    resp = await db_client.get(f"/api/projects/{project_id}/sheet")
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert [column["parameter_code"] for column in body["columns"]] == [
+        "spin_speed",
+        "pr_type",
+    ]
+    assert body["frozen_choice_sets"] == [
+        {
+            "set_code": "equipment_mode",
+            "version": 1,
+            "is_active": True,
+            "items": [
+                {
+                    "code": "A",
+                    "label": "A",
+                    "sort_order": 1,
+                    "is_active": True,
+                }
+            ],
+        }
+    ]
+    row = body["rows"][0]
+    assert row["cells"] == {
+        "spin_speed": "999",
+        "pr_type": "A",
+    }
+    assert "ghost_code" not in row["cells"]
+
+
+async def test_sheet_rejects_invalid_snapshot_with_422(
+    db_session: AsyncSession, db_client: AsyncClient
+) -> None:
+    project = Project(
+        line_id="L2",
+        process_id="PROC_Y",
+        part_id="PART-BAD",
+        name="Approved project with bad snapshot",
+        status=ProjectStatus.APPROVED,
+        parameter_snapshot={"version": 1, "validation_basis_hash": "nope"},
+        profile=make_project_profile(process_name="PROC_Y"),
+    )
+    db_session.add(project)
+    await db_session.commit()
+
+    resp = await db_client.get(f"/api/projects/{project.id}/sheet")
+    assert resp.status_code == 422
+    assert resp.json()["code"] == "snapshot_invalid"

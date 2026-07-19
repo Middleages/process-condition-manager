@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "status": "pending",
+  "reason": "A real IdP tenant and production-equivalent trusted gateway are not available in this environment.",
+  "contract": "docs/phase-5-d10-sso-rbac.md",
+  "runbook": "docs/phase-5-sso-gateway-runbook.md",
+  "required_cases": [
+    "editor_group_mapping",
+    "reviewer_group_mapping",
+    "admin_group_mapping",
+    "unicode_presentation_fields",
+    "duplicate_header_rejection",
+    "forged_proxy_secret_rejection",
+    "issuer_mismatch_rejection",
+    "csrf_failure_rejection",
+    "session_expiry_and_logout"
+  ],
+  "executed_cases": [],
+  "updated_at": "2026-07-19T00:00:00+09:00"
+}

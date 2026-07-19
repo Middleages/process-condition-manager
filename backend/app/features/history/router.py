@@ -9,7 +9,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import get_current_user
+from app.core.auth import get_current_user, require_business_read
 from app.core.db import get_app_session
 from app.features.history.repository import HistoryRepository
 from app.features.history.schema import (
@@ -52,7 +52,11 @@ def _log_summary(route: str, started: float, count: int) -> None:
     )
 
 
-@router.get("/{project_id}/events", response_model=HistoryTimelineOut)
+@router.get(
+    "/{project_id}/events",
+    response_model=HistoryTimelineOut,
+    dependencies=[Depends(require_business_read)],
+)
 async def list_events(
     project_id: int,
     query: Annotated[HistoryTimelineQueryIn, Query()],
@@ -64,7 +68,11 @@ async def list_events(
     return result
 
 
-@router.get("/{project_id}/event-batches/{batch_id}", response_model=HistoryDetailOut)
+@router.get(
+    "/{project_id}/event-batches/{batch_id}",
+    response_model=HistoryDetailOut,
+    dependencies=[Depends(require_business_read)],
+)
 async def get_event_batch(
     project_id: int,
     batch_id: str,
@@ -77,7 +85,11 @@ async def get_event_batch(
     return result
 
 
-@router.get("/{project_id}/cell-history", response_model=HistoryCellHistoryOut)
+@router.get(
+    "/{project_id}/cell-history",
+    response_model=HistoryCellHistoryOut,
+    dependencies=[Depends(require_business_read)],
+)
 async def get_cell_history(
     project_id: int,
     service: ServiceDep,

@@ -7,7 +7,7 @@ import {
   type ReactNode,
   type RefObject,
 } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router-dom'
 
 import { getApiErrorMessage } from '@/api/client'
@@ -16,8 +16,20 @@ import { invalidateProjectBackboneDiffAfterMutation } from '@/api/backboneDiffCa
 import { invalidateProjectHistoryAfterMutation } from '@/api/historyCache'
 import type { HistoryJumpTargetOut } from '@/api/history'
 import { getProject } from '@/api/projects'
+import {
+  createProjectComment,
+  deleteProjectComment,
+  listProjectComments,
+  patchProjectComment,
+} from '@/api/projects'
 import { getSheet } from '@/api/sheets'
-import type { CellsPatchOut, ProjectOut, SheetOut } from '@/api/types'
+import type {
+  CellsPatchOut,
+  ProjectOut,
+  ChoiceOptionAggregate,
+  SheetFrozenChoiceSetOut,
+  SheetOut,
+} from '@/api/types'
 import type { BackboneDiffCountsOut } from '@/api/backboneDiffQuery'
 import { GlideConditionGrid } from '@/grid'
 import type {
@@ -26,6 +38,9 @@ import type {
   ConditionGridHandle,
   ConditionGridRow,
 } from '@/grid'
+import { createLiveChoiceResource } from '@/grid/choiceCell'
+import type { SheetChoiceResource } from '@/grid/types'
+import type { CommentStatusFact } from './validationState'
 import {
   commitPasteCallbackRuntime,
   distinctCategories,
@@ -86,6 +101,7 @@ import { useSheetChoiceSets } from './useSheetChoiceSets'
 import { useSheetEditing, type SheetEditing } from './useSheetEditing'
 import { useSheetValidation } from './useSheetValidation'
 import { VALIDATION_SERVER_FAILURE } from './validationState'
+import { useOptionalAuth } from '@/app/AuthContext'
 import {
   enrichValidationIssues,
   resolveValidationDefinitionAvailability,
@@ -123,6 +139,42 @@ const BACKBONE_DIFF_EMPTY_COUNTS: BackboneDiffCountsOut = {
   cleared_count: 0,
   removed_count: 0,
   unchanged_count: 0,
+}
+
+function buildReadOnlySheetChoiceResources(
+  frozenChoiceSets: readonly SheetFrozenChoiceSetOut[] | null | undefined,
+): ReadonlyMap<string, SheetChoiceResource> {
+  const resources = new Map<string, SheetChoiceResource>()
+  if (frozenChoiceSets === null || frozenChoiceSets === undefined) {
+    return resources
+  }
+
+  for (const choiceSet of frozenChoiceSets) {
+    const aggregate: ChoiceOptionAggregate = {
+      set_code: choiceSet.set_code,
+      version: choiceSet.version,
+      items: choiceSet.items,
+    }
+    resources.set(
+      choiceSet.set_code,
+      createLiveChoiceResource({
+        setCode: choiceSet.set_code,
+        targetVersion: choiceSet.version,
+        summaryVersion: choiceSet.version,
+        setIsActive: choiceSet.is_active,
+        displayAggregate: aggregate,
+        selectableAggregate: choiceSet.is_active ? aggregate : null,
+        selectionReady: choiceSet.is_active,
+        isStale: false,
+        loading: false,
+        error: null,
+        prepareToOpen: async () => undefined,
+        retry: async () => undefined,
+      }),
+    )
+  }
+
+  return resources
 }
 
 function mapBackboneDiffConditionRowMetadata(
@@ -180,6 +232,166 @@ function mapBackboneDiffFilterPayload(
 
 const COLUMN_SEARCH_STATUS_ID = 'sheet-column-search-status'
 const VALIDATION_DEFINITIONS_STATUS_ID = 'validation-definitions-status'
+
+interface CellCommentTarget {
+  conditionId: string
+  layerKey: string
+  parameterCode: string
+}
+
+function sheetCommentFacts(sheet: SheetOut): CommentStatusFact[] {
+  return (sheet.comment_counts ?? []).map((item) => ({
+    conditionId: String(item.condition_id),
+    parameterCode: item.parameter_code,
+    count: item.count,
+  }))
+}
+
+function CellCommentPanel({
+  projectId,
+  target,
+}: {
+  projectId: number
+  target: CellCommentTarget | null
+}) {
+  const queryClient = useQueryClient()
+  const auth = useOptionalAuth()
+  const user = auth?.user ?? null
+  const canComment = auth?.permissions.canComment ?? false
+  const [body, setBody] = useState('')
+  const queryKey = [
+    'project-comments',
+    projectId,
+    'target',
+    'cell',
+    target?.conditionId ?? null,
+    target?.parameterCode ?? null,
+  ] as const
+  const comments = useInfiniteQuery({
+    queryKey,
+    initialPageParam: null as number | null,
+    queryFn: ({ pageParam }) =>
+      listProjectComments(projectId, {
+        target: 'cell',
+        conditionId: Number(target!.conditionId),
+        layerKey: target!.layerKey,
+        parameterCode: target!.parameterCode,
+        beforeId: pageParam ?? undefined,
+      }),
+    getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
+    enabled: target !== null,
+  })
+  const commentItems = comments.data?.pages.flatMap((page) => page.items) ?? []
+  const invalidate = () => {
+    void queryClient.invalidateQueries({ queryKey: ['sheet', projectId] })
+    return queryClient.invalidateQueries({ queryKey })
+  }
+  const create = useMutation({
+    mutationFn: (text: string) =>
+      createProjectComment(projectId, {
+        body: text,
+        condition_id: Number(target!.conditionId),
+        layer_key: target!.layerKey,
+        parameter_code: target!.parameterCode,
+      }),
+    onSuccess: () => {
+      setBody('')
+      void invalidate()
+    },
+  })
+  const resolve = useMutation({
+    mutationFn: ({ id, resolved }: { id: number; resolved: boolean }) =>
+      patchProjectComment(projectId, id, { resolved }),
+    onSuccess: () => void invalidate(),
+  })
+  const remove = useMutation({
+    mutationFn: (id: number) => deleteProjectComment(projectId, id),
+    onSuccess: () => void invalidate(),
+  })
+
+  if (target === null) {
+    return <p className="text-xs text-muted">셀을 선택하면 해당 좌표의 댓글을 확인할 수 있습니다.</p>
+  }
+  const error = comments.error || create.error || resolve.error || remove.error
+  return (
+    <details className="rounded-md border border-border-subtle bg-surface p-2" data-testid="cell-comments-panel">
+      <summary className="cursor-pointer text-xs font-semibold text-ink-950">
+        셀 댓글 · {target.layerKey} / #{target.conditionId} / {target.parameterCode}
+        {comments.data ? ` (${commentItems.length})` : ''}
+      </summary>
+      <div className="mt-2 max-h-48 space-y-2 overflow-y-auto">
+        {canComment ? (
+          <form
+            className="flex gap-2"
+            onSubmit={(event) => {
+              event.preventDefault()
+              const text = body.trim()
+              if (text !== '' && !create.isPending) create.mutate(text)
+            }}
+          >
+            <input
+              aria-label="선택 셀 댓글"
+              className="input min-w-0 flex-1"
+              maxLength={4000}
+              value={body}
+              onChange={(event) => setBody(event.currentTarget.value)}
+            />
+            <Button disabled={body.trim() === '' || create.isPending} size="compact" type="submit">
+              등록
+            </Button>
+          </form>
+        ) : null}
+        {error ? <InlineAlert tone="error">{getApiErrorMessage(error)}</InlineAlert> : null}
+        {commentItems.map((comment) => (
+          <div className="rounded border border-border-subtle p-2 text-xs" key={comment.id}>
+            <div className="flex flex-wrap items-center gap-2">
+              <strong>#{comment.id} · {comment.author}</strong>
+              <span className="text-muted">{comment.resolved ? 'resolved' : 'open'}</span>
+              {canComment && !comment.deleted ? (
+                <Button
+                  size="compact"
+                  type="button"
+                  variant="secondary"
+                  onClick={() => resolve.mutate({ id: comment.id, resolved: !comment.resolved })}
+                >
+                  {comment.resolved ? '재열기' : '해결'}
+                </Button>
+              ) : null}
+              {!comment.deleted &&
+              (comment.author === user?.id || user?.roles.includes('admin')) ? (
+                <Button
+                  size="compact"
+                  type="button"
+                  variant="secondary"
+                  onClick={() => remove.mutate(comment.id)}
+                >
+                  삭제
+                </Button>
+              ) : null}
+            </div>
+            <p className="mt-1 whitespace-pre-wrap break-words">
+              {comment.body ?? '(삭제된 댓글)'}
+            </p>
+          </div>
+        ))}
+        {commentItems.length === 0 && !comments.isPending ? (
+          <p className="text-xs text-muted">댓글이 없습니다.</p>
+        ) : null}
+        {comments.hasNextPage ? (
+          <Button
+            size="compact"
+            type="button"
+            variant="secondary"
+            disabled={comments.isFetchingNextPage}
+            onClick={() => void comments.fetchNextPage()}
+          >
+            {comments.isFetchingNextPage ? '불러오는 중...' : '댓글 더 보기'}
+          </Button>
+        ) : null}
+      </div>
+    </details>
+  )
+}
 
 /**
  * 시트 조회 → 편집 가능한 그리드 렌더링 (T3 범위).
@@ -247,6 +459,21 @@ export function SheetView({ projectId }: { projectId: number }) {
     )
   }
 
+  const projectIsEditableDraft = project?.status === 'draft'
+  if (!projectIsEditableDraft) {
+    return (
+      <ReadOnlySheet
+        key={projectId}
+        projectId={projectId}
+        project={project}
+        projectError={projectError}
+        sheet={sheet}
+        data={data}
+        sheetRefetchError={sheetQuery.isError ? sheetQuery.error : null}
+      />
+    )
+  }
+
   return (
     <SheetEditor
       key={projectId}
@@ -258,6 +485,209 @@ export function SheetView({ projectId }: { projectId: number }) {
       sheetRefetch={sheetQuery.refetch}
       sheetRefetchError={sheetQuery.isError ? sheetQuery.error : null}
     />
+  )
+}
+
+function ReadOnlySheet({
+  projectId,
+  project,
+  projectError,
+  sheet,
+  data,
+  sheetRefetchError,
+}: {
+  projectId: number
+  project?: ProjectOut
+  projectError?: unknown
+  sheet: SheetOut
+  data: AdaptedConditionGridData
+  sheetRefetchError: unknown
+}) {
+  const categories = useMemo(() => distinctCategories(data.columns), [data.columns])
+  const choiceResources = useMemo(
+    () => buildReadOnlySheetChoiceResources(sheet.frozen_choice_sets),
+    [sheet.frozen_choice_sets],
+  )
+  const gridRef = useRef<ConditionGridHandle>(null)
+  const columnSearchRef = useRef<HTMLInputElement>(null)
+
+  const [activeCategory, setActiveCategory] = useState<string | null>(null)
+  const [columnQuery, setColumnQuery] = useState('')
+  const [columnSearchStatus, setColumnSearchStatus] = useState('')
+  const [pendingColumnJump, setPendingColumnJump] = useState<string | null>(null)
+  const [selectedCell, setSelectedCell] = useState<CellCommentTarget | null>(null)
+  const cellCommentFacts = useMemo(() => sheetCommentFacts(sheet), [sheet])
+
+  const porGaps = useMemo(() => layersMissingPor(data.rows), [data.rows])
+  const visibleColumns = useMemo(
+    () => visibleParameterColumns(data.columns, activeCategory),
+    [data.columns, activeCategory],
+  )
+  const gridData = useMemo(
+    () => ({
+      ...data,
+      rows: data.rows,
+      statuses: cellCommentFacts.map((comment) => ({
+        ...comment,
+        dirty: false,
+        commentCount: comment.count,
+      })),
+      choiceResources,
+    }),
+    [cellCommentFacts, data, choiceResources],
+  )
+
+  const callbacks = useMemo<ConditionGridCallbacks>(
+    () => ({
+      onCellEdit: () => undefined,
+      onPaste: () => undefined,
+      onPorChange: () => undefined,
+      onConditionActivate: () => undefined,
+      onCellActivate: setSelectedCell,
+      onCellHistoryRequest: () => undefined,
+    }),
+    [],
+  )
+
+  const jumpToColumn = useCallback(() => {
+    const result = resolveColumnJump(data.columns, activeCategory, columnQuery)
+    columnSearchRef.current?.focus()
+    if (result.kind === 'empty') {
+      setColumnSearchStatus('검색어를 입력하세요.')
+      return
+    }
+    if (result.kind === 'not-found') {
+      setColumnSearchStatus(`“${columnQuery.trim()}”에 맞는 컬럼이 없습니다.`)
+      return
+    }
+
+    const match = data.columns.find((column) => column.key === result.parameterCode)
+    setColumnSearchStatus(`${match?.headerName ?? result.parameterCode} 컬럼으로 이동했습니다.`)
+    if (result.requiresCategoryChange) {
+      setPendingColumnJump(result.parameterCode)
+      setActiveCategory(result.categoryCode)
+      return
+    }
+    gridRef.current?.scrollToColumn(result.parameterCode)
+  }, [activeCategory, columnQuery, data.columns])
+
+  const selectCategory = useCallback((category: string | null) => {
+    setPendingColumnJump(null)
+    setColumnSearchStatus('')
+    setActiveCategory(category)
+  }, [])
+
+  useEffect(() => {
+    if (pendingColumnJump === null) return
+    if (!visibleColumns.some((column) => column.key === pendingColumnJump)) return
+    gridRef.current?.scrollToColumn(pendingColumnJump)
+    setPendingColumnJump(null)
+  }, [pendingColumnJump, visibleColumns])
+
+  return (
+    <SheetFocusFrame
+      header={<FocusHeader projectId={projectId} project={project} />}
+      controls={
+        <div className="space-y-2 border-b border-border-subtle bg-canvas px-3 py-2">
+          {projectError != null ? <ProjectMetadataWarning error={projectError} /> : null}
+          {sheetRefetchError != null ? (
+            <InlineAlert
+              className="rounded-md px-2 py-1.5 text-xs"
+              data-testid="sheet-refetch-warning"
+              tone="warning"
+            >
+              최신 시트 조회에 실패했습니다. 기존 데이터와 미저장 편집은 유지됩니다:
+              {getApiErrorMessage(sheetRefetchError)}
+            </InlineAlert>
+          ) : null}
+          {porGaps.length > 0 ? (
+            <InlineAlert
+              className="rounded-md px-2 py-1.5 text-xs"
+              data-testid="por-warning"
+              tone="warning"
+            >
+              POR 미지정 Layer <strong>{porGaps.length}</strong>개 —
+              {porGaps.map((group) => group.layerLabel).join(', ')}
+            </InlineAlert>
+          ) : null}
+          <div className="flex min-w-0 flex-wrap items-center gap-2" data-testid="sheet-category-tabs">
+            <SheetMetrics rowCount={data.rows.length} colCount={data.columns.length} />
+            {categories.length > 0 ? (
+              <>
+                <CategoryTab
+                  active={activeCategory === null}
+                  disabled={false}
+                  onClick={() => selectCategory(null)}
+                >
+                  전체
+                </CategoryTab>
+                {categories.map((category) => (
+                  <CategoryTab
+                    key={category}
+                    active={activeCategory === category}
+                    disabled={false}
+                    onClick={() => selectCategory(category)}
+                  >
+                    {category}
+                  </CategoryTab>
+                  ))}
+              </>
+            ) : null}
+            <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2">
+              <label
+                className="shrink-0 text-xs font-semibold text-ink-950"
+                htmlFor="sheet-column-search"
+              >
+                컬럼 검색
+              </label>
+              <input
+                aria-describedby={COLUMN_SEARCH_STATUS_ID}
+                className="input w-56 min-w-36"
+                id="sheet-column-search"
+                placeholder="컬럼 검색 (예: ETCH_P012)"
+                ref={columnSearchRef}
+                value={columnQuery}
+                data-testid="sheet-column-search"
+                onChange={(event) => setColumnQuery(event.currentTarget.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') jumpToColumn()
+                }}
+              />
+              <Button
+                className="shrink-0"
+                data-testid="sheet-column-jump"
+                onClick={jumpToColumn}
+                size="compact"
+                type="button"
+                variant="secondary"
+              >
+                컬럼 점프
+              </Button>
+              <span
+                aria-atomic="true"
+                aria-live="polite"
+                className="max-w-64 truncate text-xs text-muted"
+                id={COLUMN_SEARCH_STATUS_ID}
+                role="status"
+              >
+                {columnSearchStatus}
+              </span>
+            </div>
+          </div>
+          <p className="text-xs text-muted">읽기 전용 모드입니다. 초안 상태에서만 편집이 가능합니다.</p>
+          <CellCommentPanel projectId={projectId} target={selectedCell} />
+        </div>
+      }
+    >
+      <div className="h-full min-h-0 min-w-0 overflow-hidden bg-surface" data-sheet-read-only>
+        <GlideConditionGrid
+          ref={gridRef}
+          data={gridData}
+          view={{ readOnly: true, activeCategory }}
+          callbacks={callbacks}
+        />
+      </div>
+    </SheetFocusFrame>
   )
 }
 
@@ -427,6 +857,7 @@ function SheetEditor({
     ],
   )
   const dirtyStatusFacts = useMemo(() => [...dirtyCells.values()], [dirtyCells])
+  const cellCommentFacts = useMemo(() => sheetCommentFacts(sheet), [sheet])
   const refetchSheetForValidation = useCallback(async () => {
     await sheetRefetch()
   }, [sheetRefetch])
@@ -440,6 +871,7 @@ function SheetEditor({
     persistedGeneration: editing.persistedGeneration,
     persistenceIdle: editing.persistenceIdle,
     dirtyCells: dirtyStatusFacts,
+    comments: cellCommentFacts,
     getPersistenceSnapshot: editing.getPersistenceSnapshot,
     waitForPersistence: editing.waitForPersistence,
     refetchSheet: refetchSheetForValidation,
@@ -601,6 +1033,7 @@ function SheetEditor({
   // 분리된 즉시 API 호출(runStructuralChange)이고, 성공하면 시트 쿼리를 무효화해 다시 조회한다
   // (행 수/POR 지정이 바뀌는 구조적 변화라 부분 캐시 반영보다 재조회가 안전·단순).
   const [activeRow, setActiveRow] = useState<{ conditionId: string; layerKey: string } | null>(null)
+  const [selectedCell, setSelectedCell] = useState<CellCommentTarget | null>(null)
   const [structError, setStructError] = useState<string | null>(null)
   const [structBusy, setStructBusy] = useState(false)
   const structInFlightRef = useRef(false) // 구조 변경 중복 실행(빠른 연타) 방지 — 동기 가드.
@@ -742,6 +1175,7 @@ function SheetEditor({
         setStructError(null)
         setActiveRow(payload)
       },
+      onCellActivate: setSelectedCell,
       onCellHistoryRequest: (payload) => {
         if (historyWorkbench.onCellHistoryRequest(payload)) {
           workbenchState.selectMode('history')
@@ -1347,6 +1781,7 @@ function SheetEditor({
               onClear={clearActive}
             />
           ) : null}
+          <CellCommentPanel projectId={projectId} target={selectedCell} />
           <InteractionGuide editing={editing} mode={interaction.mode} />
         </div>
       }

@@ -31,6 +31,7 @@ from app.domain.backbone.snapshot import (
     BackboneSnapshotSource,
     serialize_backbone_snapshot,
 )
+from app.domain.parameters.snapshot import snapshot_digest
 from app.domain.parameters.types import ValueType
 from app.features.history.cursor import HistoryMemberFilterScope
 from app.features.history.projection import HistoryEventRow, project_backbone_capture
@@ -1292,7 +1293,7 @@ async def test_sqlite_repository_deleted_proof_uses_payload_snapshot_beyond_late
         assert proof.remove_event_id == fixture.remove_event_id
 
 
-async def test_sqlite_bulk_coordinate_proof_is_one_query_and_project_registry_bound(
+async def test_sqlite_bulk_coordinate_proof_is_two_bounded_queries_and_project_registry_bound(
     sqlite_engine: AsyncEngine,
     sqlite_factory: async_sessionmaker[AsyncSession],
 ) -> None:
@@ -1375,7 +1376,7 @@ async def test_sqlite_bulk_coordinate_proof_is_one_query_and_project_registry_bo
         finally:
             event.remove(sqlite_engine.sync_engine, "before_cursor_execute", _capture_sql)
 
-        assert len(statements) == 1
+        assert len(statements) == 2
         assert proofs[(fixture.current_condition_id, "param_000")].state == "current"
         assert proofs[(fixture.current_condition_id, "param_001")].state == "current"
         assert (fixture.current_condition_id, "unknown_parameter") not in proofs
@@ -1391,8 +1392,71 @@ async def test_sqlite_bulk_coordinate_proof_is_one_query_and_project_registry_bo
         assert (foreign_condition.id, "param_000") not in proofs
 
 
+async def test_approved_coordinate_proof_uses_frozen_parameter_codes(
+    sqlite_engine: AsyncEngine,
+    sqlite_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with sqlite_factory() as session:
+        fixture = await _seed_small_history_fixture(session)
+        project = await session.get(Project, fixture.project_id)
+        assert project is not None
+        project.status = ProjectStatus.APPROVED
+        project.parameter_snapshot = snapshot = {
+            "version": 3,
+            "categories": [],
+            "parameters": [
+                {
+                    "code": "param_000",
+                    "display_name": "Frozen parameter",
+                    "description": None,
+                    "value_type": "text",
+                    "category_code": None,
+                    "unit": None,
+                    "min_value": None,
+                    "max_value": None,
+                    "required": False,
+                    "pattern": None,
+                    "pattern_hint": None,
+                    "sort_order": 0,
+                }
+            ],
+            "choice_sets": [],
+            "validation_rules": [],
+        }
+        snapshot["validation_basis_hash"] = snapshot_digest(snapshot)
+        await session.commit()
+
+        statements: list[str] = []
+
+        def _capture_sql(
+            _conn: object,
+            _cursor: object,
+            statement: str,
+            _parameters: object,
+            _context: object,
+            _executemany: bool,
+        ) -> None:
+            statements.append(statement.lower())
+
+        event.listen(sqlite_engine.sync_engine, "before_cursor_execute", _capture_sql)
+        try:
+            proofs = await HistoryRepository(session).prove_cell_coordinates(
+                fixture.project_id,
+                (
+                    (fixture.current_condition_id, "param_000"),
+                    (fixture.current_condition_id, "param_001"),
+                ),
+            )
+        finally:
+            event.remove(sqlite_engine.sync_engine, "before_cursor_execute", _capture_sql)
+
+        assert (fixture.current_condition_id, "param_000") in proofs
+        assert (fixture.current_condition_id, "param_001") not in proofs
+        assert all(" join parameter " not in statement for statement in statements)
+
+
 @pytest.mark.skipif(_PG_URL is None, reason="APP_TEST_DATABASE_URL 미설정")
-async def test_postgres_capture_descriptor_payload_sort_and_bulk_proof_use_three_queries(
+async def test_postgres_capture_descriptor_payload_sort_and_bulk_proof_use_four_queries(
     pg_engine: AsyncEngine,
     pg_factory: async_sessionmaker[AsyncSession],
 ) -> None:
@@ -1427,7 +1491,7 @@ async def test_postgres_capture_descriptor_payload_sort_and_bulk_proof_use_three
             event.remove(pg_engine.sync_engine, "before_cursor_execute", _capture_sql)
 
         projection = project_backbone_capture(rows)
-        assert len(statements) == 3
+        assert len(statements) == 4
         assert descriptor.project_exists is True
         assert descriptor.batch_exists is True
         assert descriptor.total_event_count == 2

@@ -5,6 +5,8 @@
 """
 
 from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from app.domain.errors import DomainError
@@ -67,6 +69,13 @@ class DomainValidationError(AppError):
     code = "validation_error"
 
 
+class ProjectReadOnlyError(AppError):
+    """Non-draft 프로젝트 편집/락 시도 차단."""
+
+    status_code = 409
+    code = "project_read_only"
+
+
 async def _app_error_handler(request: Request, exc: Exception) -> JSONResponse:
     """AppError 계열 예외를 표준 JSON 오류 응답으로 변환한다."""
     assert isinstance(exc, AppError)  # register 시점에 AppError로만 배선됨
@@ -85,7 +94,26 @@ async def _domain_error_handler(request: Request, exc: Exception) -> JSONRespons
     )
 
 
+async def _request_validation_error_handler(
+    request: Request, exc: Exception
+) -> JSONResponse:
+    assert isinstance(exc, RequestValidationError)
+    action_error = request.url.path.endswith("/transitions") and any(
+        tuple(error.get("loc", ())) == ("body", "action") for error in exc.errors()
+    )
+    if action_error:
+        return JSONResponse(
+            status_code=422,
+            content={
+                "code": "workflow_action_invalid",
+                "message": "지원하지 않는 workflow action입니다",
+            },
+        )
+    return JSONResponse(status_code=422, content={"detail": jsonable_encoder(exc.errors())})
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     """앱에 공통 예외 핸들러를 등록한다."""
     app.add_exception_handler(AppError, _app_error_handler)
     app.add_exception_handler(DomainError, _domain_error_handler)
+    app.add_exception_handler(RequestValidationError, _request_validation_error_handler)

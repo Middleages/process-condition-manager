@@ -21,6 +21,7 @@ from sqlalchemy.orm import aliased
 
 from app.core.errors import ConflictError
 from app.domain.backbone.snapshot import parse_backbone_snapshot
+from app.domain.parameters.definition_view import DefinitionView
 from app.features.history.cursor import HistoryMemberFilterScope
 from app.features.history.projection import HistoryEntryRole, HistoryEventRow
 from app.models.parameter import Parameter
@@ -29,6 +30,7 @@ from app.models.project import (
     ChangeEventType,
     LayerCondition,
     Project,
+    ProjectStatus,
     SheetLayer,
 )
 
@@ -601,6 +603,22 @@ class HistoryRepository:
 
         condition_ids = tuple(sorted({condition_id for condition_id, _ in normalized}))
         parameter_codes = tuple(sorted({parameter_code for _, parameter_code in normalized}))
+        project_definition = (
+            await self.session.execute(
+                select(Project.status, Project.parameter_snapshot).where(Project.id == project_id)
+            )
+        ).one_or_none()
+        frozen_parameter_codes: set[str] | None = None
+        if (
+            project_definition is not None
+            and project_definition.status in {ProjectStatus.APPROVED, ProjectStatus.ARCHIVED}
+        ):
+            frozen_parameter_codes = {
+                str(column["code"])
+                for column in DefinitionView.from_snapshot(
+                    project_definition.parameter_snapshot
+                ).columns()
+            }
         null_event_id = sa_cast(literal(None), ChangeEvent.__table__.c.id.type)
         null_parameter_code = sa_cast(literal(None), String)
         null_payload_text = sa_cast(literal(None), String)
@@ -705,15 +723,12 @@ class HistoryRepository:
             remove_ranked.c.payload_text,
         ).where(remove_ranked.c.row_number == 1)
 
+        evidence_queries = [current_condition_rows]
+        if frozen_parameter_codes is None:
+            evidence_queries.append(current_coordinate_rows)
+        evidence_queries.extend((cell_event_rows, remove_event_rows))
         evidence = (
-            await self.session.execute(
-                union_all(
-                    current_condition_rows,
-                    current_coordinate_rows,
-                    cell_event_rows,
-                    remove_event_rows,
-                )
-            )
+            await self.session.execute(union_all(*evidence_queries))
         ).mappings()
 
         current_layers: dict[int, str | None] = {}
@@ -747,6 +762,13 @@ class HistoryRepository:
                 if isinstance(decoded, Mapping):
                     payload = typing_cast(Mapping[str, object], decoded)
             remove_events[condition_id] = (int(row["event_id"]), layer_key, payload)
+
+        if frozen_parameter_codes is not None:
+            current_coordinates.update(
+                (condition_id, parameter_code)
+                for condition_id, parameter_code in normalized
+                if condition_id in current_layers and parameter_code in frozen_parameter_codes
+            )
 
         proofs: dict[HistoryCellCoordinateKey, HistoryCellCoordinateProof] = {}
         for condition_id, parameter_code in normalized:

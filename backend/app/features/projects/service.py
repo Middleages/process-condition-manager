@@ -1,11 +1,13 @@
 """프로젝트 생성/백본 서비스."""
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
+from app.core.auth import Permission
 from app.core.errors import ConflictError, DomainValidationError, NotFoundError
 from app.core.locks import utcnow
 from app.domain.backbone import (
@@ -25,6 +27,8 @@ from app.domain.backbone import (
 from app.domain.choices.rules import ResolvedChoice, normalize_choice_code
 from app.domain.decimal_values import normalize_optional_decimal
 from app.domain.errors import RuleViolationError
+from app.domain.parameters.definition_view import DefinitionView
+from app.domain.workflow import ProjectStatus, assert_project_mutable_for_editor
 from app.features.choice_sets.repository import ChoiceSetRepository
 from app.features.projects.repository import ProjectRepository, ProjectSummary
 from app.features.projects.schema import (
@@ -46,10 +50,25 @@ from app.models.project import (
     LayerCondition,
     Project,
     ProjectProfile,
-    ProjectStatus,
     SheetLayer,
 )
 from app.project_metadata import ProjectMetadataProvider, ProjectProfileSeed
+
+_ALLOWED_ACTIONS_BY_STATUS: dict[ProjectStatus, tuple[str, ...]] = {
+    ProjectStatus.DRAFT: ("request_review",),
+    ProjectStatus.REVIEW: ("approve", "reject"),
+    ProjectStatus.REJECTED: ("return_to_draft",),
+    ProjectStatus.APPROVED: ("create_revision",),
+    ProjectStatus.ARCHIVED: tuple(),
+}
+
+_ACTION_PERMISSION_MAP = {
+    "request_review": Permission.PROJECT_REVIEW_REQUEST,
+    "approve": Permission.PROJECT_REVIEW_DECIDE,
+    "reject": Permission.PROJECT_REVIEW_DECIDE,
+    "return_to_draft": Permission.PROJECT_REVIEW_REQUEST,
+    "create_revision": Permission.PROJECT_REVISION_CREATE,
+}
 
 _CHOICE_FIELDS = {
     "device_type_code": "device_type",
@@ -104,6 +123,7 @@ _PATCH_FIELD_ORDER = (
     "metal_layer_count",
 )
 
+
 @dataclass(frozen=True, slots=True)
 class _CapturedLayer:
     """한 source layer의 immutable backbone snapshot."""
@@ -135,7 +155,7 @@ class ProjectService:
         cursor: int | None = None,
         limit: int = 50,
     ) -> tuple[list[ProjectSummary], int | None]:
-        return await self.repo.list_summaries(
+        summaries, next_cursor = await self.repo.list_summaries(
             query=query,
             status=status,
             device_type_code=device_type_code,
@@ -143,6 +163,57 @@ class ProjectService:
             cursor=cursor,
             limit=limit,
         )
+        live_keys = {
+            (set_code, value)
+            for summary in summaries
+            if not _uses_frozen_definitions(summary.project)
+            for field, set_code in _CHOICE_FIELDS.items()
+            if (value := getattr(summary.profile, field)) is not None
+        }
+        live_resolved = await self.choice_repo.resolve_options(
+            live_keys, include_inactive=True, for_write=False
+        )
+        missing = sorted(live_keys - set(live_resolved))
+        if missing:
+            identities = ", ".join(f"{set_code}/{code}" for set_code, code in missing)
+            raise DomainValidationError(f"Project Profile 선택지를 해석할 수 없다: {identities}")
+
+        projected: list[ProjectSummary] = []
+        for summary in summaries:
+            resolved = (
+                self._resolve_frozen_profile_choices(summary.project, summary.profile)
+                if _uses_frozen_definitions(summary.project)
+                else live_resolved
+            )
+            projected.append(
+                replace(
+                    summary,
+                    device_type=resolved[("device_type", summary.profile.device_type_code)],
+                    project_category=resolved[
+                        ("project_category", summary.profile.project_category_code)
+                    ],
+                )
+            )
+        return projected, next_cursor
+
+    async def get_successor_id(self, project_id: int) -> int | None:
+        successor_id = await self.repo.session.scalar(
+            select(Project.id).where(Project.revision_of_id == project_id).limit(1)
+        )
+        return successor_id
+
+    def allowed_actions_for_status(
+        self, status: ProjectStatus, permissions: tuple[Permission, ...]
+    ) -> list[str]:
+        if not permissions:
+            return []
+
+        allowed = []
+        for action in _ALLOWED_ACTIONS_BY_STATUS.get(status, ()):
+            required = _ACTION_PERMISSION_MAP[action]
+            if required in permissions:
+                allowed.append(action)
+        return allowed
 
     async def get_project(self, project_id: int) -> Project:
         project = await self.repo.get(project_id)
@@ -218,9 +289,7 @@ class ProjectService:
 
     async def create_project(self, data: ProjectCreate, actor: str) -> Project:
         line_id = _normalize_required_text(data.line_id, "LINE", max_length=64)
-        process_id = _normalize_required_text(
-            data.process_id, "Process", max_length=128
-        )
+        process_id = _normalize_required_text(data.process_id, "Process", max_length=128)
         part_id = _normalize_required_text(data.part_id, "PARTID", max_length=128)
         name = _normalize_required_text(data.name, "프로젝트 이름", max_length=256)
 
@@ -281,9 +350,7 @@ class ProjectService:
             for field, set_code in _CHOICE_FIELDS.items()
             if (value := final_values[field]) is not None
         }
-        locked_sets = await self.choice_repo.lock_sets_for_write(
-            _PROFILE_CHOICE_SET_CODES
-        )
+        locked_sets = await self.choice_repo.lock_sets_for_write(_PROFILE_CHOICE_SET_CODES)
         await self.choice_repo.resolve_active_options(
             choice_keys,
             for_write=True,
@@ -318,6 +385,9 @@ class ProjectService:
 
         self.repo.add(project)
         await self._flush_or_conflict()
+        if project.revision_root_id is None:
+            project.revision_root_id = project.id
+            await self.repo.session.flush()
 
         self.repo.session.add(
             ChangeEvent(
@@ -347,9 +417,7 @@ class ProjectService:
             )
         )
         if backbone is not None:
-            for target_layer, match in zip(
-                project_layers, match_result.matches, strict=True
-            ):
+            for target_layer, match in zip(project_layers, match_result.matches, strict=True):
                 if match.source_layer_key is None:
                     continue
                 captured = captured_layers[match.source_layer_key]
@@ -385,10 +453,17 @@ class ProjectService:
         row = await self.repo.get_profile(project_id)
         if row is None:
             raise NotFoundError(f"프로젝트 Profile을 찾을 수 없다: {project_id}")
-        return await self.profile_out(row[1])
+        return await self.profile_out(row[0], row[1])
 
-    async def profile_out(self, profile: ProjectProfile) -> ProjectProfileOut:
-        resolved = await self._resolve_profile_choices(profile)
+    async def profile_out(
+        self, project: Project, profile: ProjectProfile | None = None
+    ) -> ProjectProfileOut:
+        profile = project.profile if profile is None else profile
+        resolved = (
+            self._resolve_frozen_profile_choices(project, profile)
+            if _uses_frozen_definitions(project)
+            else await self._resolve_profile_choices(profile)
+        )
         return _profile_out(profile, resolved)
 
     async def patch_profile(
@@ -398,6 +473,7 @@ class ProjectService:
         if row is None:
             raise NotFoundError(f"프로젝트 Profile을 찾을 수 없다: {project_id}")
         project, profile = row
+        assert_project_mutable_for_editor(project.status)
 
         supplied = data.model_fields_set
         candidates: dict[str, str | None] = {}
@@ -453,7 +529,7 @@ class ProjectService:
                 changes[field] = {"old": old, "new": new}
 
         if not changes:
-            return await self.profile_out(profile)
+            return await self.profile_out(project)
 
         for field in changes:
             setattr(profile, field, candidates[field])
@@ -474,7 +550,7 @@ class ProjectService:
             )
         )
         await self.repo.session.flush()
-        return await self.profile_out(profile)
+        return await self.profile_out(project)
 
     def _validate_patch_choices(
         self,
@@ -489,19 +565,13 @@ class ProjectService:
             new = candidates[field]
             if new is None:
                 if old is not None and (set_code, old) not in resolved:
-                    raise DomainValidationError(
-                        f"저장된 선택지를 해석할 수 없다: {set_code}/{old}"
-                    )
+                    raise DomainValidationError(f"저장된 선택지를 해석할 수 없다: {set_code}/{old}")
                 continue
             choice = resolved.get((set_code, new))
             is_known_inactive_noop = new == old and choice is not None
-            is_active_new_value = (
-                new != old and choice is not None and choice.effective_is_active
-            )
+            is_active_new_value = new != old and choice is not None and choice.effective_is_active
             if not is_known_inactive_noop and not is_active_new_value:
-                raise DomainValidationError(
-                    f"활성 선택지가 아니다: {set_code}/{new}"
-                )
+                raise DomainValidationError(f"활성 선택지가 아니다: {set_code}/{new}")
 
     async def _resolve_profile_choices(
         self, profile: ProjectProfile
@@ -520,12 +590,28 @@ class ProjectService:
             raise DomainValidationError(f"Project Profile 선택지를 해석할 수 없다: {identities}")
         return resolved
 
+    def _resolve_frozen_profile_choices(
+        self,
+        project: Project,
+        profile: ProjectProfile,
+    ) -> dict[tuple[str, str], ResolvedChoice]:
+        view = DefinitionView.from_snapshot(project.parameter_snapshot)
+        resolved: dict[tuple[str, str], ResolvedChoice] = {}
+        for field, set_code in _CHOICE_FIELDS.items():
+            option_code = getattr(profile, field)
+            if option_code is None:
+                continue
+            payload = view.resolve_choice(set_code, option_code)
+            resolved[(set_code, option_code)] = ResolvedChoice(**payload)
+        return resolved
+
     async def replace_layer_backbone(
         self, project_id: int, layer_key: str, data: BackboneReplaceIn, actor: str
     ) -> Project:
         project = await self.repo.get_for_update(project_id)
         if project is None:
             raise NotFoundError(f"프로젝트를 찾을 수 없다: {project_id}")
+        assert_project_mutable_for_editor(project.status)
         source_project = await self.repo.capture_source_project(
             data.source_project_id,
             locked_target=project if data.source_project_id == project.id else None,
@@ -740,9 +826,7 @@ def _normalize_required_text(
     if not value:
         raise DomainValidationError(f"{field_name}은(는) 비어 있을 수 없다")
     if max_length is not None and len(value) > max_length:
-        raise DomainValidationError(
-            f"{field_name}은(는) {max_length}자 이하여야 한다"
-        )
+        raise DomainValidationError(f"{field_name}은(는) {max_length}자 이하여야 한다")
     return value
 
 
@@ -785,9 +869,7 @@ def _choice_event_value(
         return None
     choice = resolved.get((set_code, code))
     if choice is None:
-        raise DomainValidationError(
-            f"Project Profile 선택지를 해석할 수 없다: {set_code}/{code}"
-        )
+        raise DomainValidationError(f"Project Profile 선택지를 해석할 수 없다: {set_code}/{code}")
     return {"code": code, "label": choice.label}
 
 
@@ -798,12 +880,8 @@ def _profile_out(
     return ProjectProfileOut(
         project_id=profile.project_id,
         process_name=profile.process_name,
-        device_type=_choice_out(
-            resolved[("device_type", profile.device_type_code)]
-        ),
-        project_category=_choice_out(
-            resolved[("project_category", profile.project_category_code)]
-        ),
+        device_type=_choice_out(resolved[("device_type", profile.device_type_code)]),
+        project_category=_choice_out(resolved[("project_category", profile.project_category_code)]),
         comment=profile.comment,
         active_direction=_optional_choice_out(
             resolved, "active_direction", profile.active_direction_code
@@ -844,6 +922,10 @@ def _status_priority(status: ProjectStatus) -> int:
     return order.get(status, 0)
 
 
+def _uses_frozen_definitions(project: Project) -> bool:
+    return project.status in {ProjectStatus.APPROVED, ProjectStatus.ARCHIVED}
+
+
 def _duplicate_conflict(existing: Project) -> ConflictError:
     # P1-D6: 기존 프로젝트로 유도할 수 있도록 식별자를 실어 보낸다.
     identity = f"{existing.line_id}/{existing.process_id}/{existing.part_id}"
@@ -866,13 +948,9 @@ def _validate_overrides(
     source_keys = {layer.layer_key for layer in source_layers}
     for override in overrides:
         if override.target_layer_key not in target_keys:
-            raise DomainValidationError(
-                f"수동 매칭 대상 layer가 없다: {override.target_layer_key}"
-            )
+            raise DomainValidationError(f"수동 매칭 대상 layer가 없다: {override.target_layer_key}")
         if override.source_layer_key not in source_keys:
-            raise DomainValidationError(
-                f"수동 매칭 백본 layer가 없다: {override.source_layer_key}"
-            )
+            raise DomainValidationError(f"수동 매칭 백본 layer가 없다: {override.source_layer_key}")
 
 
 def _match_inputs_from_ingest(layers: list[LayerInfo]) -> list[LayerMatchInput]:

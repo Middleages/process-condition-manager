@@ -6,7 +6,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import get_current_user
+from app.core.auth import get_current_user, require_business_read, require_registry_manage
 from app.core.db import get_app_session
 from app.features.choice_sets.repository import ChoiceSetRepository
 from app.features.choice_sets.schema import (
@@ -42,7 +42,11 @@ async def get_service(
 ServiceDep = Annotated[ChoiceSetService, Depends(get_service, scope="function")]
 
 
-@router.get("", response_model=list[ChoiceSetSummaryOut])
+@router.get(
+    "",
+    response_model=list[ChoiceSetSummaryOut],
+    dependencies=[Depends(require_business_read)],
+)
 async def list_choice_sets(
     service: ServiceDep,
     include_inactive: bool = False,
@@ -54,6 +58,7 @@ async def list_choice_sets(
     "",
     response_model=ChoiceSetSummaryOut,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_registry_manage)],
 )
 async def create_choice_set(
     data: ChoiceSetCreateIn, service: ServiceDep
@@ -61,19 +66,31 @@ async def create_choice_set(
     return await service.create_set(data)
 
 
-@router.get("/{set_code}", response_model=ChoiceSetSummaryOut)
+@router.get(
+    "/{set_code}",
+    response_model=ChoiceSetSummaryOut,
+    dependencies=[Depends(require_business_read)],
+)
 async def get_choice_set(set_code: str, service: ServiceDep) -> ChoiceSetSummaryOut:
     return await service.get_set(set_code)
 
 
-@router.patch("/{set_code}", response_model=ChoiceSetSummaryOut)
+@router.patch(
+    "/{set_code}",
+    response_model=ChoiceSetSummaryOut,
+    dependencies=[Depends(require_registry_manage)],
+)
 async def patch_choice_set(
     set_code: str, data: ChoiceSetPatchIn, service: ServiceDep
 ) -> ChoiceSetSummaryOut:
     return await service.patch_set(set_code, data)
 
 
-@router.get("/{set_code}/options", response_model=ChoiceOptionPageOut)
+@router.get(
+    "/{set_code}/options",
+    response_model=ChoiceOptionPageOut,
+    dependencies=[Depends(require_business_read)],
+)
 async def list_options(
     set_code: str,
     service: ServiceDep,
@@ -97,6 +114,7 @@ async def list_options(
     "/{set_code}/options",
     response_model=ChoiceOptionMutationOut,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_registry_manage)],
 )
 async def create_choice_option(
     set_code: str, data: ChoiceOptionCreateIn, service: ServiceDep
@@ -105,7 +123,9 @@ async def create_choice_option(
 
 
 @router.patch(
-    "/{set_code}/options/{option_code}", response_model=ChoiceOptionMutationOut
+    "/{set_code}/options/{option_code}",
+    response_model=ChoiceOptionMutationOut,
+    dependencies=[Depends(require_registry_manage)],
 )
 async def patch_choice_option(
     set_code: str,
@@ -116,21 +136,33 @@ async def patch_choice_option(
     return await service.patch_option(set_code, option_code, data)
 
 
-@router.put("/{set_code}/option-order", response_model=ChoiceSetSummaryOut)
+@router.put(
+    "/{set_code}/option-order",
+    response_model=ChoiceSetSummaryOut,
+    dependencies=[Depends(require_registry_manage)],
+)
 async def reorder_options(
     set_code: str, data: ChoiceOptionOrderIn, service: ServiceDep
 ) -> ChoiceSetSummaryOut:
     return await service.reorder_options(set_code, data)
 
 
-@router.post("/{set_code}/import/preview", response_model=ChoiceImportPreviewOut)
+@router.post(
+    "/{set_code}/import/preview",
+    response_model=ChoiceImportPreviewOut,
+    dependencies=[Depends(require_business_read)],
+)
 async def preview_choice_import(
     set_code: str, data: ChoiceImportIn, service: ServiceDep
 ) -> ChoiceImportPreviewOut:
     return await service.import_preview(set_code, data)
 
 
-@router.post("/{set_code}/import", response_model=ChoiceImportApplyOut)
+@router.post(
+    "/{set_code}/import",
+    response_model=ChoiceImportApplyOut,
+    dependencies=[Depends(require_registry_manage)],
+)
 async def apply_choice_import(
     set_code: str, data: ChoiceImportIn, service: ServiceDep
 ) -> ChoiceImportApplyOut:

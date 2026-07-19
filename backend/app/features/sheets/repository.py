@@ -5,13 +5,13 @@ live 파라미터/카테고리 조회만 제공한다. features/ 간 결합을 �
 직접 조회한다 (parameters 슬라이스를 import하지 않는다).
 """
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.choice import ChoiceSet
 from app.models.parameter import Parameter, ParameterCategory
-from app.models.project import EditLock, LayerCondition, Project, SheetLayer
+from app.models.project import EditLock, LayerCondition, Project, ReviewComment, SheetLayer
 from app.models.validation import ValidationRule
 
 
@@ -72,3 +72,24 @@ class SheetRepository:
         locks 슬라이스를 import하지 않고 edit_lock 모델을 직접(PK) 조회한다.
         """
         return await self.session.get(EditLock, project_id)
+
+    async def list_open_comment_counts(self, project_id: int) -> list[tuple[int, str, int]]:
+        stmt = (
+            select(
+                ReviewComment.condition_id,
+                ReviewComment.parameter_code,
+                func.count(ReviewComment.id),
+            )
+            .where(
+                ReviewComment.project_id == project_id,
+                ReviewComment.condition_id.is_not(None),
+                ReviewComment.parameter_code.is_not(None),
+                ReviewComment.resolved.is_(False),
+                ReviewComment.deleted.is_(False),
+            )
+            .group_by(ReviewComment.condition_id, ReviewComment.parameter_code)
+        )
+        return [
+            (int(condition_id), str(parameter_code), int(count))
+            for condition_id, parameter_code, count in (await self.session.execute(stmt)).all()
+        ]

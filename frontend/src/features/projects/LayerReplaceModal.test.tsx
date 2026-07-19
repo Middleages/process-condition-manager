@@ -30,6 +30,11 @@ const project: ProjectOut = {
   part_id: 'P-42',
   name: 'Coat baseline',
   status: 'draft',
+  version: 1,
+  revision_root_id: null,
+  predecessor_project_id: null,
+  successor_project_id: null,
+  allowed_actions: ['request_review', 'approve'],
   profile: {
     project_id: 42,
     process_name: 'Coat',

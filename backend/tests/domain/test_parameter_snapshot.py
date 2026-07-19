@@ -191,6 +191,7 @@ def test_snapshot_filters_inactive_rows_but_keeps_an_inactive_referenced_set() -
         "unit": "um",
         "min_value": "0.1000",
         "max_value": "1000.000",
+        "description": None,
         "required": False,
         "pattern": None,
         "pattern_hint": None,
@@ -204,6 +205,7 @@ def test_snapshot_filters_inactive_rows_but_keeps_an_inactive_referenced_set() -
     assert equipment == {
         "code": "equipment_mode",
         "display_name": "Equipment Mode",
+        "is_active": False,
         "version": 7,
         "options": [
             {"code": "AUTO", "label": "Automatic", "sort_order": 10, "is_active": True},
@@ -294,6 +296,7 @@ def test_snapshot_v3_canonicalizes_rules_and_validation_basis_deterministically(
         "unit": None,
         "min_value": None,
         "max_value": None,
+        "description": None,
         "required": True,
         "pattern": "[A-Z]{2}-[0-9]{4}",
         "pattern_hint": "영문 대문자 2자리-숫자 4자리",

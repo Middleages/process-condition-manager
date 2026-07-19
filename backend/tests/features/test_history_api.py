@@ -752,7 +752,7 @@ async def test_cell_batch_pages_descending_and_proves_current_and_deleted_target
 
 
 @pytest.mark.asyncio
-async def test_cell_batch_detail_uses_exactly_three_sql_statements(
+async def test_cell_batch_detail_uses_exactly_four_sql_statements(
     db_client: AsyncClient,
     db_session: AsyncSession,
     db_engine: AsyncEngine,
@@ -767,7 +767,7 @@ async def test_cell_batch_detail_uses_exactly_three_sql_statements(
 
     assert response.status_code == 200, response.text
     assert response.json()["items"][0]["jump_target"]["jump_status"] == "available"
-    assert len(statements) == 3
+    assert len(statements) == 4
 
 
 @pytest.mark.asyncio
@@ -908,7 +908,7 @@ async def test_batch_detail_missing_project_or_batch_uses_one_sql_statement(
 
 
 @pytest.mark.asyncio
-async def test_valid_v2_capture_detail_uses_three_sql_statements_and_exact_layer_sort(
+async def test_valid_v2_capture_detail_uses_four_sql_statements_and_exact_layer_sort(
     db_client: AsyncClient,
     db_session: AsyncSession,
     db_engine: AsyncEngine,
@@ -926,7 +926,7 @@ async def test_valid_v2_capture_detail_uses_three_sql_statements_and_exact_layer
     assert body["detail_status"] == "available"
     assert body["items"][0]["capture_tuple"]["target_layer_sort"] == 3
     assert body["items"][0]["jump_target"]["jump_status"] == "available"
-    assert len(statements) == 3
+    assert len(statements) == 4
 
 
 @pytest.mark.asyncio

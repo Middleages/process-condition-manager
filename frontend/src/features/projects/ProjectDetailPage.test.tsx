@@ -3,9 +3,12 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { Route, Routes, StaticRouter } from 'react-router-dom'
 import { describe, expect, it } from 'vitest'
 
+import { AuthProvider } from '@/app/AuthContext'
+import { defaultAuthState, type AuthPermissions } from '@/api/auth'
 import type { ProjectOut } from '@/api/types'
 
 import { ProjectDetailPage } from './ProjectDetailPage'
+import source from './ProjectDetailPage.tsx?raw'
 
 const maximumLayerId = 'L'.repeat(64)
 const maximumStepSequence = 'S'.repeat(64)
@@ -19,6 +22,11 @@ const project: ProjectOut = {
   part_id: 'P-42',
   name: 'Coat baseline',
   status: 'draft',
+  version: 1,
+  revision_root_id: null,
+  predecessor_project_id: null,
+  successor_project_id: null,
+  allowed_actions: ['request_review', 'approve'],
   profile: {
     project_id: 42,
     process_name: 'Coat',
@@ -70,7 +78,21 @@ const project: ProjectOut = {
   ],
 }
 
-function renderDetail(projectData: ProjectOut = project): string {
+const allPermissions: AuthPermissions = {
+  ...defaultAuthState.permissions,
+  canApprove: true,
+  canComment: true,
+  canCreateRevision: true,
+  canEditDraft: true,
+  canReject: true,
+  canRequestReview: true,
+  canReturnToDraft: true,
+}
+
+function renderDetail(
+  projectData: ProjectOut = project,
+  permissions: AuthPermissions = allPermissions,
+): string {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { staleTime: Number.POSITIVE_INFINITY } },
   })
@@ -78,11 +100,26 @@ function renderDetail(projectData: ProjectOut = project): string {
 
   return renderToStaticMarkup(
     <QueryClientProvider client={queryClient}>
-      <StaticRouter location={`/projects/${projectData.id}`}>
-        <Routes>
-          <Route path="/projects/:projectId" element={<ProjectDetailPage />} />
-        </Routes>
-      </StaticRouter>
+      <AuthProvider
+        initialState={{
+          ready: true,
+          permissions,
+          user: {
+            id: 'user-1',
+            display_name: null,
+            email: null,
+            roles: [],
+            permissions: [],
+          },
+          error: null,
+        }}
+      >
+        <StaticRouter location={`/projects/${projectData.id}`}>
+          <Routes>
+            <Route path="/projects/:projectId" element={<ProjectDetailPage />} />
+          </Routes>
+        </StaticRouter>
+      </AuthProvider>
     </QueryClientProvider>,
   )
 }
@@ -207,6 +244,36 @@ describe('ProjectDetailPage', () => {
     expect(none).toMatch(/>백본<[^]*?>없음</)
   })
 
+  it('renders workflow lineage, status badge and allowed actions for project transitions', () => {
+    const html = renderDetail({
+      ...project,
+      status: 'review',
+      version: 7,
+      revision_root_id: 100,
+      predecessor_project_id: 90,
+      successor_project_id: null,
+      allowed_actions: ['request_review', 'approve', 'reject', 'return_to_draft'],
+    })
+
+    expect(html).toContain('id="project-workflow-title"')
+    expect(html).toContain('워크플로우')
+    expect(html).toContain('v7 / root 100 / pred 90 / succ - / actions 4')
+    expect(html).toContain('허용 액션')
+    expect(html).toContain('검토요청')
+    expect(html).toContain('승인')
+    expect(html).toContain('반려')
+    expect(html).toContain('초안복귀')
+  })
+
+  it('renders comment composer and list container for discussion', () => {
+    const html = renderDetail()
+
+    expect(html).toContain('id="project-comments-title"')
+    expect(html).toContain('댓글')
+    expect(html).toContain('aria-label="댓글 입력"')
+    expect(html).toContain('댓글 등록')
+  })
+
   it('keeps core Profile visible and advanced Profile in a closed native disclosure before Layers', () => {
     const html = renderDetail()
     const coreIndex = html.indexOf('id="project-profile-title"')
@@ -245,5 +312,66 @@ describe('ProjectDetailPage', () => {
       expect(groupTag, group).not.toContain('rounded-xl')
       expect(groupTag, group).not.toContain('bg-surface')
     }
+  })
+
+  it('hides draft-only mutation controls when user lacks draft/write permissions', () => {
+    const html = renderDetail(project, defaultAuthState.permissions)
+
+    expect(html).not.toContain('기본정보 편집')
+    expect(html).not.toContain('aria-label="댓글 입력"')
+    expect(html).not.toContain('댓글 등록')
+    expect(html).not.toContain('>교체</button>')
+  })
+
+  it('hides draft edits but keeps audit comments on non-Draft projects', () => {
+    const html = renderDetail(
+      {
+        ...project,
+        status: 'approved',
+        allowed_actions: ['request_review', 'approve', 'create_revision', 'reject', 'return_to_draft'],
+      },
+      allPermissions,
+    )
+
+    expect(html).not.toContain('기본정보 편집')
+    expect(html).toContain('aria-label="댓글 입력"')
+    expect(html).toContain('댓글 등록')
+    expect(html).not.toContain('>교체</button>')
+    expect(html).toContain('승인')
+    expect(html).toContain('반려')
+  })
+
+  it('filters transition action buttons through effective permissions', () => {
+    const noApprove = renderDetail(
+      {
+        ...project,
+        status: 'review',
+        allowed_actions: ['request_review', 'approve', 'reject', 'return_to_draft'],
+      },
+      {
+        ...allPermissions,
+        canApprove: false,
+        canReject: false,
+      },
+    )
+
+    expect(noApprove).toContain('검토요청')
+    expect(noApprove).toContain('초안복귀')
+    expect(noApprove).not.toContain('승인')
+    expect(noApprove).not.toContain('반려')
+  })
+
+  it('contains transition confirmations and inline error/error-invalidation branches', () => {
+    expect(source).toContain('if (action === \'approve\' || action === \'create_revision\')')
+    expect(source).toContain('window.confirm(`${actionLabel(action)}를 진행하시겠습니까?`)')
+    expect(source).toContain('executeTransitionMutation.isError')
+    expect(source).toContain('<ReviewGateError projectId={project.id} error={executeTransitionMutation.error} />')
+    expect(source).toContain("getApiErrorDetails(error, 'review_gate_failed')")
+    expect(source).toContain('queryClient.invalidateQueries({ queryKey: [\'sheet\', project.id] })')
+    expect(source).toContain('invalidateProjectHistoryAfterMutation(queryClient, project.id)')
+    expect(source).toContain('invalidateProjectBackboneDiffAfterMutation(queryClient, project.id)')
+    expect(source).toContain('createCommentMutation.isError')
+    expect(source).toContain('patchCommentMutation.isError')
+    expect(source).toContain('deleteCommentMutation.isError')
   })
 })

@@ -1,16 +1,27 @@
 """프로젝트 생성/백본 API 테스트."""
 
+from __future__ import annotations
+
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.auth import Permission, UserContext, get_current_user
+from app.domain.parameters.snapshot import snapshot_digest
+from app.main import app
 from app.models.project import (
     CellValue,
     ChangeEvent,
     ChangeEventType,
     LayerCondition,
+    Project,
+    ProjectProfile,
+    ProjectStatus,
     SheetLayer,
 )
 from tests.factories import (
@@ -24,6 +35,29 @@ _CORE_PROFILE = {
 }
 
 
+def _frozen_profile_snapshot() -> dict[str, object]:
+    result: dict[str, object] = {
+        "version": 3,
+        "categories": [],
+        "parameters": [],
+        "choice_sets": [
+            {
+                "code": code,
+                "display_name": code,
+                "version": 1,
+                "is_active": True,
+                "options": [
+                    {"code": "DEFAULT", "label": "Default", "sort_order": 0, "is_active": True}
+                ],
+            }
+            for code in ("active_direction", "device_type", "gate_direction", "project_category")
+        ],
+        "validation_rules": [],
+    }
+    result["validation_basis_hash"] = snapshot_digest(result)
+    return result
+
+
 @pytest.fixture(autouse=True)
 async def _required_profile_choices(db_session: AsyncSession) -> None:
     await seed_required_profile_choice_sets(db_session)
@@ -34,6 +68,21 @@ async def _required_profile_choices(db_session: AsyncSession) -> None:
 async def _required_backbone_parameters(db_session: AsyncSession) -> None:
     await seed_backbone_capture_parameters(db_session)
     await db_session.commit()
+
+
+@asynccontextmanager
+async def _as_user(permissions: tuple[Permission, ...]) -> AsyncIterator[None]:
+    async def _current_user() -> UserContext:
+        return UserContext(
+            id="test-user",
+            permissions=(Permission.BUSINESS_READ, *permissions),
+        )
+
+    app.dependency_overrides[get_current_user] = _current_user
+    try:
+        yield
+    finally:
+        app.dependency_overrides.pop(get_current_user, None)
 
 
 async def _lock_headers(client: AsyncClient, project_id: int) -> dict[str, str]:
@@ -54,14 +103,10 @@ async def _seed_backbone_cells(
     )
     layer = result.scalar_one()
     condition = (
-        await session.execute(
-            select(LayerCondition).where(LayerCondition.layer_id == layer.id)
-        )
+        await session.execute(select(LayerCondition).where(LayerCondition.layer_id == layer.id))
     ).scalar_one()
     for code, value in cells.items():
-        session.add(
-            CellValue(condition_id=condition.id, parameter_code=code, value_text=value)
-        )
+        session.add(CellValue(condition_id=condition.id, parameter_code=code, value_text=value))
     await session.commit()
 
 
@@ -80,6 +125,11 @@ async def test_create_project_from_process_structure(db_client: AsyncClient) -> 
     assert resp.status_code == 201, resp.text
     body = resp.json()
     assert body["status"] == "draft"
+    assert body["version"] == 1
+    assert body["revision_root_id"] == body["id"]
+    assert body["predecessor_project_id"] is None
+    assert body["successor_project_id"] is None
+    assert body["allowed_actions"] == ["request_review"]
     assert body["line_id"] == "L1"
     assert body["process_id"] == "PROC_ALPHA"
     assert body["part_id"] == "PART-001"
@@ -208,12 +258,112 @@ async def test_list_and_get_project(db_client: AsyncClient) -> None:
     assert listed.status_code == 200
     body = listed.json()
     assert [project["id"] for project in body["items"]] == [created["id"]]
+    assert body["items"][0]["revision_root_id"] == created["id"]
+    assert body["items"][0]["predecessor_project_id"] is None
+    assert body["items"][0]["successor_project_id"] is None
+    assert body["items"][0]["allowed_actions"] == ["request_review"]
+    assert body["items"][0]["version"] == 1
     assert body["items"][0]["layer_count"] == 2
     assert body["next_cursor"] is None
 
     fetched = await db_client.get(f"/api/projects/{created['id']}")
     assert fetched.status_code == 200
     assert fetched.json()["name"] == "Beta 조건표"
+    assert fetched.json()["version"] == 1
+    assert fetched.json()["revision_root_id"] == created["id"]
+    assert fetched.json()["predecessor_project_id"] is None
+    assert fetched.json()["successor_project_id"] is None
+    assert fetched.json()["allowed_actions"] == ["request_review"]
+
+
+async def test_project_out_allowed_actions_respects_permissions(
+    db_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    create_resp = await db_client.post(
+        "/api/projects",
+        json={
+            **_CORE_PROFILE,
+            "line_id": "L1",
+            "process_id": "PROC_ALPHA",
+            "part_id": "PART-ALLOWED",
+            "name": "Permissioned project",
+        },
+    )
+    assert create_resp.status_code == 201, create_resp.text
+    created = create_resp.json()
+    # update status directly in DB for permission matrix checks
+    project = await db_session.get(Project, created["id"])
+    assert project is not None
+    project.status = ProjectStatus.REVIEW
+    await db_session.commit()
+
+    async with _as_user((Permission.PROJECT_REVIEW_REQUEST,)):
+        listed = (await db_client.get("/api/projects")).json()
+        assert listed["items"][0]["allowed_actions"] == []
+        fetched = (await db_client.get(f"/api/projects/{created['id']}")).json()
+        assert fetched["allowed_actions"] == []
+
+    async with _as_user((Permission.PROJECT_REVIEW_DECIDE,)):
+        listed = (await db_client.get("/api/projects")).json()
+        assert listed["items"][0]["allowed_actions"] == ["approve", "reject"]
+        fetched = (await db_client.get(f"/api/projects/{created['id']}")).json()
+        assert fetched["allowed_actions"] == ["approve", "reject"]
+
+    project.status = ProjectStatus.ARCHIVED
+    project.parameter_snapshot = _frozen_profile_snapshot()
+    await db_session.commit()
+
+    async with _as_user((Permission.PROJECT_REVIEW_DECIDE, Permission.PROJECT_REVIEW_REQUEST)):
+        fetched = (await db_client.get(f"/api/projects/{created['id']}")).json()
+        assert fetched["allowed_actions"] == []
+
+
+async def test_project_summary_includes_successor_project_id(
+    db_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    base_resp = await db_client.post(
+        "/api/projects",
+        json={
+            **_CORE_PROFILE,
+            "line_id": "L1",
+            "process_id": "PROC_ALPHA",
+            "part_id": "BASE",
+            "name": "Base",
+        },
+    )
+    assert base_resp.status_code == 201, base_resp.text
+    base = base_resp.json()
+    base_row = await db_session.get(Project, base["id"])
+    assert base_row is not None
+    base_row.status = ProjectStatus.APPROVED
+    base_row.parameter_snapshot = _frozen_profile_snapshot()
+    base_row.revision_root_id = base_row.id
+    await db_session.flush()
+
+    successor = Project(
+        line_id="L2",
+        process_id="PROC_ALPHA",
+        part_id="SUCC",
+        name="Revision",
+        status=ProjectStatus.ARCHIVED,
+        version=2,
+        revision_root_id=base_row.revision_root_id,
+        revision_of_id=base_row.id,
+        parameter_snapshot=_frozen_profile_snapshot(),
+        profile=ProjectProfile(
+            process_name="PROC_ALPHA",
+            device_type_code="DEFAULT",
+            project_category_code="DEFAULT",
+        ),
+    )
+    db_session.add(successor)
+    await db_session.commit()
+
+    listed = (await db_client.get("/api/projects")).json()
+    summary = next(item for item in listed["items"] if item["id"] == base["id"])
+    assert summary["successor_project_id"] == successor.id
+    assert summary["predecessor_project_id"] is None
+    assert summary["revision_root_id"] == base["id"]
 
 
 async def test_list_projects_search_and_cursor_paging(db_client: AsyncClient) -> None:
@@ -239,9 +389,7 @@ async def test_list_projects_search_and_cursor_paging(db_client: AsyncClient) ->
     assert page1["next_cursor"] is not None
 
     page2 = (
-        await db_client.get(
-            "/api/projects", params={"limit": 2, "cursor": page1["next_cursor"]}
-        )
+        await db_client.get("/api/projects", params={"limit": 2, "cursor": page1["next_cursor"]})
     ).json()
     assert len(page2["items"]) == 1
     assert page2["next_cursor"] is None
@@ -324,9 +472,7 @@ async def test_backbone_copy_duplicates_conditions_and_cells(
     )
 
     assert created.status_code == 201, created.text
-    layers = {
-        (layer["step_seq"], layer["layer_id"]): layer for layer in created.json()["layers"]
-    }
+    layers = {(layer["step_seq"], layer["layer_id"]): layer for layer in created.json()["layers"]}
     # 001/CLN은 백본과 자동 매칭 → 셀 2개 복사
     assert layers[("001", "CLN")]["cell_count"] == 2
     assert layers[("001", "CLN")]["source_project_id"] == backbone["id"]
@@ -427,8 +573,9 @@ async def test_backbone_copy_records_event_with_counts(
     ).scalar_one()
     assert target_layer.backbone_snapshot is not None
     assert target_layer.backbone_snapshot["source"]["project_id"] == backbone["id"]
-    assert target_layer.backbone_snapshot["source"]["layer_key"] == (
-        backbone["layers"][0]["layer_key"]
+    assert (
+        target_layer.backbone_snapshot["source"]["layer_key"]
+        == (backbone["layers"][0]["layer_key"])
     )
     assert target_layer.backbone_snapshot["capture_batch_id"] == event.payload["batch_id"]
     assert target_layer.backbone_snapshot["captured_at"] == event.payload["captured_at"]
@@ -479,9 +626,7 @@ async def test_backbone_copy_emits_one_event_per_matched_layer(
     )
     assert len(events) == 3
     assert {event.payload["batch_id"] for event in events} == {events[0].payload["batch_id"]}
-    assert {event.payload["captured_at"] for event in events} == {
-        events[0].payload["captured_at"]
-    }
+    assert {event.payload["captured_at"] for event in events} == {events[0].payload["captured_at"]}
     assert [event.payload["target_layer_key"] for event in events] == [
         layer["layer_key"] for layer in target_body["layers"]
     ]
@@ -508,9 +653,7 @@ async def test_create_without_backbone_records_project_create_event(
     ).json()
 
     event = (
-        await db_session.execute(
-            select(ChangeEvent).where(ChangeEvent.project_id == created["id"])
-        )
+        await db_session.execute(select(ChangeEvent).where(ChangeEvent.project_id == created["id"]))
     ).scalar_one()
     assert event.event_type == ChangeEventType.PROJECT_CREATE
     assert event.origin == "system"

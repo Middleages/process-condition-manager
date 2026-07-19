@@ -9,6 +9,7 @@ from typing import Any, cast
 import pytest
 from fastapi import Request
 from httpx import AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
@@ -32,6 +33,7 @@ from app.domain.backbone.snapshot import (
     serialize_backbone_snapshot,
 )
 from app.domain.errors import RuleViolationError
+from app.domain.parameters.snapshot import snapshot_digest
 from app.domain.parameters.types import ValueType
 from app.features.backbone_diff.contracts import BackboneDiffProjectInput
 from app.features.backbone_diff.cursor import (
@@ -49,9 +51,10 @@ from app.features.backbone_diff.cursor import (
     encode_backbone_diff_scope,
 )
 from app.features.backbone_diff.provider import BackboneDiffProvider, _LayerBundle
+from app.features.backbone_diff.repository import BackboneDiffRepository
 from app.features.backbone_diff.schema import BackboneDiffRootQueryIn
 from app.models.parameter import Parameter, ParameterCategory
-from app.models.project import CellValue, LayerCondition, Project, SheetLayer
+from app.models.project import CellValue, LayerCondition, Project, ProjectStatus, SheetLayer
 from tests.factories import make_project_profile
 
 _VALID_BASIS_HASH = "sha256:" + "1" * 64
@@ -925,6 +928,56 @@ async def test_backbone_diff_root_branch_and_cell_routes_use_the_real_provider(
     cells_body = cells.json()
     assert cells_body["basis_hash"] == root_body["basis_hash"]
     assert cells_body["items"]
+
+
+@pytest.mark.asyncio
+async def test_approved_backbone_diff_uses_frozen_current_parameter_projection(
+    db_session: AsyncSession,
+) -> None:
+    project = await _seed_project(db_session)
+    project.status = ProjectStatus.APPROVED
+    frozen_snapshot: dict[str, Any] = {
+        "version": 3,
+        "categories": [{"code": "photo", "display_name": "Photo", "sort_order": 1}],
+        "parameters": [
+            {
+                "code": code,
+                "display_name": f"Frozen {code.title()}",
+                "description": None,
+                "value_type": value_type,
+                "category_code": "photo",
+                "unit": None,
+                "min_value": None,
+                "max_value": None,
+                "required": False,
+                "pattern": None,
+                "pattern_hint": None,
+                "sort_order": sort_order,
+            }
+            for code, value_type, sort_order in (
+                ("alpha", "text", 1),
+                ("beta", "number", 2),
+                ("gamma", "text", 3),
+            )
+        ],
+        "choice_sets": [],
+        "validation_rules": [],
+    }
+    frozen_snapshot["validation_basis_hash"] = snapshot_digest(frozen_snapshot)
+    project.parameter_snapshot = frozen_snapshot
+    for parameter in list((await db_session.execute(select(Parameter))).scalars()):
+        parameter.display_name = f"Changed {parameter.code}"
+    await db_session.commit()
+
+    loaded = await BackboneDiffRepository(db_session).load(project.id)
+
+    parameters = {
+        parameter.code: parameter
+        for layer in loaded.layers
+        for parameter in layer.current_parameters
+    }
+    assert parameters["alpha"].display_name == "Frozen Alpha"
+    assert "legacy" not in parameters
 
 
 @pytest.mark.asyncio
