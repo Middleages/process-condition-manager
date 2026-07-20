@@ -28,7 +28,9 @@ DescriptionText = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=512)
 ]
 ScopeText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=128)]
-LiteralText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+LiteralText = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=1024)
+]
 ExpectedVersion = Annotated[int, Field(strict=True, ge=1)]
 
 

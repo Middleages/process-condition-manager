@@ -143,6 +143,12 @@ export interface ConditionGridCallbacks {
    * 같은 라이브러리/표현 세부는 경계 밖으로 내보내지 않는다, P4).
    */
   onConditionActivate?(payload: { conditionId: string; layerKey: string }): void
+  /** Selected parameter cell for project-scoped review comment threads. */
+  onCellActivate?(payload: {
+    conditionId: string
+    layerKey: string
+    parameterCode: string
+  }): void
   /**
    * 파라미터 셀의 변경 이력 열기. Glide 이벤트/화면 좌표는 어댑터 안에 남기고 상위에는
    * 안정적인 도메인 좌표만 전달한다.

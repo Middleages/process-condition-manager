@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import (
 )
 
 import app.models  # noqa: F401 -- register every model for metadata.create_all
-from app.core.auth import UserContext, get_current_user
+from app.core.auth import Permission, Role, UserContext, get_current_user
 from app.core.db import Base, get_app_session
 from app.domain.backbone.snapshot import (
     BackboneSnapshot,
@@ -127,7 +127,11 @@ async def pg_client(pg_harness: _PgHarness) -> AsyncIterator[AsyncClient]:
             yield session
 
     async def _user_override() -> UserContext:
-        return UserContext(id="pg-backbone-diff-test")
+        return UserContext(
+            id="pg-backbone-diff-test",
+            roles=(Role.EDITOR,),
+            permissions=(Permission.BUSINESS_READ,),
+        )
 
     app.dependency_overrides[get_app_session] = _session_override
     app.dependency_overrides[get_current_user] = _user_override

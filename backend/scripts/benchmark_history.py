@@ -918,8 +918,17 @@ def _seed_history_fixture(connection: Connection) -> HistoryFixture:
         {"condition_id": deleted_id},
     )
     connection.commit()
-    connection.execute(sa.text("ANALYZE"))
-    connection.commit()
+    # Measure a steady-state query plan, not heap visibility work or a checkpoint
+    # caused by the 100k-row fixture itself.  ANALYZE alone leaves every freshly
+    # inserted page outside the visibility map, making index-only plans depend on
+    # when the shared CI runner happens to schedule autovacuum/checkpoint I/O.
+    # VACUUM must run outside a transaction; the benchmark database owner is the
+    # disposable test-database owner in both local integration and CI.
+    with connection.engine.connect().execution_options(
+        isolation_level="AUTOCOMMIT"
+    ) as maintenance_connection:
+        maintenance_connection.execute(sa.text("VACUUM (ANALYZE)"))
+        maintenance_connection.execute(sa.text("CHECKPOINT"))
     invariants = _fixture_invariants(
         connection, project_id=project_id, deleted_condition_id=deleted_id
     )

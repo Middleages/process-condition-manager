@@ -114,7 +114,10 @@ describe('history workbench state', () => {
     expect(describeHistoryDetailStatus(createBatchItem(3, { detail_status: 'legacy_unavailable' }))).toContain('레거시 상세 형식')
     expect(describeHistoryJumpTarget({ ...availableJumpTarget(), jump_status: 'deleted' })).toContain('삭제된 대상')
     expect(historyEventTypeLabel('por_change')).toBe('POR 변경')
-    expect(HISTORY_EVENT_TYPES).toHaveLength(8)
+    expect(HISTORY_EVENT_TYPES).toHaveLength(11)
+    expect(historyEventTypeLabel('status_change')).toBe('상태 변경')
+    expect(historyEventTypeLabel('revision_create')).toBe('개정 생성')
+    expect(historyEventTypeLabel('comment')).toBe('댓글 변경')
   })
 
   it('derives truthful detail navigation and capture-stable list keys', () => {

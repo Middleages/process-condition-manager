@@ -24,6 +24,17 @@ export function getApiErrorStatus(error: unknown): number | null {
   return error.response?.status ?? null
 }
 
+export function getApiErrorDetails(
+  error: unknown,
+  code: string,
+): Record<string, unknown> | null {
+  if (!isApiError(error) || error.response?.data.code !== code) return null
+  const details = error.response.data.details
+  return details !== null && typeof details === 'object' && !Array.isArray(details)
+    ? details
+    : null
+}
+
 function isApiError(error: unknown): error is AxiosError<ApiErrorBody> {
   return axios.isAxiosError<ApiErrorBody>(error)
 }

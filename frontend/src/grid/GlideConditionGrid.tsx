@@ -365,8 +365,23 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
     EMPTY_GRID_SELECTION,
   )
   const handleGridSelectionChange = useCallback(
-    (selection: GridSelection) => setSelectionState({ layoutAuthority, selection }),
-    [layoutAuthority],
+    (selection: GridSelection) => {
+      setSelectionState({ layoutAuthority, selection })
+      const cell = selection.current?.cell
+      if (cell === undefined) return
+      const target = resolveCellTarget(
+        cell[0],
+        cell[1],
+        visibleColumns,
+        rows,
+        IDENTITY_COLUMN_COUNT,
+      )
+      if (target === null) return
+      const row = rows[cell[1]]
+      if (row === undefined) return
+      callbacks?.onCellActivate?.({ ...target, layerKey: row.layerKey })
+    },
+    [callbacks, layoutAuthority, rows, visibleColumns],
   )
 
   useIsomorphicLayoutEffect(() => {
@@ -738,10 +753,20 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
   // 대상 활성화. 읽기 전용이거나 파라미터 셀(col>=3)이면 관여하지 않는다(편집은 onCellEdit 담당).
   const handleCellClicked = useCallback(
     (item: Item) => {
-      if (readOnly) return
       const [col, row] = item
       const rowData = rows[row]
       if (rowData === undefined) return
+      const target = resolveCellTarget(
+        col,
+        row,
+        visibleColumns,
+        rows,
+        IDENTITY_COLUMN_COUNT,
+      )
+      if (target !== null) {
+        callbacks?.onCellActivate?.({ ...target, layerKey: rowData.layerKey })
+      }
+      if (readOnly) return
       if (col === 2) {
         // 이미 POR인 행은 무시 — 이양 대상이 아니고 불필요한 재조회를 피한다(POR 해제는 없다).
         if (!rowData.isPor) callbacks?.onPorChange?.(rowData.layerKey, rowData.id)
@@ -751,7 +776,7 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
         callbacks?.onConditionActivate?.({ conditionId: rowData.id, layerKey: rowData.layerKey })
       }
     },
-    [readOnly, rows, callbacks],
+    [readOnly, rows, callbacks, visibleColumns],
   )
 
   useImperativeHandle(
@@ -791,7 +816,7 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
         gridSelection={effectiveGridSelection}
         onGridSelectionChange={handleGridSelectionChange}
         onCellEdited={readOnly ? undefined : handleCellEdited}
-        onCellClicked={readOnly ? undefined : handleCellClicked}
+        onCellClicked={handleCellClicked}
         onCellContextMenu={handleCellContextMenu}
         onKeyDown={handleGridKeyDown}
         onPaste={handlePaste}

@@ -124,6 +124,11 @@ class ProjectOut(BaseModel):
     part_id: str
     name: str
     status: str
+    version: int
+    revision_root_id: int | None
+    predecessor_project_id: int | None
+    successor_project_id: int | None
+    allowed_actions: list[str]
     profile: ProjectProfileOut
     layers: list[LayerOut] = Field(default_factory=list)
 
@@ -137,6 +142,11 @@ class ProjectSummaryOut(BaseModel):
     part_id: str
     name: str
     status: str
+    version: int
+    revision_root_id: int | None
+    predecessor_project_id: int | None
+    successor_project_id: int | None
+    allowed_actions: list[str]
     device_type: ChoiceValueOut
     project_category: ChoiceValueOut
     layer_total: str | None

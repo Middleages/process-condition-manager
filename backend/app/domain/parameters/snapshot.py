@@ -1,5 +1,7 @@
 """Deterministic serialization for frozen parameter-registry inputs."""
 
+import hashlib
+import json
 from collections.abc import Iterable, Mapping
 from typing import Any
 
@@ -62,14 +64,17 @@ def snapshot(
     choice_set_versions = {
         code: int(set_by_code[code]["version"]) for code in referenced_choice_set_codes
     }
-    basis_hash = validation_basis_hash(
+    # Validate the executable validation subset first. The persisted approval
+    # digest below intentionally covers the complete frozen DefinitionView,
+    # including presentation metadata and fixed Profile ChoiceSets.
+    validation_basis_hash(
         parameter_definitions,
         choice_set_versions,
         rules,
     )
     parameters_by_code = {parameter.code: parameter for parameter in parameter_definitions}
 
-    return {
+    captured = {
         "version": SNAPSHOT_VERSION,
         "categories": [_category_out(row) for row in active_categories],
         "parameters": [_parameter_out(row) for row in active_parameters],
@@ -78,8 +83,18 @@ def snapshot(
             _validation_rule_out(rule, parameters_by_code)
             for rule in sorted(rules, key=lambda item: item.code)
         ],
-        "validation_basis_hash": basis_hash,
     }
+    captured["validation_basis_hash"] = snapshot_digest(captured)
+    return captured
+
+
+def snapshot_digest(value: Mapping[str, Any]) -> str:
+    """Digest the complete captured basis, excluding its self-referential hash."""
+    payload = {key: item for key, item in value.items() if key != "validation_basis_hash"}
+    canonical_json = json.dumps(
+        payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True
+    )
+    return "sha256:" + hashlib.sha256(canonical_json.encode("utf-8")).hexdigest()
 
 
 def _category_out(row: Mapping[str, Any]) -> dict[str, Any]:
@@ -95,11 +110,12 @@ def _parameter_out(row: Mapping[str, Any]) -> dict[str, Any]:
     output = {
         "code": row["code"],
         "display_name": row["display_name"],
+        "description": row.get("description"),
         "value_type": value_type,
         "category_code": row.get("category_code"),
         "unit": row.get("unit"),
-        "min_value": row.get("min_value"),
-        "max_value": row.get("max_value"),
+        "min_value": _optional_string(row.get("min_value")),
+        "max_value": _optional_string(row.get("max_value")),
         "required": bool(row.get("required", False)),
         "pattern": row.get("pattern"),
         "pattern_hint": row.get("pattern_hint"),
@@ -119,6 +135,7 @@ def _choice_set_out(row: Mapping[str, Any]) -> dict[str, Any]:
         "code": row["code"],
         "display_name": row["display_name"],
         "version": int(row["version"]),
+        "is_active": bool(row.get("is_active", True)),
         "options": [_choice_option_out(option) for option in options],
     }
 
@@ -147,7 +164,10 @@ def _parameter_definition(
         choices = tuple(
             ChoiceDefinition(
                 code=str(option["code"]),
-                is_active=bool(option.get("is_active", True)),
+                is_active=(
+                    bool(choice_sets_by_code[choice_set_code].get("is_active", True))
+                    and bool(option.get("is_active", True))
+                ),
             )
             for option in choice_sets_by_code[choice_set_code].get("options", [])
         )

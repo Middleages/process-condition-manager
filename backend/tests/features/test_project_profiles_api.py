@@ -9,7 +9,9 @@ import pytest
 from httpx import AsyncClient, Response
 from sqlalchemy import String, event, func, select, update
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
+from sqlalchemy.orm import selectinload
 
+from app.domain.parameters.snapshot import snapshot as build_parameter_snapshot
 from app.ingest.fixture_reader import get_ingest_reader
 from app.ingest.reader import LayerInfo, ProcessInfo, process_key
 from app.main import app
@@ -20,6 +22,7 @@ from app.models.project import (
     EditLock,
     Project,
     ProjectProfile,
+    ProjectStatus,
 )
 from app.project_metadata import ProjectProfileSeed, get_project_metadata_provider
 from tests.factories import seed_backbone_capture_parameters, seed_choice_set
@@ -529,7 +532,7 @@ async def test_project_list_searches_profile_comment_and_resolved_choice(
     assert [item["id"] for item in response.json()["items"]] == [created.json()["id"]]
 
 
-async def test_project_list_resolves_page_in_one_select_without_option_n_plus_one(
+async def test_project_list_resolves_page_with_one_batched_option_select(
     profile_client: AsyncClient,
     db_engine: AsyncEngine,
 ) -> None:
@@ -558,7 +561,8 @@ async def test_project_list_resolves_page_in_one_select_without_option_n_plus_on
 
     assert response.status_code == 200, response.text
     assert len(response.json()["items"]) == 3
-    assert len(statements) == 1, statements
+    assert len(statements) == 2, statements
+    assert sum("choice_option" in statement for statement in statements) == 1
 
 
 async def test_profile_read_resolves_inactive_stored_choice(
@@ -586,6 +590,85 @@ async def test_profile_read_resolves_inactive_stored_choice(
         "label": "Foundry",
         "is_active": False,
     }
+
+
+async def test_approved_profile_and_list_labels_remain_frozen_without_choice_reads(
+    profile_client: AsyncClient,
+    db_session: AsyncSession,
+    db_engine: AsyncEngine,
+) -> None:
+    created = await _create(profile_client, provider=EmptyProvider())
+    assert created.status_code == 201, created.text
+    project = await db_session.get(Project, created.json()["id"])
+    assert project is not None
+    choice_sets = list(
+        (
+            await db_session.execute(
+                select(ChoiceSet).options(selectinload(ChoiceSet.options))
+            )
+        )
+        .scalars()
+        .all()
+    )
+    project.parameter_snapshot = build_parameter_snapshot(
+        categories=(),
+        parameters=(),
+        choice_sets=(
+            {
+                "code": choice_set.code,
+                "display_name": choice_set.display_name,
+                "version": choice_set.version,
+                "is_active": choice_set.is_active,
+                "options": [
+                    {
+                        "code": option.code,
+                        "label": option.label,
+                        "sort_order": option.sort_order,
+                        "is_active": option.is_active,
+                    }
+                    for option in choice_set.options
+                ],
+            }
+            for choice_set in choice_sets
+        ),
+    )
+    project.status = ProjectStatus.APPROVED
+    await db_session.commit()
+
+    await db_session.execute(
+        update(ChoiceOption).where(ChoiceOption.code == "FOUNDRY").values(label="Changed")
+    )
+    await db_session.execute(
+        update(ChoiceOption).where(ChoiceOption.code == "LOGIC").values(label="Changed")
+    )
+    await db_session.commit()
+
+    statements: list[str] = []
+
+    def _capture(
+        _conn: object,
+        _cursor: object,
+        statement: str,
+        _parameters: object,
+        _context: object,
+        _executemany: object,
+    ) -> None:
+        if statement.lstrip().upper().startswith("SELECT"):
+            statements.append(statement.lower())
+
+    event.listen(db_engine.sync_engine, "before_cursor_execute", _capture)
+    try:
+        detail = await profile_client.get(f"/api/projects/{project.id}")
+        listed = await profile_client.get("/api/projects")
+    finally:
+        event.remove(db_engine.sync_engine, "before_cursor_execute", _capture)
+
+    assert detail.status_code == listed.status_code == 200
+    assert detail.json()["profile"]["device_type"]["label"] == "Foundry"
+    summary = next(item for item in listed.json()["items"] if item["id"] == project.id)
+    assert summary["device_type"]["label"] == "Foundry"
+    assert summary["project_category"]["label"] == "Logic"
+    assert all("choice_set" not in statement for statement in statements)
 
 
 async def test_profile_patch_distinguishes_omitted_set_and_clear(

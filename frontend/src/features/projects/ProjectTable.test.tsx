@@ -13,6 +13,11 @@ const project: ProjectSummaryOut = {
   part_id: 'P-42',
   name: 'Coat baseline',
   status: 'draft',
+  version: 1,
+  revision_root_id: null,
+  predecessor_project_id: null,
+  successor_project_id: null,
+  allowed_actions: ['request_review', 'approve'],
   device_type: { code: 'FOUNDRY', label: 'Foundry', is_active: true },
   project_category: { code: 'LOGIC', label: 'Logic', is_active: true },
   layer_total: '8',
@@ -68,13 +73,16 @@ describe('ProjectTable', () => {
       'Category',
       'Layer Total',
       '상태',
+      'Lineage',
+      '허용 액션',
       'Updated',
     ])
     expect(html).toContain('href="/projects/42"')
     expect(html).toContain('P-42')
     expect(html).toContain('Foundry')
     expect(html).toContain('Logic')
-    expect(html).toContain('min-w-[920px]')
+    expect(html).toContain('min-w-[1120px]')
+    expect(html).not.toContain('min-w-[920px]')
     expect(html).not.toContain('min-w-[1040px]')
     expect(html).toContain('<tr class="h-9">')
     expect(html).toContain('class="h-9 border-t border-border-subtle')
@@ -107,5 +115,7 @@ describe('ProjectTable', () => {
 
     expect(html).toMatch(/<th[^>]*class="[^"]*hidden 2xl:table-cell[^"]*"[^>]*>Layer Total<\/th>/)
     expect(html).toMatch(/<th[^>]*class="[^"]*hidden xl:table-cell[^"]*"[^>]*>Updated<\/th>/)
+    expect(html).toContain('>Lineage<')
+    expect(html).toContain('>허용 액션<')
   })
 })

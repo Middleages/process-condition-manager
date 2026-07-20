@@ -12,7 +12,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import UserContext, get_current_user
+from app.core.auth import UserContext, get_current_user, require_project_edit
 from app.core.db import get_app_session
 from app.core.locks import require_edit_lock
 from app.core.maintenance import require_project_mutations_enabled
@@ -25,8 +25,6 @@ router = APIRouter(
     tags=["conditions"],
     dependencies=[
         Depends(get_current_user),
-        Depends(require_project_mutations_enabled),
-        Depends(require_edit_lock),
     ],
 )
 
@@ -47,6 +45,11 @@ UserDep = Annotated[UserContext, Depends(get_current_user)]
     "/{project_id}/layers/{layer_key}/conditions",
     response_model=ConditionOut,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[
+        Depends(require_project_edit),
+        Depends(require_project_mutations_enabled),
+        Depends(require_edit_lock),
+    ],
 )
 async def add_condition(
     project_id: int,
@@ -61,6 +64,11 @@ async def add_condition(
 @router.delete(
     "/{project_id}/conditions/{condition_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[
+        Depends(require_project_edit),
+        Depends(require_project_mutations_enabled),
+        Depends(require_edit_lock),
+    ],
 )
 async def delete_condition(
     project_id: int, condition_id: int, service: ServiceDep, user: UserDep
@@ -68,7 +76,15 @@ async def delete_condition(
     await service.delete_condition(project_id, condition_id, actor=user.id)
 
 
-@router.put("/{project_id}/conditions/{condition_id}/por", response_model=ConditionOut)
+@router.put(
+    "/{project_id}/conditions/{condition_id}/por",
+    response_model=ConditionOut,
+    dependencies=[
+        Depends(require_project_edit),
+        Depends(require_project_mutations_enabled),
+        Depends(require_edit_lock),
+    ],
+)
 async def set_por(
     project_id: int, condition_id: int, service: ServiceDep, user: UserDep
 ) -> ConditionOut:

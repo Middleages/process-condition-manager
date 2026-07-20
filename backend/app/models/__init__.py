@@ -14,6 +14,7 @@ from app.models.project import (
     LayerCondition,
     Project,
     ProjectProfile,
+    ReviewComment,
     SheetLayer,
 )
 from app.models.validation import ValidationRule
@@ -26,6 +27,7 @@ __all__ = [
     "ParameterCategory",
     "Project",
     "ProjectProfile",
+    "ReviewComment",
     "SheetLayer",
     "LayerCondition",
     "CellValue",

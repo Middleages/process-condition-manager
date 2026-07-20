@@ -33,6 +33,20 @@ class SheetColumnOut(BaseModel):
     sort_order: int
 
 
+class FrozenChoiceSetOptionOut(BaseModel):
+    code: str
+    label: str
+    sort_order: int
+    is_active: bool
+
+
+class FrozenChoiceSetOut(BaseModel):
+    set_code: str
+    version: int
+    is_active: bool
+    items: list[FrozenChoiceSetOptionOut]
+
+
 class SheetRowOut(BaseModel):
     """그리드 행 한 개 (= layer 안의 조건 행 한 개)."""
 
@@ -69,11 +83,19 @@ class SheetValidationRuleOut(BaseModel):
     spec: ValidationRuleSpecIn
 
 
+class SheetCommentCountOut(BaseModel):
+    condition_id: int
+    parameter_code: str
+    count: int = Field(ge=1)
+
+
 class SheetOut(BaseModel):
     """시트 조회 응답: 컬럼 정의 + 본문 행 + 잠금 요약."""
 
     columns: list[SheetColumnOut]
+    frozen_choice_sets: list[FrozenChoiceSetOut] = Field(default_factory=list)
     rows: list[SheetRowOut]
     lock: SheetLockSummaryOut
     validation_rules: list[SheetValidationRuleOut] = Field(default_factory=list)
     validation_basis_hash: str
+    comment_counts: list[SheetCommentCountOut] = Field(default_factory=list)

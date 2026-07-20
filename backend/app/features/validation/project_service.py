@@ -13,6 +13,7 @@ from pydantic import TypeAdapter, ValidationError
 from app.core.errors import DomainValidationError, NotFoundError
 from app.domain.decimal_values import normalize_decimal
 from app.domain.errors import RuleViolationError
+from app.domain.parameters.definition_view import DefinitionView
 from app.domain.parameters.types import ValueType
 from app.domain.validation import (
     ChoiceDefinition,
@@ -42,12 +43,10 @@ from app.features.validation.schema import (
     ValidationSummaryOut,
 )
 from app.models.parameter import Parameter
-from app.models.project import Project
+from app.models.project import Project, ProjectStatus
 from app.models.validation import ValidationRule
 
-_SAFE_CONFIGURATION_MESSAGE = (
-    "검증 규칙을 불러오지 못했습니다. 관리자에게 확인을 요청해 주세요."
-)
+_SAFE_CONFIGURATION_MESSAGE = "검증 규칙을 불러오지 못했습니다. 관리자에게 확인을 요청해 주세요."
 _SPEC_ADAPTER = TypeAdapter(ValidationRuleSpecIn)
 _ISSUE_DETAIL_KEYS: dict[str, frozenset[str]] = {
     "required": frozenset(),
@@ -57,12 +56,8 @@ _ISSUE_DETAIL_KEYS: dict[str, frozenset[str]] = {
     "pattern_mismatch": frozenset({"pattern_hint"}),
     "choice_unknown": frozenset(),
     "choice_inactive": frozenset(),
-    "required_if": frozenset(
-        {"equals", "required_parameter_code", "when_parameter_code"}
-    ),
-    "value_not_found_in_prior_por": frozenset(
-        {"candidate_parameter_code", "searched_layer_count"}
-    ),
+    "required_if": frozenset({"equals", "required_parameter_code", "when_parameter_code"}),
+    "value_not_found_in_prior_por": frozenset({"candidate_parameter_code", "searched_layer_count"}),
 }
 
 
@@ -101,6 +96,10 @@ class CanonicalValidationBasisLoader:
             raise NotFoundError(f"프로젝트를 찾을 수 없다: {project_id}")
 
         try:
+            if project.status in {ProjectStatus.APPROVED, ProjectStatus.ARCHIVED}:
+                return _build_frozen_basis(
+                    project, DefinitionView.from_snapshot(project.parameter_snapshot)
+                )
             parameters = tuple(await self.repo.list_active_parameters())
             categories = await self.repo.list_active_categories()
             persisted_rules = await self.repo.list_active_validation_rules()
@@ -111,12 +110,15 @@ class CanonicalValidationBasisLoader:
                 persisted_rules,
             )
         except (
+            DomainValidationError,
             RuleViolationError,
             ValidationError,
             LookupError,
             TypeError,
             ValueError,
         ) as exc:
+            if isinstance(exc, DomainValidationError) and exc.code == "snapshot_invalid":
+                raise
             _configuration_invalid(exc)
 
 
@@ -178,11 +180,7 @@ def _public_issue_details(
     details: Mapping[str, IssueDetailValue],
 ) -> dict[str, IssueDetailValue]:
     allowed = _ISSUE_DETAIL_KEYS.get(code, frozenset())
-    return {
-        key: value
-        for key, value in details.items()
-        if key in allowed
-    }
+    return {key: value for key, value in details.items() if key in allowed}
 
 
 def _build_basis(
@@ -197,17 +195,12 @@ def _build_basis(
         process_id=project.process_id,
     )
     parameter_definitions = tuple(_parameter_definition(parameter) for parameter in parameters)
-    parameters_by_code = {
-        parameter.code: parameter for parameter in parameter_definitions
-    }
+    parameters_by_code = {parameter.code: parameter for parameter in parameter_definitions}
     layers = _layer_inputs(project)
     rules = tuple(
         projected
         for rule in persisted_rules
-        if (
-            projected := _applicable_rule(rule, context, parameters_by_code)
-        )
-        is not None
+        if (projected := _applicable_rule(rule, context, parameters_by_code)) is not None
     )
     definitions = tuple(rule.definition for rule in rules)
 
@@ -236,6 +229,39 @@ def _build_basis(
     )
 
 
+def _build_frozen_basis(project: Project, view: DefinitionView) -> CanonicalValidationBasis:
+    """Build validation inputs solely from the approved snapshot plus project rows."""
+    definitions = view.parameter_definitions()
+    raw_rules = view.rules()
+    rule_definitions = view.validation_rule_definitions()
+    rules = tuple(
+        ApplicableRule(
+            definition=definition,
+            scope=dict(raw["scope"]),
+            spec=_SPEC_ADAPTER.validate_python(raw["spec"]),
+        )
+        for raw, definition in zip(raw_rules, rule_definitions, strict=True)
+    )
+    context = ProjectContext(
+        project_id=project.id,
+        line_id=project.line_id,
+        process_id=project.process_id,
+    )
+    # Structural corruption is rejected even for an empty project, matching the
+    # live loader's fail-closed definition check.
+    evaluate_project(context, definitions, (), rule_definitions)
+    return CanonicalValidationBasis(
+        project=project,
+        parameters=(),
+        category_code_by_id={},
+        context=context,
+        parameter_definitions=definitions,
+        layers=_layer_inputs(project),
+        rules=rules,
+        basis_hash=view.validation_basis_hash,
+    )
+
+
 def _parameter_definition(parameter: Parameter) -> ParameterDefinition:
     """Project ORM metadata into the type-applicable canonical domain shape.
 
@@ -256,9 +282,7 @@ def _parameter_definition(parameter: Parameter) -> ParameterDefinition:
         value_type=parameter.value_type,
         required=parameter.required,
         pattern=parameter.pattern if parameter.value_type is ValueType.TEXT else None,
-        pattern_hint=(
-            parameter.pattern_hint if parameter.value_type is ValueType.TEXT else None
-        ),
+        pattern_hint=(parameter.pattern_hint if parameter.value_type is ValueType.TEXT else None),
         min_value=_bound(parameter.min_value) if parameter.value_type is ValueType.NUMBER else None,
         max_value=_bound(parameter.max_value) if parameter.value_type is ValueType.NUMBER else None,
         choice_set_code=choice_set.code if choice_set is not None else None,
@@ -296,10 +320,7 @@ def _layer_inputs(project: Project) -> tuple[LayerInput, ...]:
                     label=condition.label,
                     condition_index=condition.condition_index,
                     is_por=condition.is_por,
-                    values={
-                        cell.parameter_code: cell.value_text
-                        for cell in condition.cell_values
-                    },
+                    values={cell.parameter_code: cell.value_text for cell in condition.cell_values},
                 )
                 for condition in sorted(
                     layer.conditions,

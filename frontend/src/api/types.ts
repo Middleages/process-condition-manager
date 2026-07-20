@@ -295,13 +295,27 @@ export interface ProjectLayerOut {
   source_layer_key: string | null
 }
 
+export type ProjectStatus = 'draft' | 'review' | 'approved' | 'rejected' | 'archived'
+
+export type ProjectTransitionAction =
+  | 'request_review'
+  | 'approve'
+  | 'reject'
+  | 'return_to_draft'
+  | 'create_revision'
+
 export interface ProjectOut {
   id: number
   line_id: string
   process_id: string
   part_id: string
   name: string
-  status: 'draft'
+  status: ProjectStatus
+  version: number
+  revision_root_id: number | null
+  predecessor_project_id: number | null
+  successor_project_id: number | null
+  allowed_actions: ProjectTransitionAction[]
   profile: ProjectProfileOut
   layers: ProjectLayerOut[]
 }
@@ -312,13 +326,81 @@ export interface ProjectSummaryOut {
   process_id: string
   part_id: string
   name: string
-  status: 'draft'
+  status: ProjectStatus
+  version: number
+  revision_root_id: number | null
+  predecessor_project_id: number | null
+  successor_project_id: number | null
+  allowed_actions: ProjectTransitionAction[]
   device_type: ChoiceValueOut
   project_category: ChoiceValueOut
   layer_total: string | null
   updated_at: string
   layer_count: number
   cell_count: number
+}
+
+export type ProjectReviewTransitionAction = Exclude<ProjectTransitionAction, 'create_revision'>
+
+export interface ProjectTransitionIn {
+  action: ProjectReviewTransitionAction
+  expected_status: ProjectStatus
+}
+
+export interface ProjectTransitionOut {
+  project_id: number
+  status: ProjectStatus
+  allowed_actions: ProjectTransitionAction[]
+  basis_hash: string | null
+  rule_versions: Record<string, number> | null
+  revalidated: boolean
+  operation_id: string
+}
+
+export interface ProjectRevisionSourceOut {
+  id: number
+  status: ProjectStatus
+  version: number
+}
+
+export interface ProjectRevisionOut {
+  operation_id: string
+  source: ProjectRevisionSourceOut
+  revision: ProjectOut
+}
+
+export type ProjectCommentResolvedFilter = 'all' | 'true' | 'false'
+
+export interface ProjectCommentOut {
+  id: number
+  project_id: number
+  layer_key: string | null
+  condition_id: number | null
+  parameter_code: string | null
+  body: string | null
+  author: string
+  resolved: boolean
+  deleted: boolean
+  created_at: string
+  updated_at: string
+  resolved_at: string | null
+  deleted_at: string | null
+}
+
+export interface ProjectCommentListOut {
+  items: ProjectCommentOut[]
+  next_cursor: number | null
+}
+
+export interface ProjectCommentCreateIn {
+  body: string
+  layer_key?: string | null
+  condition_id?: number | null
+  parameter_code?: string | null
+}
+
+export interface ProjectCommentPatchIn {
+  resolved: boolean
 }
 
 export interface ProjectListOut {
@@ -404,6 +486,13 @@ export interface ChoiceOptionPageOut {
 export interface ChoiceOptionAggregate {
   set_code: string
   version: number
+  items: ChoiceOptionOut[]
+}
+
+export interface SheetFrozenChoiceSetOut {
+  set_code: string
+  version: number
+  is_active: boolean
   items: ChoiceOptionOut[]
 }
 
@@ -530,6 +619,8 @@ export interface SheetOut {
   lock: SheetLockSummaryOut
   validation_rules: SheetValidationRuleOut[]
   validation_basis_hash: string
+  frozen_choice_sets?: SheetFrozenChoiceSetOut[] | null
+  comment_counts?: Array<{ condition_id: number; parameter_code: string; count: number }>
 }
 
 // --- whole-project validation (POST /api/projects/{project_id}/validate) ---

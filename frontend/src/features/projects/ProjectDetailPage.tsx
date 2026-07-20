@@ -1,11 +1,25 @@
-import { useQuery } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, ChevronDown, ExternalLink, Pencil } from 'lucide-react'
-import { useRef, useState, type ReactNode } from 'react'
+import { FormEvent, useRef, useState, type ReactNode } from 'react'
 import { Link, useLocation, useParams } from 'react-router-dom'
 
-import { getApiErrorMessage } from '@/api/client'
-import { getProject } from '@/api/projects'
-import type { ChoiceValueOut, ProjectLayerOut, ProjectOut } from '@/api/types'
+import { getApiErrorDetails, getApiErrorMessage } from '@/api/client'
+import {
+  createProjectComment,
+  deleteProjectComment,
+  createRevision,
+  getProject,
+  listProjectComments,
+  patchProjectComment,
+  transitionProject,
+} from '@/api/projects'
+import type {
+  ChoiceValueOut,
+  ProjectLayerOut,
+  ProjectOut,
+  ProjectTransitionAction,
+  ProjectTransitionIn,
+} from '@/api/types'
 import { Badge } from '@/shared/components/Badge'
 import { Button } from '@/shared/components/Button'
 import { InlineAlert } from '@/shared/components/InlineAlert'
@@ -14,6 +28,9 @@ import { parsePositiveInt } from '@/shared/navigation/routeState'
 
 import { LayerReplaceModal } from './LayerReplaceModal'
 import { ProjectProfileDrawer } from './ProjectProfileDrawer'
+import { useAuth } from '@/app/AuthContext'
+import { invalidateProjectBackboneDiffAfterMutation } from '@/api/backboneDiffCache'
+import { invalidateProjectHistoryAfterMutation } from '@/api/historyCache'
 
 export function ProjectDetailPage() {
   const { projectId: rawProjectId } = useParams()
@@ -34,7 +51,9 @@ export function ProjectDetailPage() {
           projectQuery.data ? (
             <span className="inline-flex items-center gap-2">
               Project #{projectQuery.data.id}
-              <Badge tone="draft">초안</Badge>
+              <Badge tone={projectStatusBadgeTone(projectQuery.data.status)}>
+                {projectStatusLabel(projectQuery.data.status)}
+              </Badge>
             </span>
           ) : (
             '프로젝트'
@@ -89,25 +108,112 @@ export function ProjectDetailPage() {
 }
 
 function ProjectDetail({ project }: { project: ProjectOut }) {
+  const queryClient = useQueryClient()
+  const {
+    user,
+    permissions: {
+      canApprove,
+      canComment,
+      canCreateRevision,
+      canEditDraft,
+      canReject,
+      canRequestReview,
+      canReturnToDraft,
+    },
+  } = useAuth()
   const [replaceTarget, setReplaceTarget] = useState<ProjectLayerOut | null>(null)
   const [profileEditorOpen, setProfileEditorOpen] = useState(false)
+  const [newComment, setNewComment] = useState('')
   const profileEditTriggerRef = useRef<HTMLButtonElement>(null)
+  const isDraft = project.status === 'draft'
   const summary = {
     layerCount: project.layers.length,
     conditionCount: project.layers.reduce((sum, layer) => sum + layer.condition_count, 0),
     cellCount: project.layers.reduce((sum, layer) => sum + layer.cell_count, 0),
   }
-  const backboneProjectIds = new Set(
-    project.layers.flatMap((layer) =>
-      layer.source_project_id === null ? [] : [layer.source_project_id],
-    ),
-  )
-  const backboneSummary =
-    backboneProjectIds.size === 0
-      ? '없음'
-      : backboneProjectIds.size === 1
-        ? `#${[...backboneProjectIds][0]}`
-        : `${backboneProjectIds.size}개 프로젝트`
+
+  const lineageText = `v${project.version} / root ${project.revision_root_id ?? '-'} / pred ${
+    project.predecessor_project_id ?? '-'
+  } / succ ${project.successor_project_id ?? '-'} / actions ${project.allowed_actions.length}`
+
+  const commentsQuery = useInfiniteQuery({
+    queryKey: ['project-comments', project.id, 'target', 'project'],
+    initialPageParam: null as number | null,
+    queryFn: ({ pageParam }) =>
+      listProjectComments(project.id, {
+        target: 'project',
+        beforeId: pageParam ?? undefined,
+      }),
+    getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
+  })
+  const projectComments = commentsQuery.data?.pages.flatMap((page) => page.items) ?? []
+
+  const executeTransitionMutation = useMutation({
+    mutationFn: async (action: ProjectTransitionAction) => {
+      if (action === 'create_revision') {
+        return createRevision(project.id)
+      }
+      const payload: ProjectTransitionIn = { action, expected_status: project.status }
+      return transitionProject(project.id, payload)
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['project', project.id] })
+      void queryClient.invalidateQueries({ queryKey: ['projects'] })
+      void queryClient.invalidateQueries({ queryKey: ['sheet', project.id] })
+      void invalidateProjectHistoryAfterMutation(queryClient, project.id)
+      void invalidateProjectBackboneDiffAfterMutation(queryClient, project.id)
+    },
+  })
+
+  const createCommentMutation = useMutation({
+    mutationFn: (body: string) => createProjectComment(project.id, { body }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['project-comments', project.id, 'target', 'project'] })
+      setNewComment('')
+    },
+  })
+
+  const patchCommentMutation = useMutation({
+    mutationFn: ({ commentId, resolved }: { commentId: number; resolved: boolean }) =>
+      patchProjectComment(project.id, commentId, { resolved }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['project-comments', project.id, 'target', 'project'] })
+    },
+  })
+  const deleteCommentMutation = useMutation({
+    mutationFn: (commentId: number) => deleteProjectComment(project.id, commentId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['project-comments', project.id] })
+    },
+  })
+
+  function submitComment(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const text = newComment.trim()
+    if (text === '' || createCommentMutation.isPending) return
+    void createCommentMutation.mutate(text)
+  }
+
+  const allowedTransitionActions = project.allowed_actions.filter((action) => {
+    if (action === 'request_review') return canRequestReview
+    if (action === 'approve') return canApprove
+    if (action === 'reject') return canReject
+    if (action === 'return_to_draft') return canReturnToDraft
+    if (action === 'create_revision') return canCreateRevision
+
+    return false
+  })
+
+  const canUseDraftMutations = canEditDraft && isDraft
+  const canUseCommentMutations = canComment
+
+  function requestTransition(action: ProjectTransitionAction) {
+    if (action === 'approve' || action === 'create_revision') {
+      const confirmed = window.confirm(`${actionLabel(action)}를 진행하시겠습니까?`)
+      if (!confirmed) return
+    }
+    executeTransitionMutation.mutate(action)
+  }
 
   return (
     <div className="space-y-5">
@@ -115,8 +221,47 @@ function ProjectDetail({ project }: { project: ProjectOut }) {
         <SummaryItem label="Layer" value={summary.layerCount} />
         <SummaryItem label="조건 행" value={summary.conditionCount} />
         <SummaryItem label="Cell" value={summary.cellCount} />
-        <SummaryItem label="백본" value={backboneSummary} />
+        <SummaryItem label="백본" value={backboneSummary(project)} />
       </dl>
+
+      <section aria-labelledby="project-workflow-title" className="space-y-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 id="project-workflow-title" className="text-lg font-bold text-ink-950">
+              워크플로우
+            </h2>
+            <p className="mt-0.5 text-sm text-muted">현재 상태와 Lineage, 허용 작업을 확인합니다.</p>
+          </div>
+          <div className="text-sm text-muted">{lineageText}</div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border-subtle bg-surface p-4">
+          <Badge tone={projectStatusBadgeTone(project.status)} className="h-7 px-3 py-0.5">
+            {projectStatusLabel(project.status)}
+          </Badge>
+          <span className="text-sm text-muted">/</span>
+          <span className="text-sm text-ink-950">허용 액션:</span>
+          <div className="ml-auto flex flex-wrap gap-2">
+            {allowedTransitionActions.length === 0 ? (
+              <span className="text-sm text-muted">가능한 액션이 없습니다.</span>
+            ) : null}
+            {allowedTransitionActions.map((action) => (
+              <Button
+                size="compact"
+                key={action}
+                variant="secondary"
+                disabled={executeTransitionMutation.isPending}
+                onClick={() => requestTransition(action)}
+              >
+                {actionLabel(action)}
+              </Button>
+            ))}
+            {executeTransitionMutation.isError ? (
+              <ReviewGateError projectId={project.id} error={executeTransitionMutation.error} />
+            ) : null}
+          </div>
+        </div>
+      </section>
 
       <section aria-labelledby="project-profile-title" className="space-y-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -128,16 +273,18 @@ function ProjectDetail({ project }: { project: ProjectOut }) {
               업무에 필요한 식별·분류·방향을 먼저 확인합니다.
             </p>
           </div>
-          <button
-            ref={profileEditTriggerRef}
-            type="button"
-            aria-haspopup="dialog"
-            className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border-control bg-surface px-3 text-sm font-semibold text-ink-950 transition-colors hover:bg-canvas"
-            onClick={() => setProfileEditorOpen(true)}
-          >
-            <Pencil aria-hidden="true" size={16} strokeWidth={2} />
-            기본정보 편집
-          </button>
+          {canUseDraftMutations ? (
+            <button
+              ref={profileEditTriggerRef}
+              type="button"
+              aria-haspopup="dialog"
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border-control bg-surface px-3 text-sm font-semibold text-ink-950 transition-colors hover:bg-canvas"
+              onClick={() => setProfileEditorOpen(true)}
+            >
+              <Pencil aria-hidden="true" size={16} strokeWidth={2} />
+              기본정보 편집
+            </button>
+          ) : null}
         </div>
 
         <div className="overflow-hidden rounded-xl border border-border-subtle bg-surface">
@@ -287,14 +434,16 @@ function ProjectDetail({ project }: { project: ProjectOut }) {
                       {layer.cell_count}
                     </td>
                     <td className="min-w-0 overflow-hidden whitespace-nowrap px-4 py-0 text-right">
-                      <Button
-                        className="h-9"
-                        size="compact"
-                        variant="secondary"
-                        onClick={() => setReplaceTarget(layer)}
-                      >
-                        교체
-                      </Button>
+                      {canUseDraftMutations ? (
+                        <Button
+                          className="h-9"
+                          size="compact"
+                          variant="secondary"
+                          onClick={() => setReplaceTarget(layer)}
+                        >
+                          교체
+                        </Button>
+                      ) : null}
                     </td>
                   </tr>
                 )
@@ -311,7 +460,109 @@ function ProjectDetail({ project }: { project: ProjectOut }) {
         </div>
       </section>
 
-      {replaceTarget ? (
+      <section aria-labelledby="project-comments-title" className="space-y-3">
+        <h2 id="project-comments-title" className="text-lg font-bold text-ink-950">
+          댓글
+        </h2>
+        {canUseCommentMutations ? (
+          <form className="space-y-2" onSubmit={submitComment}>
+            <textarea
+              aria-label="댓글 입력"
+              className="min-h-20 w-full rounded-md border border-border-subtle bg-surface p-3 text-sm"
+              value={newComment}
+              onChange={(event) => setNewComment(event.currentTarget.value)}
+            />
+            <Button
+              size="compact"
+              type="submit"
+              disabled={newComment.trim() === '' || createCommentMutation.isPending}
+            >
+              {createCommentMutation.isPending ? '등록 중...' : '댓글 등록'}
+            </Button>
+          </form>
+        ) : null}
+        {createCommentMutation.isError ||
+        patchCommentMutation.isError ||
+        deleteCommentMutation.isError ? (
+          <InlineAlert className="mt-3" tone="error">
+            {getApiErrorMessage(
+              createCommentMutation.error ||
+                patchCommentMutation.error ||
+                deleteCommentMutation.error,
+            )}
+          </InlineAlert>
+        ) : null}
+        {commentsQuery.isError ? (
+          <InlineAlert className="mt-3" tone="error">
+            <span>{getApiErrorMessage(commentsQuery.error)}</span>
+            <Button size="compact" variant="secondary" onClick={() => void commentsQuery.refetch()}>
+              다시 시도
+            </Button>
+          </InlineAlert>
+        ) : null}
+
+        <div className="space-y-2">
+          {projectComments.map((comment) => (
+            <article
+              className="rounded-xl border border-border-subtle bg-surface p-3 text-sm"
+              key={comment.id}
+              aria-label={`comment-${comment.id}`}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs font-semibold text-muted">#{comment.id} · {comment.author}</p>
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-xs ${comment.resolved ? 'bg-success-surface text-success' : 'bg-canvas text-muted'}`}
+                  >
+                    {comment.resolved ? 'resolved' : 'open'}
+                  </span>
+                  {canUseCommentMutations && !comment.deleted ? (
+                    <Button
+                      size="compact"
+                      variant="secondary"
+                      disabled={patchCommentMutation.isPending}
+                      onClick={() =>
+                        patchCommentMutation.mutate({ commentId: comment.id, resolved: !comment.resolved })
+                      }
+                    >
+                      {comment.resolved ? '재열기' : '해결'}
+                    </Button>
+                  ) : null}
+                  {!comment.deleted &&
+                  (comment.author === user?.id || user?.roles.includes('admin')) ? (
+                    <Button
+                      size="compact"
+                      variant="secondary"
+                      disabled={deleteCommentMutation.isPending}
+                      onClick={() => deleteCommentMutation.mutate(comment.id)}
+                    >
+                      삭제
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+              <p className="mt-1 whitespace-pre-wrap break-words text-ink-950">
+                {comment.body ?? '(삭제된 댓글)'}
+              </p>
+            </article>
+          ))}
+          {projectComments.length === 0 && !commentsQuery.isPending ? (
+            <p className="text-sm text-muted">표시할 댓글이 없습니다.</p>
+          ) : null}
+          {commentsQuery.hasNextPage ? (
+            <Button
+              size="compact"
+              variant="secondary"
+              disabled={commentsQuery.isFetchingNextPage}
+              onClick={() => void commentsQuery.fetchNextPage()}
+            >
+              {commentsQuery.isFetchingNextPage ? '불러오는 중...' : '댓글 더 보기'}
+            </Button>
+          ) : null}
+        </div>
+      </section>
+
+      {replaceTarget && canUseDraftMutations ? (
         <LayerReplaceModal
           project={project}
           targetLayer={replaceTarget}
@@ -319,7 +570,7 @@ function ProjectDetail({ project }: { project: ProjectOut }) {
         />
       ) : null}
 
-      {profileEditorOpen ? (
+      {profileEditorOpen && canUseDraftMutations ? (
         <ProjectProfileDrawer
           projectId={project.id}
           fallbackFocusRef={profileEditTriggerRef}
@@ -328,6 +579,59 @@ function ProjectDetail({ project }: { project: ProjectOut }) {
       ) : null}
     </div>
   )
+}
+
+function ReviewGateError({ projectId, error }: { projectId: number; error: unknown }) {
+  const details = getApiErrorDetails(error, 'review_gate_failed')
+  if (details === null) {
+    return (
+      <InlineAlert className="mt-3" tone="error">
+        {getApiErrorMessage(error)}
+      </InlineAlert>
+    )
+  }
+  const validation = isRecord(details.validation) ? details.validation : null
+  const summary = validation !== null && isRecord(validation.summary) ? validation.summary : null
+  const issues = validation !== null && Array.isArray(validation.issues) ? validation.issues : []
+  const missingPor = Array.isArray(details.missing_por_layers) ? details.missing_por_layers : []
+  return (
+    <InlineAlert className="mt-3 w-full" tone="error">
+      <div className="space-y-2" data-testid="review-gate-panel">
+        <strong>Review 게이트를 통과하지 못했습니다.</strong>
+        <p>
+          오류 {numberOrZero(summary?.error_count)}개 · 경고 {numberOrZero(summary?.warning_count)}개
+          · POR 누락 {numberOrZero(details.total_missing_por_count)}개
+        </p>
+        <ul className="list-disc space-y-1 pl-5">
+          {issues.slice(0, 20).map((issue, index) => {
+            const item = isRecord(issue) ? issue : {}
+            const condition = numberOrZero(item.condition_id)
+            const parameter = typeof item.parameter_code === 'string' ? item.parameter_code : '-'
+            const layer = typeof item.layer_key === 'string' ? item.layer_key : '-'
+            return (
+              <li key={`${String(item.key ?? index)}`}>
+                <Link to={`/projects/${projectId}/sheet`}>
+                  {layer} / #{condition} / {parameter}
+                </Link>
+              </li>
+            )
+          })}
+          {missingPor.slice(0, 20).map((entry, index) => {
+            const item = isRecord(entry) ? entry : {}
+            return <li key={`por-${index}`}>POR 누락 · {String(item.layer_label ?? item.layer_key ?? '-')}</li>
+          })}
+        </ul>
+      </div>
+    </InlineAlert>
+  )
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function numberOrZero(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0
 }
 
 function ProfileGroup({
@@ -415,4 +719,47 @@ function getProjectListReturnPath(state: unknown): string {
   }
 
   return '/projects'
+}
+
+function projectStatusBadgeTone(status: ProjectOut['status']) {
+  if (status === 'draft') return 'draft'
+  if (status === 'approved') return 'neutral'
+  if (status === 'rejected') return 'error'
+  return 'read-only'
+}
+
+function projectStatusLabel(status: ProjectOut['status']) {
+  if (status === 'draft') return '초안'
+  if (status === 'review') return '검토중'
+  if (status === 'approved') return '승인'
+  if (status === 'rejected') return '반려'
+  return '보존'
+}
+
+function actionLabel(action: ProjectTransitionAction) {
+  switch (action) {
+    case 'request_review':
+      return '검토요청'
+    case 'approve':
+      return '승인'
+    case 'reject':
+      return '반려'
+    case 'return_to_draft':
+      return '초안복귀'
+    case 'create_revision':
+      return '리비전 생성'
+    default:
+      return action
+  }
+}
+
+function backboneSummary(project: ProjectOut) {
+  if (project.layers.length === 0) {
+    return '없음'
+  }
+  const sourceProjectIds = new Set(
+    project.layers.flatMap((layer) => (layer.source_project_id === null ? [] : [layer.source_project_id])),
+  )
+  if (sourceProjectIds.size === 0) return '없음'
+  return sourceProjectIds.size === 1 ? `#${[...sourceProjectIds][0]}` : `${sourceProjectIds.size}개 프로젝트`
 }

@@ -17,8 +17,40 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import UserContext, get_current_user
 from app.core.db import get_app_session
-from app.core.errors import LockConflictError
-from app.models.project import EditLock, Project
+from app.core.errors import LockConflictError, NotFoundError, ProjectReadOnlyError
+from app.models.project import EditLock, Project, ProjectStatus
+
+
+async def _require_draft_project(
+    project_id: int,
+    session: Annotated[AsyncSession, Depends(get_app_session, scope="function")],
+) -> Project:
+    result = await session.execute(
+        select(Project)
+        .where(Project.id == project_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    project = result.scalar_one_or_none()
+    if project is None:
+        raise NotFoundError(f"프로젝트를 찾을 수 없다: {project_id}")
+    if project.status != ProjectStatus.DRAFT:
+        raise ProjectReadOnlyError(
+            "현재 상태에서 수정할 수 없습니다",
+            details={"project_id": project_id, "existing_status": project.status.value},
+        )
+    return project
+
+
+async def require_project_read_only(
+    project_id: int,
+    user: Annotated[UserContext, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_app_session, scope="function")],
+) -> None:
+    """Non-draft 프로젝트에 대한 편집/락 시도를 차단한다."""
+    del user
+    # NotFoundError, ProjectReadOnlyError 우선
+    await _require_draft_project(project_id, session)
 
 
 def utcnow() -> datetime:
@@ -80,12 +112,9 @@ async def require_edit_lock(
     미획득/미보유/토큰 불일치/만료면 409(LockConflictError)로 거절한다.
     같은 앱 세션을 다른 의존성과 공유하므로(FastAPI 캐시) 추가 커넥션을 쓰지 않는다.
     """
-    # edit_lock은 최초 획득 전에는 행이 없으므로 항상 존재하는 project 행을 mutex로 쓴다.
-    # 같은 세션을 실제 편집 서비스까지 공유해 commit 시점까지 행 잠금을 유지함으로써,
-    # 검증 직후 TTL 탈취가 일어나 옛 토큰의 쓰기가 뒤늦게 커밋되는 TOCTOU를 막는다.
-    await session.execute(
-        select(Project.id).where(Project.id == project_id).with_for_update()
-    )
+    # 상태 판정과 잠금 검사를 같은 project mutex 아래에서 수행해야 상태 전이와의
+    # TOCTOU가 없다. _require_draft_project가 FOR UPDATE와 강제 refresh를 모두 맡는다.
+    await _require_draft_project(project_id, session)
     lock = await session.get(EditLock, project_id)
     if not is_valid_holder(lock, user_id=user.id, token=x_lock_token, now=utcnow()):
         raise LockConflictError(

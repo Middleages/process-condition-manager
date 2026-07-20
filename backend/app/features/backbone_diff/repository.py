@@ -27,6 +27,7 @@ from app.domain.backbone.snapshot import (
     BackboneSnapshotParseCache,
     parse_backbone_snapshot,
 )
+from app.domain.parameters.definition_view import DefinitionView
 from app.features.backbone_diff.contracts import BackboneDiffProjectInput
 from app.models.parameter import Parameter, ParameterCategory
 from app.models.project import CellValue, LayerCondition, Project, SheetLayer
@@ -40,6 +41,7 @@ class _ProjectRow:
     part_id: str
     name: str
     status: object
+    parameter_snapshot: dict[str, Any] | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,7 +89,12 @@ class BackboneDiffRepository:
             baseline_snapshot_by_layer_id,
             cells_by_condition_id,
         )
-        registry = await self._load_parameter_registry(requested_codes)
+        frozen = _project_status_text(project.status) in {"approved", "archived"}
+        registry = (
+            self._frozen_parameter_registry(project.parameter_snapshot)
+            if frozen
+            else await self._load_parameter_registry(requested_codes)
+        )
         if registry.unresolved_codes:
             raise ConflictError(
                 "백본 컬럼 메타데이터를 찾을 수 없다",
@@ -97,6 +104,14 @@ class BackboneDiffRepository:
 
         captured_at = datetime.now(UTC)
         current_parameters = registry.parameters
+        if frozen:
+            visible_codes = {parameter.code for parameter in current_parameters}
+            cells_by_condition_id = {
+                condition_id: tuple(
+                    cell for cell in cells if cell.parameter_code in visible_codes
+                )
+                for condition_id, cells in cells_by_condition_id.items()
+            }
         loaded_layers = tuple(
             self._build_layer_input(
                 project=project,
@@ -130,6 +145,7 @@ class BackboneDiffRepository:
                     project_table.c.part_id,
                     project_table.c.name,
                     project_table.c.status,
+                    project_table.c.parameter_snapshot,
                 ).where(project_table.c.id == project_id)
             )
         ).one_or_none()
@@ -146,6 +162,34 @@ class BackboneDiffRepository:
             part_id=row.part_id,
             name=row.name,
             status=row.status,
+            parameter_snapshot=row.parameter_snapshot,
+        )
+
+    @staticmethod
+    def _frozen_parameter_registry(
+        raw_snapshot: dict[str, Any] | None,
+    ) -> BackboneDiffCurrentParameterRegistry:
+        columns = DefinitionView.from_snapshot(raw_snapshot).columns()
+        parameters = _canonicalize_current_parameters(
+            tuple(
+                BackboneDiffCurrentParameter(
+                    code=str(column["code"]),
+                    value_type=str(column["value_type"]),
+                    display_name=str(column["display_name"]),
+                    category_code=(
+                        str(column["category_code"])
+                        if column.get("category_code") is not None
+                        else None
+                    ),
+                    sort_order=int(column.get("sort_order", 0)),
+                    active=True,
+                )
+                for column in columns
+            )
+        )
+        return BackboneDiffCurrentParameterRegistry(
+            parameters=parameters,
+            unresolved_codes=(),
         )
 
     async def _load_layers(self, project_id: int) -> tuple[_LayerRow, ...]:

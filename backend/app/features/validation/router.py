@@ -6,7 +6,11 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import get_current_user
+from app.core.auth import (
+    get_current_user,
+    require_business_read,
+    require_registry_manage,
+)
 from app.core.db import get_app_session
 from app.features.sheets.repository import SheetRepository
 from app.features.validation.project_service import ProjectValidationService
@@ -58,6 +62,7 @@ ProjectServiceDep = Annotated[
     "/validation-rules",
     response_model=ValidationRuleOut,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_registry_manage)],
 )
 async def create_rule(data: ValidationRuleCreateIn, service: ServiceDep) -> ValidationRuleOut:
     return await service.create_rule(data)
@@ -66,6 +71,7 @@ async def create_rule(data: ValidationRuleCreateIn, service: ServiceDep) -> Vali
 @router.get(
     "/validation-rules",
     response_model=list[ValidationRuleOut],
+    dependencies=[Depends(require_business_read)],
 )
 async def list_rules(
     service: ServiceDep, include_inactive: bool = False
@@ -76,6 +82,7 @@ async def list_rules(
 @router.get(
     "/validation-rules/{code}",
     response_model=ValidationRuleOut,
+    dependencies=[Depends(require_business_read)],
 )
 async def get_rule(code: str, service: ServiceDep) -> ValidationRuleOut:
     return await service.get_rule(code)
@@ -84,6 +91,7 @@ async def get_rule(code: str, service: ServiceDep) -> ValidationRuleOut:
 @router.patch(
     "/validation-rules/{code}",
     response_model=ValidationRuleOut,
+    dependencies=[Depends(require_registry_manage)],
 )
 async def patch_rule(
     code: str, data: ValidationRulePatchIn, service: ServiceDep
@@ -95,6 +103,7 @@ async def patch_rule(
     "/projects/{project_id}/validate",
     response_model=ProjectValidationOut,
     tags=["validation"],
+    dependencies=[Depends(require_business_read)],
 )
 async def validate_project(
     project_id: int,

@@ -1,20 +1,24 @@
 """시트 조회 서비스 (도메인 조합).
 
-컬럼 정의 공급과 본문 매트릭스 변환을 조합한다. 컬럼 정의는 `_build_live_columns`
-로 분리해 둔다 — 지금은 항상 live 레지스트리를 쓰지만, Phase 5에서 승인된 프로젝트는
-동결된 parameter_snapshot을 쓰도록 이 함수 교체만으로 경계가 갈리도록 하기 위함이다.
+컬럼 정의 공급과 본문 매트릭스 변환을 조합한다. 프로젝트 상태에 따라
+승인된 스냅샷(Approved/Archived) 또는 live 정규화 경로를 선택한다.
 """
 
 from decimal import Decimal
 
 from app.core.config import settings
-from app.core.errors import DomainValidationError
+from app.core.errors import DomainValidationError, NotFoundError
 from app.core.locks import as_utc, is_expired, utcnow
 from app.domain.decimal_values import normalize_decimal
+from app.domain.parameters.definition_view import DefinitionView
 from app.domain.parameters.types import ValueType
+from app.domain.workflow import ProjectStatus
 from app.features.sheets.repository import SheetRepository
 from app.features.sheets.schema import (
+    FrozenChoiceSetOptionOut,
+    FrozenChoiceSetOut,
     SheetColumnOut,
+    SheetCommentCountOut,
     SheetLockSummaryOut,
     SheetOut,
     SheetRowOut,
@@ -33,13 +37,31 @@ class SheetService:
         self.basis_loader = CanonicalValidationBasisLoader(repo)
 
     async def get_sheet(self, project_id: int, *, user_id: str) -> SheetOut:
+        project = await self.repo.load_project_tree(project_id)
+        if project is None:
+            raise NotFoundError(f"프로젝트를 찾을 수 없다: {project_id}")
+
+        lock = _lock_summary(await self.repo.load_edit_lock(project_id), user_id=user_id)
+        comment_counts = [
+            SheetCommentCountOut(
+                condition_id=condition_id,
+                parameter_code=parameter_code,
+                count=count,
+            )
+            for condition_id, parameter_code, count in await self.repo.list_open_comment_counts(
+                project_id
+            )
+        ]
+
+        if project.status in (ProjectStatus.APPROVED, ProjectStatus.ARCHIVED):
+            return self._build_frozen_sheet(project, lock, comment_counts)
+
         basis = await self.basis_loader.load(project_id)
         columns = _build_live_columns(
             list(basis.parameters),
             basis.category_code_by_id,
         )
-        rows = _build_rows(basis.project)
-        lock = _lock_summary(await self.repo.load_edit_lock(project_id), user_id=user_id)
+        rows = _build_rows(project)
         return SheetOut(
             columns=columns,
             rows=rows,
@@ -56,17 +78,103 @@ class SheetService:
                 for rule in basis.rules
             ],
             validation_basis_hash=basis.basis_hash,
+            frozen_choice_sets=[],
+            comment_counts=comment_counts,
         )
+
+    def _build_frozen_sheet(
+        self,
+        project: Project,
+        lock: SheetLockSummaryOut,
+        comment_counts: list[SheetCommentCountOut],
+    ) -> SheetOut:
+        try:
+            definition = DefinitionView.from_snapshot(project.parameter_snapshot)
+            raw_columns = definition.columns()
+            columns = _build_frozen_columns(raw_columns)
+            allowed_parameter_codes = {column["code"] for column in raw_columns}
+            rows = _build_rows(project, allowed_parameter_codes=allowed_parameter_codes)
+            rules = _build_frozen_rules(definition.rules())
+            frozen_choice_sets = [
+                FrozenChoiceSetOut(
+                    set_code=choice_set["code"],
+                    version=int(choice_set["version"]),
+                    is_active=bool(choice_set.get("is_active", True)),
+                    items=[
+                        FrozenChoiceSetOptionOut(**option)
+                        for option in choice_set.get("options", [])
+                    ],
+                )
+                for choice_set in definition.frozen_choice_sets()
+            ]
+        except Exception as exc:
+            if isinstance(exc, DomainValidationError):
+                raise
+            raise DomainValidationError(
+                "요청된 프로젝트의 snapshot이 손상되어 있습니다",
+                code="snapshot_invalid",
+            ) from exc
+
+        return SheetOut(
+            columns=columns,
+            rows=rows,
+            lock=lock,
+            validation_rules=rules,
+            validation_basis_hash=definition.validation_basis_hash,
+            frozen_choice_sets=frozen_choice_sets,
+            comment_counts=comment_counts,
+        )
+
+
+def _build_frozen_columns(columns: list[dict]) -> list[SheetColumnOut]:
+    rows: list[SheetColumnOut] = []
+    for column in columns:
+        rows.append(
+            SheetColumnOut(
+                parameter_code=column["code"],
+                display_name=column["display_name"],
+                value_type=column["value_type"],
+                category_code=column.get("category_code"),
+                unit=column.get("unit"),
+                min_value=_decimal_out(column.get("min_value")),
+                max_value=_decimal_out(column.get("max_value")),
+                required=bool(column.get("required", False)),
+                pattern=column.get("pattern"),
+                pattern_hint=column.get("pattern_hint"),
+                description=column.get("description"),
+                choice_set_code=column.get("choice_set_code"),
+                choice_set_version=_choice_set_version(column),
+                sort_order=int(column["sort_order"]),
+            )
+        )
+    return rows
+
+
+def _choice_set_version(column: dict) -> int | None:
+    if column.get("value_type") in (ValueType.CHOICE, "choice"):
+        value = column.get("choice_set_version")
+        return None if value is None else int(value)
+    return None
+
+
+def _build_frozen_rules(rules: list[dict]) -> list[SheetValidationRuleOut]:
+    return [
+        SheetValidationRuleOut(
+            code=rule["code"],
+            name=rule["name"],
+            severity=rule["severity"],
+            version=int(rule["version"]),
+            scope=rule["scope"],
+            spec=rule["spec"],
+        )
+        for rule in rules
+    ]
 
 
 def _build_live_columns(
     parameters: list[Parameter], category_code_by_id: dict[int, str]
 ) -> list[SheetColumnOut]:
-    """live 파라미터 레지스트리에서 컬럼 정의를 만든다.
-
-    "컬럼 정의 공급자" — Phase 5의 스냅샷 분기는 이 함수를 교체(또는 형제 함수
-    추가)하는 것으로 끝나야 한다. 여기 바깥에서 파라미터 원본에 의존하지 않는다.
-    """
+    """live 파라미터 레지스트리에서 컬럼 정의를 만든다."""
     columns: list[SheetColumnOut] = []
     for parameter in parameters:
         if parameter.value_type is ValueType.CHOICE and parameter.choice_set is None:
@@ -123,25 +231,36 @@ def _build_live_columns(
     return columns
 
 
-def _decimal_out(value: Decimal | None) -> Decimal | None:
-    return None if value is None else Decimal(normalize_decimal(format(value, "f")))
+def _decimal_out(value: Decimal | str | None) -> Decimal | None:
+    if value is None:
+        return None
+    if isinstance(value, Decimal):
+        return Decimal(normalize_decimal(format(value, "f")))
+    if isinstance(value, str):
+        return Decimal(normalize_decimal(value))
+    return Decimal(value)
 
 
-def _build_rows(project: Project) -> list[SheetRowOut]:
-    """프로젝트 트리를 조건 행 × 파라미터 매트릭스로 편다.
-
-    layer는 sort_order, 조건 행은 condition_index 순으로 이미 로드되어 있다.
-    셀은 값이 있는 것만 담는다 (희소 표현 — 없는 셀은 프론트가 null 처리).
-    """
+def _build_rows(
+    project: Project,
+    *,
+    allowed_parameter_codes: set[str] | None = None,
+) -> list[SheetRowOut]:
+    """프로젝트 트리를 조건 행 × 파라미터 매트릭스로 편다."""
     rows: list[SheetRowOut] = []
     for layer in project.layers:
         layer_label = f"{layer.layer_id} ({layer.step_seq})"
         for condition in layer.conditions:
-            cells: dict[str, str | None] = {
-                cell.parameter_code: cell.value_text
-                for cell in condition.cell_values
-                if cell.value_text is not None
-            }
+            cells: dict[str, str | None] = {}
+            for cell in condition.cell_values:
+                if cell.value_text is None:
+                    continue
+                if (
+                    allowed_parameter_codes is not None
+                    and cell.parameter_code not in allowed_parameter_codes
+                ):
+                    continue
+                cells[cell.parameter_code] = cell.value_text
             rows.append(
                 SheetRowOut(
                     condition_id=condition.id,
@@ -158,14 +277,7 @@ def _build_rows(project: Project) -> list[SheetRowOut]:
 
 
 def _lock_summary(lock: EditLock | None, *, user_id: str) -> SheetLockSummaryOut:
-    """edit_lock 행을 시트 잠금 요약으로 변환한다 (T5).
-
-    잠금이 없거나 만료면 미잠금(모두 None, is_mine=False)으로 본다 — 이때는 누구나
-    획득해 편집할 수 있다. 유효 잠금이면 보유자 정보를 채우고, is_mine은 현재 요청
-    사용자와 locked_by의 일치 여부다(토큰이 아닌 사용자 기준 — 시트 조회는 토큰을
-    싣지 않는 읽기 경로이며, 실제 편집 강제는 require_edit_lock의 토큰 검증이 한다).
-    datetime은 as_utc로 통일해 응답 JSON을 일관되게 한다.
-    """
+    """edit_lock 행을 시트 잠금 요약으로 변환한다 (T5)."""
     if lock is None or is_expired(lock, utcnow()):
         return SheetLockSummaryOut(
             locked_by=None,

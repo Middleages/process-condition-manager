@@ -10,7 +10,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import get_current_user
+from app.core.auth import get_current_user, require_business_read, require_registry_manage
 from app.core.db import get_app_session
 from app.domain.parameters import ImportPlan
 from app.features.parameters.repository import ParameterRepository
@@ -50,14 +50,21 @@ ServiceDep = Annotated[ParameterService, Depends(get_service, scope="function")]
 
 
 @router.post(
-    "/categories", response_model=CategoryOut, status_code=status.HTTP_201_CREATED
+    "/categories",
+    response_model=CategoryOut,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_registry_manage)],
 )
 async def create_category(data: CategoryCreate, service: ServiceDep) -> CategoryOut:
     category = await service.create_category(data)
     return CategoryOut.model_validate(category)
 
 
-@router.get("/categories", response_model=list[CategoryOut])
+@router.get(
+    "/categories",
+    response_model=list[CategoryOut],
+    dependencies=[Depends(require_business_read)],
+)
 async def list_categories(
     service: ServiceDep, include_inactive: bool = False
 ) -> list[CategoryOut]:
@@ -65,7 +72,11 @@ async def list_categories(
     return [CategoryOut.model_validate(c) for c in categories]
 
 
-@router.patch("/categories/{category_id}", response_model=CategoryOut)
+@router.patch(
+    "/categories/{category_id}",
+    response_model=CategoryOut,
+    dependencies=[Depends(require_registry_manage)],
+)
 async def update_category(
     category_id: int, data: CategoryUpdate, service: ServiceDep
 ) -> CategoryOut:
@@ -88,12 +99,20 @@ def _import_result(plan: ImportPlan) -> ImportResultOut:
     )
 
 
-@router.post("/import/preview", response_model=ImportResultOut)
+@router.post(
+    "/import/preview",
+    response_model=ImportResultOut,
+    dependencies=[Depends(require_business_read)],
+)
 async def import_preview(data: ImportIn, service: ServiceDep) -> ImportResultOut:
     return _import_result(await service.import_preview(data.csv_text))
 
 
-@router.post("/import/apply", response_model=ImportResultOut)
+@router.post(
+    "/import/apply",
+    response_model=ImportResultOut,
+    dependencies=[Depends(require_registry_manage)],
+)
 async def import_apply(data: ImportIn, service: ServiceDep) -> ImportResultOut:
     return _import_result(await service.import_apply(data.csv_text))
 
@@ -101,30 +120,51 @@ async def import_apply(data: ImportIn, service: ServiceDep) -> ImportResultOut:
 # --- Parameters ---
 
 
-@router.post("", response_model=ParameterOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=ParameterOut,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_registry_manage)],
+)
 async def create_parameter(data: ParameterCreate, service: ServiceDep) -> ParameterOut:
     return await service.create_parameter(data)
 
 
-@router.get("", response_model=list[ParameterOut])
+@router.get(
+    "",
+    response_model=list[ParameterOut],
+    dependencies=[Depends(require_business_read)],
+)
 async def list_parameters(
     service: ServiceDep, include_inactive: bool = False
 ) -> list[ParameterOut]:
     return await service.list_parameters(include_inactive=include_inactive)
 
 
-@router.get("/{parameter_id}", response_model=ParameterOut)
+@router.get(
+    "/{parameter_id}",
+    response_model=ParameterOut,
+    dependencies=[Depends(require_business_read)],
+)
 async def get_parameter(parameter_id: int, service: ServiceDep) -> ParameterOut:
     return await service.get_parameter(parameter_id)
 
 
-@router.patch("/{parameter_id}", response_model=ParameterOut)
+@router.patch(
+    "/{parameter_id}",
+    response_model=ParameterOut,
+    dependencies=[Depends(require_registry_manage)],
+)
 async def update_parameter(
     parameter_id: int, data: ParameterUpdate, service: ServiceDep
 ) -> ParameterOut:
     return await service.update_parameter(parameter_id, data)
 
 
-@router.post("/{parameter_id}/deactivate", response_model=ParameterOut)
+@router.post(
+    "/{parameter_id}/deactivate",
+    response_model=ParameterOut,
+    dependencies=[Depends(require_registry_manage)],
+)
 async def deactivate_parameter(parameter_id: int, service: ServiceDep) -> ParameterOut:
     return await service.deactivate_parameter(parameter_id)

@@ -752,7 +752,7 @@ async def test_cell_batch_pages_descending_and_proves_current_and_deleted_target
 
 
 @pytest.mark.asyncio
-async def test_cell_batch_detail_uses_exactly_three_sql_statements(
+async def test_cell_batch_detail_reuses_descriptor_definition_in_three_sql_statements(
     db_client: AsyncClient,
     db_session: AsyncSession,
     db_engine: AsyncEngine,

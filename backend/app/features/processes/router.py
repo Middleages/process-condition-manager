@@ -6,7 +6,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import get_current_user
+from app.core.auth import get_current_user, require_business_read
 from app.core.db import get_app_session
 from app.features.processes.schema import (
     LayerOut,
@@ -35,7 +35,11 @@ def get_service(
 ServiceDep = Annotated[ProcessService, Depends(get_service)]
 
 
-@router.get("", response_model=ProcessListOut)
+@router.get(
+    "",
+    response_model=ProcessListOut,
+    dependencies=[Depends(require_business_read)],
+)
 async def list_processes(
     service: ServiceDep,
     query: str | None = None,
@@ -50,12 +54,20 @@ async def list_processes(
     return ProcessListOut(items=items, next_cursor=next_cursor)
 
 
-@router.get("/{process_key}", response_model=ProcessDetailOut)
+@router.get(
+    "/{process_key}",
+    response_model=ProcessDetailOut,
+    dependencies=[Depends(require_business_read)],
+)
 async def get_process(process_key: str, service: ServiceDep) -> ProcessDetailOut:
     return await service.get_process_detail(process_key)
 
 
-@router.get("/{process_key}/layers", response_model=list[LayerOut])
+@router.get(
+    "/{process_key}/layers",
+    response_model=list[LayerOut],
+    dependencies=[Depends(require_business_read)],
+)
 async def get_layers(process_key: str, service: ServiceDep) -> list[LayerOut]:
     layers = await service.get_layers(process_key)
     return [LayerOut(**asdict(layer)) for layer in layers]

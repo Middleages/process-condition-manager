@@ -12,9 +12,13 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import UserContext, get_current_user
+from app.core.auth import (
+    UserContext,
+    get_current_user,
+    require_project_edit,
+)
 from app.core.db import get_app_session
-from app.core.locks import as_utc
+from app.core.locks import as_utc, require_project_read_only
 from app.core.maintenance import require_project_mutations_enabled
 from app.features.locks.repository import EditLockRepository
 from app.features.locks.schema import LockHeartbeatIn, LockOut, LockReleaseIn
@@ -43,7 +47,11 @@ UserDep = Annotated[UserContext, Depends(get_current_user)]
 @router.post(
     "/{project_id}/lock",
     response_model=LockOut,
-    dependencies=[Depends(require_project_mutations_enabled)],
+    dependencies=[
+        Depends(require_project_mutations_enabled),
+        Depends(require_project_edit),
+        Depends(require_project_read_only),
+    ],
 )
 async def acquire_lock(project_id: int, service: ServiceDep, user: UserDep) -> LockOut:
     lock = await service.acquire(project_id, user_id=user.id)
@@ -53,7 +61,11 @@ async def acquire_lock(project_id: int, service: ServiceDep, user: UserDep) -> L
 @router.post(
     "/{project_id}/lock/heartbeat",
     response_model=LockOut,
-    dependencies=[Depends(require_project_mutations_enabled)],
+    dependencies=[
+        Depends(require_project_mutations_enabled),
+        Depends(require_project_edit),
+        Depends(require_project_read_only),
+    ],
 )
 async def heartbeat_lock(
     project_id: int, data: LockHeartbeatIn, service: ServiceDep, user: UserDep
@@ -62,14 +74,22 @@ async def heartbeat_lock(
     return _lock_out(lock)
 
 
-@router.delete("/{project_id}/lock", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{project_id}/lock",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_project_edit)],
+)
 async def release_lock(
     project_id: int, data: LockReleaseIn, service: ServiceDep, user: UserDep
 ) -> None:
     await service.release(project_id, user_id=user.id, lock_token=data.lock_token)
 
 
-@router.post("/{project_id}/lock/release", status_code=status.HTTP_204_NO_CONTENT)
+@router.post(
+    "/{project_id}/lock/release",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_project_edit)],
+)
 async def release_lock_beacon(
     project_id: int, data: LockReleaseIn, service: ServiceDep, user: UserDep
 ) -> None:

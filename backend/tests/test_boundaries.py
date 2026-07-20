@@ -16,6 +16,9 @@ from app.core.auth import (
     Role,
     UserContext,
     get_current_user,
+    require_business_read,
+    require_project_edit,
+    require_registry_manage,
 )
 from app.core.config import Settings
 from app.core.db import get_app_session
@@ -26,14 +29,18 @@ from app.core.errors import (
     NotFoundError,
     register_exception_handlers,
 )
-from app.core.locks import require_edit_lock
+from app.core.locks import require_edit_lock, require_project_read_only
 from app.core.maintenance import require_project_mutations_enabled
+from app.features.backbone_diff import router as backbone_diff_router
 from app.features.cells import router as cells_router
 from app.features.choice_sets import router as choice_sets_router
 from app.features.conditions import router as conditions_router
+from app.features.history import router as history_router
 from app.features.locks import router as locks_router
 from app.features.parameters import router as parameters_router
+from app.features.processes import router as processes_router
 from app.features.projects import router as projects_router
+from app.features.sheets import router as sheets_router
 from app.features.validation import router as validation_router
 
 
@@ -206,6 +213,202 @@ def test_phase4_writer_mutation_gate_covers_all_project_truth_write_routes() -> 
     assert seen == blocked_routes | allowed_routes
 
 
+def _call_graph(dependency: Any) -> set[Any]:
+    calls: set[Any] = set()
+    stack: list[Any] = [dependency]
+    while stack:
+        item = stack.pop()
+        if item.call is not None:
+            calls.add(item.call)
+        if item.dependencies:
+            stack.extend(item.dependencies)
+    return calls
+
+
+def _route_spec(route: APIRoute) -> tuple[str, str]:
+    methods = route.methods or {"GET"}
+    method = next(iter(methods - {"HEAD"})) if methods - {"HEAD"} else "GET"
+    return method, route.path
+
+
+def test_touched_route_permission_matrix() -> None:
+    """Existing touched routes stay on explicit auth/lock guard dependencies."""
+    expected_permissions: dict[tuple[str, str], set[Any]] = {
+        # Auth-protected reads
+        ("GET", "/projects/backbone-candidates"): {require_business_read},
+        ("POST", "/projects/backbone-preview"): {require_business_read},
+        ("GET", "/projects"): {require_business_read},
+        ("GET", "/projects/{project_id}"): {require_business_read},
+        ("GET", "/projects/{project_id}/profile"): {require_business_read},
+        ("GET", "/processes"): {require_business_read},
+        ("GET", "/processes/{process_key}"): {require_business_read},
+        ("GET", "/processes/{process_key}/layers"): {require_business_read},
+        ("GET", "/projects/{project_id}/backbone-diff"): {require_business_read},
+        (
+            "GET",
+            "/projects/{project_id}/backbone-diff/layers/{layer_key}/conditions",
+        ): {require_business_read},
+        (
+            "GET",
+            "/projects/{project_id}/backbone-diff/layers/{layer_key}/conditions/{row_ref}/cells",
+        ): {require_business_read},
+        ("GET", "/projects/{project_id}/sheet"): {require_business_read},
+        ("GET", "/projects/{project_id}/events"): {require_business_read},
+        (
+            "GET",
+            "/projects/{project_id}/event-batches/{batch_id}",
+        ): {require_business_read},
+        ("GET", "/projects/{project_id}/cell-history"): {require_business_read},
+        ("GET", "/validation-rules"): {require_business_read},
+        ("GET", "/validation-rules/{code}"): {require_business_read},
+        ("POST", "/projects/{project_id}/validate"): {require_business_read},
+        ("GET", "/choice-sets"): {require_business_read},
+        ("GET", "/choice-sets/{set_code}"): {require_business_read},
+        ("GET", "/choice-sets/{set_code}/options"): {require_business_read},
+        ("POST", "/choice-sets/{set_code}/import/preview"): {require_business_read},
+        ("GET", "/parameters/categories"): {require_business_read},
+        ("GET", "/parameters"): {require_business_read},
+        ("GET", "/parameters/{parameter_id}"): {require_business_read},
+        ("POST", "/parameters/import/preview"): {require_business_read},
+        # Project truth mutations
+        ("POST", "/projects"): {
+            require_project_edit,
+            require_project_mutations_enabled,
+        },
+        (
+            "POST",
+            "/projects/{project_id}/layers/{layer_key}/backbone-replace",
+        ): {
+            require_project_edit,
+            require_project_mutations_enabled,
+            require_edit_lock,
+        },
+        ("PATCH", "/projects/{project_id}/profile"): {
+            require_project_edit,
+            require_project_mutations_enabled,
+            require_edit_lock,
+        },
+        ("PATCH", "/projects/{project_id}/cells"): {
+            require_project_edit,
+            require_project_mutations_enabled,
+            require_edit_lock,
+        },
+        ("POST", "/projects/{project_id}/layers/{layer_key}/conditions"): {
+            require_project_edit,
+            require_project_mutations_enabled,
+            require_edit_lock,
+        },
+        ("DELETE", "/projects/{project_id}/conditions/{condition_id}"): {
+            require_project_edit,
+            require_project_mutations_enabled,
+            require_edit_lock,
+        },
+        ("PUT", "/projects/{project_id}/conditions/{condition_id}/por"): {
+            require_project_edit,
+            require_project_mutations_enabled,
+            require_edit_lock,
+        },
+        # Locks
+        ("POST", "/projects/{project_id}/lock"): {
+            require_project_edit,
+            require_project_mutations_enabled,
+            require_project_read_only,
+        },
+        ("POST", "/projects/{project_id}/lock/heartbeat"): {
+            require_project_edit,
+            require_project_mutations_enabled,
+            require_project_read_only,
+        },
+        ("DELETE", "/projects/{project_id}/lock"): {
+            require_project_edit,
+        },
+        ("POST", "/projects/{project_id}/lock/release"): {
+            require_project_edit,
+        },
+        # Registry writes
+        ("POST", "/choice-sets"): {require_registry_manage},
+        ("PATCH", "/choice-sets/{set_code}"): {require_registry_manage},
+        ("POST", "/choice-sets/{set_code}/options"): {require_registry_manage},
+        ("PATCH", "/choice-sets/{set_code}/options/{option_code}"): {
+            require_registry_manage,
+        },
+        ("PUT", "/choice-sets/{set_code}/option-order"): {require_registry_manage},
+        ("POST", "/choice-sets/{set_code}/import"): {require_registry_manage},
+        ("POST", "/parameters/categories"): {require_registry_manage},
+        ("PATCH", "/parameters/categories/{category_id}"): {require_registry_manage},
+        ("POST", "/parameters"): {require_registry_manage},
+        ("PATCH", "/parameters/{parameter_id}"): {require_registry_manage},
+        ("POST", "/parameters/{parameter_id}/deactivate"): {require_registry_manage},
+        ("POST", "/parameters/import/apply"): {require_registry_manage},
+        ("POST", "/validation-rules"): {require_registry_manage},
+        ("PATCH", "/validation-rules/{code}"): {require_registry_manage},
+        # Locks/releases are writes but intentionally remain project-edit only
+    }
+
+    all_routes = (
+        choice_sets_router.router,
+        conditions_router.router,
+        backbone_diff_router.router,
+        history_router.router,
+        locks_router.router,
+        parameters_router.router,
+        processes_router.router,
+        projects_router.router,
+        sheets_router.router,
+        validation_router.router,
+        cells_router.router,
+    )
+
+    seen: set[tuple[str, str]] = set()
+    for router in all_routes:
+        for route in router.routes:
+            if not isinstance(route, APIRoute):
+                continue
+            spec = _route_spec(route)
+            expected = expected_permissions.get(spec)
+            if expected is None:
+                continue
+            calls = _call_graph(route.dependant)
+            missing = expected - calls
+            assert not missing, f"{spec} missing dependency calls: {missing}"
+            seen.add(spec)
+
+    missing_covered_routes = set(expected_permissions) - seen
+    assert missing_covered_routes == set(), f"not discovered: {missing_covered_routes}"
+
+
+def test_non_draft_guard_is_present_on_mutating_non_release_routes() -> None:
+    """Read-only draft guard must be enforced on write routes that mutate project truth."""
+    guarded_routes = {
+        ("POST", "/projects/{project_id}/layers/{layer_key}/backbone-replace"),
+        ("PATCH", "/projects/{project_id}/profile"),
+        ("PATCH", "/projects/{project_id}/cells"),
+        ("POST", "/projects/{project_id}/layers/{layer_key}/conditions"),
+        ("DELETE", "/projects/{project_id}/conditions/{condition_id}"),
+        ("PUT", "/projects/{project_id}/conditions/{condition_id}/por"),
+        ("POST", "/projects/{project_id}/lock"),
+        ("POST", "/projects/{project_id}/lock/heartbeat"),
+    }
+    lock_routes = {
+        ("POST", "/projects/{project_id}/lock"),
+        ("POST", "/projects/{project_id}/lock/heartbeat"),
+    }
+    for route in (
+        cells_router.router.routes
+        + conditions_router.router.routes
+        + projects_router.router.routes
+        + locks_router.router.routes
+    ):
+        if not isinstance(route, APIRoute):
+            continue
+        spec = _route_spec(route)
+        if spec not in guarded_routes:
+            continue
+        calls = _call_graph(route.dependant)
+        expected_guard = require_project_read_only if spec in lock_routes else require_edit_lock
+        assert expected_guard in calls
+
+
 def test_app_database_url_sync_swaps_driver() -> None:
     """동기 URL 프로퍼티가 asyncpg 드라이버를 psycopg2로 치환한다."""
     s = Settings(app_database_url="postgresql+asyncpg://u:p@h:5432/db")
@@ -284,6 +487,9 @@ def test_phase_4_metadata_exposes_backbone_snapshot_and_history_columns() -> Non
         "PROJECT_PROFILE_UPDATE",
         "BACKBONE_COPY",
         "BACKBONE_LAYER_REPLACE",
+        "STATUS_CHANGE",
+        "REVISION_CREATE",
+        "COMMENT",
         "CELL_UPDATE",
         "CONDITION_ADD",
         "CONDITION_REMOVE",
@@ -432,9 +638,9 @@ async def test_app_error_maps_to_http(exc: AppError, status: int, code: str) -> 
     assert body["message"] == str(exc)
 
 
-def test_auth_not_configured_error_is_explicit_501() -> None:
-    """SSO 미연결 상태는 명시적인 501 AppError로 표현한다."""
+def test_auth_not_configured_error_is_explicit_503() -> None:
+    """SSO 미연결 상태는 명시적인 503 AppError로 표현한다."""
     exc = AuthNotConfiguredError("not ready")
 
-    assert exc.status_code == 501
+    assert exc.status_code == 503
     assert exc.code == "auth_not_configured"

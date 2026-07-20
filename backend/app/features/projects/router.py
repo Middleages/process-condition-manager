@@ -6,7 +6,12 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import UserContext, get_current_user
+from app.core.auth import (
+    UserContext,
+    get_current_user,
+    require_business_read,
+    require_project_edit,
+)
 from app.core.db import get_app_session
 from app.core.locks import require_edit_lock
 from app.core.maintenance import require_project_mutations_enabled
@@ -57,7 +62,11 @@ ServiceDep = Annotated[ProjectService, Depends(get_service, scope="function")]
 UserDep = Annotated[UserContext, Depends(get_current_user)]
 
 
-@router.get("/backbone-candidates", response_model=list[BackboneCandidateOut])
+@router.get(
+    "/backbone-candidates",
+    response_model=list[BackboneCandidateOut],
+    dependencies=[Depends(require_business_read)],
+)
 async def backbone_candidates(
     service: ServiceDep, line_id: str, process_id: str
 ) -> list[BackboneCandidateOut]:
@@ -79,7 +88,11 @@ async def backbone_candidates(
     ]
 
 
-@router.post("/backbone-preview", response_model=MatchPreviewOut)
+@router.post(
+    "/backbone-preview",
+    response_model=MatchPreviewOut,
+    dependencies=[Depends(require_business_read)],
+)
 async def preview_backbone(data: MatchPreviewIn, service: ServiceDep) -> MatchPreviewOut:
     return await service.preview_match(data)
 
@@ -88,19 +101,31 @@ async def preview_backbone(data: MatchPreviewIn, service: ServiceDep) -> MatchPr
     "",
     response_model=ProjectOut,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_project_mutations_enabled)],
+    dependencies=[Depends(require_project_edit), Depends(require_project_mutations_enabled)],
 )
 async def create_project(
     data: ProjectCreate, service: ServiceDep, user: UserDep
 ) -> ProjectOut:
     project = await service.create_project(data, actor=user.id)
-    return _project_out(project, await service.profile_out(project.profile))
+    return _project_out(
+        project,
+        await service.profile_out(project),
+        allowed_actions=service.allowed_actions_for_status(
+            status=project.status,
+            permissions=user.permissions,
+        ),
+        successor_project_id=await service.get_successor_id(project.id),
+    )
 
 
 @router.post(
     "/{project_id}/layers/{layer_key}/backbone-replace",
     response_model=ProjectOut,
-    dependencies=[Depends(require_project_mutations_enabled), Depends(require_edit_lock)],
+    dependencies=[
+        Depends(require_project_edit),
+        Depends(require_project_mutations_enabled),
+        Depends(require_edit_lock),
+    ],
 )
 async def replace_layer_backbone(
     project_id: int,
@@ -110,12 +135,25 @@ async def replace_layer_backbone(
     user: UserDep,
 ) -> ProjectOut:
     project = await service.replace_layer_backbone(project_id, layer_key, data, actor=user.id)
-    return _project_out(project, await service.profile_out(project.profile))
+    return _project_out(
+        project,
+        await service.profile_out(project),
+        allowed_actions=service.allowed_actions_for_status(
+            status=project.status,
+            permissions=user.permissions,
+        ),
+        successor_project_id=await service.get_successor_id(project.id),
+    )
 
 
-@router.get("", response_model=ProjectListOut)
+@router.get(
+    "",
+    response_model=ProjectListOut,
+    dependencies=[Depends(require_business_read)],
+)
 async def list_projects(
     service: ServiceDep,
+    user: UserDep,
     query: str | None = None,
     status: str | None = None,
     device_type_code: str | None = None,
@@ -141,6 +179,14 @@ async def list_projects(
                 part_id=summary.project.part_id,
                 name=summary.project.name,
                 status=summary.project.status.value,
+                version=summary.project.version,
+                revision_root_id=summary.project.revision_root_id,
+                predecessor_project_id=summary.project.revision_of_id,
+                successor_project_id=summary.successor_id,
+                allowed_actions=service.allowed_actions_for_status(
+                    status=summary.project.status,
+                    permissions=user.permissions,
+                ),
                 device_type=ChoiceValueOut(
                     code=summary.device_type.option_code,
                     label=summary.device_type.label,
@@ -162,13 +208,31 @@ async def list_projects(
     )
 
 
-@router.get("/{project_id}", response_model=ProjectOut)
-async def get_project(project_id: int, service: ServiceDep) -> ProjectOut:
+@router.get(
+    "/{project_id}",
+    response_model=ProjectOut,
+    dependencies=[Depends(require_business_read)],
+)
+async def get_project(
+    project_id: int, service: ServiceDep, user: UserDep
+) -> ProjectOut:
     project = await service.get_project(project_id)
-    return _project_out(project, await service.profile_out(project.profile))
+    return _project_out(
+        project,
+        await service.profile_out(project),
+        allowed_actions=service.allowed_actions_for_status(
+            status=project.status,
+            permissions=user.permissions,
+        ),
+        successor_project_id=await service.get_successor_id(project.id),
+    )
 
 
-@router.get("/{project_id}/profile", response_model=ProjectProfileOut)
+@router.get(
+    "/{project_id}/profile",
+    response_model=ProjectProfileOut,
+    dependencies=[Depends(require_business_read)],
+)
 async def get_profile(project_id: int, service: ServiceDep) -> ProjectProfileOut:
     return await service.get_profile_out(project_id)
 
@@ -176,7 +240,11 @@ async def get_profile(project_id: int, service: ServiceDep) -> ProjectProfileOut
 @router.patch(
     "/{project_id}/profile",
     response_model=ProjectProfileOut,
-    dependencies=[Depends(require_project_mutations_enabled), Depends(require_edit_lock)],
+    dependencies=[
+        Depends(require_project_edit),
+        Depends(require_project_mutations_enabled),
+        Depends(require_edit_lock),
+    ],
 )
 async def patch_profile(
     project_id: int,
@@ -187,7 +255,13 @@ async def patch_profile(
     return await service.patch_profile(project_id, data, actor=user.id)
 
 
-def _project_out(project: Project, profile: ProjectProfileOut) -> ProjectOut:
+def _project_out(
+    project: Project,
+    profile: ProjectProfileOut,
+    *,
+    allowed_actions: list[str],
+    successor_project_id: int | None,
+) -> ProjectOut:
     return ProjectOut(
         id=project.id,
         line_id=project.line_id,
@@ -195,6 +269,11 @@ def _project_out(project: Project, profile: ProjectProfileOut) -> ProjectOut:
         part_id=project.part_id,
         name=project.name,
         status=project.status.value,
+        version=project.version,
+        revision_root_id=project.revision_root_id,
+        predecessor_project_id=project.revision_of_id,
+        successor_project_id=successor_project_id,
+        allowed_actions=allowed_actions,
         profile=profile,
         layers=[
             LayerOut(
