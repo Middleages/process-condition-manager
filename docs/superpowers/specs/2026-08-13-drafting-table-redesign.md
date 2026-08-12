@@ -3,8 +3,8 @@
 ## Status
 
 - Approved visual world: **Drafting Table**
-- Approved composition: **Grid-first Inspector with Layer Navigator**
-- Approved comp: `.impeccable/mocks/drafting-table/option-2b-layer-navigator.png`
+- Approved composition: **Grid-first Inspector with Layer Navigator, no bottom rail**
+- Approved comp: `.impeccable/mocks/drafting-table/option-2c-layer-navigator-no-rail.png`
 - Target: desktop web only
 
 ## Product objective
@@ -19,7 +19,7 @@ PCM을 Process 구조 이해, 대규모 조건표 편집, 잠금·검증·이력
 2. 약 100개 Layer 중 대상을 검색하거나 목록에서 한 번 클릭해 즉시 이동한다.
 3. 중앙 고밀도 그리드에서 조건을 편집한다.
 4. 우측 증빙 레일에서 검증 오류를 선택해 대응 셀로 이동한다.
-5. 같은 레일과 하단 리비전 룰러에서 변경 이력과 변경 전·후 값을 확인한다.
+5. 같은 레일에서 현재 Layer 또는 현재 셀의 변경 이력과 변경 전·후 값을 확인한다.
 
 ## Information architecture
 
@@ -53,13 +53,14 @@ PCM을 Process 구조 이해, 대규모 조건표 편집, 잠금·검증·이력
 - 검증 오류를 우선 배치한다.
 - 오류 항목은 문제, 위치, 영향을 짧게 보여주고 `셀로 이동`을 제공한다.
 - 선택된 오류와 대상 셀은 동일한 번호/상태 문법으로 연결한다.
-- 변경 이력은 최신순 기본값과 현재 셀 필터를 제공한다.
+- 변경 이력은 최신순을 기본으로 하며 범위는 현재 Layer로 제한한다.
+- `현재 셀만` 필터로 선택 셀의 변경만 좁혀 볼 수 있다.
 - 선택 이력은 변경 전·후, 작성자, 시각을 보여준다.
 - 패널은 접거나 폭을 조절할 수 있지만 열렸을 때 그리드 포커스를 가리지 않는다.
 
-### Revision ruler
+### History scope
 
-그리드 아래의 얇은 리비전 룰러는 주요 변경 시점을 제도 눈금처럼 보여준다. 선택 시 해당 변경 이력을 우측 레일에서 열고 관련 셀로 이동한다. 전체 이력 표를 대체하지 않고 시간적 방향 감각을 제공한다.
+전체 Layer의 변경을 합친 하단 리비전 룰러나 전역 타임라인은 제공하지 않는다. 수백 개 컬럼과 빈번한 Layer 변경이 섞여 의미 없는 노이즈가 되는 것을 방지한다. 제거한 하단 레일의 세로 공간은 그리드에 돌려 더 많은 행을 표시한다.
 
 ## Visual system
 

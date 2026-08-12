@@ -1,6 +1,6 @@
 {
   "prompt_file": "option-2b-layer-navigator.prompt.txt",
-  "approved": true,
-  "approved_at": "2026-08-13",
+  "approved": false,
+  "superseded_by": "option-2c-layer-navigator-no-rail.png",
   "composition": "persistent virtualized one-click layer navigator, grid-dominant workbench, stacked right evidence inspector, aligned revision ruler"
 }
