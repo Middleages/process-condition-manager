@@ -616,7 +616,7 @@ function ReadOnlySheet({
             </InlineAlert>
           ) : null}
           <div className="flex min-w-0 flex-wrap items-center gap-2" data-testid="sheet-category-tabs">
-            <SheetMetrics rowCount={data.rows.length} colCount={data.columns.length} />
+            <SheetMetrics rowCount={gridData.rows.length} colCount={data.columns.length} />
             {categories.length > 0 ? (
               <>
                 <CategoryTab
@@ -1738,7 +1738,7 @@ function SheetEditor({
             </InlineAlert>
           ) : null}
           <div className="flex min-w-0 flex-wrap items-center gap-2" data-testid="sheet-category-tabs">
-            <SheetMetrics rowCount={data.rows.length} colCount={data.columns.length} />
+            <SheetMetrics rowCount={gridData.rows.length} colCount={data.columns.length} />
             {categories.length > 0 ? (
               <>
                 <CategoryTab

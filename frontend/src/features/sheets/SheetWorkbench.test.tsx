@@ -60,7 +60,7 @@ describe('sheet workbench host and navigation', () => {
     expect(onModeChange).not.toHaveBeenCalled()
   })
 
-  it('renders the compact 워크벤치 toggle with a truthful expanded state', () => {
+  it('renders the compact 증거 패널 toggle with a truthful expanded state', () => {
     const collapsed = renderToStaticMarkup(
       <SheetWorkbenchToggle expanded={false} onToggle={() => undefined} />,
     )
@@ -71,7 +71,7 @@ describe('sheet workbench host and navigation', () => {
     expect(collapsed).toContain('data-testid="sheet-workbench-toggle"')
     expect(collapsed).toContain('aria-expanded="false"')
     expect(collapsed).toContain('bg-surface')
-    expect(collapsed).toContain('워크벤치')
+    expect(collapsed).toContain('증거 패널')
     expect(expanded).toContain('aria-expanded="true"')
     expect(expanded).toContain('bg-brand-700')
   })

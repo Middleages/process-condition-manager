@@ -83,7 +83,7 @@ export function SheetWorkbenchToggle({
       type="button"
       variant={expanded ? 'primary' : 'secondary'}
     >
-      워크벤치
+      증거 패널
     </Button>
   )
 }
