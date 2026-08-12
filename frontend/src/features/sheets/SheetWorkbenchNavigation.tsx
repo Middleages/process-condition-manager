@@ -41,8 +41,8 @@ export function SheetWorkbenchNavigation({
 
   return (
     <div
-      aria-label="워크벤치 모드"
-      className="flex min-w-0 flex-wrap items-center gap-2"
+      aria-label="증거 패널 모드"
+      className="grid min-w-0 grid-cols-3 items-center border border-border-control"
       data-testid="sheet-workbench-tabs"
       role="tablist"
     >
@@ -55,11 +55,11 @@ export function SheetWorkbenchNavigation({
             aria-controls={panelId}
             aria-selected={isActive}
             className={cn(
-              'inline-flex shrink-0 items-center justify-center rounded-md border px-3 font-semibold transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-60',
-              'h-[34px] text-xs',
+              'inline-flex min-w-0 items-center justify-center border-r border-border-control px-2 font-semibold transition-colors duration-150 last:border-r-0 disabled:cursor-not-allowed disabled:opacity-60',
+              'h-[32px] text-[11px]',
               isActive
-                ? 'border-brand-700 bg-brand-700 text-white hover:bg-ink-950'
-                : 'border-border-control bg-surface text-ink-950 hover:bg-canvas',
+                ? 'bg-brand-700 text-white hover:bg-ink-950'
+                : 'bg-surface text-ink-950 hover:bg-brand-100',
             )}
             disabled={disabled}
             id={tabId}

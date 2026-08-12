@@ -942,7 +942,7 @@ describe('SheetView focus shell integration', () => {
 
     const html = renderSheet(queryClient)
 
-    expect(html).toContain('data-sheet-workbench')
+    expect(html).toContain('data-sheet-evidence-panel')
     expect(html).toContain('data-history-workbench')
     expect(html).toContain('condition #11')
     expect(html).toContain('parameter ETCH_P001')
@@ -962,7 +962,7 @@ describe('SheetView focus shell integration', () => {
 
     const html = renderSheet(queryClient)
 
-    expect(html).toContain('data-sheet-workbench')
+    expect(html).toContain('data-sheet-evidence-panel')
     expect(html).toContain('aria-label="백본 비교 워크벤치"')
     expect(html).toContain('role="tabpanel"')
     expect(html).toContain('id="sheet-workbench-panel-backbone-diff"')
@@ -988,7 +988,7 @@ describe('SheetView focus shell integration', () => {
 
     const separatorCount = (opened.match(/role="separator"/g) ?? []).length
     expect(separatorCount).toBe(1)
-    expect(opened).toContain('data-sheet-workbench')
+    expect(opened).toContain('data-sheet-evidence-panel')
     expect(opened).toContain('aria-label="백본 비교 워크벤치"')
     expect(opened).not.toContain('data-history-workbench')
   })

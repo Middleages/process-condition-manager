@@ -1,88 +1,35 @@
 import { afterEach, describe, expect, it } from 'vitest'
-
 import {
-  SHEET_WORKBENCH_HEIGHT_STORAGE_KEY,
-  readPersistedSheetWorkbenchHeight,
-  writePersistedSheetWorkbenchHeight,
+  SHEET_INSPECTOR_DEFAULT_WIDTH,
+  SHEET_INSPECTOR_MAX_WIDTH,
+  SHEET_INSPECTOR_MIN_WIDTH,
+  SHEET_INSPECTOR_WIDTH_STORAGE_KEY,
+  readPersistedSheetInspectorWidth,
+  writePersistedSheetInspectorWidth,
 } from './sheetWorkbenchStorage'
-import {
-  VALIDATION_WORKBENCH_DEFAULT_HEIGHT,
-  VALIDATION_WORKBENCH_MAX_HEIGHT,
-  VALIDATION_WORKBENCH_MIN_HEIGHT,
-} from './validationWorkbenchState'
 
-describe('sheet workbench storage', () => {
-  afterEach(() => {
-    cleanupWindow()
+describe('sheet evidence inspector storage', () => {
+  afterEach(() => Reflect.deleteProperty(globalThis, 'window'))
+
+  it('falls back and clamps inspector widths', () => {
+    expect(readPersistedSheetInspectorWidth()).toBe(SHEET_INSPECTOR_DEFAULT_WIDTH)
+    const store = new Map([[SHEET_INSPECTOR_WIDTH_STORAGE_KEY, '9999']])
+    installWindow(store)
+    expect(readPersistedSheetInspectorWidth()).toBe(SHEET_INSPECTOR_MAX_WIDTH)
+    writePersistedSheetInspectorWidth(1)
+    expect(store.get(SHEET_INSPECTOR_WIDTH_STORAGE_KEY)).toBe(String(SHEET_INSPECTOR_MIN_WIDTH))
   })
 
-  it('falls back to the clamped default height when storage is unavailable or invalid', () => {
-    expect(readPersistedSheetWorkbenchHeight(VALIDATION_WORKBENCH_DEFAULT_HEIGHT)).toBe(
-      VALIDATION_WORKBENCH_DEFAULT_HEIGHT,
-    )
-
-    installWindow({
-      getItem: () => 'not-a-number',
-      setItem: () => undefined,
-      removeItem: () => undefined,
-    })
-
-    expect(readPersistedSheetWorkbenchHeight(VALIDATION_WORKBENCH_DEFAULT_HEIGHT)).toBe(
-      VALIDATION_WORKBENCH_DEFAULT_HEIGHT,
-    )
-  })
-
-  it('clamps persisted values on read and write', () => {
-    const store = new Map<string, string>([[SHEET_WORKBENCH_HEIGHT_STORAGE_KEY, '9999']])
-    installWindow(storageFromMap(store))
-
-    expect(readPersistedSheetWorkbenchHeight(VALIDATION_WORKBENCH_DEFAULT_HEIGHT)).toBe(
-      VALIDATION_WORKBENCH_MAX_HEIGHT,
-    )
-
-    writePersistedSheetWorkbenchHeight(VALIDATION_WORKBENCH_MIN_HEIGHT - 10)
-    expect(store.get(SHEET_WORKBENCH_HEIGHT_STORAGE_KEY)).toBe(
-      String(VALIDATION_WORKBENCH_MIN_HEIGHT),
-    )
-  })
-
-  it('ignores storage write failures without crashing the host state', () => {
-    installWindow({
-      getItem: () => null,
-      setItem: () => {
-        throw new Error('blocked')
-      },
-      removeItem: () => undefined,
-    })
-
-    expect(() => writePersistedSheetWorkbenchHeight(VALIDATION_WORKBENCH_DEFAULT_HEIGHT)).not.toThrow()
+  it('ignores unavailable storage', () => {
+    Object.defineProperty(globalThis, 'window', { configurable: true, value: { localStorage: { getItem: () => { throw new Error('blocked') }, setItem: () => { throw new Error('blocked') } } } })
+    expect(readPersistedSheetInspectorWidth()).toBe(SHEET_INSPECTOR_DEFAULT_WIDTH)
+    expect(() => writePersistedSheetInspectorWidth(380)).not.toThrow()
   })
 })
 
-function storageFromMap(store: Map<string, string>) {
-  return {
-    getItem: (key: string) => (store.has(key) ? store.get(key)! : null),
-    setItem: (key: string, value: string) => {
-      store.set(key, value)
-    },
-    removeItem: (key: string) => {
-      store.delete(key)
-    },
-  }
-}
-
-function installWindow(localStorage: {
-  getItem: (key: string) => string | null
-  setItem: (key: string, value: string) => void
-  removeItem: (key: string) => void
-}) {
+function installWindow(store: Map<string, string>) {
   Object.defineProperty(globalThis, 'window', {
     configurable: true,
-    value: { localStorage },
-    writable: true,
+    value: { localStorage: { getItem: (key: string) => store.get(key) ?? null, setItem: (key: string, value: string) => store.set(key, value) } },
   })
-}
-
-function cleanupWindow() {
-  Reflect.deleteProperty(globalThis, 'window')
 }

@@ -13,11 +13,15 @@ const css =
   importedCss || process.getBuiltinModule('fs').readFileSync(new URL('../styles.css', import.meta.url), 'utf8')
 
 describe('design tokens', () => {
-  it('defines the approved Precision Teal palette', () => {
-    expect(css).toContain('--color-ink-950: #172f35')
-    expect(css).toContain('--color-brand-700: #0f766e')
-    expect(css).toContain('--color-brand-500: #14b8a6')
-    expect(css).toContain('--color-canvas: #f4f7f8')
+  it('defines the approved Drafting Table palette', () => {
+    expect(css).toContain('--color-draft-canvas: #f7f7f3')
+    expect(css).toContain('--color-draft-ink: #12232a')
+    expect(css).toContain('--color-draft-teal: #196b67')
+    expect(css).toContain('--color-draft-amber: #d18b2c')
+    expect(css).toContain('--color-draft-rule: #cbd2cf')
+    expect(css).toContain('--color-ink-950: var(--color-draft-ink)')
+    expect(css).toContain('--color-brand-700: var(--color-draft-teal)')
+    expect(css).toContain('--color-canvas: var(--color-draft-canvas)')
     expect(css).toContain('--color-border-control: #81979e')
     expect(css).toContain('--color-muted: #52656a')
     expect(css).toContain('--color-success: #166534')
@@ -29,8 +33,8 @@ describe('design tokens', () => {
   })
 
   it('defines separate light and dark focus indicators', () => {
-    expect(css).toContain('--focus-light: #0f766e')
-    expect(css).toContain('--focus-dark: #14b8a6')
+    expect(css).toContain('--focus-light: var(--color-draft-teal)')
+    expect(css).toContain('--focus-dark: #69d4cc')
   })
 
   it('provides a reduced-motion fallback', () => {

@@ -26,7 +26,7 @@ describe('sheet workbench host and navigation', () => {
     )
 
     expect(html).toContain('role="tablist"')
-    expect(html).toContain('aria-label="워크벤치 모드"')
+    expect(html).toContain('aria-label="증거 패널 모드"')
     expect(html).toContain('id="sheet-workbench-tab-validation"')
     expect(html).toContain('aria-controls="sheet-workbench-panel-validation"')
     expect(html).toContain('id="sheet-workbench-tab-history"')
@@ -76,26 +76,27 @@ describe('sheet workbench host and navigation', () => {
     expect(expanded).toContain('bg-brand-700')
   })
 
-  it('keeps host height and tabpanel ownership outside validation content', () => {
+  it('keeps inspector width and tabpanel ownership outside validation content', () => {
     const html = renderToStaticMarkup(
       <SheetWorkbenchPanel
         mode="history"
-        panelHeight={312}
+        inspectorWidth={380}
         onModeChange={() => undefined}
         onResizeBy={() => undefined}
-        onSetHeight={() => undefined}
+        onSetWidth={() => undefined}
         validationContent={<div>validation content</div>}
         historyContent={<div>history content</div>}
         backboneDiffContent={<div>backbone diff content</div>}
       />,
     )
 
-    expect(html).toContain('data-sheet-workbench')
-    expect(html).toContain('aria-label="워크벤치"')
+    expect(html).toContain('data-sheet-evidence-panel')
+    expect(html).toContain('aria-label="증거 패널"')
     expect(html).toContain('role="separator"')
-    expect(html).toContain('aria-valuemin="180"')
+    expect(html).toContain('aria-orientation="vertical"')
+    expect(html).toContain('aria-valuemin="320"')
     expect(html).toContain('aria-valuemax="520"')
-    expect(html).toContain('aria-valuenow="312"')
+    expect(html).toContain('aria-valuenow="380"')
     expect(html).toContain('id="sheet-workbench-panel-validation"')
     expect(html).toContain('id="sheet-workbench-panel-history"')
     expect(html).toContain('history content')
