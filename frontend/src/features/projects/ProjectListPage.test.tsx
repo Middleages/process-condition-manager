@@ -116,7 +116,8 @@ describe('ProjectListPage', () => {
     expect(html).toContain('FOUNDRY · Foundry')
     expect(html).toContain('LEGACY · Legacy product')
     expect(html).toContain('사용 중지됨')
-    expect(html).toContain('Coat baseline')
+    expect(html).toContain('>L1</a>')
+    expect(html).not.toContain('Coat baseline')
     expect(html).toContain('href="/projects/42"')
   })
 
