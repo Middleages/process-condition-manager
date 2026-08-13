@@ -105,6 +105,7 @@ function ProjectTableRow({
           <button
             aria-controls={detailId}
             aria-expanded={isExpanded}
+            aria-label={`${project.line_id} 세부 정보 ${isExpanded ? '닫기' : '열기'}`}
             className="rounded-sm px-2 py-1 text-xs font-semibold text-muted transition-colors hover:bg-canvas hover:text-ink-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
             type="button"
             onClick={onToggle}

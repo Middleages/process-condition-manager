@@ -105,6 +105,8 @@ export function ProjectListPage() {
   }, [location.search, navigationType, projects.length, projectsQuery.isPending])
 
   function updateStatusFilter(status: ProjectListStatus) {
+    if (status === latestRouteStateRef.current.status) return
+
     setSearchParams(
       serializeProjectListSearch({
         ...latestRouteStateRef.current,

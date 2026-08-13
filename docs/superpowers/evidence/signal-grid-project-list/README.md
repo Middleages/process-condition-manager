@@ -50,12 +50,30 @@ Result: exit 0 with `[]`; no detector-driven source edits were needed.
 - `frontend/package.json` provides `build` and `preview` scripts; no slice-specific browser fixture
   was present.
 
+### Reproduction boundary
+
+The Playwright fixture program used for this capture was a temporary, uncommitted script. It was
+not retained in the worktree or evidence commit, and its exact `node` invocation is therefore not
+recoverable from the committed branch. Consequently, the screenshots and browser-interaction
+assertions below cannot be reproduced exactly from this repository alone. There is no honest
+committed Playwright command or script to provide; recreating one would be a new fixture rather than
+reproduction of the recorded run.
+
+The exact retained runtime inventory commands were:
+
+```bash
+npx --no-install playwright --version
+npx --no-install playwright install --list
+```
+
 ## Production-equivalent local fixture
 
-The already-verified production bundle was served with:
+The source-under-test is retained at `f938e33c00b0ca65170b298640abac5bcd402d6b`. Its frontend
+build and the exact preview command used by the temporary fixture were:
 
 ```bash
 cd frontend
+npm run build
 npm run preview -- --host 127.0.0.1 --port 4175 --strictPort
 ```
 

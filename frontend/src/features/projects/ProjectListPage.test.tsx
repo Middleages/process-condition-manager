@@ -237,9 +237,37 @@ describe('ProjectListPage', () => {
       interactive.cleanup()
     }
   })
+
+  it('does not add a history entry when the active status is clicked', async () => {
+    const interactive = renderInteractiveList(
+      '/projects?status=review',
+      '/projects?status=draft',
+    )
+
+    try {
+      const activeStatusButton = [...interactive.container.querySelectorAll('button')].find(
+        (button) => button.textContent?.trim() === '검토중',
+      )
+
+      expect(activeStatusButton?.getAttribute('aria-pressed')).toBe('true')
+
+      await act(async () => {
+        activeStatusButton?.dispatchEvent(
+          new interactive.window.MouseEvent('click', { bubbles: true }),
+        )
+      })
+      await act(async () => {
+        await interactive.router.navigate(-1)
+      })
+
+      expect(interactive.router.state.location.search).toBe('?status=draft')
+    } finally {
+      interactive.cleanup()
+    }
+  })
 })
 
-function renderInteractiveList(location: string) {
+function renderInteractiveList(location: string, previousLocation?: string) {
   const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', {
     url: `https://pcm.test${location}`,
   })
@@ -250,7 +278,10 @@ function renderInteractiveList(location: string) {
   seedProjectListQuery(queryClient, location, 'loading')
   const router = createMemoryRouter(
     [{ path: '/projects', element: <ProjectListPage /> }],
-    { initialEntries: [location] },
+    {
+      initialEntries: previousLocation ? [previousLocation, location] : [location],
+      initialIndex: previousLocation ? 1 : 0,
+    },
   )
   const globals = globalThis as unknown as {
     document?: Document
@@ -285,6 +316,7 @@ function renderInteractiveList(location: string) {
 
   return {
     container,
+    router,
     window: dom.window,
     cleanup: () => {
       act(() => root?.unmount())

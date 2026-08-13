@@ -35,6 +35,7 @@ describe('LayerNavigator', () => {
     expect(html).toContain('aria-current="true"')
     expect(html).toContain('오류 4건')
     expect(html).toContain('미저장')
+    expect(html).toContain('class="text-warning" aria-label="미저장"')
     expect(html.match(/data-layer-row=/g)?.length).toBeLessThan(30)
   })
 

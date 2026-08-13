@@ -83,11 +83,15 @@ describe('ProjectTable', () => {
       expect(lineLink).not.toBeNull()
       expect(disclosure?.getAttribute('aria-expanded')).toBe('false')
       expect(disclosure?.getAttribute('aria-controls')).toBe('project-details-42')
+      expect(disclosure?.getAttribute('aria-label')).toBe('L1 세부 정보 열기')
+      expect(disclosure?.textContent).toBe('세부')
       expect(details?.hasAttribute('hidden')).toBe(true)
 
       act(() => disclosure?.dispatchEvent(new interactive.window.MouseEvent('click', { bubbles: true })))
 
       expect(disclosure?.getAttribute('aria-expanded')).toBe('true')
+      expect(disclosure?.getAttribute('aria-label')).toBe('L1 세부 정보 닫기')
+      expect(disclosure?.textContent).toBe('닫기')
       expect(details?.hasAttribute('hidden')).toBe(false)
       expect(details?.textContent).toContain('리비전 루트')
       expect(details?.textContent).toContain('허용 액션')
