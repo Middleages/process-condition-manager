@@ -850,7 +850,9 @@ function SheetEditor({
 
   useEffect(() => {
     if (activeLayerKey !== '' && data.rows.some((row) => row.layerKey === activeLayerKey)) {
-      previousLayerKeysRef.current = orderedLayerKeys
+      if (orderedLayerKeys.includes(activeLayerKey)) {
+        previousLayerKeysRef.current = orderedLayerKeys
+      }
       return
     }
 
@@ -1044,7 +1046,7 @@ function SheetEditor({
   const previousValidationIssueCountRef = useRef(0)
 
   useEffect(() => {
-    const issueCount = activeLayerValidationIssues.length
+    const issueCount = validationIssues.length
     if (
       shouldAutoOpenValidationWorkbench(
         previousValidationIssueCountRef.current,
@@ -1055,7 +1057,7 @@ function SheetEditor({
       workbenchState.selectMode('validation')
     }
     previousValidationIssueCountRef.current = issueCount
-  }, [activeLayerValidationIssues.length, workbenchState.mode, workbenchState.selectMode])
+  }, [validationIssues.length, workbenchState.mode, workbenchState.selectMode])
 
   // 붙여넣기 스테이징(적용 전 미리보기). null = 대기 중인 붙여넣기 없음.
   const [paste, setPasteState] = useState<PasteStagingResult | null>(null)
