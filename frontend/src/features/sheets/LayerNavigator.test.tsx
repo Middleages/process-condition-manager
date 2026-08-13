@@ -22,9 +22,11 @@ describe('LayerNavigator', () => {
         recentLayerKeys={['layer-3', 'layer-2']}
         query=""
         collapsed={false}
+        currentOnly={false}
         onQueryChange={() => undefined}
         onActivate={() => undefined}
         onCollapsedChange={() => undefined}
+        onCurrentOnlyChange={() => undefined}
       />,
     )
 
@@ -39,6 +41,26 @@ describe('LayerNavigator', () => {
     expect(html.match(/data-layer-row=/g)?.length).toBeLessThan(30)
   })
 
+  it('renders the current-Layer toggle as unselected', () => {
+    const html = renderToStaticMarkup(
+      <LayerNavigator
+        items={items}
+        activeLayerKey="layer-3"
+        recentLayerKeys={[]}
+        query=""
+        collapsed={false}
+        currentOnly={false}
+        onQueryChange={() => undefined}
+        onActivate={() => undefined}
+        onCollapsedChange={() => undefined}
+        onCurrentOnlyChange={() => undefined}
+      />,
+    )
+
+    expect(html).toContain('현재만')
+    expect(html).toContain('aria-pressed="false"')
+  })
+
   it('renders a compact rail when collapsed', () => {
     const html = renderToStaticMarkup(
       <LayerNavigator
@@ -47,9 +69,11 @@ describe('LayerNavigator', () => {
         recentLayerKeys={[]}
         query=""
         collapsed
+        currentOnly={false}
         onQueryChange={() => undefined}
         onActivate={() => undefined}
         onCollapsedChange={() => undefined}
+        onCurrentOnlyChange={() => undefined}
       />,
     )
     expect(html).toContain('data-layer-navigator-collapsed="true"')
