@@ -1395,6 +1395,64 @@ describe('SheetView focus shell integration', () => {
     }
   })
 
+  it('shows the Backbone source for the active Layer instead of the first Layer', async () => {
+    const interactive = renderInteractiveSheet()
+    const sourceProject: ProjectOut = {
+      ...project,
+      id: 17,
+      line_id: 'LINE-02',
+      process_id: 'COATING',
+      part_id: 'A16-CATH-02',
+      layers: [
+        {
+          id: 71,
+          layer_key: 'SOURCE::010::ACT',
+          step_seq: '010',
+          layer_id: 'ACT',
+          eqp_type: null,
+          eqp_type_desc: null,
+          area_name: null,
+          sort_order: 0,
+          condition_count: 1,
+          cell_count: 1,
+          source_project_id: null,
+          source_layer_key: null,
+        },
+      ],
+    }
+
+    try {
+      await act(async () => {
+        interactive.queryClient.setQueryData(['project', 7], {
+          ...interactive.project,
+          layers: interactive.project.layers.map((layer) =>
+            layer.layer_key === 'L1::20::CLEAN'
+              ? {
+                  ...layer,
+                  source_project_id: 17,
+                  source_layer_key: 'SOURCE::010::ACT',
+                }
+              : layer,
+          ),
+        })
+        interactive.queryClient.setQueryData(['project', 17], sourceProject)
+        await new Promise((resolve) => setTimeout(resolve, 0))
+      })
+
+      expect(interactive.container.textContent).toContain('백본 없음')
+
+      click(interactive, layerButton(interactive.container, 'L1::20::CLEAN'))
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0))
+      })
+
+      expect(interactive.container.textContent).toContain('LINE-02 / COATING / A16-CATH-02')
+      expect(interactive.container.textContent).toContain('010 / ACT')
+    } finally {
+      interactive.cleanup()
+    }
+  })
+
   it('synchronizes Backbone evidence to Layer activation while preserving other filters', () => {
     const onFiltersChange = vi.fn()
     mockSheetWorkbenchState = createMockSheetWorkbenchState('backbone-diff')

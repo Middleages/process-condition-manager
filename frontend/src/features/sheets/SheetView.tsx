@@ -79,6 +79,7 @@ import {
 import { resolveSheetInteraction } from './sheetInteraction'
 import { SheetFocusFrame } from './SheetFocusFrame'
 import { LayerNavigator } from './LayerNavigator'
+import { LayerBackboneContext } from './LayerBackboneContext'
 import {
   buildLayerNavigatorItems,
   updateRecentLayerKeys,
@@ -1835,6 +1836,9 @@ function SheetEditor({
           ) : null}
           <div className="flex min-w-0 flex-wrap items-center gap-2" data-testid="sheet-category-tabs">
             <SheetMetrics rowCount={gridData.rows.length} colCount={data.columns.length} />
+            <LayerBackboneContext
+              layer={sortedProjectLayers.find((layer) => layer.layer_key === activeLayerKey) ?? null}
+            />
             {categories.length > 0 ? (
               <>
                 <CategoryTab
