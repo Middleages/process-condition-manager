@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-13T10:30:01+09:00",
+  "title": "Design System: PCM",
+  "extensions": {
+    "colorMeta": {
+      "draft-canvas": { "role": "neutral", "displayName": "Tracing Paper", "canonical": "#f7f7f3", "tonalRamp": ["#242520", "#45463f", "#676961", "#898b82", "#abadA4", "#cccec6", "#e6e7e1", "#f7f7f3"] },
+      "draft-ink": { "role": "primary", "displayName": "Drafting Ink", "canonical": "#12232a", "tonalRamp": ["#081014", "#12232a", "#284047", "#465f65", "#667f84", "#8fa4a8", "#bdcacc", "#edf2f2"] },
+      "draft-teal": { "role": "primary", "displayName": "Current-State Teal", "canonical": "#196b67", "tonalRamp": ["#062725", "#0d4643", "#196b67", "#338984", "#5aa6a1", "#8bc4c0", "#bce0dd", "#eaf6f5"] },
+      "draft-amber": { "role": "secondary", "displayName": "Revision Amber", "canonical": "#d18b2c", "tonalRamp": ["#3b2205", "#69420d", "#946318", "#bd8128", "#dba34f", "#e8c17e", "#f3ddb0", "#fcf4e5"] },
+      "draft-rule": { "role": "neutral", "displayName": "Drawing Rule", "canonical": "#cbd2cf", "tonalRamp": ["#202624", "#3f4744", "#606966", "#818b87", "#a2aca8", "#cbd2cf", "#e3e7e5", "#f5f7f6"] }
+    },
+    "typographyMeta": {
+      "title": { "displayName": "Workbench Title", "purpose": "집중 헤더와 주요 화면 제목" },
+      "body": { "displayName": "Operational Body", "purpose": "설명, 상태, 폼 내용" },
+      "label": { "displayName": "Control Label", "purpose": "도구, 탭, 열 머리글" },
+      "identifier": { "displayName": "Coordinate Identifier", "purpose": "Layer, parameter, code와 측정 좌표" }
+    },
+    "shadows": [],
+    "motion": [
+      { "name": "state-color", "value": "color/background-color 150ms", "purpose": "버튼과 입력의 짧은 상태 전환" },
+      { "name": "reduced-motion", "value": "0.01ms", "purpose": "prefers-reduced-motion에서 애니메이션과 transition을 사실상 제거" }
+    ],
+    "breakpoints": [
+      { "name": "sheet-min", "value": "1024px" },
+      { "name": "sheet-primary", "value": "1440px" },
+      { "name": "sheet-wide", "value": "1920px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "주요 실행과 선택된 작업 모드에 사용한다.",
+      "html": "<button class=\"ds-btn-primary\">검증</button>",
+      "css": ".ds-btn-primary { height: 36px; padding: 8px 16px; border: 0; border-radius: 6px; background: var(--color-draft-teal, #196b67); color: #fff; font: 600 14px/1 system-ui, sans-serif; transition: background-color 150ms; } .ds-btn-primary:hover { background: var(--color-draft-ink, #12232a); } .ds-btn-primary:focus-visible { outline: 2px solid var(--color-draft-teal, #196b67); outline-offset: 2px; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "보조 행동과 비선택 도구에 사용한다.",
+      "html": "<button class=\"ds-btn-secondary\">증거 패널</button>",
+      "css": ".ds-btn-secondary { height: 36px; padding: 6px 12px; border: 1px solid var(--color-border-control, #81979e); border-radius: 6px; background: #fff; color: var(--color-draft-ink, #12232a); font: 500 14px/1 system-ui, sans-serif; transition: background-color 150ms; } .ds-btn-secondary:hover { background: var(--color-draft-canvas, #f7f7f3); } .ds-btn-secondary:focus-visible { outline: 2px solid var(--color-draft-teal, #196b67); outline-offset: 2px; }"
+    },
+    {
+      "name": "Search Field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Layer와 parameter 탐색에 사용하는 조밀한 검색 필드다.",
+      "html": "<input class=\"ds-input-search\" value=\"LYR07\" aria-label=\"Layer 검색\" />",
+      "css": ".ds-input-search { box-sizing: border-box; width: 220px; height: 32px; padding: 6px 8px; border: 1px solid var(--color-border-control, #81979e); border-radius: 0; background: #fff; color: var(--color-draft-ink, #12232a); font: 400 12px/1.25 system-ui, sans-serif; } .ds-input-search:hover { border-color: var(--color-draft-teal, #196b67); } .ds-input-search:focus-visible { outline: 2px solid var(--color-draft-teal, #196b67); outline-offset: 2px; }"
+    },
+    {
+      "name": "Layer Row",
+      "kind": "nav",
+      "description": "현재 Layer와 좌표를 한 번 클릭으로 전환하는 36px 가상화 행이다.",
+      "html": "<button class=\"ds-layer-row\"><span class=\"ds-layer-number\">08</span><span>LYR07 · 0070 · seed layer</span></button>",
+      "css": ".ds-layer-row { display: flex; align-items: center; gap: 8px; width: 220px; height: 36px; padding: 0 8px; border: 0; border-bottom: 1px solid var(--color-draft-rule, #cbd2cf); background: var(--color-draft-teal-subtle, #dcecea); color: var(--color-draft-teal, #196b67); text-align: left; font: 600 12px/1 system-ui, sans-serif; } .ds-layer-row:hover { background: var(--color-draft-teal-subtle, #dcecea); } .ds-layer-row:focus-visible { outline: 2px solid var(--color-draft-teal, #196b67); outline-offset: -2px; } .ds-layer-number { width: 28px; color: var(--color-muted, #52656a); font: 500 10px/1 ui-monospace, monospace; }"
+    },
+    {
+      "name": "Evidence Tabs",
+      "kind": "custom",
+      "description": "검증·이력·백본 비교를 하나의 우측 증거 레일에서 전환한다.",
+      "html": "<div class=\"ds-evidence-tabs\" role=\"tablist\"><button class=\"ds-evidence-tab is-active\">검증</button><button class=\"ds-evidence-tab\">이력</button><button class=\"ds-evidence-tab\">백본 비교</button></div>",
+      "css": ".ds-evidence-tabs { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--color-border-control, #81979e); } .ds-evidence-tab { height: 32px; padding: 0 8px; border: 0; border-right: 1px solid var(--color-border-control, #81979e); background: #fff; color: var(--color-draft-ink, #12232a); font: 600 11px/1 system-ui, sans-serif; } .ds-evidence-tab:last-child { border-right: 0; } .ds-evidence-tab:hover { background: var(--color-draft-teal-subtle, #dcecea); } .ds-evidence-tab.is-active { background: var(--color-draft-teal, #196b67); color: #fff; } .ds-evidence-tab:focus-visible { outline: 2px solid var(--color-draft-teal, #196b67); outline-offset: -2px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "Drafting Table",
+    "overview": "공학 도면과 리비전 블록의 문법으로 공정 조건, 현재 Layer, 검증 근거를 하나의 연속 작업면에 정렬한다. 미색 캔버스와 먹색 구조 위에서 청록은 현재 상태, amber는 변경 근거만 표시한다.",
+    "keyCharacteristics": ["1px 제도선", "평면 작업면", "현재 상태용 teal", "리비전 전용 amber", "좌표용 monospace"],
+    "rules": [
+      { "name": "The Evidence Color Rule", "body": "청록은 현재 상태와 행동, amber는 변경 근거, red와 warning은 실제 문제에만 사용한다.", "section": "colors" },
+      { "name": "The Coordinate Type Rule", "body": "monospace는 코드, 좌표, 측정값에만 사용한다.", "section": "typography" },
+      { "name": "The Structural Rule Rule", "body": "상시 작업면에는 border와 shadow를 겹치지 않는다.", "section": "elevation" }
+    ],
+    "dos": ["데이터 그리드와 현재 좌표를 주인공으로 유지한다.", "상태를 문구와 ARIA semantics로 함께 표시한다.", "1024px, 1440px, 1920px 데스크톱 구성을 검증한다."],
+    "donts": ["조건표 아래에 글로벌 revision ruler나 bottom workbench를 추가하지 않는다.", "색만으로 오류를 표현하지 않는다.", "외부 폰트나 런타임 CDN을 추가하지 않는다."]
+  }
+}
