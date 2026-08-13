@@ -10,12 +10,13 @@ import type { CellStatus, ConditionGridColumn, ConditionGridRow, PasteStagingCel
 
 /**
  * 좌측 고정(식별) 컬럼 정의 — 라이브러리 무관 중립 표현.
- * 파라미터 컬럼이 아니라 행 필드(layerLabel/conditionLabel/isPor)에서 렌더된다.
+ * 파라미터 컬럼이 아니라 행 필드(stepSeq/layerId/conditionLabel/isPor)에서 렌더된다.
  */
 export const IDENTITY_COLUMNS = [
-  { id: '__layer__', title: 'Layer / Step' },
+  { id: '__step_seq__', title: 'STEP SEQ' },
+  { id: '__layer__', title: 'LAYER' },
   { id: '__condition__', title: '조건' },
-  { id: '__por__', title: 'POR (○ 선택)' },
+  { id: '__por__', title: 'POR' },
 ] as const
 
 export const IDENTITY_COLUMN_COUNT = IDENTITY_COLUMNS.length
@@ -230,6 +231,15 @@ export function cellScrollTarget(
   const colIndex = visibleColumns.findIndex((column) => column.key === parameterCode)
   if (rowIndex < 0 || colIndex < 0) return null
   return { col: identityCount + colIndex, row: rowIndex }
+}
+
+/** 조건 행을 Glide Step Seq 셀 좌표로 — Layer 탐색기에서 행으로 세로 점프. */
+export function conditionRowScrollTarget(
+  conditionId: string,
+  rows: readonly ConditionGridRow[],
+): { col: 0; row: number } | null {
+  const row = rows.findIndex((candidate) => candidate.id === conditionId)
+  return row < 0 ? null : { col: 0, row }
 }
 
 /** 셀 오버레이(상태/스테이징) 조회용 합성 키. */

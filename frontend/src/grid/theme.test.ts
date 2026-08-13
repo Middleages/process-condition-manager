@@ -30,7 +30,7 @@ describe('GRID_COLORS', () => {
     expect(glideSource).toContain('bgCell: GRID_COLORS.surface')
     expect(glideSource).toContain('borderColor: GRID_COLORS.border')
     expect(glideSource).toContain(
-      "{ id: IDENTITY_COLUMNS[2].id, title: IDENTITY_COLUMNS[2].title, width: 96 }",
+      "{ id: IDENTITY_COLUMNS[3].id, title: IDENTITY_COLUMNS[3].title, width: 64 }",
     )
     expect(glideSource).toContain('bgCell: GRID_COLORS.successSurface')
     expect(glideSource).toContain('bgCell: GRID_COLORS.warningSurface')

@@ -265,6 +265,8 @@ def _build_rows(
                 SheetRowOut(
                     condition_id=condition.id,
                     layer_key=layer.layer_key,
+                    step_seq=layer.step_seq,
+                    layer_id=layer.layer_id,
                     layer_label=layer_label,
                     condition_label=condition.label,
                     is_por=condition.is_por,

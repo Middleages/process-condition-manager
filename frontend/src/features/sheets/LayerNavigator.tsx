@@ -7,9 +7,11 @@ export interface LayerNavigatorProps {
   recentLayerKeys: readonly string[]
   query: string
   collapsed: boolean
+  currentOnly: boolean
   onQueryChange(query: string): void
   onActivate(layerKey: string): void
   onCollapsedChange(collapsed: boolean): void
+  onCurrentOnlyChange(currentOnly: boolean): void
 }
 
 const ROW_HEIGHT = 36
@@ -17,7 +19,7 @@ const VIEWPORT_HEIGHT = 432
 const OVERSCAN = 3
 
 export function LayerNavigator(props: LayerNavigatorProps) {
-  const { items, activeLayerKey, recentLayerKeys, query, collapsed, onQueryChange, onActivate, onCollapsedChange } = props
+  const { items, activeLayerKey, recentLayerKeys, query, collapsed, currentOnly, onQueryChange, onActivate, onCollapsedChange, onCurrentOnlyChange } = props
   const [scrollTop, setScrollTop] = useState(0)
   const listRef = useRef<HTMLDivElement>(null)
   const filtered = useMemo(() => filterLayerNavigatorItems(items, query), [items, query])
@@ -52,7 +54,10 @@ export function LayerNavigator(props: LayerNavigatorProps) {
     <nav className="flex h-full w-[220px] flex-col border-r border-border-subtle bg-canvas" aria-label="Layer 선택" data-layer-navigator-collapsed="false">
       <div className="flex h-11 shrink-0 items-center justify-between border-b border-border-subtle px-3">
         <div><strong className="text-xs tracking-[0.12em] text-ink-950">LAYERS</strong><span className="ml-2 text-[11px] text-muted">{items.length}</span></div>
-        <button className="h-7 w-7 border border-transparent text-muted hover:border-border-control hover:bg-surface hover:text-ink-950" aria-label="Layer 탐색기 접기" onClick={() => onCollapsedChange(true)}>‹</button>
+        <div className="flex items-center gap-1">
+          <button type="button" className={currentOnly ? 'h-7 border border-brand-700 bg-brand-700 px-2 text-[11px] font-semibold text-white hover:bg-ink-950' : 'h-7 border border-border-control bg-surface px-2 text-[11px] font-semibold text-ink-950 hover:border-brand-700 hover:text-brand-700'} aria-pressed={currentOnly} onClick={() => onCurrentOnlyChange(!currentOnly)}>현재만</button>
+          <button type="button" className="h-7 w-7 border border-transparent text-muted hover:border-border-control hover:bg-surface hover:text-ink-950" aria-label="Layer 탐색기 접기" onClick={() => onCollapsedChange(true)}>‹</button>
+        </div>
       </div>
       <div className="border-b border-border-subtle p-2">
         <label className="sr-only" htmlFor="layer-navigator-search">Layer 검색</label>

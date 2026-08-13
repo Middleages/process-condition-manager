@@ -428,17 +428,17 @@ async def test_delete_hard_removes_and_snapshots(
         db_session,
         [
             _Cond("C1", is_por=True, cells={"spin_speed": "1200"}),
-            _Cond("C2"),
+            _Cond("C2", cells={"spin_speed": "900"}),
         ],
     )
-    target_id, keep_id = cond_ids
+    keep_id, target_id = cond_ids
     token = await _acquire(db_client, project_id)
 
     resp = await _delete(db_client, project_id, target_id, token=token)
 
     assert resp.status_code == 204, resp.text
 
-    # 하드 삭제 — 조회 시 없다 (POR 행이어도 삭제 허용). 셀도 cascade로 사라진다.
+    # 비-POR 행 하드 삭제 — 조회 시 없다. 셀도 cascade로 사라진다.
     assert await _get_condition(db_session, target_id) is None
     # 나머지 행은 유지된다.
     assert await _get_condition(db_session, keep_id) is not None
@@ -450,17 +450,40 @@ async def test_delete_hard_removes_and_snapshots(
     assert payload["layer_key"] == layer_key
     assert payload["condition_id"] == target_id
     assert payload["snapshot"] == {
-        "label": "C1",
-        "is_por": True,
-        "condition_index": 1,
-        "cells": {"spin_speed": "1200"},
+        "label": "C2",
+        "is_por": False,
+        "condition_index": 2,
+        "cells": {"spin_speed": "900"},
     }
+
+
+async def test_delete_por_rejected_until_por_is_transferred(
+    db_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    project_id, _, cond_ids = await _seed_project(
+        db_session, [_Cond("C1", is_por=True), _Cond("C2")]
+    )
+    por_id, other_id = cond_ids
+    token = await _acquire(db_client, project_id)
+
+    por_delete = await _delete(db_client, project_id, por_id, token=token)
+
+    assert por_delete.status_code == 422, por_delete.text
+    assert por_delete.json()["message"] == "POR 조건 행은 다른 행에 POR을 지정한 후 삭제할 수 있다"
+    assert await _get_condition(db_session, por_id) is not None
+    assert await _events(db_session, project_id, ChangeEventType.CONDITION_REMOVE) == []
+
+    transfer = await _set_por(db_client, project_id, other_id, token=token)
+    assert transfer.status_code == 200, transfer.text
+    assert (await _delete(db_client, project_id, por_id, token=token)).status_code == 204
 
 
 async def test_delete_last_condition_rejected(
     db_client: AsyncClient, db_session: AsyncSession
 ) -> None:
-    project_id, _, cond_ids = await _seed_project(db_session, [_Cond("C1")])
+    project_id, _, cond_ids = await _seed_project(
+        db_session, [_Cond("C1", is_por=True)]
+    )
     only_id = cond_ids[0]
     token = await _acquire(db_client, project_id)
 
@@ -468,6 +491,7 @@ async def test_delete_last_condition_rejected(
 
     assert resp.status_code == 422, resp.text
     assert resp.json()["code"] == "validation_error"
+    assert resp.json()["message"] == "layer의 마지막 조건 행은 삭제할 수 없다"
 
     # 거부됨 — 행은 그대로 남고 삭제 이벤트도 없다.
     assert await _get_condition(db_session, only_id) is not None

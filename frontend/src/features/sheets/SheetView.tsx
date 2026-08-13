@@ -79,10 +79,16 @@ import {
 import { resolveSheetInteraction } from './sheetInteraction'
 import { SheetFocusFrame } from './SheetFocusFrame'
 import { LayerNavigator } from './LayerNavigator'
+import { LayerBackboneContext } from './LayerBackboneContext'
 import {
   buildLayerNavigatorItems,
   updateRecentLayerKeys,
 } from './layerNavigatorState'
+import {
+  firstConditionIdForLayer,
+  recoverLayerSelection,
+  rowsForLayerViewport,
+} from './layerViewportState'
 import { SheetWorkbenchPanel, SheetWorkbenchToggle, useSheetWorkbenchState } from './SheetWorkbench'
 import {
   BackboneDiffWorkbench,
@@ -105,7 +111,7 @@ import {
 import { useSheetChoiceSets } from './useSheetChoiceSets'
 import { useSheetEditing, type SheetEditing } from './useSheetEditing'
 import { useSheetValidation } from './useSheetValidation'
-import { VALIDATION_SERVER_FAILURE } from './validationState'
+import { summarizeIssues, VALIDATION_SERVER_FAILURE } from './validationState'
 import { useOptionalAuth } from '@/app/AuthContext'
 import {
   enrichValidationIssues,
@@ -829,18 +835,48 @@ function SheetEditor({
     () => [...(project?.layers ?? [])].sort((left, right) => left.sort_order - right.sort_order),
     [project?.layers],
   )
+  const orderedLayerKeys = useMemo(
+    () => sortedProjectLayers.map((layer) => layer.layer_key),
+    [sortedProjectLayers],
+  )
   const [activeLayerKey, setActiveLayerKey] = useState(
     () => sortedProjectLayers[0]?.layer_key ?? data.rows[0]?.layerKey ?? '',
   )
+  const [currentLayerOnly, setCurrentLayerOnly] = useState(false)
+  const [pendingLayerJump, setPendingLayerJump] = useState<string | null>(null)
+  const [pendingConditionFocus, setPendingConditionFocus] = useState<string | null>(null)
   const [recentLayerKeys, setRecentLayerKeys] = useState<readonly string[]>([])
   const [layerQuery, setLayerQuery] = useState('')
   const [navigatorCollapsed, setNavigatorCollapsed] = useState(false)
+  const previousLayerKeysRef = useRef(orderedLayerKeys)
 
   useEffect(() => {
-    if (activeLayerKey === '' || !data.rows.some((row) => row.layerKey === activeLayerKey)) {
-      setActiveLayerKey(sortedProjectLayers[0]?.layer_key ?? data.rows[0]?.layerKey ?? '')
+    if (activeLayerKey !== '' && data.rows.some((row) => row.layerKey === activeLayerKey)) {
+      if (orderedLayerKeys.includes(activeLayerKey)) {
+        previousLayerKeysRef.current = orderedLayerKeys
+      }
+      return
     }
-  }, [activeLayerKey, data.rows, sortedProjectLayers])
+
+    const recovery = recoverLayerSelection(
+      data.rows,
+      previousLayerKeysRef.current,
+      activeLayerKey,
+    )
+    const firstRow = data.rows[0]
+    const next = recovery ??
+      (firstRow === undefined ? null : { layerKey: firstRow.layerKey, conditionId: firstRow.id })
+
+    if (next === null) {
+      setActiveLayerKey('')
+      setPendingLayerJump(null)
+      previousLayerKeysRef.current = orderedLayerKeys
+      return
+    }
+    setActiveLayerKey(next.layerKey)
+    setPendingLayerJump(next.conditionId)
+    previousLayerKeysRef.current = orderedLayerKeys
+  }, [activeLayerKey, data.rows, orderedLayerKeys])
 
   // 서버 행 위에 더티 값을 얹어 표시(편집값 즉시 반영) + 더티 셀 상태 오버레이.
   const displayRows = useMemo(() => applyDirtyToRows(data.rows, dirtyCells), [data.rows, dirtyCells])
@@ -900,12 +936,29 @@ function SheetEditor({
   const gridData = useMemo(
     () => ({
       ...data,
-      rows: displayRows.filter((row) => row.layerKey === activeLayerKey),
+      rows: rowsForLayerViewport(displayRows, activeLayerKey, currentLayerOnly),
       statuses: validation.statuses,
       choiceResources,
     }),
-    [activeLayerKey, data, displayRows, validation.statuses, choiceResources],
+    [activeLayerKey, currentLayerOnly, data, displayRows, validation.statuses, choiceResources],
   )
+
+  useEffect(() => {
+    if (pendingConditionFocus === null) return
+    // invalidateQueries can resolve just before its observer render commits. Do not restore focus
+    // against the previous row set; wait until this editor has consumed the refreshed Sheet object.
+    if (queryClient.getQueryData<SheetOut>(['sheet', projectId]) !== sheet) return
+    if (!gridData.rows.some((row) => row.id === pendingConditionFocus)) return
+    gridRef.current?.scrollToCondition(pendingConditionFocus)
+    setPendingConditionFocus(null)
+  }, [gridData.rows, pendingConditionFocus, projectId, queryClient, sheet])
+
+  useEffect(() => {
+    if (pendingLayerJump === null) return
+    if (!gridData.rows.some((row) => row.id === pendingLayerJump)) return
+    gridRef.current?.scrollToCondition(pendingLayerJump)
+    setPendingLayerJump(null)
+  }, [gridData.rows, pendingLayerJump])
 
   // 붙여넣기 대상 매핑 기준 컬럼 순서 — 그리드가 view.activeCategory로 거르는 것과 동일한
   // 부분집합이어야 대상 셀 해석이 어긋나지 않는다(같은 activeCategory·같은 함수).
@@ -916,6 +969,18 @@ function SheetEditor({
   const validationIssues = useMemo(
     () => enrichValidationIssues(validation.issues, data.columns, displayRows),
     [validation.issues, data.columns, displayRows],
+  )
+  const activeLayerValidationIssues = useMemo(() => {
+    const activeConditionIds = new Set(
+      displayRows
+        .filter((row) => row.layerKey === activeLayerKey)
+        .map((row) => row.id),
+    )
+    return validationIssues.filter((issue) => activeConditionIds.has(issue.conditionId))
+  }, [activeLayerKey, displayRows, validationIssues])
+  const activeLayerValidationSummary = useMemo(
+    () => summarizeIssues(activeLayerValidationIssues),
+    [activeLayerValidationIssues],
   )
   const issueCountsByLayer = useMemo(() => {
     const counts = new Map<string, number>()
@@ -964,6 +1029,18 @@ function SheetEditor({
     workbenchState.mode === 'backbone-diff',
     backboneDiffMutationRevision,
   )
+  useEffect(() => {
+    if (
+      workbenchState.mode === 'backbone-diff' &&
+      activeLayerKey !== '' &&
+      backboneDiffWorkbench.state.filters.layerKey !== activeLayerKey
+    ) {
+      backboneDiffWorkbench.onFiltersChange({
+        ...backboneDiffWorkbench.state.filters,
+        layerKey: activeLayerKey,
+      })
+    }
+  }, [activeLayerKey, backboneDiffWorkbench, workbenchState.mode])
   const { onClearNavigationAnnouncement: onClearBackboneNavigationAnnouncement } =
     backboneDiffWorkbench
   const [backboneDiffRefreshAnnouncement, setBackboneDiffRefreshAnnouncement] = useState<string | null>(
@@ -1006,10 +1083,17 @@ function SheetEditor({
       setCoordinateNavigationStatus('붙여넣기를 적용 또는 취소한 뒤 이동해 주세요.')
       return
     }
+    const conditionId = firstConditionIdForLayer(displayRows, layerKey)
+    setPendingLayerJump(conditionId)
     setActiveLayerKey(layerKey)
     setRecentLayerKeys((current) => updateRecentLayerKeys(current, layerKey))
     setCoordinateNavigationStatus(null)
-  }, [])
+  }, [displayRows])
+  const changeCurrentLayerOnly = useCallback((currentOnly: boolean) => {
+    const conditionId = firstConditionIdForLayer(displayRows, activeLayerKey)
+    setPendingLayerJump(conditionId)
+    setCurrentLayerOnly(currentOnly)
+  }, [activeLayerKey, displayRows])
 
   const {
     readOnly,
@@ -1102,6 +1186,7 @@ function SheetEditor({
   const [activeRow, setActiveRow] = useState<{ conditionId: string; layerKey: string } | null>(null)
   const [selectedCell, setSelectedCell] = useState<CellCommentTarget | null>(null)
   const [structError, setStructError] = useState<string | null>(null)
+  const [structRefreshError, setStructRefreshError] = useState<string | null>(null)
   const [structBusy, setStructBusy] = useState(false)
   const structInFlightRef = useRef(false) // 구조 변경 중복 실행(빠른 연타) 방지 — 동기 가드.
 
@@ -1114,40 +1199,56 @@ function SheetEditor({
 
   // 활성 행이 (삭제·외부 변경으로) 시트에서 사라지면 선택을 정리한다 — 없는 행에 대한 조작 방지.
   useEffect(() => {
-    if (activeRow !== null && !data.rows.some((row) => row.id === activeRow.conditionId)) {
+    if (
+      activeRow !== null &&
+      activeRow.conditionId !== pendingConditionFocus &&
+      !data.rows.some((row) => row.id === activeRow.conditionId)
+    ) {
       setActiveRow(null)
     }
-  }, [activeRow, data.rows])
+  }, [activeRow, data.rows, pendingConditionFocus])
 
-  const refreshSheet = useCallback(() => {
-    void queryClient.invalidateQueries({ queryKey: ['sheet', projectId] })
+  const refreshSheet = useCallback(async () => {
     // Structural mutations also change Project layer condition_count metadata consumed by the
     // exact validation adapter; refresh both halves before provisional evaluation resumes.
-    void queryClient.invalidateQueries({ queryKey: ['project', projectId] })
+    await Promise.all([
+      queryClient.invalidateQueries(
+        { queryKey: ['sheet', projectId] },
+        { throwOnError: true },
+      ),
+      queryClient.invalidateQueries({ queryKey: ['project', projectId] }),
+    ])
   }, [queryClient, projectId])
 
   const retryValidationDefinitions = useCallback(() => {
-    refreshSheet()
+    // The Sheet query renders its own refetch failure; this retry remains fire-and-forget.
+    void refreshSheet().catch(() => undefined)
     for (const resource of choiceResources.values()) void resource.retry()
   }, [refreshSheet, choiceResources])
 
   // 구조 변경 공용 실행: 잠금 검사·더티 flush·잠금 상실 처리(runStructuralChange)를 감싸
-  // UI 상태(진행 중/에러)와 재조회를 얹는다. 성공하면 true, 실패하면 에러를 표시하고 false.
+  // UI 상태(진행 중/에러)와 재조회를 얹는다. 저장 성공 뒤 조회만 실패한 경우 API 결과를
+  // 보존하고 별도 복구 안내를 띄워 같은 비멱등 mutation을 다시 실행하지 않게 한다.
   const performStructural = useCallback(
-    async (fn: (token: string) => Promise<unknown>): Promise<boolean> => {
-      if (structInFlightRef.current) return false
+    async <T,>(fn: (token: string) => Promise<T>): Promise<T | null> => {
+      if (structInFlightRef.current) return null
       structInFlightRef.current = true
       setStructBusy(true)
       setStructError(null)
+      setStructRefreshError(null)
       try {
-        await runStructuralChange(fn)
+        const result = await runStructuralChange(fn)
         invalidateProjectHistory()
         invalidateProjectBackboneDiff()
-        refreshSheet()
-        return true
+        try {
+          await refreshSheet()
+        } catch (error) {
+          setStructRefreshError(getApiErrorMessage(error))
+        }
+        return result
       } catch (error) {
         setStructError(getApiErrorMessage(error))
-        return false
+        return null
       } finally {
         structInFlightRef.current = false
         setStructBusy(false)
@@ -1161,21 +1262,45 @@ function SheetEditor({
     ],
   )
 
-  const handleAddEmpty = useCallback(() => {
+  const retryStructuralRefresh = useCallback(async () => {
+    setStructBusy(true)
+    try {
+      await refreshSheet()
+      setStructRefreshError(null)
+    } catch (error) {
+      setStructRefreshError(getApiErrorMessage(error))
+    } finally {
+      setStructBusy(false)
+    }
+  }, [refreshSheet])
+
+  const handleAddEmpty = useCallback(async () => {
     if (!interaction.canManageConditions) return
     if (pasteRef.current !== null) return
     if (activeRow === null) return
     const layerKey = activeRow.layerKey
-    void performStructural((token) => addCondition(projectId, layerKey, null, token))
+    const created = await performStructural((token) =>
+      addCondition(projectId, layerKey, null, token),
+    )
+    if (created === null) return
+    const conditionId = String(created.id)
+    setActiveRow({ conditionId, layerKey: created.layer_key })
+    setPendingConditionFocus(conditionId)
   }, [activeRow, interaction.canManageConditions, performStructural, projectId])
 
-  const handleDuplicate = useCallback(() => {
+  const handleDuplicate = useCallback(async () => {
     if (!interaction.canManageConditions) return
     if (pasteRef.current !== null) return
     if (activeRow === null) return
     const { layerKey } = activeRow
     const sourceId = Number(activeRow.conditionId)
-    void performStructural((token) => addCondition(projectId, layerKey, sourceId, token))
+    const created = await performStructural((token) =>
+      addCondition(projectId, layerKey, sourceId, token),
+    )
+    if (created === null) return
+    const conditionId = String(created.id)
+    setActiveRow({ conditionId, layerKey: created.layer_key })
+    setPendingConditionFocus(conditionId)
   }, [activeRow, interaction.canManageConditions, performStructural, projectId])
 
   const handleDelete = useCallback(async () => {
@@ -1185,12 +1310,26 @@ function SheetEditor({
     // 하드 삭제(셀 값까지 캐스케이드)라 되돌릴 수 없다 — 실행 전 한 번 확인한다.
     if (!window.confirm('이 조건 행을 삭제한다. 되돌릴 수 없다. 계속할까?')) return
     const conditionId = Number(activeRow.conditionId)
-    const ok = await performStructural((token) => deleteCondition(projectId, conditionId, token))
-    if (ok) setActiveRow(null)
-  }, [activeRow, interaction.canManageConditions, performStructural, projectId])
+    const layerRows = data.rows.filter((row) => row.layerKey === activeRow.layerKey)
+    const targetIndex = layerRows.findIndex((row) => row.id === activeRow.conditionId)
+    const focusTarget = targetIndex < 0
+      ? undefined
+      : layerRows[targetIndex + 1] ?? layerRows[targetIndex - 1]
+    const result = await performStructural((token) =>
+      deleteCondition(projectId, conditionId, token),
+    )
+    if (result === null) return
+    if (focusTarget === undefined) {
+      setActiveRow(null)
+      return
+    }
+    setActiveRow({ conditionId: focusTarget.id, layerKey: focusTarget.layerKey })
+    setPendingConditionFocus(focusTarget.id)
+  }, [activeRow, data.rows, interaction.canManageConditions, performStructural, projectId])
 
   const clearActive = useCallback(() => {
     setActiveRow(null)
+    setPendingConditionFocus(null)
     setStructError(null)
   }, [])
 
@@ -1238,11 +1377,15 @@ function SheetEditor({
       },
       // 좌측 식별 컬럼 클릭 → 그 행을 추가/복제/삭제 대상으로 활성화(하단 액션 바에 노출).
       onConditionActivate: (payload) => {
+        setActiveLayerKey(payload.layerKey)
         if (!interaction.canManageConditions || pasteRef.current !== null) return
         setStructError(null)
         setActiveRow(payload)
       },
-      onCellActivate: setSelectedCell,
+      onCellActivate: (payload) => {
+        setActiveLayerKey(payload.layerKey)
+        setSelectedCell(payload)
+      },
       onCellHistoryRequest: (payload) => {
         if (historyWorkbench.onCellHistoryRequest(payload)) {
           workbenchState.selectMode('history')
@@ -1362,8 +1505,21 @@ function SheetEditor({
         setCoordinateNavigationStatus('이동할 대상 셀을 찾지 못했습니다.')
         return
       }
+      const targetRow = displayRows.find(
+        (row) => row.id === String(navigation.target.conditionId),
+      )
+      if (targetRow === undefined) {
+        setCoordinateNavigationStatus('이동할 대상 셀을 찾지 못했습니다.')
+        return
+      }
+      const waitsForLayerCommit = currentLayerOnly && targetRow.layerKey !== activeLayerKey
+      setActiveLayerKey(targetRow.layerKey)
       if (navigation.kind === 'reveal-category') {
         setActiveCategory(navigation.categoryCode)
+        setPendingCoordinateJump(navigation.target)
+        return
+      }
+      if (waitsForLayerCommit) {
         setPendingCoordinateJump(navigation.target)
         return
       }
@@ -1373,7 +1529,14 @@ function SheetEditor({
       )
       setCoordinateNavigationStatus('대상 셀로 이동했습니다.')
     },
-    [interaction.canSwitchCategory, data.columns, displayRows, activeCategory],
+    [
+      interaction.canSwitchCategory,
+      data.columns,
+      displayRows,
+      activeCategory,
+      activeLayerKey,
+      currentLayerOnly,
+    ],
   )
 
   const activateWorkbenchJumpTarget = useCallback(
@@ -1739,6 +1902,9 @@ function SheetEditor({
           ) : null}
           <div className="flex min-w-0 flex-wrap items-center gap-2" data-testid="sheet-category-tabs">
             <SheetMetrics rowCount={gridData.rows.length} colCount={data.columns.length} />
+            <LayerBackboneContext
+              layer={sortedProjectLayers.find((layer) => layer.layer_key === activeLayerKey) ?? null}
+            />
             {categories.length > 0 ? (
               <>
                 <CategoryTab
@@ -1842,10 +2008,12 @@ function SheetEditor({
               activeLabel={activeRowLabel}
               busy={structBusy}
               error={structError}
+              refreshError={structRefreshError}
               onAddEmpty={handleAddEmpty}
               onDuplicate={handleDuplicate}
               onDelete={handleDelete}
               onClear={clearActive}
+              onRetryRefresh={() => void retryStructuralRefresh()}
             />
           ) : null}
           <CellCommentPanel projectId={projectId} target={selectedCell} />
@@ -1859,9 +2027,11 @@ function SheetEditor({
           recentLayerKeys={recentLayerKeys}
           query={layerQuery}
           collapsed={navigatorCollapsed}
+          currentOnly={currentLayerOnly}
           onQueryChange={setLayerQuery}
           onActivate={activateLayer}
           onCollapsedChange={setNavigatorCollapsed}
+          onCurrentOnlyChange={changeCurrentLayerOnly}
         />
       }
       inspector={
@@ -1872,12 +2042,12 @@ function SheetEditor({
             onResizeBy={workbenchState.resizeBy}
             onSetWidth={workbenchState.setInspectorWidth}
             inspectorWidth={workbenchState.inspectorWidth}
-            validationIssueCount={validationIssues.length}
+            validationIssueCount={activeLayerValidationIssues.length}
             validationContent={
               <ValidationWorkbench
                 definitionsPending={validationDefinitionsPending}
-                issues={validationIssues}
-                summary={validation.summary}
+                issues={activeLayerValidationIssues}
+                summary={activeLayerValidationSummary}
                 issueAuthority={validation.issueAuthority}
                 serverConfirmation={validation.serverConfirmation}
                 serverFailure={validation.serverFailure}
@@ -1978,18 +2148,22 @@ function ConditionRowManager({
   activeLabel,
   busy,
   error,
+  refreshError,
   onAddEmpty,
   onDuplicate,
   onDelete,
   onClear,
+  onRetryRefresh,
 }: {
   activeLabel: string | null
   busy: boolean
   error: string | null
+  refreshError: string | null
   onAddEmpty: () => void
   onDuplicate: () => void
   onDelete: () => void
   onClear: () => void
+  onRetryRefresh: () => void
 }) {
   const noSelection = activeLabel === null
   return (
@@ -2061,6 +2235,24 @@ function ConditionRowManager({
           tone="error"
         >
           {error}
+        </InlineAlert>
+      ) : null}
+      {refreshError !== null ? (
+        <InlineAlert
+          className="basis-full rounded-md px-2 py-1.5 text-xs"
+          data-testid="condition-refresh-warning"
+          tone="warning"
+        >
+          변경은 저장되었지만 최신 시트를 불러오지 못했습니다: {refreshError}{' '}
+          <Button
+            type="button"
+            onClick={onRetryRefresh}
+            disabled={busy}
+            size="compact"
+            variant="secondary"
+          >
+            다시 불러오기
+          </Button>
         </InlineAlert>
       ) : null}
     </div>

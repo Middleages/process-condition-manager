@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import {
   cellHistoryMenuActionForKey,
@@ -8,13 +8,63 @@ import {
   cellStatusVisualPriority,
   currentGridSelectionForLayout,
   gridLayoutAuthority,
+  gridSelectionActivation,
   isCellHistoryMenuInvocation,
+  porCellBehavior,
+  porCellAccessibility,
+  requestPorTransfer,
   resolveCellHistoryMenuPosition,
   resolveCellHistoryRequest,
 } from './GlideConditionGrid'
 import source from './GlideConditionGrid.tsx?raw'
 
 describe('composite cell status rendering priority', () => {
+  it('describes POR as a Layer-scoped single-selection state for Glide accessibility', () => {
+    expect(porCellAccessibility('L1', 'POR', true)).toBe(
+      'Layer L1, 조건 POR, POR 선택됨, 단일 선택',
+    )
+    expect(porCellAccessibility('L1', 'C2', false)).toBe(
+      'Layer L1, 조건 C2, POR 선택 안 됨, 단일 선택',
+    )
+  })
+
+  it('keeps a single-row POR selected and non-actionable', () => {
+    const onPorChange = vi.fn()
+    expect(porCellBehavior(true, 1)).toEqual({ mark: '●', canTransfer: false })
+    requestPorTransfer({ id: '11', layerKey: 'L1', isPor: true }, 1, onPorChange)
+    requestPorTransfer({ id: '11', layerKey: 'L1', isPor: false }, 1, onPorChange)
+    expect(onPorChange).not.toHaveBeenCalled()
+    expect(source).toMatch(
+      /const behavior = porCellBehavior\([\s\S]*?data: porCellAccessibility\([\s\S]*?displayData: behavior\.mark/,
+    )
+  })
+
+  it('calls onPorChange for a non-POR click in a multi-row Layer', () => {
+    const onPorChange = vi.fn()
+    expect(porCellBehavior(false, 2)).toEqual({ mark: '○', canTransfer: true })
+    requestPorTransfer({ id: '11', layerKey: 'L1', isPor: true }, 2, onPorChange)
+    requestPorTransfer({ id: '12', layerKey: 'L1', isPor: false }, 2, onPorChange)
+    expect(onPorChange).toHaveBeenCalledTimes(1)
+    expect(onPorChange).toHaveBeenCalledWith('L1', '12')
+  })
+
+  it('freezes four identity columns, uses POR column 3, and includes optional units in parameter headers', () => {
+    const handleCellClicked = source.match(
+      /const handleCellClicked = useCallback\([\s\S]*?(?=\n  useImperativeHandle)/,
+    )?.[0]
+    const parameterHeaders = [
+      { headerName: 'ZONE TEMP.', unit: '°C' },
+      { headerName: 'PRESSURE', unit: null },
+    ].map((column) => column.unit ? `${column.headerName} · ${column.unit}` : column.headerName)
+
+    expect(parameterHeaders).toEqual(['ZONE TEMP. · °C', 'PRESSURE'])
+    expect(source).toContain('freezeColumns={IDENTITY_COLUMN_COUNT}')
+    expect(handleCellClicked).toMatch(/if \(col === 3\)[\s\S]*?callbacks\?\.onPorChange/)
+    expect(source).toContain("title: column.unit ? `${column.headerName} · ${column.unit}` : column.headerName")
+    expect(source).toContain('groupMeta.isGroupStart[row] ? rowData.stepSeq :')
+    expect(source).toContain('groupMeta.isGroupStart[row] ? rowData.layerId :')
+  })
+
   it('renders validation error above warning, dirty, and comment without requiring exclusive state', () => {
     expect(
       cellStatusVisualPriority({
@@ -83,6 +133,20 @@ describe('composite cell status rendering priority', () => {
     expect(source).toContain('onGridSelectionChange={handleGridSelectionChange}')
   })
 
+  it('makes scrollToCondition scroll vertically, select Step Seq, and request Grid focus', () => {
+    const command = source.match(
+      /scrollToCondition\(conditionId\)[\s\S]*?(?=\n      scrollToCell)/,
+    )?.[0]
+
+    expect(command).toMatch(/conditionRowScrollTarget\(conditionId, rows\)/)
+    expect(command).toMatch(/scrollTo\(target\.col, target\.row, 'vertical'/)
+    expect(command).toContain('requestedFocusRef.current = [target.col, target.row]')
+    expect(command).toContain(
+      'selection: selectionForCell(target.col, target.row)',
+    )
+    expect(command).not.toContain('gridRef.current?.focus()')
+  })
+
   it('invalidates controlled selection when visible keys or row identity/order changes', () => {
     const columns = [{ key: 'amount' }, { key: 'equipment' }]
     const rows = [{ id: '11' }, { id: '12' }]
@@ -116,6 +180,41 @@ describe('composite cell status rendering priority', () => {
     ).toBe('selected cell')
   })
 
+  it.each([0, 1, 2, 3])(
+    'activates the row Layer when keyboard selection lands on fixed column %i',
+    (column) => {
+      expect(gridSelectionActivation(column, 0, [], [{
+        id: 'condition-11',
+        layerKey: 'layer-1',
+        stepSeq: '010',
+        layerId: 'L1',
+        layerLabel: 'Layer 1',
+        conditionLabel: 'POR',
+        isPor: true,
+        values: {},
+      }])).toEqual({
+        condition: { conditionId: 'condition-11', layerKey: 'layer-1' },
+        cell: null,
+      })
+    },
+  )
+
+  it('publishes one parameter activation without also treating it as a fixed-column row activation', () => {
+    expect(gridSelectionActivation(4, 0, [{ key: 'amount' }], [{
+      id: 'condition-11',
+      layerKey: 'layer-1',
+      stepSeq: '010',
+      layerId: 'L1',
+      layerLabel: 'Layer 1',
+      conditionLabel: 'POR',
+      isPor: true,
+      values: { amount: '7' },
+    }])).toEqual({
+      condition: null,
+      cell: { conditionId: 'condition-11', parameterCode: 'amount', layerKey: 'layer-1' },
+    })
+  })
+
   it('publishes navigation selection against the current layout authority after a category commit', () => {
     expect(source).toContain('layoutAuthority, selection: selectionForCell(target.col, target.row)')
     expect(source).toMatch(
@@ -139,6 +238,8 @@ describe('cell-history context action boundary', () => {
     {
       id: 'condition-11',
       layerKey: 'layer-1',
+      stepSeq: '010',
+      layerId: 'Layer 1',
       layerLabel: 'Layer 1',
       conditionLabel: 'Condition 11',
       isPor: true,
@@ -147,14 +248,15 @@ describe('cell-history context action boundary', () => {
   ]
 
   it('resolves only parameter cells to a domain coordinate', () => {
-    expect(resolveCellHistoryRequest([3, 0], columns, rows)).toEqual({
+    expect(resolveCellHistoryRequest([4, 0], columns, rows)).toEqual({
       conditionId: 'condition-11',
       parameterCode: 'amount',
     })
     expect(resolveCellHistoryRequest([0, 0], columns, rows)).toBeNull()
     expect(resolveCellHistoryRequest([1, 0], columns, rows)).toBeNull()
     expect(resolveCellHistoryRequest([2, 0], columns, rows)).toBeNull()
-    expect(resolveCellHistoryRequest([3, 1], columns, rows)).toBeNull()
+    expect(resolveCellHistoryRequest([3, 0], columns, rows)).toBeNull()
+    expect(resolveCellHistoryRequest([4, 1], columns, rows)).toBeNull()
   })
 
   it('recognizes both accessible context-menu keyboard conventions', () => {

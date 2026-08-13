@@ -76,6 +76,8 @@ describe('transport and display projections', () => {
       {
         id: '1',
         layerKey: 'L1',
+        stepSeq: 'S01',
+        layerId: 'L1',
         layerLabel: 'L1',
         conditionLabel: 'C1',
         isPor: true,

@@ -110,11 +110,19 @@ class ConditionService:
         if condition is None:
             raise NotFoundError(f"조건 행을 찾을 수 없다: {condition_id}")
 
-        # layer당 최소 1행 유지 — 마지막 조건 행 삭제는 막는다 (POR 여부와 무관;
-        # POR 행 삭제 자체는 허용이고 Review 게이트는 Phase 5의 몫이다).
+        # layer당 최소 1행 유지 — 마지막 조건 행 삭제는 POR 여부와 무관하게 먼저 막는다.
         if await self.repo.count_conditions_in_layer(condition.layer_id) <= 1:
             raise DomainValidationError(
                 "layer의 마지막 조건 행은 삭제할 수 없다",
+                details={
+                    "layer_key": condition.layer.layer_key,
+                    "condition_id": condition_id,
+                },
+            )
+
+        if condition.is_por:
+            raise DomainValidationError(
+                "POR 조건 행은 다른 행에 POR을 지정한 후 삭제할 수 있다",
                 details={
                     "layer_key": condition.layer.layer_key,
                     "condition_id": condition_id,

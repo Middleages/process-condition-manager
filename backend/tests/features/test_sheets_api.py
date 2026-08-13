@@ -244,6 +244,13 @@ async def test_sheet_rows_sorted_by_layer_and_condition_index(
     ]
     # P1-D3 병기 라벨.
     assert rows[0]["layer_label"] == "CLN (010)"
+    assert rows[0]["step_seq"] == "010"
+    assert rows[0]["layer_id"] == "CLN"
+    assert [(row["step_seq"], row["layer_id"]) for row in rows] == [
+        ("010", "CLN"),
+        ("020", "ACT"),
+        ("020", "ACT"),
+    ]
     assert rows[0]["is_por"] is True
     assert [
         (row["layer_sort_order"], row["condition_index"]) for row in rows

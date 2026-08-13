@@ -466,6 +466,8 @@ function displayRow(value: string | null) {
   return {
     id: '1',
     layerKey: 'L1',
+    stepSeq: '10',
+    layerId: 'L1',
     layerLabel: 'L1 (10)',
     conditionLabel: 'POR',
     isPor: true,

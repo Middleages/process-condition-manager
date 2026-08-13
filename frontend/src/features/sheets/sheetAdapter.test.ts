@@ -54,8 +54,10 @@ const sheet: SheetOut = {
     {
       condition_id: 11,
       layer_key: 'S01|L1',
+      step_seq: '010',
+      layer_id: 'ACT',
       layer_label: 'L1 (S01)',
-      condition_label: 'C1',
+      condition_label: 'POR',
       is_por: true,
       layer_sort_order: 4,
       condition_index: 2,
@@ -119,6 +121,12 @@ describe('toConditionGridData', () => {
 
   it('stringifies condition_id and passes sparse cells straight through', () => {
     const data = toConditionGridData(sheet)
+    expect(data.rows[0]).toMatchObject({
+      stepSeq: '010',
+      layerId: 'ACT',
+      conditionLabel: 'POR',
+      isPor: true,
+    })
     expect(data.rows[0].id).toBe('11')
     expect(data.rows[0].isPor).toBe(true)
     expect(data.rows[0].layerLabel).toBe('L1 (S01)')
@@ -186,7 +194,7 @@ describe('Sheet validation adapter boundary', () => {
         conditions: [
           {
             id: 11,
-            label: 'C1',
+            label: 'POR',
             condition_index: 2,
             is_por: true,
             values: { spin_speed: '1500', pr_type: 'pos' },

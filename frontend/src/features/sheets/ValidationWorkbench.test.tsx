@@ -22,18 +22,15 @@ describe('ValidationWorkbench', () => {
     expect(html).toContain('focus-visible:outline-2')
   })
 
-  it('exposes full tile descriptions, non-color severity, keyboard semantics, and 3/4/5 columns', () => {
+  it('keeps issue tiles in one readable column inside the narrow inspector', () => {
     const html = render({ issues: [workbenchIssue('error')] })
 
     expect(html).toContain('aria-label="오류. ETCH (10) POR. 노광량. 현재 값 7. 노광량 값을 입력해 주세요."')
     expect(html).toContain('>오류<')
     expect(html).toContain('aria-expanded="false"')
     expect(html).toContain('h-[50px]')
-    expect(html).toContain('min-[640px]:grid-cols-2')
-    expect(html).not.toContain('sm:grid-cols-2')
-    expect(html).toContain('min-[1024px]:grid-cols-3')
-    expect(html).toContain('min-[1440px]:grid-cols-4')
-    expect(html).toContain('min-[1920px]:grid-cols-5')
+    expect(html).toContain('grid-cols-1')
+    expect(html).not.toMatch(/min-\[\d+px\]:grid-cols-/)
     expect(source).toContain('onKeyDown={activateWithKeyboard}')
     expect(source).toContain('handleValidationTileActivationKey(')
     expect(source).toContain("selected ? 'h-auto' : 'h-[50px]'")

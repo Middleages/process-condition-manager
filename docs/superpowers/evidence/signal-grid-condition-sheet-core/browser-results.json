@@ -1,0 +1,795 @@
+{
+  "generatedAt": "2026-08-13T22:04:23.290Z",
+  "baseUrl": "http://127.0.0.1:4179",
+  "browser": {
+    "playwrightRoot": "/home/appuser/.npm/_npx/fd3bca3c548369c0/node_modules/playwright",
+    "browserExecutable": "/home/appuser/.cache/ms-playwright/chromium-1187/chrome-linux/chrome",
+    "version": "1.55.0"
+  },
+  "fixture": {
+    "projectId": 7,
+    "initialLayers": 3,
+    "initialRows": 6,
+    "parameters": 60,
+    "mutableInMemoryApi": true
+  },
+  "assertions": [
+    {
+      "name": "page identity",
+      "passed": true,
+      "url": "http://127.0.0.1:4179/projects/7/sheet",
+      "title": "PCM - Process Condition Manager"
+    },
+    {
+      "name": "not blank / no framework overlay",
+      "passed": true
+    },
+    {
+      "name": "all Layers visible by default",
+      "passed": true
+    },
+    {
+      "name": "Layer jump does not filter default grid",
+      "passed": true
+    },
+    {
+      "name": "current-only Layer switch updates Backbone",
+      "passed": true
+    },
+    {
+      "name": "Step Seq/Layer repetition suppressed",
+      "passed": true,
+      "step0": "010",
+      "step1": "",
+      "layer0": "ETCH",
+      "layer1": ""
+    },
+    {
+      "name": "horizontal Parameter scrolling",
+      "passed": true,
+      "scrollLeft": 8532,
+      "scrollWidth": 9372,
+      "clientWidth": 840
+    },
+    {
+      "name": "cell selection synchronizes navigator and Backbone",
+      "passed": true
+    },
+    {
+      "name": "dirty save failure surfaced and dirty retained",
+      "passed": true
+    },
+    {
+      "name": "dirty save retry commits",
+      "passed": true
+    },
+    {
+      "name": "structural failure surfaced",
+      "passed": true
+    },
+    {
+      "name": "add, duplicate, and non-POR delete",
+      "passed": true,
+      "addedId": 900,
+      "duplicatedId": 901
+    },
+    {
+      "name": "POR transfer",
+      "passed": true
+    },
+    {
+      "name": "blocked POR delete preserves row",
+      "passed": true
+    },
+    {
+      "name": "validation cell jump",
+      "passed": true
+    },
+    {
+      "name": "history cell jump",
+      "passed": true
+    },
+    {
+      "name": "Backbone-diff cell jump",
+      "passed": true
+    },
+    {
+      "name": "read-only lock state",
+      "passed": true
+    },
+    {
+      "name": "browser Back restores project-link focus",
+      "passed": true
+    },
+    {
+      "name": "document overflow bounded at 1024x768",
+      "passed": true,
+      "clientWidth": 1024,
+      "scrollWidth": 1024,
+      "overflowX": 0
+    },
+    {
+      "name": "Grid owns horizontal overflow at 1024x768",
+      "passed": true,
+      "clientWidth": 424,
+      "scrollWidth": 9372,
+      "scrollLeft": 0
+    },
+    {
+      "name": "document overflow bounded at 1440x900",
+      "passed": true,
+      "clientWidth": 1440,
+      "scrollWidth": 1440,
+      "overflowX": 0
+    },
+    {
+      "name": "Grid owns horizontal overflow at 1440x900",
+      "passed": true,
+      "clientWidth": 840,
+      "scrollWidth": 9372,
+      "scrollLeft": 0
+    },
+    {
+      "name": "document overflow bounded at 1920x1080",
+      "passed": true,
+      "clientWidth": 1920,
+      "scrollWidth": 1920,
+      "overflowX": 0
+    },
+    {
+      "name": "Grid owns horizontal overflow at 1920x1080",
+      "passed": true,
+      "clientWidth": 1320,
+      "scrollWidth": 9372,
+      "scrollLeft": 0
+    },
+    {
+      "name": "no page errors",
+      "passed": true,
+      "pageErrors": []
+    },
+    {
+      "name": "no unexpected console errors/warnings",
+      "passed": true,
+      "unexpectedConsole": []
+    }
+  ],
+  "measurements": {
+    "1024x768": {
+      "document": {
+        "clientWidth": 1024,
+        "scrollWidth": 1024,
+        "overflowX": 0
+      },
+      "gridHost": {
+        "clientWidth": 424,
+        "scrollWidth": 424
+      },
+      "gridScroller": {
+        "clientWidth": 424,
+        "scrollWidth": 9372,
+        "scrollLeft": 0
+      },
+      "activeLayer": "L3",
+      "backbone": "LINE-C / POLISH / SRC-C · 003 / SOURCE-C"
+    },
+    "1440x900": {
+      "document": {
+        "clientWidth": 1440,
+        "scrollWidth": 1440,
+        "overflowX": 0
+      },
+      "gridHost": {
+        "clientWidth": 840,
+        "scrollWidth": 840
+      },
+      "gridScroller": {
+        "clientWidth": 840,
+        "scrollWidth": 9372,
+        "scrollLeft": 0
+      },
+      "activeLayer": "L3",
+      "backbone": "LINE-C / POLISH / SRC-C · 003 / SOURCE-C"
+    },
+    "1920x1080": {
+      "document": {
+        "clientWidth": 1920,
+        "scrollWidth": 1920,
+        "overflowX": 0
+      },
+      "gridHost": {
+        "clientWidth": 1320,
+        "scrollWidth": 1320
+      },
+      "gridScroller": {
+        "clientWidth": 1320,
+        "scrollWidth": 9372,
+        "scrollLeft": 0
+      },
+      "activeLayer": "L3",
+      "backbone": "LINE-C / POLISH / SRC-C · 003 / SOURCE-C"
+    }
+  },
+  "consoleMessages": [
+    {
+      "phase": "dirty-save-failure",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+    },
+    {
+      "phase": "dirty-save-failure",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+    },
+    {
+      "phase": "dirty-save-failure",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+    },
+    {
+      "phase": "dirty-save-failure",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+    },
+    {
+      "phase": "structural-failure",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+    },
+    {
+      "phase": "por-blocked-delete",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 422 (Unprocessable Entity)"
+    },
+    {
+      "phase": "readonly-lock",
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 409 (Conflict)"
+    }
+  ],
+  "pageErrors": [],
+  "apiCalls": [
+    {
+      "phase": "page-identity",
+      "method": "GET",
+      "pathname": "/api/auth/me",
+      "search": "",
+      "body": null
+    },
+    {
+      "phase": "page-identity",
+      "method": "GET",
+      "pathname": "/api/projects/7/sheet",
+      "search": "",
+      "body": null
+    },
+    {
+      "phase": "page-identity",
+      "method": "GET",
+      "pathname": "/api/projects/7",
+      "search": "",
+      "body": null
+    },
+    {
+      "phase": "page-identity",
+      "method": "GET",
+      "pathname": "/api/projects/17",
+      "search": "",
+      "body": null
+    },
+    {
+      "phase": "page-identity",
+      "method": "POST",
+      "pathname": "/api/projects/7/lock",
+      "search": "",
+      "body": null
+    },
+    {
+      "phase": "layer-navigation",
+      "method": "GET",
+      "pathname": "/api/projects/18",
+      "search": "",
+      "body": null
+    },
+    {
+      "phase": "layer-navigation",
+      "method": "GET",
+      "pathname": "/api/projects/19",
+      "search": "",
+      "body": null
+    },
+    {
+      "phase": "cell-sync",
+      "method": "GET",
+      "pathname": "/api/projects/7/comments",
+      "search": "?target=cell&layer_key=L2&parameter_code=PARAM_058&condition_id=201",
+      "body": null
+    },
+    {
+      "phase": "dirty-save-failure",
+      "method": "GET",
+      "pathname": "/api/projects/7/comments",
+      "search": "?target=cell&layer_key=L1&parameter_code=PARAM_001&condition_id=101",
+      "body": null
+    },
+    {
+      "phase": "dirty-save-failure",
+      "method": "PATCH",
+      "pathname": "/api/projects/7/cells",
+      "search": "",
+      "body": {
+        "cells": [
+          {
+            "condition_id": 101,
+            "parameter_code": "PARAM_001",
+            "value": "111"
+          }
+        ],
+        "origin": "manual"
+      }
+    },
+    {
+      "phase": "dirty-save-failure",
+      "method": "PATCH",
+      "pathname": "/api/projects/7/cells",
+      "search": "",
+      "body": {
+        "cells": [
+          {
+            "condition_id": 101,
+            "parameter_code": "PARAM_001",
+            "value": "111"
+          }
+        ],
+        "origin": "manual"
+      }
+    },
+    {
+      "phase": "dirty-save-failure",
+      "method": "PATCH",
+      "pathname": "/api/projects/7/cells",
+      "search": "",
+      "body": {
+        "cells": [
+          {
+            "condition_id": 101,
+            "parameter_code": "PARAM_001",
+            "value": "111"
+          }
+        ],
+        "origin": "manual"
+      }
+    },
+    {
+      "phase": "dirty-save-failure",
+      "method": "PATCH",
+      "pathname": "/api/projects/7/cells",
+      "search": "",
+      "body": {
+        "cells": [
+          {
+            "condition_id": 101,
+            "parameter_code": "PARAM_001",
+            "value": "111"
+          }
+        ],
+        "origin": "manual"
+      }
+    },
+    {
+      "phase": "dirty-save-retry",
+      "method": "PATCH",
+      "pathname": "/api/projects/7/cells",
+      "search": "",
+      "body": {
+        "cells": [
+          {
+            "condition_id": 101,
+            "parameter_code": "PARAM_001",
+            "value": "111"
+          }
+        ],
+        "origin": "manual"
+      }
+    },
+    {
+      "phase": "structural-failure",
+      "method": "POST",
+      "pathname": "/api/projects/7/layers/L1/conditions",
+      "search": "",
+      "body": {
+        "source_condition_id": null
+      }
+    },
+    {
+      "phase": "structural-success",
+      "method": "POST",
+      "pathname": "/api/projects/7/layers/L1/conditions",
+      "search": "",
+      "body": {
+        "source_condition_id": null
+      }
+    },
+    {
+      "phase": "structural-success",
+      "method": "GET",
+      "pathname": "/api/projects/7/sheet",
+      "search": "",
+      "body": null
+    },
+    {
+      "phase": "structural-success",
+      "method": "GET",
+      "pathname": "/api/projects/7",
+      "search": "",
+      "body": null
+    },
+    {
+      "phase": "structural-success",
+      "method": "POST",
+      "pathname": "/api/projects/7/layers/L1/conditions",
+      "search": "",
+      "body": {
+        "source_condition_id": 900
+      }
+    },
+    {
+      "phase": "structural-success",
+      "method": "GET",
+      "pathname": "/api/projects/7/sheet",
+      "search": "",
+      "body": null
+    },
+    {
+      "phase": "structural-success",
+      "method": "GET",
+      "pathname": "/api/projects/7",
+      "search": "",
+      "body": null
+    },
+    {
+      "phase": "structural-success",
+      "method": "DELETE",
+      "pathname": "/api/projects/7/conditions/901",
+      "search": "",
+      "body": null
+    },
+    {
+      "phase": "structural-success",
+      "method": "GET",
+      "pathname": "/api/projects/7/sheet",
+      "search": "",
+      "body": null
+    },
+    {
+      "phase": "structural-success",
+      "method": "GET",
+      "pathname": "/api/projects/7",
+      "search": "",
+      "body": null
+    },
+    {
+      "phase": "por-transfer",
+      "method": "PUT",
+      "pathname": "/api/projects/7/conditions/102/por",
+      "search": "",
+      "body": null
+    },
+    {
+      "phase": "por-transfer",
+      "method": "GET",
+      "pathname": "/api/projects/7/sheet",
+      "search": "",
+      "body": null
+    },
+    {
+      "phase": "por-transfer",
+      "method": "GET",
+      "pathname": "/api/projects/7",
+      "search": "",
+      "body": null
+    },
+    {
+      "phase": "por-blocked-delete",
+      "method": "DELETE",
+      "pathname": "/api/projects/7/conditions/102",
+      "search": "",
+      "body": null
+    },
+    {
+      "phase": "history-jump",
+      "method": "GET",
+      "pathname": "/api/projects/7/events",
+      "search": "?limit=50",
+      "body": null
+    },
+    {
+      "phase": "history-jump",
+      "method": "GET",
+      "pathname": "/api/projects/7/events",
+      "search": "?layer_key=L3&limit=50",
+      "body": null
+    },
+    {
+      "phase": "history-jump",
+      "method": "GET",
+      "pathname": "/api/projects/7/events",
+      "search": "?layer_key=L2&limit=50",
+      "body": null
+    },
+    {
+      "phase": "backbone-diff-jump",
+      "method": "GET",
+      "pathname": "/api/projects/7/backbone-diff",
+      "search": "?preview_limit=20",
+      "body": null
+    },
+    {
+      "phase": "backbone-diff-jump",
+      "method": "GET",
+      "pathname": "/api/projects/7/backbone-diff",
+      "search": "?layer_key=L2&preview_limit=20",
+      "body": null
+    },
+    {
+      "phase": "backbone-diff-jump",
+      "method": "GET",
+      "pathname": "/api/projects/7/backbone-diff/layers/L3/conditions",
+      "search": "?scope=branch-scope&limit=50",
+      "body": null
+    },
+    {
+      "phase": "backbone-diff-jump",
+      "method": "POST",
+      "pathname": "/api/projects/7/validate",
+      "search": "",
+      "body": null
+    },
+    {
+      "phase": "backbone-diff-jump",
+      "method": "GET",
+      "pathname": "/api/projects/7/backbone-diff/layers/L3/conditions/row-301/cells",
+      "search": "?scope=cell-scope&limit=100",
+      "body": null
+    },
+    {
+      "phase": "backbone-diff-jump",
+      "method": "GET",
+      "pathname": "/api/projects/7/backbone-diff",
+      "search": "?layer_key=L3&preview_limit=20",
+      "body": null
+    },
+    {
+      "phase": "readonly-lock",
+      "method": "POST",
+      "pathname": "/api/projects/7/lock/release",
+      "search": "",
+      "body": {
+        "lock_token": "fixture-lock-token"
+      }
+    },
+    {
+      "phase": "readonly-lock",
+      "method": "GET",
+      "pathname": "/api/auth/me",
+      "search": "",
+      "body": null
+    },
+    {
+      "phase": "readonly-lock",
+      "method": "GET",
+      "pathname": "/api/projects/7/sheet",
+      "search": "",
+      "body": null
+    },
+    {
+      "phase": "readonly-lock",
+      "method": "GET",
+      "pathname": "/api/projects/7",
+      "search": "",
+      "body": null
+    },
+    {
+      "phase": "readonly-lock",
+      "method": "GET",
+      "pathname": "/api/projects/17",
+      "search": "",
+      "body": null
+    },
+    {
+      "phase": "readonly-lock",
+      "method": "POST",
+      "pathname": "/api/projects/7/lock",
+      "search": "",
+      "body": null
+    },
+    {
+      "phase": "readonly-lock",
+      "method": "POST",
+      "pathname": "/api/projects/7/lock",
+      "search": "",
+      "body": null
+    },
+    {
+      "phase": "browser-back-focus",
+      "method": "POST",
+      "pathname": "/api/projects/7/lock/release",
+      "search": "",
+      "body": {
+        "lock_token": "fixture-lock-token"
+      }
+    },
+    {
+      "phase": "browser-back-focus",
+      "method": "GET",
+      "pathname": "/api/auth/me",
+      "search": "",
+      "body": null
+    },
+    {
+      "phase": "browser-back-focus",
+      "method": "GET",
+      "pathname": "/api/projects",
+      "search": "?query=LINE-SG&limit=50",
+      "body": null
+    },
+    {
+      "phase": "browser-back-focus",
+      "method": "GET",
+      "pathname": "/api/projects/7",
+      "search": "",
+      "body": null
+    },
+    {
+      "phase": "browser-back-focus",
+      "method": "GET",
+      "pathname": "/api/projects/7/comments",
+      "search": "?target=project",
+      "body": null
+    },
+    {
+      "phase": "screenshots",
+      "method": "GET",
+      "pathname": "/api/auth/me",
+      "search": "",
+      "body": null
+    },
+    {
+      "phase": "screenshots",
+      "method": "GET",
+      "pathname": "/api/projects/7/sheet",
+      "search": "",
+      "body": null
+    },
+    {
+      "phase": "screenshots",
+      "method": "GET",
+      "pathname": "/api/projects/7",
+      "search": "",
+      "body": null
+    },
+    {
+      "phase": "screenshots",
+      "method": "GET",
+      "pathname": "/api/projects/17",
+      "search": "",
+      "body": null
+    },
+    {
+      "phase": "screenshots",
+      "method": "POST",
+      "pathname": "/api/projects/7/lock",
+      "search": "",
+      "body": null
+    },
+    {
+      "phase": "screenshots",
+      "method": "GET",
+      "pathname": "/api/projects/19",
+      "search": "",
+      "body": null
+    },
+    {
+      "phase": "screenshots",
+      "method": "POST",
+      "pathname": "/api/projects/7/lock/release",
+      "search": "",
+      "body": {
+        "lock_token": "fixture-lock-token"
+      }
+    },
+    {
+      "phase": "screenshots",
+      "method": "GET",
+      "pathname": "/api/auth/me",
+      "search": "",
+      "body": null
+    },
+    {
+      "phase": "screenshots",
+      "method": "GET",
+      "pathname": "/api/projects/7/sheet",
+      "search": "",
+      "body": null
+    },
+    {
+      "phase": "screenshots",
+      "method": "GET",
+      "pathname": "/api/projects/7",
+      "search": "",
+      "body": null
+    },
+    {
+      "phase": "screenshots",
+      "method": "GET",
+      "pathname": "/api/projects/17",
+      "search": "",
+      "body": null
+    },
+    {
+      "phase": "screenshots",
+      "method": "POST",
+      "pathname": "/api/projects/7/lock",
+      "search": "",
+      "body": null
+    },
+    {
+      "phase": "screenshots",
+      "method": "GET",
+      "pathname": "/api/projects/19",
+      "search": "",
+      "body": null
+    },
+    {
+      "phase": "screenshots",
+      "method": "POST",
+      "pathname": "/api/projects/7/lock/release",
+      "search": "",
+      "body": {
+        "lock_token": "fixture-lock-token"
+      }
+    },
+    {
+      "phase": "screenshots",
+      "method": "GET",
+      "pathname": "/api/auth/me",
+      "search": "",
+      "body": null
+    },
+    {
+      "phase": "screenshots",
+      "method": "GET",
+      "pathname": "/api/projects/7/sheet",
+      "search": "",
+      "body": null
+    },
+    {
+      "phase": "screenshots",
+      "method": "GET",
+      "pathname": "/api/projects/7",
+      "search": "",
+      "body": null
+    },
+    {
+      "phase": "screenshots",
+      "method": "GET",
+      "pathname": "/api/projects/17",
+      "search": "",
+      "body": null
+    },
+    {
+      "phase": "screenshots",
+      "method": "POST",
+      "pathname": "/api/projects/7/lock",
+      "search": "",
+      "body": null
+    },
+    {
+      "phase": "screenshots",
+      "method": "GET",
+      "pathname": "/api/projects/19",
+      "search": "",
+      "body": null
+    }
+  ]
+}

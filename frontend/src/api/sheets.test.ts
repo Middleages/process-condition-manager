@@ -39,6 +39,8 @@ const sampleSheet: SheetOut = {
     {
       condition_id: 7,
       layer_key: 'STEP01|L1',
+      step_seq: 'STEP01',
+      layer_id: 'L1',
       layer_label: 'L1 (STEP01)',
       condition_label: 'C1',
       is_por: true,
