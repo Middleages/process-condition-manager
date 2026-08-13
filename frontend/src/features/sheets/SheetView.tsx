@@ -1207,13 +1207,17 @@ function SheetEditor({
     // Structural mutations also change Project layer condition_count metadata consumed by the
     // exact validation adapter; refresh both halves before provisional evaluation resumes.
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['sheet', projectId] }),
+      queryClient.invalidateQueries(
+        { queryKey: ['sheet', projectId] },
+        { throwOnError: true },
+      ),
       queryClient.invalidateQueries({ queryKey: ['project', projectId] }),
     ])
   }, [queryClient, projectId])
 
   const retryValidationDefinitions = useCallback(() => {
-    void refreshSheet()
+    // The Sheet query renders its own refetch failure; this retry remains fire-and-forget.
+    void refreshSheet().catch(() => undefined)
     for (const resource of choiceResources.values()) void resource.retry()
   }, [refreshSheet, choiceResources])
 

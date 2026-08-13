@@ -1618,9 +1618,10 @@ describe('SheetView focus shell integration', () => {
     ['빈 행 추가', 'condition-add', null, 44],
     ['복제', 'condition-duplicate', 11, 45],
   ] as const)(
-    '%s success focuses the returned condition after refreshed rows publish it',
+    '%s waits for refreshed rows, then focuses the returned condition once',
     async (_label, actionTestId, sourceConditionId, newConditionId) => {
       const interactive = renderInteractiveSheet()
+      const sheetRefresh = deferred<SheetOut>()
       const refreshedSheet: SheetOut = {
         ...interactive.sheet,
         rows: [
@@ -1635,7 +1636,7 @@ describe('SheetView focus shell integration', () => {
           ...interactive.sheet.rows.slice(1),
         ],
       }
-      vi.mocked(getSheet).mockResolvedValue(refreshedSheet)
+      vi.mocked(getSheet).mockImplementation(() => sheetRefresh.promise)
       vi.mocked(addCondition).mockResolvedValue({
         id: newConditionId,
         layer_key: 'L1::10::ETCH',
@@ -1658,7 +1659,15 @@ describe('SheetView focus shell integration', () => {
           sourceConditionId,
           'test-lock-token',
         )
-        await settleInteractiveSheet()
+        expect(getSheet).toHaveBeenCalledTimes(1)
+        expect(renderedConditionIds(interactive.container)).not.toContain(String(newConditionId))
+        expect(mockScrollToCondition).not.toHaveBeenCalled()
+
+        await act(async () => {
+          sheetRefresh.resolve(refreshedSheet)
+          await sheetRefresh.promise
+          await new Promise((resolve) => setTimeout(resolve, 10))
+        })
 
         expect(renderedConditionIds(interactive.container)).toContain(String(newConditionId))
         expect(mockScrollToCondition).toHaveBeenCalledTimes(1)
@@ -1668,6 +1677,64 @@ describe('SheetView focus shell integration', () => {
       }
     },
   )
+
+  it('keeps selection and clears latent focus when Sheet refetch fails after add', async () => {
+    const interactive = renderInteractiveSheet({ firstLayerConditionIds: [11, 12] })
+    const refreshMessage = 'refreshed Sheet unavailable'
+    const createdId = 44
+    const laterSheet: SheetOut = {
+      ...interactive.sheet,
+      rows: [
+        ...interactive.sheet.rows.slice(0, 2),
+        {
+          ...interactive.sheet.rows[0],
+          condition_id: createdId,
+          condition_label: 'C3',
+          condition_index: 3,
+          is_por: false,
+        },
+        ...interactive.sheet.rows.slice(2),
+      ],
+    }
+    vi.mocked(addCondition).mockResolvedValue({
+      id: createdId,
+      layer_key: 'L1::10::ETCH',
+      label: 'C3',
+      condition_index: 3,
+      is_por: false,
+    })
+    vi.mocked(getSheet).mockRejectedValue(new Error(refreshMessage))
+
+    try {
+      await settleInteractiveSheet()
+      click(interactive, gridCallbackButton(interactive.container, 'condition', '11'))
+      click(interactive, currentOnlyButton(interactive.container))
+      mockScrollToCondition.mockClear()
+
+      click(interactive, conditionActionButton(interactive.container, 'condition-add'))
+      await settleInteractiveSheet()
+
+      expect(activeLayerKey(interactive.container)).toBe('L1::10::ETCH')
+      expect(renderedConditionIds(interactive.container)).toEqual(['11', '12'])
+      expect(interactive.container.textContent).toContain('선택: ETCH (10) · POR')
+      expect(
+        interactive.container.querySelector('[data-testid="condition-error"]')?.textContent,
+      ).toContain(refreshMessage)
+      expect(mockScrollToCondition).not.toHaveBeenCalled()
+
+      await act(async () => {
+        interactive.queryClient.setQueryData(['sheet', 7], laterSheet)
+        await new Promise((resolve) => setTimeout(resolve, 10))
+      })
+
+      expect(mockScrollToCondition).not.toHaveBeenCalled()
+      expect(activeLayerKey(interactive.container)).toBe('L1::10::ETCH')
+      expect(renderedConditionIds(interactive.container)).toEqual(['11', '12', '44'])
+      expect(interactive.container.textContent).toContain('선택: ETCH (10) · POR')
+    } finally {
+      interactive.cleanup()
+    }
+  })
 
   it.each([
     ['next', [11, 12, 13], 12, 13],
@@ -1883,6 +1950,20 @@ async function settleInteractiveSheet(): Promise<void> {
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 10))
   })
+}
+
+function deferred<T>(): {
+  promise: Promise<T>
+  resolve: (value: T) => void
+  reject: (reason?: unknown) => void
+} {
+  let resolve!: (value: T) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve
+    reject = promiseReject
+  })
+  return { promise, resolve, reject }
 }
 
 function click(

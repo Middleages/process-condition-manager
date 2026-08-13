@@ -70,18 +70,28 @@ def _insert_layer(connection: Connection, project_id: int, layer_key: str) -> in
 
 
 def _insert_condition(
-    connection: Connection, layer_id: int, *, label: str, condition_index: int
+    connection: Connection,
+    layer_id: int,
+    *,
+    label: str,
+    condition_index: int,
+    is_por: bool = False,
 ) -> int:
     return int(
         connection.execute(
             sa.text(
                 """
                 INSERT INTO layer_condition (layer_id, label, condition_index, is_por)
-                VALUES (:layer_id, :label, :condition_index, false)
+                VALUES (:layer_id, :label, :condition_index, :is_por)
                 RETURNING id
                 """
             ),
-            {"layer_id": layer_id, "label": label, "condition_index": condition_index},
+            {
+                "layer_id": layer_id,
+                "label": label,
+                "condition_index": condition_index,
+                "is_por": is_por,
+            },
         ).scalar_one()
     )
 
@@ -103,6 +113,9 @@ def test_0009_backfills_lowest_condition_in_every_layer_with_por_gap(
     )
     single_layer_id = _insert_layer(migration_db.connection, project_id, "single")
     multi_layer_id = _insert_layer(migration_db.connection, project_id, "multi")
+    existing_por_layer_id = _insert_layer(
+        migration_db.connection, project_id, "existing-por"
+    )
     single_id = _insert_condition(
         migration_db.connection, single_layer_id, label="only", condition_index=7
     )
@@ -111,6 +124,19 @@ def test_0009_backfills_lowest_condition_in_every_layer_with_por_gap(
     )
     lowest_id = _insert_condition(
         migration_db.connection, multi_layer_id, label="lowest", condition_index=10
+    )
+    existing_non_por_id = _insert_condition(
+        migration_db.connection,
+        existing_por_layer_id,
+        label="lower non-POR",
+        condition_index=1,
+    )
+    existing_por_id = _insert_condition(
+        migration_db.connection,
+        existing_por_layer_id,
+        label="existing POR",
+        condition_index=9,
+        is_por=True,
     )
     migration_db.connection.commit()
 
@@ -132,5 +158,18 @@ def test_0009_backfills_lowest_condition_in_every_layer_with_por_gap(
     assert rows == [
         (single_layer_id, 1, 7, single_id),
         (multi_layer_id, 1, 10, lowest_id),
+        (existing_por_layer_id, 1, 9, existing_por_id),
     ]
     assert higher_id != lowest_id
+    existing_rows = migration_db.connection.execute(
+        sa.text(
+            """
+            SELECT id, is_por
+            FROM layer_condition
+            WHERE layer_id = :layer_id
+            ORDER BY condition_index, id
+            """
+        ),
+        {"layer_id": existing_por_layer_id},
+    ).all()
+    assert existing_rows == [(existing_non_por_id, False), (existing_por_id, True)]

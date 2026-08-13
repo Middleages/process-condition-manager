@@ -481,7 +481,9 @@ async def test_delete_por_rejected_until_por_is_transferred(
 async def test_delete_last_condition_rejected(
     db_client: AsyncClient, db_session: AsyncSession
 ) -> None:
-    project_id, _, cond_ids = await _seed_project(db_session, [_Cond("C1")])
+    project_id, _, cond_ids = await _seed_project(
+        db_session, [_Cond("C1", is_por=True)]
+    )
     only_id = cond_ids[0]
     token = await _acquire(db_client, project_id)
 
@@ -489,6 +491,7 @@ async def test_delete_last_condition_rejected(
 
     assert resp.status_code == 422, resp.text
     assert resp.json()["code"] == "validation_error"
+    assert resp.json()["message"] == "layer의 마지막 조건 행은 삭제할 수 없다"
 
     # 거부됨 — 행은 그대로 남고 삭제 이벤트도 없다.
     assert await _get_condition(db_session, only_id) is not None
