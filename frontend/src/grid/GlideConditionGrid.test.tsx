@@ -16,6 +16,9 @@ import source from './GlideConditionGrid.tsx?raw'
 
 describe('composite cell status rendering priority', () => {
   it('freezes four identity columns, uses POR column 3, and includes optional units in parameter headers', () => {
+    const handleCellClicked = source.match(
+      /const handleCellClicked = useCallback\([\s\S]*?(?=\n  useImperativeHandle)/,
+    )?.[0]
     const parameterHeaders = [
       { headerName: 'ZONE TEMP.', unit: '°C' },
       { headerName: 'PRESSURE', unit: null },
@@ -23,7 +26,7 @@ describe('composite cell status rendering priority', () => {
 
     expect(parameterHeaders).toEqual(['ZONE TEMP. · °C', 'PRESSURE'])
     expect(source).toContain('freezeColumns={IDENTITY_COLUMN_COUNT}')
-    expect(source).toContain('if (col === 3)')
+    expect(handleCellClicked).toMatch(/if \(col === 3\)[\s\S]*?callbacks\?\.onPorChange/)
     expect(source).toContain("title: column.unit ? `${column.headerName} · ${column.unit}` : column.headerName")
     expect(source).toContain('groupMeta.isGroupStart[row] ? rowData.stepSeq :')
     expect(source).toContain('groupMeta.isGroupStart[row] ? rowData.layerId :')
