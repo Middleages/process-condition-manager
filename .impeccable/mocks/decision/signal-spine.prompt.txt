@@ -1,0 +1,14 @@
+Use case: ui-mockup
+Asset type: one high-fidelity desktop product UI concept image, approximately 1600×1000 landscape
+Primary request: Design “Signal Spine,” a credible Korean enterprise workstation for manufacturing process-condition management. Show the workflow condition sheet editing → validation errors → history inspection as one coherent operational surface, influenced by flat color-bank starship wall panels but never theatrical or cosplay.
+Scene/backdrop: full-bleed desktop application frame, matte black #111416 foundation, crisp dense workstation geometry.
+Subject: A thick elbow-shaped left work-mode spine visibly connects three Korean modes: “조건표”, “검증 오류”, “변경 이력”. The main center is a dense, highly readable manufacturing condition grid with row/column headers, units, selected cells, and realistic process parameters. A restrained right state panel uses separated flat color banks for status and inspection context. Include clear Korean labels and restrained numeric code clusters such as 03, 117, A-24, plus “Layer 03”.
+Style/medium: high-fidelity enterprise UX/UI screenshot concept, precise flat vector-like rendering, serious industrial software, disciplined information hierarchy.
+Composition/framing: desktop-only landscape; persistent top command strip; thick angular left navigation spine; large central data grid; narrow right state/inspection panel. Straight edges and subtle 2–4 px corner easing only where functional. Dense but legible.
+Lighting/mood: flat, matte, no atmospheric lighting; confident operations-room clarity.
+Color palette: matte black #111416, flat lilac #B7A6E8, peach #F0B38E, gold #E6C45C, periwinkle #9BB6E8, plus off-white text and restrained neutral grays. Use colored banks structurally, not decoratively.
+Materials/textures: clean matte screen surface, minimal thin rules, no simulated metal, no shine.
+Text (verbatim, prominent and correctly spelled): “조건표”, “검증 오류”, “변경 이력”, “저장됨”, “편집 잠금”, “Layer 03”.
+Interaction states: explicitly depict a hovered grid row, a selected cell, keyboard focus outline, a locked field with lock indicator and “편집 잠금”, and a clear saved state “저장됨”. Validation errors should be actionable and tied to visible grid cells. History inspection should show concise change entries without fake KPI cards.
+Constraints: excellent contrast; readable Korean typography; plausible manufacturing parameter values and units; state relationships visibly connected; exactly one application concept with no device mockup.
+Avoid: glow, gradients, shadows used as spectacle, decorative animation, rounded-card grids, fake metrics, charts without purpose, mobile layout, glassmorphism, sci-fi cosplay controls, excessive icons, illegible microtext, watermark, logo.

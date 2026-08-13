@@ -10,15 +10,11 @@ import { Button } from '@/shared/components/Button'
 import { InlineAlert } from '@/shared/components/InlineAlert'
 
 import {
-  VALIDATION_WORKBENCH_DEFAULT_HEIGHT,
-  VALIDATION_WORKBENCH_MAX_HEIGHT,
-  VALIDATION_WORKBENCH_MIN_HEIGHT,
-  VALIDATION_WORKBENCH_RESIZE_STEP,
-  clampValidationWorkbenchHeight,
-} from './validationWorkbenchState'
-import {
-  readPersistedSheetWorkbenchHeight,
-  writePersistedSheetWorkbenchHeight,
+  SHEET_INSPECTOR_MAX_WIDTH,
+  SHEET_INSPECTOR_MIN_WIDTH,
+  clampSheetInspectorWidth,
+  readPersistedSheetInspectorWidth,
+  writePersistedSheetInspectorWidth,
 } from './sheetWorkbenchStorage'
 import { SheetWorkbenchNavigation } from './SheetWorkbenchNavigation'
 
@@ -26,14 +22,12 @@ export type SheetWorkbenchMode = 'validation' | 'history' | 'backbone-diff' | nu
 
 export function useSheetWorkbenchState() {
   const [mode, setMode] = useState<SheetWorkbenchMode>(null)
-  const [panelHeight, setPanelHeight] = useState(() =>
-    readPersistedSheetWorkbenchHeight(VALIDATION_WORKBENCH_DEFAULT_HEIGHT),
-  )
+  const [inspectorWidth, setInspectorWidthState] = useState(readPersistedSheetInspectorWidth)
   const lastModeRef = useRef<Exclude<SheetWorkbenchMode, null>>('validation')
 
   useEffect(() => {
-    writePersistedSheetWorkbenchHeight(panelHeight)
-  }, [panelHeight])
+    writePersistedSheetInspectorWidth(inspectorWidth)
+  }, [inspectorWidth])
 
   const open = useCallback(() => setMode(lastModeRef.current), [])
   const close = useCallback(() => setMode(null), [])
@@ -51,12 +45,10 @@ export function useSheetWorkbenchState() {
     setMode(next)
   }, [])
   const resizeBy = useCallback((delta: -1 | 1) => {
-    setPanelHeight((height) =>
-      clampValidationWorkbenchHeight(height + delta * VALIDATION_WORKBENCH_RESIZE_STEP),
-    )
+    setInspectorWidthState((width) => clampSheetInspectorWidth(width + delta * 16))
   }, [])
-  const setHeight = useCallback((height: number) => {
-    setPanelHeight(clampValidationWorkbenchHeight(height))
+  const setInspectorWidth = useCallback((width: number) => {
+    setInspectorWidthState(clampSheetInspectorWidth(width))
   }, [])
 
   return {
@@ -66,8 +58,8 @@ export function useSheetWorkbenchState() {
     toggle,
     selectMode,
     resizeBy,
-    setHeight,
-    panelHeight,
+    setInspectorWidth,
+    inspectorWidth,
   }
 }
 
@@ -91,27 +83,27 @@ export function SheetWorkbenchToggle({
       type="button"
       variant={expanded ? 'primary' : 'secondary'}
     >
-      워크벤치
+      증거 패널
     </Button>
   )
 }
 
 export function SheetWorkbenchPanel({
   mode,
-  panelHeight,
+  inspectorWidth,
   onModeChange,
   onResizeBy,
-  onSetHeight,
+  onSetWidth,
   validationIssueCount = 0,
   validationContent,
   historyContent,
   backboneDiffContent,
 }: {
   mode: Exclude<SheetWorkbenchMode, null>
-  panelHeight: number
+  inspectorWidth: number
   onModeChange: (mode: Exclude<SheetWorkbenchMode, null>) => void
   onResizeBy: (delta: -1 | 1) => void
-  onSetHeight: (height: number) => void
+  onSetWidth: (width: number) => void
   validationIssueCount?: number
   validationContent: ReactNode
   historyContent?: ReactNode
@@ -119,15 +111,15 @@ export function SheetWorkbenchPanel({
 }) {
   const dragRef = useRef<{
     pointerId: number
-    startY: number
-    startHeight: number
+    startX: number
+    startWidth: number
   } | null>(null)
 
   function beginResize(event: React.PointerEvent<HTMLDivElement>): void {
     dragRef.current = {
       pointerId: event.pointerId,
-      startY: event.clientY,
-      startHeight: panelHeight,
+      startX: event.clientX,
+      startWidth: inspectorWidth,
     }
     event.currentTarget.setPointerCapture(event.pointerId)
   }
@@ -135,7 +127,7 @@ export function SheetWorkbenchPanel({
   function continueResize(event: React.PointerEvent<HTMLDivElement>): void {
     const drag = dragRef.current
     if (drag === null || drag.pointerId !== event.pointerId) return
-    onSetHeight(drag.startHeight + drag.startY - event.clientY)
+    onSetWidth(drag.startWidth + drag.startX - event.clientX)
   }
 
   function finishResize(event: React.PointerEvent<HTMLDivElement>): void {
@@ -147,25 +139,25 @@ export function SheetWorkbenchPanel({
   }
 
   function resizeWithKeyboard(event: React.KeyboardEvent<HTMLDivElement>): void {
-    if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
     event.preventDefault()
-    onResizeBy(event.key === 'ArrowUp' ? 1 : -1)
+    onResizeBy(event.key === 'ArrowLeft' ? 1 : -1)
   }
 
   return (
     <section
-      aria-label="워크벤치"
-      className="flex min-h-0 min-w-0 flex-col overflow-hidden border-t border-border-subtle bg-surface"
-      data-sheet-workbench
-      style={{ height: panelHeight }}
+      aria-label="증거 패널"
+      className="relative flex h-full min-h-0 flex-col overflow-hidden border-l border-border-subtle bg-surface"
+      data-sheet-evidence-panel
+      style={{ width: inspectorWidth }}
     >
       <div
-        aria-label="워크벤치 높이 조절"
-        aria-orientation="horizontal"
-        aria-valuemax={VALIDATION_WORKBENCH_MAX_HEIGHT}
-        aria-valuemin={VALIDATION_WORKBENCH_MIN_HEIGHT}
-        aria-valuenow={panelHeight}
-        className="h-2 shrink-0 cursor-row-resize bg-border-subtle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-brand-700"
+        aria-label="증거 패널 너비 조절"
+        aria-orientation="vertical"
+        aria-valuemax={SHEET_INSPECTOR_MAX_WIDTH}
+        aria-valuemin={SHEET_INSPECTOR_MIN_WIDTH}
+        aria-valuenow={inspectorWidth}
+        className="absolute inset-y-0 left-0 z-10 w-1 cursor-col-resize bg-transparent hover:bg-brand-500 focus-visible:bg-brand-500"
         onKeyDown={resizeWithKeyboard}
         onPointerCancel={finishResize}
         onPointerDown={beginResize}
@@ -175,7 +167,7 @@ export function SheetWorkbenchPanel({
         tabIndex={0}
       />
 
-      <div className="border-b border-border-subtle bg-canvas px-3 py-2">
+      <div className="border-b border-border-subtle bg-canvas px-2 py-2">
         <SheetWorkbenchNavigation
           mode={mode}
           onModeChange={onModeChange}

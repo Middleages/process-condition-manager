@@ -1,0 +1,3 @@
+Use case: precise-object-edit
+Asset type: approved high-fidelity desktop UI comp
+Primary request: PCM Drafting Table의 그리드 우선 인스펙터 구조에 약 100개 Layer를 위한 상시 Layer Navigator를 추가한다. 좌측 210–230px 레일에 Layer 검색, 최근 Layer 3개, 가상화 전체 목록, 번호·한국어 이름·검증 개수·현재/dirty 표시, 전체 개수와 접기 동작을 제공한다. Layer 행은 한 번 클릭하면 확인 단계 없이 즉시 이동한다. 기존 상단 Layer 드롭다운은 제거하고 현재 Layer 문맥만 표시한다. 중앙 고밀도 그리드, 우측 검증·이력 증빙 레일, 하단 리비전 룰러, Drafting Table 팔레트와 공학 도면 문법은 유지한다.

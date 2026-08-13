@@ -78,6 +78,11 @@ import {
 } from './persistenceReconciliation'
 import { resolveSheetInteraction } from './sheetInteraction'
 import { SheetFocusFrame } from './SheetFocusFrame'
+import { LayerNavigator } from './LayerNavigator'
+import {
+  buildLayerNavigatorItems,
+  updateRecentLayerKeys,
+} from './layerNavigatorState'
 import { SheetWorkbenchPanel, SheetWorkbenchToggle, useSheetWorkbenchState } from './SheetWorkbench'
 import {
   BackboneDiffWorkbench,
@@ -611,7 +616,7 @@ function ReadOnlySheet({
             </InlineAlert>
           ) : null}
           <div className="flex min-w-0 flex-wrap items-center gap-2" data-testid="sheet-category-tabs">
-            <SheetMetrics rowCount={data.rows.length} colCount={data.columns.length} />
+            <SheetMetrics rowCount={gridData.rows.length} colCount={data.columns.length} />
             {categories.length > 0 ? (
               <>
                 <CategoryTab
@@ -820,6 +825,22 @@ function SheetEditor({
     null,
   )
   const [coordinateNavigationStatus, setCoordinateNavigationStatus] = useState<string | null>(null)
+  const sortedProjectLayers = useMemo(
+    () => [...(project?.layers ?? [])].sort((left, right) => left.sort_order - right.sort_order),
+    [project?.layers],
+  )
+  const [activeLayerKey, setActiveLayerKey] = useState(
+    () => sortedProjectLayers[0]?.layer_key ?? data.rows[0]?.layerKey ?? '',
+  )
+  const [recentLayerKeys, setRecentLayerKeys] = useState<readonly string[]>([])
+  const [layerQuery, setLayerQuery] = useState('')
+  const [navigatorCollapsed, setNavigatorCollapsed] = useState(false)
+
+  useEffect(() => {
+    if (activeLayerKey === '' || !data.rows.some((row) => row.layerKey === activeLayerKey)) {
+      setActiveLayerKey(sortedProjectLayers[0]?.layer_key ?? data.rows[0]?.layerKey ?? '')
+    }
+  }, [activeLayerKey, data.rows, sortedProjectLayers])
 
   // 서버 행 위에 더티 값을 얹어 표시(편집값 즉시 반영) + 더티 셀 상태 오버레이.
   const displayRows = useMemo(() => applyDirtyToRows(data.rows, dirtyCells), [data.rows, dirtyCells])
@@ -877,8 +898,13 @@ function SheetEditor({
     refetchSheet: refetchSheetForValidation,
   })
   const gridData = useMemo(
-    () => ({ ...data, rows: displayRows, statuses: validation.statuses, choiceResources }),
-    [data, displayRows, validation.statuses, choiceResources],
+    () => ({
+      ...data,
+      rows: displayRows.filter((row) => row.layerKey === activeLayerKey),
+      statuses: validation.statuses,
+      choiceResources,
+    }),
+    [activeLayerKey, data, displayRows, validation.statuses, choiceResources],
   )
 
   // 붙여넣기 대상 매핑 기준 컬럼 순서 — 그리드가 view.activeCategory로 거르는 것과 동일한
@@ -891,6 +917,26 @@ function SheetEditor({
     () => enrichValidationIssues(validation.issues, data.columns, displayRows),
     [validation.issues, data.columns, displayRows],
   )
+  const issueCountsByLayer = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const issue of validation.issues) {
+      counts.set(issue.layer_key, (counts.get(issue.layer_key) ?? 0) + 1)
+    }
+    return counts
+  }, [validation.issues])
+  const dirtyLayerKeys = useMemo(() => {
+    const layerByCondition = new Map(data.rows.map((row) => [row.id, row.layerKey]))
+    const keys = new Set<string>()
+    for (const cell of dirtyCells.values()) {
+      const layerKey = layerByCondition.get(cell.conditionId)
+      if (layerKey !== undefined) keys.add(layerKey)
+    }
+    return keys
+  }, [data.rows, dirtyCells])
+  const layerItems = useMemo(
+    () => buildLayerNavigatorItems(sortedProjectLayers, issueCountsByLayer, dirtyLayerKeys),
+    [dirtyLayerKeys, issueCountsByLayer, sortedProjectLayers],
+  )
   const showValidationWorkbench = shouldMountValidationWorkbench(
     validation.issues,
     validation.explicitValidationCompleted,
@@ -901,6 +947,18 @@ function SheetEditor({
     workbenchState.mode === 'history',
     historyMutationRevision,
   )
+  useEffect(() => {
+    if (
+      workbenchState.mode === 'history' &&
+      activeLayerKey !== '' &&
+      historyWorkbench.state.filters.layerKey !== activeLayerKey
+    ) {
+      historyWorkbench.onFiltersChange({
+        ...historyWorkbench.state.filters,
+        layerKey: activeLayerKey,
+      })
+    }
+  }, [activeLayerKey, historyWorkbench, workbenchState.mode])
   const backboneDiffWorkbench = useBackboneDiffWorkbenchController(
     projectId,
     workbenchState.mode === 'backbone-diff',
@@ -943,6 +1001,15 @@ function SheetEditor({
   const [pasteError, setPasteError] = useState<string | null>(null)
   const [applying, setApplying] = useState(false)
   const applyingRef = useRef(false)
+  const activateLayer = useCallback((layerKey: string) => {
+    if (pasteRef.current !== null) {
+      setCoordinateNavigationStatus('붙여넣기를 적용 또는 취소한 뒤 이동해 주세요.')
+      return
+    }
+    setActiveLayerKey(layerKey)
+    setRecentLayerKeys((current) => updateRecentLayerKeys(current, layerKey))
+    setCoordinateNavigationStatus(null)
+  }, [])
 
   const {
     readOnly,
@@ -1671,7 +1738,7 @@ function SheetEditor({
             </InlineAlert>
           ) : null}
           <div className="flex min-w-0 flex-wrap items-center gap-2" data-testid="sheet-category-tabs">
-            <SheetMetrics rowCount={data.rows.length} colCount={data.columns.length} />
+            <SheetMetrics rowCount={gridData.rows.length} colCount={data.columns.length} />
             {categories.length > 0 ? (
               <>
                 <CategoryTab
@@ -1785,14 +1852,26 @@ function SheetEditor({
           <InteractionGuide editing={editing} mode={interaction.mode} />
         </div>
       }
-      workbench={
+      navigator={
+        <LayerNavigator
+          items={layerItems}
+          activeLayerKey={activeLayerKey}
+          recentLayerKeys={recentLayerKeys}
+          query={layerQuery}
+          collapsed={navigatorCollapsed}
+          onQueryChange={setLayerQuery}
+          onActivate={activateLayer}
+          onCollapsedChange={setNavigatorCollapsed}
+        />
+      }
+      inspector={
         workbenchState.mode !== null ? (
           <SheetWorkbenchPanel
             mode={workbenchState.mode}
             onModeChange={workbenchState.selectMode}
             onResizeBy={workbenchState.resizeBy}
-            onSetHeight={workbenchState.setHeight}
-            panelHeight={workbenchState.panelHeight}
+            onSetWidth={workbenchState.setInspectorWidth}
+            inspectorWidth={workbenchState.inspectorWidth}
             validationIssueCount={validationIssues.length}
             validationContent={
               <ValidationWorkbench

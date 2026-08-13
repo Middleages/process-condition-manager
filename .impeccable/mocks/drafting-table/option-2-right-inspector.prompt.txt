@@ -1,0 +1,3 @@
+Use case: ui-mockup
+Asset type: high-fidelity desktop web application composition option 2
+Primary request: PCM 조건표 편집 → 검증 오류 → 변경 이력 화면. Drafting Table 시각 세계를 유지하되 중앙 그리드 72%, 우측 검증·이력 인스펙터 28%, 그리드 하단 리비전 룰러 구조로 구성한다. 선택 오류에서 대응 셀까지 제도식 리더 라인을 연결한다. 오프화이트 #F7F7F3, 딥 잉크 #12232A, 드래프팅 틸 #196B67, 리비전 앰버 #D18B2C. 현대적 공학 도면 문법, 고밀도 한국어 데이터, 명확한 hover·focus·selected·error·lock·saved 상태. 데스크톱 전용. 그라디언트, 카드 대시보드, 가짜 지표, 장식 이미지는 제외한다.
