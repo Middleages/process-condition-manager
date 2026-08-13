@@ -71,12 +71,14 @@ export interface ConditionGridColumn {
  *
  * 행 그룹핑(D-16): 같은 `layerKey`의 **연속된** 행은 하나의 그룹으로 묶여 시각적으로
  * 표시된다. Glide Data Grid는 row span(셀 병합)이 없으므로, 구현체는 그룹의 **첫 행에만
- * layer 라벨**(`layerLabel`)을 렌더링하고 이후 행은 공백 처리하며, 그룹 경계를 배경색
+ * Step Seq와 Layer**(`stepSeq`, `layerId`)를 렌더링하고 이후 행은 공백 처리하며, 그룹 경계를 배경색
  * 구분/경계선 등으로 드러낸다. rows는 이미 layer→조건 순서로 정렬되어 전달된다고 본다.
  */
 export interface ConditionGridRow {
   id: string // condition_id
   layerKey: string
+  stepSeq: string
+  layerId: string
   layerLabel: string // "layer_id (step_seq)"
   conditionLabel: string
   isPor: boolean // POR 라디오 컬럼(layer당 1개)

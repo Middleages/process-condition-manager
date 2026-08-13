@@ -141,6 +141,8 @@ export function toConditionGridRows(rows: readonly SheetRowOut[]): AdaptedCondit
   return rows.map((row) => ({
     id: String(row.condition_id),
     layerKey: row.layer_key,
+    stepSeq: row.step_seq,
+    layerId: row.layer_id,
     layerLabel: row.layer_label,
     conditionLabel: row.condition_label,
     isPor: row.is_por,

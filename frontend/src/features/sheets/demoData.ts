@@ -135,6 +135,8 @@ function buildRows(
       rows.push({
         id: String(rows.length + 1),
         layerKey,
+        stepSeq,
+        layerId,
         layerLabel,
         conditionLabel: `C${c + 1}`,
         isPor: c === porIndex,

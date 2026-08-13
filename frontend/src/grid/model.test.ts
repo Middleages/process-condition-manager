@@ -29,14 +29,20 @@ const columns: ConditionGridColumn[] = [
 ]
 
 const rows: ConditionGridRow[] = [
-  { id: '1', layerKey: 'L1', layerLabel: 'L1 (S01)', conditionLabel: 'C1', isPor: true, values: { exposure: '25' } },
-  { id: '2', layerKey: 'L1', layerLabel: 'L1 (S01)', conditionLabel: 'C2', isPor: false, values: {} },
-  { id: '3', layerKey: 'L2', layerLabel: 'L2 (S02)', conditionLabel: 'C1', isPor: true, values: { spin_speed: '1500' } },
+  { id: '1', layerKey: 'L1', stepSeq: 'S01', layerId: 'L1', layerLabel: 'L1 (S01)', conditionLabel: 'C1', isPor: true, values: { exposure: '25' } },
+  { id: '2', layerKey: 'L1', stepSeq: 'S01', layerId: 'L1', layerLabel: 'L1 (S01)', conditionLabel: 'C2', isPor: false, values: {} },
+  { id: '3', layerKey: 'L2', stepSeq: 'S02', layerId: 'L2', layerLabel: 'L2 (S02)', conditionLabel: 'C1', isPor: true, values: { spin_speed: '1500' } },
 ]
 
 describe('identity columns', () => {
-  it('states the POR interaction truth in the exact header copy', () => {
-    expect(IDENTITY_COLUMNS[2]).toEqual({ id: '__por__', title: 'POR (○ 선택)' })
+  it('defines the four approved frozen identity columns', () => {
+    expect(IDENTITY_COLUMNS).toEqual([
+      { id: '__step_seq__', title: 'STEP SEQ' },
+      { id: '__layer__', title: 'LAYER' },
+      { id: '__condition__', title: '조건' },
+      { id: '__por__', title: 'POR' },
+    ])
+    expect(IDENTITY_COLUMN_COUNT).toBe(4)
   })
 })
 
@@ -84,9 +90,9 @@ describe('computeRowGroups', () => {
 
   it('treats a later re-appearance of a layerKey as a new group (grouping is by adjacency)', () => {
     const interleaved: ConditionGridRow[] = [
-      { id: '1', layerKey: 'L1', layerLabel: 'L1', conditionLabel: 'C1', isPor: true, values: {} },
-      { id: '2', layerKey: 'L2', layerLabel: 'L2', conditionLabel: 'C1', isPor: true, values: {} },
-      { id: '3', layerKey: 'L1', layerLabel: 'L1', conditionLabel: 'C2', isPor: false, values: {} },
+      { id: '1', layerKey: 'L1', stepSeq: 'S01', layerId: 'L1', layerLabel: 'L1', conditionLabel: 'C1', isPor: true, values: {} },
+      { id: '2', layerKey: 'L2', stepSeq: 'S02', layerId: 'L2', layerLabel: 'L2', conditionLabel: 'C1', isPor: true, values: {} },
+      { id: '3', layerKey: 'L1', stepSeq: 'S01', layerId: 'L1', layerLabel: 'L1', conditionLabel: 'C2', isPor: false, values: {} },
     ]
     const meta = computeRowGroups(interleaved)
     expect(meta.groups).toHaveLength(3)
@@ -102,10 +108,10 @@ describe('layersMissingPor', () => {
   it('returns layer groups that have no POR row', () => {
     // L1 has a POR row (id 1); L2 has none.
     const withGap: ConditionGridRow[] = [
-      { id: '1', layerKey: 'L1', layerLabel: 'L1 (S01)', conditionLabel: 'C1', isPor: true, values: {} },
-      { id: '2', layerKey: 'L1', layerLabel: 'L1 (S01)', conditionLabel: 'C2', isPor: false, values: {} },
-      { id: '3', layerKey: 'L2', layerLabel: 'L2 (S02)', conditionLabel: 'C1', isPor: false, values: {} },
-      { id: '4', layerKey: 'L2', layerLabel: 'L2 (S02)', conditionLabel: 'C2', isPor: false, values: {} },
+      { id: '1', layerKey: 'L1', stepSeq: 'S01', layerId: 'L1', layerLabel: 'L1 (S01)', conditionLabel: 'C1', isPor: true, values: {} },
+      { id: '2', layerKey: 'L1', stepSeq: 'S01', layerId: 'L1', layerLabel: 'L1 (S01)', conditionLabel: 'C2', isPor: false, values: {} },
+      { id: '3', layerKey: 'L2', stepSeq: 'S02', layerId: 'L2', layerLabel: 'L2 (S02)', conditionLabel: 'C1', isPor: false, values: {} },
+      { id: '4', layerKey: 'L2', stepSeq: 'S02', layerId: 'L2', layerLabel: 'L2 (S02)', conditionLabel: 'C2', isPor: false, values: {} },
     ]
     const missing = layersMissingPor(withGap)
     expect(missing.map((group) => group.layerKey)).toEqual(['L2'])
@@ -119,8 +125,8 @@ describe('layersMissingPor', () => {
 
   it('flags every layer when none has a POR row', () => {
     const none: ConditionGridRow[] = [
-      { id: '1', layerKey: 'L1', layerLabel: 'L1', conditionLabel: 'C1', isPor: false, values: {} },
-      { id: '2', layerKey: 'L2', layerLabel: 'L2', conditionLabel: 'C1', isPor: false, values: {} },
+      { id: '1', layerKey: 'L1', stepSeq: 'S01', layerId: 'L1', layerLabel: 'L1', conditionLabel: 'C1', isPor: false, values: {} },
+      { id: '2', layerKey: 'L2', stepSeq: 'S02', layerId: 'L2', layerLabel: 'L2', conditionLabel: 'C1', isPor: false, values: {} },
     ]
     expect(layersMissingPor(none).map((group) => group.layerKey)).toEqual(['L1', 'L2'])
   })

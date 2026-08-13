@@ -436,13 +436,14 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
 
   const gridColumns = useMemo<GridColumn[]>(() => {
     const identity: GridColumn[] = [
-      { id: IDENTITY_COLUMNS[0].id, title: IDENTITY_COLUMNS[0].title, width: 190 },
-      { id: IDENTITY_COLUMNS[1].id, title: IDENTITY_COLUMNS[1].title, width: 84 },
-      { id: IDENTITY_COLUMNS[2].id, title: IDENTITY_COLUMNS[2].title, width: 96 },
+      { id: IDENTITY_COLUMNS[0].id, title: IDENTITY_COLUMNS[0].title, width: 84 },
+      { id: IDENTITY_COLUMNS[1].id, title: IDENTITY_COLUMNS[1].title, width: 120 },
+      { id: IDENTITY_COLUMNS[2].id, title: IDENTITY_COLUMNS[2].title, width: 104 },
+      { id: IDENTITY_COLUMNS[3].id, title: IDENTITY_COLUMNS[3].title, width: 64 },
     ]
     const params = visibleColumns.map<GridColumn>((column) => ({
       id: column.key,
-      title: column.headerName,
+      title: column.unit ? `${column.headerName} · ${column.unit}` : column.headerName,
       width: 150,
     }))
     return [...identity, ...params]
@@ -458,17 +459,26 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
 
       // 좌측 고정 식별 컬럼 (파라미터가 아니라 행 필드에서 렌더).
       if (col === 0) {
-        // 그룹 첫 행에만 layer 라벨 (row span 없음 — D-16).
-        const label = groupMeta.isGroupStart[row] ? rowData.layerLabel : ''
+        const stepSeq = groupMeta.isGroupStart[row] ? rowData.stepSeq : ''
         return {
           kind: GridCellKind.Text,
-          data: label,
-          displayData: label,
+          data: stepSeq,
+          displayData: stepSeq,
           allowOverlay: false,
           themeOverride: { ...IDENTITY_THEME, textDark: GRID_COLORS.ink },
         }
       }
       if (col === 1) {
+        const layerId = groupMeta.isGroupStart[row] ? rowData.layerId : ''
+        return {
+          kind: GridCellKind.Text,
+          data: layerId,
+          displayData: layerId,
+          allowOverlay: false,
+          themeOverride: { ...IDENTITY_THEME, textDark: GRID_COLORS.ink },
+        }
+      }
+      if (col === 2) {
         return {
           kind: GridCellKind.Text,
           data: rowData.conditionLabel,
@@ -477,8 +487,8 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
           themeOverride: IDENTITY_THEME,
         }
       }
-      if (col === 2) {
-        // POR 표식 ●/○ — 표시는 읽기 전용 셀이고, 이양은 onCellClicked(col===2)가 처리한다(T7).
+      if (col === 3) {
+        // POR 표식 ●/○ — 표시는 읽기 전용 셀이고, 이양은 onCellClicked(col===3)가 처리한다(T7).
         const mark = rowData.isPor ? '●' : '○'
         return {
           kind: GridCellKind.Text,
@@ -749,8 +759,8 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
   )
 
   // 식별 컬럼 클릭 처리(T7). Glide는 캔버스 렌더라 네이티브 컨텍스트 메뉴가 없으므로 셀 클릭을
-  // 도메인 이벤트로 올린다: POR 컬럼(col===2)은 POR 이양, Layer/조건 컬럼(col 0·1)은 행 관리
-  // 대상 활성화. 읽기 전용이거나 파라미터 셀(col>=3)이면 관여하지 않는다(편집은 onCellEdit 담당).
+  // 도메인 이벤트로 올린다: POR 컬럼(col===3)은 POR 이양, Step Seq/Layer/조건 컬럼(col 0~2)은
+  // 행 관리 대상 활성화. 읽기 전용이거나 파라미터 셀(col>=4)이면 관여하지 않는다.
   const handleCellClicked = useCallback(
     (item: Item) => {
       const [col, row] = item
@@ -767,12 +777,12 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
         callbacks?.onCellActivate?.({ ...target, layerKey: rowData.layerKey })
       }
       if (readOnly) return
-      if (col === 2) {
+      if (col === 3) {
         // 이미 POR인 행은 무시 — 이양 대상이 아니고 불필요한 재조회를 피한다(POR 해제는 없다).
         if (!rowData.isPor) callbacks?.onPorChange?.(rowData.layerKey, rowData.id)
         return
       }
-      if (col === 0 || col === 1) {
+      if (col === 0 || col === 1 || col === 2) {
         callbacks?.onConditionActivate?.({ conditionId: rowData.id, layerKey: rowData.layerKey })
       }
     },

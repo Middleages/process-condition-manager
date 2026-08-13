@@ -180,6 +180,8 @@ const sheet: SheetOut = {
     {
       condition_id: 11,
       layer_key: 'L1::10::ETCH',
+      step_seq: '10',
+      layer_id: 'ETCH',
       layer_label: 'ETCH (10)',
       condition_label: 'POR',
       is_por: true,

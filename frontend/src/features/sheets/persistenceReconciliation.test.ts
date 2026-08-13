@@ -92,6 +92,8 @@ describe('reconcileSuccessfulPatch', () => {
         {
           condition_id: 1,
           layer_key: 'L1',
+          step_seq: 'S01',
+          layer_id: 'L1',
           layer_label: 'L1',
           condition_label: 'POR',
           is_por: true,

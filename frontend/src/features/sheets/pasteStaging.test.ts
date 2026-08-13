@@ -47,9 +47,9 @@ const choiceResource: SheetChoiceResource = {
 const choiceResources = new Map([['photo_resist', choiceResource]])
 
 const rows: ConditionGridRow[] = [
-  { id: '1', layerKey: 'L1', layerLabel: 'L1 (S01)', conditionLabel: 'C1', isPor: true, values: {} },
-  { id: '2', layerKey: 'L1', layerLabel: 'L1 (S01)', conditionLabel: 'C2', isPor: false, values: {} },
-  { id: '3', layerKey: 'L2', layerLabel: 'L2 (S02)', conditionLabel: 'C1', isPor: true, values: {} },
+  { id: '1', layerKey: 'L1', stepSeq: 'S01', layerId: 'L1', layerLabel: 'L1 (S01)', conditionLabel: 'C1', isPor: true, values: {} },
+  { id: '2', layerKey: 'L1', stepSeq: 'S01', layerId: 'L1', layerLabel: 'L1 (S01)', conditionLabel: 'C2', isPor: false, values: {} },
+  { id: '3', layerKey: 'L2', stepSeq: 'S02', layerId: 'L2', layerLabel: 'L2 (S02)', conditionLabel: 'C1', isPor: true, values: {} },
 ]
 
 describe('parseTsv', () => {

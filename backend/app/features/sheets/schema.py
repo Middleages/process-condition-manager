@@ -52,6 +52,8 @@ class SheetRowOut(BaseModel):
 
     condition_id: int
     layer_key: str
+    step_seq: str
+    layer_id: str
     # P1-D3 병기 규칙: "{layer_id} ({step_seq})"
     layer_label: str
     condition_label: str

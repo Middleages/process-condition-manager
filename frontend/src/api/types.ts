@@ -591,6 +591,8 @@ export interface SheetColumnOut {
 export interface SheetRowOut {
   condition_id: number
   layer_key: string
+  step_seq: string
+  layer_id: string
   // P1-D3 병기 규칙: "{layer_id} ({step_seq})"
   layer_label: string
   condition_label: string

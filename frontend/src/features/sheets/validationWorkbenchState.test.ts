@@ -41,6 +41,8 @@ const rows = [
   {
     id: '11',
     layerKey: 'L1',
+    stepSeq: '10',
+    layerId: 'ETCH',
     layerLabel: 'ETCH (10)',
     conditionLabel: 'POR',
     isPor: true,

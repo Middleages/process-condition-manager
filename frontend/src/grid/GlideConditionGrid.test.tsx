@@ -15,6 +15,20 @@ import {
 import source from './GlideConditionGrid.tsx?raw'
 
 describe('composite cell status rendering priority', () => {
+  it('freezes four identity columns, uses POR column 3, and includes optional units in parameter headers', () => {
+    const parameterHeaders = [
+      { headerName: 'ZONE TEMP.', unit: '°C' },
+      { headerName: 'PRESSURE', unit: null },
+    ].map((column) => column.unit ? `${column.headerName} · ${column.unit}` : column.headerName)
+
+    expect(parameterHeaders).toEqual(['ZONE TEMP. · °C', 'PRESSURE'])
+    expect(source).toContain('freezeColumns={IDENTITY_COLUMN_COUNT}')
+    expect(source).toContain('if (col === 3)')
+    expect(source).toContain("title: column.unit ? `${column.headerName} · ${column.unit}` : column.headerName")
+    expect(source).toContain('groupMeta.isGroupStart[row] ? rowData.stepSeq :')
+    expect(source).toContain('groupMeta.isGroupStart[row] ? rowData.layerId :')
+  })
+
   it('renders validation error above warning, dirty, and comment without requiring exclusive state', () => {
     expect(
       cellStatusVisualPriority({
@@ -139,6 +153,8 @@ describe('cell-history context action boundary', () => {
     {
       id: 'condition-11',
       layerKey: 'layer-1',
+      stepSeq: '010',
+      layerId: 'Layer 1',
       layerLabel: 'Layer 1',
       conditionLabel: 'Condition 11',
       isPor: true,
@@ -147,14 +163,15 @@ describe('cell-history context action boundary', () => {
   ]
 
   it('resolves only parameter cells to a domain coordinate', () => {
-    expect(resolveCellHistoryRequest([3, 0], columns, rows)).toEqual({
+    expect(resolveCellHistoryRequest([4, 0], columns, rows)).toEqual({
       conditionId: 'condition-11',
       parameterCode: 'amount',
     })
     expect(resolveCellHistoryRequest([0, 0], columns, rows)).toBeNull()
     expect(resolveCellHistoryRequest([1, 0], columns, rows)).toBeNull()
     expect(resolveCellHistoryRequest([2, 0], columns, rows)).toBeNull()
-    expect(resolveCellHistoryRequest([3, 1], columns, rows)).toBeNull()
+    expect(resolveCellHistoryRequest([3, 0], columns, rows)).toBeNull()
+    expect(resolveCellHistoryRequest([4, 1], columns, rows)).toBeNull()
   })
 
   it('recognizes both accessible context-menu keyboard conventions', () => {
