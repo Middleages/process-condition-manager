@@ -10,22 +10,19 @@ import {
 
 import { getApiErrorMessage } from '@/api/client'
 import { listProjects } from '@/api/projects'
-import {
-  useChoiceSetOptions,
-  type ChoiceSetOptionsResource,
-} from '@/features/choiceSets/useChoiceSetOptions'
 import { Button } from '@/shared/components/Button'
 import { InlineAlert } from '@/shared/components/InlineAlert'
-import { PageHeader } from '@/shared/components/PageHeader'
-import { SearchableChoice } from '@/shared/components/SearchableChoice'
 
 import { ProjectTable } from './ProjectTable'
 import {
-  deriveHistoricalChoiceFilterState,
   mergeDebouncedQuery,
   projectListQueryKey,
 } from './projectListQuery'
-import { parseProjectListSearch, serializeProjectListSearch } from './urlState'
+import {
+  parseProjectListSearch,
+  serializeProjectListSearch,
+  type ProjectListStatus,
+} from './urlState'
 
 const RETURN_FOCUS_KEY = 'pcm:project-list:return-focus'
 
@@ -33,6 +30,14 @@ interface ProjectListReturnFocus {
   search: string
   projectId: number
 }
+
+const STATUS_FILTERS: ReadonlyArray<{ value: ProjectListStatus; label: string }> = [
+  { value: 'all', label: '전체' },
+  { value: 'draft', label: '초안' },
+  { value: 'review', label: '검토중' },
+  { value: 'approved', label: '승인' },
+  { value: 'rejected', label: '반려' },
+]
 
 export function ProjectListPage() {
   const location = useLocation()
@@ -42,15 +47,6 @@ export function ProjectListPage() {
   const [queryDraft, setQueryDraft] = useState(routeState.query)
   const latestRouteStateRef = useRef(routeState)
   latestRouteStateRef.current = routeState
-
-  const deviceTypes = useChoiceSetOptions('device_type', {
-    includeInactive: true,
-    sheetFocused: false,
-  })
-  const projectCategories = useChoiceSetOptions('project_category', {
-    includeInactive: true,
-    sheetFocused: false,
-  })
 
   useEffect(() => {
     setQueryDraft(routeState.query)
@@ -108,84 +104,101 @@ export function ProjectListPage() {
     return () => window.cancelAnimationFrame(frame)
   }, [location.search, navigationType, projects.length, projectsQuery.isPending])
 
-  function updateDeviceTypeFilter(code: string | null) {
-    setSearchParams(
-      serializeProjectListSearch({
-        ...latestRouteStateRef.current,
-        deviceTypeCode: code,
-      }),
-    )
-  }
+  function updateStatusFilter(status: ProjectListStatus) {
+    if (status === latestRouteStateRef.current.status) return
 
-  function updateProjectCategoryFilter(code: string | null) {
     setSearchParams(
       serializeProjectListSearch({
         ...latestRouteStateRef.current,
-        projectCategoryCode: code,
+        status,
       }),
     )
   }
 
   return (
-    <section className="mx-auto w-full max-w-[1600px] space-y-5">
-      <PageHeader
-        title="프로젝트"
-        description="프로젝트를 검색하고 조건표 작업으로 이동합니다."
-        actions={
+    <section className="w-full space-y-5">
+      <header className="space-y-4 border-b-2 border-ink-950 pb-5">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div className="min-w-0">
+            <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-700">
+              Project command index
+            </p>
+            <h1
+              className="mt-1 text-3xl font-bold tracking-tight text-ink-950 focus:outline-none"
+              data-page-title
+              tabIndex={-1}
+            >
+              프로젝트
+            </h1>
+            <p className="mt-1 text-sm text-muted">
+              공정 식별자로 조건표를 찾고 현재 작업 상태를 확인합니다.
+            </p>
+          </div>
           <Link
-            className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-brand-700 px-4 text-sm font-semibold text-white transition-colors hover:bg-ink-950"
+            className="btn-primary gap-2"
             to="/projects/new"
           >
             <Plus aria-hidden="true" size={16} strokeWidth={2} />
             새 프로젝트
           </Link>
-        }
-      />
+        </div>
 
-      <section aria-labelledby="project-filter-title" className="space-y-3">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h2 id="project-filter-title" className="text-base font-bold text-ink-950">
-            프로젝트 찾기
-          </h2>
-          <p className="text-sm font-medium tabular-nums text-muted">
-            불러온 {projects.length}개
-          </p>
+        <label className="grid w-full gap-1.5 text-sm font-semibold text-ink-950">
+          식별자 검색
+          <span className="relative block">
+            <Search
+              aria-hidden="true"
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted"
+              size={16}
+              strokeWidth={2}
+            />
+            <input
+              className="input pl-9"
+              placeholder="LINE, Process 또는 Part ID"
+              type="search"
+              value={queryDraft}
+              onChange={(event) => setQueryDraft(event.target.value)}
+            />
+          </span>
+        </label>
+
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div
+            aria-label="프로젝트 상태 필터"
+            className="flex flex-wrap gap-1"
+            role="group"
+          >
+            {STATUS_FILTERS.map((filter) => {
+              const active = routeState.status === filter.value
+
+              return (
+                <button
+                  aria-pressed={active}
+                  className={
+                    active
+                      ? 'h-9 rounded-[2px] border border-brand-700 bg-brand-700 px-3 text-sm font-semibold text-white'
+                      : 'h-9 rounded-[2px] border border-border-control bg-surface px-3 text-sm font-semibold text-ink-950 transition-colors hover:border-brand-700 hover:text-brand-700'
+                  }
+                  key={filter.value}
+                  type="button"
+                  onClick={() => updateStatusFilter(filter.value)}
+                >
+                  {filter.label}
+                </button>
+              )
+            })}
+          </div>
+          {projectsQuery.isSuccess ? (
+            <p
+              aria-live="polite"
+              className="text-sm font-medium tabular-nums text-muted"
+              role="status"
+            >
+              프로젝트 {projects.length}개를 불러왔습니다.
+            </p>
+          ) : null}
         </div>
-        <div className="grid gap-3 lg:grid-cols-3 lg:items-start">
-          <label className="grid w-full gap-1.5 text-sm font-semibold text-ink-950">
-            프로젝트 검색
-            <span className="relative block">
-              <Search
-                aria-hidden="true"
-                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted"
-                size={16}
-                strokeWidth={2}
-              />
-              <input
-                className="input pl-9"
-                placeholder="프로젝트명 또는 Part ID"
-                type="search"
-                value={queryDraft}
-                onChange={(event) => setQueryDraft(event.target.value)}
-              />
-            </span>
-          </label>
-          <ProjectChoiceFilter
-            id="project-list-device-type"
-            label="Device Type"
-            value={routeState.deviceTypeCode}
-            resource={deviceTypes}
-            onChange={updateDeviceTypeFilter}
-          />
-          <ProjectChoiceFilter
-            id="project-list-category"
-            label="Project Category"
-            value={routeState.projectCategoryCode}
-            resource={projectCategories}
-            onChange={updateProjectCategoryFilter}
-          />
-        </div>
-      </section>
+      </header>
 
       {projectsQuery.isPending ? (
         <InlineAlert tone="info">프로젝트 목록을 불러오는 중입니다.</InlineAlert>
@@ -227,44 +240,6 @@ export function ProjectListPage() {
         </div>
       ) : null}
     </section>
-  )
-}
-
-export function ProjectChoiceFilter({
-  id,
-  label,
-  value,
-  resource,
-  onChange,
-}: {
-  id: string
-  label: string
-  value: string | null
-  resource: ChoiceSetOptionsResource
-  onChange: (code: string | null) => void
-}) {
-  const state = deriveHistoricalChoiceFilterState(resource)
-  const selectedOption =
-    value === null ? undefined : resource.displayOptions.find((option) => option.code === value)
-
-  return (
-    <SearchableChoice
-      id={id}
-      label={label}
-      value={value}
-      options={resource.displayOptions}
-      loading={state.loading}
-      error={resource.error}
-      sourceActive
-      sourceInactive={selectedOption?.is_active === false}
-      selectionReady={state.selectionReady}
-      allowInactiveSelection
-      allowClear
-      visuallyHideEmptyStatus
-      onOpen={resource.prepareToOpen}
-      onRetry={resource.retryOptions}
-      onChange={onChange}
-    />
   )
 }
 

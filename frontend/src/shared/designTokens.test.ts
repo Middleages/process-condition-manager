@@ -13,17 +13,12 @@ const css =
   importedCss || process.getBuiltinModule('fs').readFileSync(new URL('../styles.css', import.meta.url), 'utf8')
 
 describe('design tokens', () => {
-  it('defines the approved Drafting Table palette', () => {
-    expect(css).toContain('--color-draft-canvas: #f7f7f3')
-    expect(css).toContain('--color-draft-ink: #12232a')
-    expect(css).toContain('--color-draft-teal: #196b67')
-    expect(css).toContain('--color-draft-amber: #d18b2c')
-    expect(css).toContain('--color-draft-rule: #cbd2cf')
-    expect(css).toContain('--color-ink-950: var(--color-draft-ink)')
-    expect(css).toContain('--color-brand-700: var(--color-draft-teal)')
-    expect(css).toContain('--color-canvas: var(--color-draft-canvas)')
-    expect(css).toContain('--color-border-control: #81979e')
-    expect(css).toContain('--color-muted: #52656a')
+  it('defines the approved Signal Grid palette', () => {
+    expect(css).toContain('--color-ink-950: #171916')
+    expect(css).toContain('--color-brand-700: #2864dc')
+    expect(css).toContain('--color-canvas: #f3f1ea')
+    expect(css).toContain('--color-surface: #fbfaf6')
+    expect(css).not.toContain('--color-draft-')
     expect(css).toContain('--color-success: #166534')
     expect(css).toContain('--color-success-surface: #dcfce7')
     expect(css).toContain('--color-warning: #92400e')
@@ -33,8 +28,8 @@ describe('design tokens', () => {
   })
 
   it('defines separate light and dark focus indicators', () => {
-    expect(css).toContain('--focus-light: var(--color-draft-teal)')
-    expect(css).toContain('--focus-dark: #69d4cc')
+    expect(css).toContain('--focus-light: #ef5b2a')
+    expect(css).toContain('--focus-dark: #ffb49d')
   })
 
   it('provides a reduced-motion fallback', () => {

@@ -1,5 +1,8 @@
+import { act } from 'react'
+import { createRoot, type Root } from 'react-dom/client'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { StaticRouter } from 'react-router-dom'
+import { MemoryRouter, StaticRouter } from 'react-router-dom'
+import { JSDOM } from 'jsdom'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { ProjectSummaryOut } from '@/api/types'
@@ -13,10 +16,10 @@ const project: ProjectSummaryOut = {
   part_id: 'P-42',
   name: 'Coat baseline',
   status: 'draft',
-  version: 1,
-  revision_root_id: null,
-  predecessor_project_id: null,
-  successor_project_id: null,
+  version: 3,
+  revision_root_id: 40,
+  predecessor_project_id: 41,
+  successor_project_id: 43,
   allowed_actions: ['request_review', 'approve'],
   device_type: { code: 'FOUNDRY', label: 'Foundry', is_active: true },
   project_category: { code: 'LOGIC', label: 'Logic', is_active: true },
@@ -24,25 +27,6 @@ const project: ProjectSummaryOut = {
   updated_at: '2026-07-14T02:30:00Z',
   layer_count: 8,
   cell_count: 128,
-}
-
-const maximumLengthProject: ProjectSummaryOut = {
-  ...project,
-  id: 43,
-  name: 'N'.repeat(256),
-  line_id: 'L'.repeat(64),
-  process_id: 'P'.repeat(128),
-  part_id: 'R'.repeat(128),
-  device_type: {
-    code: 'DEVICE_RAW_CODE',
-    label: '',
-    is_active: false,
-  },
-  project_category: {
-    code: 'CATEGORY_RAW_CODE',
-    label: 'Legacy category',
-    is_active: false,
-  },
 }
 
 function renderTable(projects: ProjectSummaryOut[]): string {
@@ -58,64 +42,125 @@ function renderTable(projects: ProjectSummaryOut[]): string {
 }
 
 describe('ProjectTable', () => {
-  it('renders the approved eight compact columns in order and a real detail link', () => {
+  it('uses LINE, PROCESS, and PART ID as the primary project identity', () => {
     const html = renderTable([project])
     const headers = [...html.matchAll(/<th[^>]*>(.*?)<\/th>/g)].map((match) =>
       match[1]?.replace(/<[^>]+>/g, '').trim(),
     )
 
     expect(html).toContain('<table')
-    expect(headers).toEqual([
-      '프로젝트명',
-      'LINE / Process',
-      'PARTID',
-      'Device Type',
-      'Category',
-      'Layer Total',
-      '상태',
-      'Lineage',
-      '허용 액션',
-      'Updated',
-    ])
-    expect(html).toContain('href="/projects/42"')
-    expect(html).toContain('P-42')
-    expect(html).toContain('Foundry')
-    expect(html).toContain('Logic')
-    expect(html).toContain('min-w-[1120px]')
-    expect(html).not.toContain('min-w-[920px]')
-    expect(html).not.toContain('min-w-[1040px]')
-    expect(html).toContain('<tr class="h-9">')
-    expect(html).toContain('class="h-9 border-t border-border-subtle')
-    expect(html).toContain('leading-4')
-    expect(html).not.toContain('Comment')
-    expect(html).not.toContain('Description')
-    expect(html).not.toContain('Cell</th>')
+    expect(headers).toEqual(['LINE', 'PROCESS', 'PART ID', '상태', 'UPDATED', ''])
+    expect(html).toContain('>L1</a>')
+    expect(html).toContain('>coat</span>')
+    expect(html).toContain('>P-42</span>')
+    expect(html).toContain('>초안<')
+    expect(html).not.toContain('프로젝트명')
+    expect(html).not.toContain('Device Type')
+    expect(html).not.toContain('Category')
+    expect(html).not.toContain(project.name)
+    expect(html).not.toContain(project.device_type.label)
+    expect(html).not.toContain(project.project_category.label)
   })
 
-  it('preserves raw inactive classification codes and marks them non-blockingly', () => {
-    const html = renderTable([maximumLengthProject])
-    const lineProcess = `${maximumLengthProject.line_id} / ${maximumLengthProject.process_id}`
-
-    expect(html).toContain(`title="${maximumLengthProject.name}"`)
-    expect(html).toContain(`>${maximumLengthProject.name}</a>`)
-    expect(html).toContain(`title="${lineProcess}"`)
-    expect(html).toContain(`>${lineProcess}</span>`)
-    expect(html).toContain(`title="${maximumLengthProject.part_id}"`)
-    expect(html).toContain(`>${maximumLengthProject.part_id}</span>`)
-    expect(html).toContain('DEVICE_RAW_CODE')
-    expect(html).toContain('Legacy category')
-    expect(html.match(/사용 중지됨/g)).toHaveLength(2)
-    expect(html).toContain('min-w-0 overflow-hidden')
-    expect(html).toContain('truncate whitespace-nowrap')
-    expect(html).not.toContain('text-[11px]')
-  })
-
-  it('hides Layer Total before Updated at narrower desktop breakpoints', () => {
+  it('keeps the LINE link route and return-focus data', () => {
     const html = renderTable([project])
 
-    expect(html).toMatch(/<th[^>]*class="[^"]*hidden 2xl:table-cell[^"]*"[^>]*>Layer Total<\/th>/)
-    expect(html).toMatch(/<th[^>]*class="[^"]*hidden xl:table-cell[^"]*"[^>]*>Updated<\/th>/)
-    expect(html).toContain('>Lineage<')
-    expect(html).toContain('>허용 액션<')
+    expect(html).toContain('href="/projects/42"')
+    expect(html).toContain('data-project-id="42"')
+  })
+
+  it('opens and closes the disclosure row and invokes the real LINE link callback', () => {
+    const openedProjectIds: number[] = []
+    const interactive = renderInteractiveTable((projectId) => openedProjectIds.push(projectId))
+
+    try {
+      const disclosure = interactive.container.querySelector('button')
+      const details = interactive.container.querySelector('#project-details-42')
+      const lineLink = interactive.container.querySelector<HTMLAnchorElement>('[data-project-id="42"]')
+
+      expect(disclosure).not.toBeNull()
+      expect(details).not.toBeNull()
+      expect(lineLink).not.toBeNull()
+      expect(disclosure?.getAttribute('aria-expanded')).toBe('false')
+      expect(disclosure?.getAttribute('aria-controls')).toBe('project-details-42')
+      expect(disclosure?.getAttribute('aria-label')).toBe('L1 세부 정보 열기')
+      expect(disclosure?.textContent).toBe('세부')
+      expect(details?.hasAttribute('hidden')).toBe(true)
+
+      act(() => disclosure?.dispatchEvent(new interactive.window.MouseEvent('click', { bubbles: true })))
+
+      expect(disclosure?.getAttribute('aria-expanded')).toBe('true')
+      expect(disclosure?.getAttribute('aria-label')).toBe('L1 세부 정보 닫기')
+      expect(disclosure?.textContent).toBe('닫기')
+      expect(details?.hasAttribute('hidden')).toBe(false)
+      expect(details?.textContent).toContain('리비전 루트')
+      expect(details?.textContent).toContain('허용 액션')
+      expect(details?.textContent).toContain('요청')
+      expect(details?.textContent).toContain('승인')
+
+      act(() => disclosure?.dispatchEvent(new interactive.window.MouseEvent('click', { bubbles: true })))
+
+      expect(disclosure?.getAttribute('aria-expanded')).toBe('false')
+      expect(details?.hasAttribute('hidden')).toBe(true)
+
+      act(() => lineLink?.dispatchEvent(new interactive.window.MouseEvent('click', { bubbles: true })))
+
+      expect(openedProjectIds).toEqual([42])
+    } finally {
+      interactive.cleanup()
+    }
   })
 })
+
+function renderInteractiveTable(onProjectOpen: (projectId: number) => void) {
+  const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', {
+    url: 'https://pcm.test/projects',
+  })
+  const container = dom.window.document.querySelector<HTMLDivElement>('#root')
+  if (!container) throw new Error('Interactive test root is unavailable.')
+
+  const globals = globalThis as unknown as {
+    document?: Document
+    HTMLElement?: typeof HTMLElement
+    Node?: typeof Node
+    window?: Window
+    IS_REACT_ACT_ENVIRONMENT?: boolean
+  }
+  const previousGlobals = {
+    document: globals.document,
+    HTMLElement: globals.HTMLElement,
+    Node: globals.Node,
+    window: globals.window,
+    IS_REACT_ACT_ENVIRONMENT: globals.IS_REACT_ACT_ENVIRONMENT,
+  }
+  let root: Root | null = null
+
+  globals.window = dom.window as unknown as Window
+  globals.document = dom.window.document
+  globals.HTMLElement = dom.window.HTMLElement as unknown as typeof HTMLElement
+  globals.Node = dom.window.Node as unknown as typeof Node
+  globals.IS_REACT_ACT_ENVIRONMENT = true
+
+  act(() => {
+    root = createRoot(container)
+    root.render(
+      <MemoryRouter initialEntries={['/projects?query=coat']}>
+        <ProjectTable projects={[project]} from="/projects?query=coat" onProjectOpen={onProjectOpen} />
+      </MemoryRouter>,
+    )
+  })
+
+  return {
+    container,
+    window: dom.window,
+    cleanup: () => {
+      act(() => root?.unmount())
+      globals.window = previousGlobals.window
+      globals.document = previousGlobals.document
+      globals.HTMLElement = previousGlobals.HTMLElement
+      globals.Node = previousGlobals.Node
+      globals.IS_REACT_ACT_ENVIRONMENT = previousGlobals.IS_REACT_ACT_ENVIRONMENT
+      dom.window.close()
+    },
+  }
+}

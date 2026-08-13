@@ -39,7 +39,7 @@ export function Button({
       {...buttonProps}
       aria-busy={ariaBusy}
       className={cn(
-        'relative inline-flex min-w-0 items-center justify-center rounded-md font-semibold transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-60',
+        'relative inline-flex min-w-0 items-center justify-center rounded-[3px] font-semibold transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-60',
         VARIANT_CLASSES[variant],
         SIZE_CLASSES[size],
         className,

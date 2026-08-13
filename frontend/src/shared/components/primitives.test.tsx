@@ -8,6 +8,17 @@ import { InlineAlert } from './InlineAlert'
 import { PageHeader } from './PageHeader'
 import { ErrorMessage, LoadingMessage } from './StatusMessage'
 
+import importedCss from '../../styles.css?raw'
+
+declare const process: {
+  getBuiltinModule(module: 'fs'): {
+    readFileSync(path: URL, encoding: 'utf8'): string
+  }
+}
+
+const css =
+  importedCss || process.getBuiltinModule('fs').readFileSync(new URL('../../styles.css', import.meta.url), 'utf8')
+
 describe('shared primitives', () => {
   it('announces blocking errors', () => {
     const html = renderToStaticMarkup(<InlineAlert tone="error">저장 실패</InlineAlert>)
@@ -65,6 +76,30 @@ describe('shared primitives', () => {
     expect(defaultHtml).toContain(' h-9 ')
     expect(compactHtml).not.toContain('min-h-')
     expect(defaultHtml).not.toContain('min-h-')
+  })
+
+  it('retains semantic variant classes with a rectangular primary action contract', () => {
+    const primaryHtml = renderToStaticMarkup(<Button disabled>저장</Button>)
+    const secondaryHtml = renderToStaticMarkup(<Button variant="secondary">취소</Button>)
+    const dangerHtml = renderToStaticMarkup(<Button variant="danger">삭제</Button>)
+    const ghostHtml = renderToStaticMarkup(<Button variant="ghost">자세히</Button>)
+
+    expect(primaryHtml).toContain('bg-brand-700')
+    expect(primaryHtml).toContain('rounded-[3px]')
+    expect(primaryHtml).toContain('disabled:cursor-not-allowed')
+    expect(primaryHtml).toContain('disabled:opacity-60')
+    expect(primaryHtml).toContain('disabled=""')
+    expect(secondaryHtml).toContain('border-border-control bg-surface text-ink-950 hover:bg-canvas')
+    expect(dangerHtml).toContain('border-error bg-error-surface text-error hover:bg-error hover:text-white')
+    expect(ghostHtml).toContain('bg-transparent text-brand-700 hover:bg-brand-100')
+  })
+
+  it('defines the approved Signal Grid raw palette values', () => {
+    expect(css).toContain('--color-ink-950: #171916')
+    expect(css).toContain('--color-canvas: #f3f1ea')
+    expect(css).toContain('--color-surface: #fbfaf6')
+    expect(css).toContain('--color-brand-700: #2864dc')
+    expect(css).toContain('--focus-light: #ef5b2a')
   })
 
   it('retains native button props and caller classes', () => {

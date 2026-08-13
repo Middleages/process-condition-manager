@@ -1,8 +1,10 @@
 import { parsePositiveInt } from '@/shared/navigation/routeState'
 
+export type ProjectListStatus = 'all' | 'draft' | 'review' | 'approved' | 'rejected'
+
 export interface ProjectListRouteState {
   query: string
-  status: 'all' | 'draft'
+  status: ProjectListStatus
   deviceTypeCode: string | null
   projectCategoryCode: string | null
 }
@@ -40,7 +42,7 @@ export function serializeProjectCreateSearch(state: ProjectCreateRouteState): UR
 export function parseProjectListSearch(params: URLSearchParams): ProjectListRouteState {
   return {
     query: params.get('query') ?? '',
-    status: params.get('status') === 'draft' ? 'draft' : 'all',
+    status: parseProjectListStatus(params.get('status')),
     deviceTypeCode: normalizedChoiceFilter(params.get('device_type')),
     projectCategoryCode: normalizedChoiceFilter(params.get('project_category')),
   }
@@ -70,4 +72,11 @@ function normalizedChoiceFilter(value: string | null): string | null {
   if (value === null) return null
   const normalized = value.trim()
   return normalized === '' ? null : normalized
+}
+
+function parseProjectListStatus(value: string | null): ProjectListStatus {
+  if (value === 'draft' || value === 'review' || value === 'approved' || value === 'rejected') {
+    return value
+  }
+  return 'all'
 }

@@ -1,31 +1,33 @@
 @import "tailwindcss";
 
 @theme {
-  --color-draft-canvas: #f7f7f3;
-  --color-draft-ink: #12232a;
-  --color-draft-teal: #196b67;
-  --color-draft-amber: #d18b2c;
-  --color-draft-rule: #cbd2cf;
-  --color-ink-950: var(--color-draft-ink);
-  --color-brand-700: var(--color-draft-teal);
-  --color-brand-500: #2f8782;
-  --color-brand-100: #dcecea;
-  --color-canvas: var(--color-draft-canvas);
-  --color-surface: #ffffff;
-  --color-border-subtle: var(--color-draft-rule);
-  --color-border-control: #81979e;
-  --color-muted: #52656a;
+  --color-ink-950: #171916;
+  --color-brand-700: #2864dc;
+  --color-brand-500: #4c7fe5;
+  --color-brand-100: #e1e9fb;
+  --color-canvas: #f3f1ea;
+  --color-surface: #fbfaf6;
+  --color-border-subtle: #c9c6ba;
+  --color-border-control: #77746c;
+  --color-muted: #5f5d57;
   --color-success: #166534;
   --color-success-surface: #dcfce7;
   --color-warning: #92400e;
   --color-warning-surface: #fef3c7;
   --color-error: #b91c1c;
   --color-error-surface: #fef2f2;
+  --font-sans: Pretendard, "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  --font-mono: "IBM Plex Mono", D2Coding, Consolas, monospace;
 }
 
 :root {
-  --focus-light: var(--color-draft-teal);
-  --focus-dark: #69d4cc;
+  --focus-light: #ef5b2a;
+  --focus-dark: #ffb49d;
+}
+
+::selection {
+  background: var(--color-brand-100);
+  color: var(--color-ink-950);
 }
 
 :where(a, button, input, select, textarea, summary):focus-visible {
@@ -39,19 +41,19 @@
 
 @layer components {
   .input {
-    @apply box-border h-9 w-full rounded-md border border-border-control bg-surface px-3 py-1.5 text-sm text-ink-950 transition-colors duration-150 placeholder:text-muted disabled:cursor-not-allowed disabled:bg-canvas disabled:opacity-70;
+    @apply box-border h-9 w-full rounded-[3px] border border-border-control bg-surface px-3 py-1.5 text-sm text-ink-950 transition-colors duration-150 placeholder:text-muted disabled:cursor-not-allowed disabled:bg-canvas disabled:opacity-70;
   }
 
   .btn-primary {
-    @apply box-border inline-flex h-9 items-center justify-center rounded-md bg-brand-700 px-4 py-2 text-sm font-semibold text-white transition-colors duration-150 hover:bg-ink-950 disabled:cursor-not-allowed disabled:opacity-60;
+    @apply box-border inline-flex h-9 items-center justify-center rounded-[3px] bg-brand-700 px-4 py-2 text-sm font-semibold text-white transition-colors duration-150 hover:bg-ink-950 disabled:cursor-not-allowed disabled:opacity-60;
   }
 
   .btn-secondary {
-    @apply box-border inline-flex h-9 items-center justify-center rounded-md border border-border-control bg-surface px-3 py-1.5 text-sm font-medium text-ink-950 transition-colors duration-150 hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-60;
+    @apply box-border inline-flex h-9 items-center justify-center rounded-[3px] border border-border-control bg-surface px-3 py-1.5 text-sm font-medium text-ink-950 transition-colors duration-150 hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-60;
   }
 
   .btn-danger {
-    @apply box-border inline-flex h-9 items-center justify-center rounded-md border border-error bg-error-surface px-3 py-1.5 text-sm font-medium text-error transition-colors duration-150 hover:bg-error hover:text-white disabled:cursor-not-allowed disabled:opacity-50;
+    @apply box-border inline-flex h-9 items-center justify-center rounded-[3px] border border-error bg-error-surface px-3 py-1.5 text-sm font-medium text-error transition-colors duration-150 hover:bg-error hover:text-white disabled:cursor-not-allowed disabled:opacity-50;
   }
 }
 

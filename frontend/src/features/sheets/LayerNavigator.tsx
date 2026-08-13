@@ -75,7 +75,7 @@ export function LayerNavigator(props: LayerNavigatorProps) {
             <button key={item.key} type="button" role="option" aria-selected={active} aria-current={active ? 'true' : undefined} data-layer-row={item.key} className={`group flex h-9 w-full items-center gap-2 border-b border-border-subtle px-2 text-left text-xs hover:bg-brand-100 focus-visible:relative ${active ? 'bg-brand-100 font-semibold text-brand-700' : 'bg-transparent text-ink-950'}`} onClick={() => onActivate(item.key)} title={item.label}>
               <span className="w-7 shrink-0 font-mono text-[10px] text-muted">{item.number}</span>
               <span className="min-w-0 flex-1 truncate">{item.label}</span>
-              {item.dirty ? <span className="text-draft-amber" aria-label="미저장">●</span> : null}
+              {item.dirty ? <span className="text-warning" aria-label="미저장">●</span> : null}
               {item.errorCount > 0 ? <span className="min-w-5 border border-error px-1 text-center text-[10px] font-bold text-error" aria-label={`오류 ${item.errorCount}건`}>{item.errorCount}</span> : null}
             </button>
           )
