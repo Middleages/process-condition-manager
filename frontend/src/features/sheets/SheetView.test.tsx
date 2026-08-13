@@ -36,6 +36,22 @@ vi.mock('@/api/locks', () => ({
   releaseLockOnUnload: vi.fn().mockReturnValue(true),
 }))
 
+vi.mock('@/api/conditions', () => ({
+  addCondition: vi.fn(),
+  deleteCondition: vi.fn(),
+  setConditionPor: vi.fn(),
+}))
+
+vi.mock('@/api/sheets', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/api/sheets')>()
+  return { ...actual, getSheet: vi.fn() }
+})
+
+vi.mock('@/api/projects', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/api/projects')>()
+  return { ...actual, getProject: vi.fn() }
+})
+
 vi.mock('@/grid', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/grid')>()
   return {
@@ -163,6 +179,9 @@ vi.mock('./useBackboneDiffWorkbenchController', () => ({
 }))
 
 import { shouldFocusLiveSheetTitle, SheetView, SheetViewPage } from './SheetView'
+import { addCondition, deleteCondition, setConditionPor } from '@/api/conditions'
+import { getProject } from '@/api/projects'
+import { getSheet } from '@/api/sheets'
 import {
   appendHistoryWorkbenchPage,
   createHistoryWorkbenchState,
@@ -182,6 +201,12 @@ beforeEach(() => {
   mockSheetWorkbenchState = createMockSheetWorkbenchState()
   mockHistoryWorkbenchController = createMockHistoryController()
   mockBackboneDiffWorkbenchController = createMockBackboneDiffWorkbenchController()
+  vi.mocked(addCondition).mockReset()
+  vi.mocked(deleteCondition).mockReset()
+  vi.mocked(setConditionPor).mockReset()
+  vi.mocked(getProject).mockReset()
+  vi.mocked(getSheet).mockReset()
+  vi.mocked(deleteCondition).mockResolvedValue(undefined)
 })
 
 const project: ProjectOut = {
@@ -1188,7 +1213,7 @@ describe('SheetView focus shell integration', () => {
       /await reconcileSuccessfulPatch\([\s\S]*?invalidateProjectHistory\(\)/,
     )
     expect(sheetViewSource).toMatch(
-      /await runStructuralChange\(fn\)[\s\S]*?invalidateProjectHistory\(\)[\s\S]*?return true/,
+      /const result = await runStructuralChange\(fn\)[\s\S]*?invalidateProjectHistory\(\)[\s\S]*?return result/,
     )
   })
 
@@ -1589,6 +1614,119 @@ describe('SheetView focus shell integration', () => {
     }
   })
 
+  it.each([
+    ['빈 행 추가', 'condition-add', null, 44],
+    ['복제', 'condition-duplicate', 11, 45],
+  ] as const)(
+    '%s success focuses the returned condition after refreshed rows publish it',
+    async (_label, actionTestId, sourceConditionId, newConditionId) => {
+      const interactive = renderInteractiveSheet()
+      const refreshedSheet: SheetOut = {
+        ...interactive.sheet,
+        rows: [
+          interactive.sheet.rows[0],
+          {
+            ...interactive.sheet.rows[0],
+            condition_id: newConditionId,
+            condition_label: 'C2',
+            condition_index: 2,
+            is_por: false,
+          },
+          ...interactive.sheet.rows.slice(1),
+        ],
+      }
+      vi.mocked(getSheet).mockResolvedValue(refreshedSheet)
+      vi.mocked(addCondition).mockResolvedValue({
+        id: newConditionId,
+        layer_key: 'L1::10::ETCH',
+        label: 'C2',
+        condition_index: 2,
+        is_por: false,
+      })
+
+      try {
+        await settleInteractiveSheet()
+        click(interactive, gridCallbackButton(interactive.container, 'condition', '11'))
+        mockScrollToCondition.mockClear()
+
+        click(interactive, conditionActionButton(interactive.container, actionTestId))
+        await settleInteractiveSheet()
+
+        expect(addCondition).toHaveBeenCalledWith(
+          7,
+          'L1::10::ETCH',
+          sourceConditionId,
+          'test-lock-token',
+        )
+        await settleInteractiveSheet()
+
+        expect(renderedConditionIds(interactive.container)).toContain(String(newConditionId))
+        expect(mockScrollToCondition).toHaveBeenCalledTimes(1)
+        expect(mockScrollToCondition).toHaveBeenCalledWith(String(newConditionId))
+      } finally {
+        interactive.cleanup()
+      }
+    },
+  )
+
+  it.each([
+    ['next', [11, 12, 13], 12, 13],
+    ['previous', [11, 12], 12, 11],
+  ] as const)(
+    'successful non-POR delete restores focus to the %s row once',
+    async (_direction, conditionIds, deletedId, expectedFocusId) => {
+      const interactive = renderInteractiveSheet({ firstLayerConditionIds: conditionIds })
+      vi.mocked(getSheet).mockResolvedValue({
+        ...interactive.sheet,
+        rows: interactive.sheet.rows.filter((row) => row.condition_id !== deletedId),
+      })
+
+      try {
+        await settleInteractiveSheet()
+        click(
+          interactive,
+          gridCallbackButton(interactive.container, 'condition', String(deletedId)),
+        )
+        mockScrollToCondition.mockClear()
+
+        click(interactive, conditionActionButton(interactive.container, 'condition-delete'))
+        await settleInteractiveSheet()
+
+        expect(deleteCondition).toHaveBeenCalledWith(7, deletedId, 'test-lock-token')
+        expect(mockScrollToCondition).toHaveBeenCalledTimes(1)
+        expect(mockScrollToCondition).toHaveBeenCalledWith(String(expectedFocusId))
+        expect(renderedConditionIds(interactive.container)).not.toContain(String(deletedId))
+        expect(mockScrollToCondition).toHaveBeenCalledTimes(1)
+      } finally {
+        interactive.cleanup()
+      }
+    },
+  )
+
+  it('keeps the active row, Layer, and viewport when the server rejects POR deletion', async () => {
+    const interactive = renderInteractiveSheet({ firstLayerConditionIds: [11, 12] })
+    const message = 'POR 조건 행은 다른 행에 POR을 지정한 후 삭제할 수 있다'
+    vi.mocked(deleteCondition).mockRejectedValue(new Error(message))
+
+    try {
+      await settleInteractiveSheet()
+      click(interactive, gridCallbackButton(interactive.container, 'condition', '11'))
+      click(interactive, currentOnlyButton(interactive.container))
+      mockScrollToCondition.mockClear()
+
+      click(interactive, conditionActionButton(interactive.container, 'condition-delete'))
+      await settleInteractiveSheet()
+
+      expect(activeLayerKey(interactive.container)).toBe('L1::10::ETCH')
+      expect(renderedConditionIds(interactive.container)).toEqual(['11', '12'])
+      expect(interactive.container.textContent).toContain('선택: ETCH (10) · POR')
+      expect(interactive.container.textContent).toContain(message)
+      expect(mockScrollToCondition).not.toHaveBeenCalled()
+    } finally {
+      interactive.cleanup()
+    }
+  })
+
   it('blocks Layer activation during paste review without changing state or scrolling', async () => {
     mockSheetWorkbenchState = createMockSheetWorkbenchState('validation')
     const interactive = renderInteractiveSheet()
@@ -1625,8 +1763,10 @@ describe('SheetView focus shell integration', () => {
 
 function renderInteractiveSheet({
   requiredConditionIds = [],
+  firstLayerConditionIds = [11],
 }: {
   requiredConditionIds?: readonly number[]
+  firstLayerConditionIds?: readonly number[]
 } = {}) {
   const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', {
     url: 'https://pcm.test/projects/7/sheet',
@@ -1650,7 +1790,7 @@ function renderInteractiveSheet({
       eqp_type_desc: null,
       area_name: null,
       sort_order: sortOrder,
-      condition_count: 1,
+      condition_count: index === 0 ? firstLayerConditionIds.length : 1,
       cell_count: requiredConditionIds.includes(11 * (index + 1)) ? 0 : 1,
       source_project_id: null,
       source_layer_key: null,
@@ -1659,25 +1799,33 @@ function renderInteractiveSheet({
   const interactiveSheet: SheetOut = {
     ...sheet,
     columns: [{ ...sheet.columns[0], required: requiredConditionIds.length > 0 }],
-    rows: layers.map((
+    rows: layers.flatMap((
       [layerKey, stepSeq, layerId, sortOrder],
-      index,
-    ): SheetOut['rows'][number] => ({
-      ...sheet.rows[0],
-      condition_id: 11 * (index + 1),
-      layer_key: layerKey,
-      step_seq: stepSeq,
-      layer_id: layerId,
-      layer_label: `${layerId} (${stepSeq})`,
-      layer_sort_order: sortOrder,
-      cells: requiredConditionIds.includes(11 * (index + 1))
-        ? {}
-        : { ETCH_P001: String(index + 1) },
-    })),
+      layerIndex,
+    ): SheetOut['rows'] => {
+      const conditionIds = layerIndex === 0 ? firstLayerConditionIds : [11 * (layerIndex + 1)]
+      return conditionIds.map((conditionId, conditionIndex): SheetOut['rows'][number] => ({
+        ...sheet.rows[0],
+        condition_id: conditionId,
+        layer_key: layerKey,
+        step_seq: stepSeq,
+        layer_id: layerId,
+        layer_label: `${layerId} (${stepSeq})`,
+        condition_label: conditionIndex === 0 ? 'POR' : `C${conditionIndex + 1}`,
+        is_por: conditionIndex === 0,
+        condition_index: conditionIndex + 1,
+        layer_sort_order: sortOrder,
+        cells: requiredConditionIds.includes(conditionId)
+          ? {}
+          : { ETCH_P001: String(layerIndex + 1) },
+      }))
+    }),
   }
   const queryClient = client()
   queryClient.setQueryData(['project', 7], interactiveProject)
   queryClient.setQueryData(['sheet', 7], interactiveSheet)
+  vi.mocked(getProject).mockResolvedValue(interactiveProject)
+  vi.mocked(getSheet).mockResolvedValue(interactiveSheet)
   const globals = globalThis as unknown as {
     document?: Document
     HTMLElement?: typeof HTMLElement
@@ -1699,6 +1847,7 @@ function renderInteractiveSheet({
   globals.HTMLElement = dom.window.HTMLElement as unknown as typeof HTMLElement
   globals.Node = dom.window.Node as unknown as typeof Node
   globals.IS_REACT_ACT_ENVIRONMENT = true
+  dom.window.confirm = vi.fn(() => true)
 
   act(() => {
     root = createRoot(container)
@@ -1728,6 +1877,12 @@ function renderInteractiveSheet({
       dom.window.close()
     },
   }
+}
+
+async function settleInteractiveSheet(): Promise<void> {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 10))
+  })
 }
 
 function click(
@@ -1768,6 +1923,12 @@ function gridCallbackButton(
 function gridPasteButton(container: HTMLElement): HTMLButtonElement {
   const button = container.querySelector<HTMLButtonElement>('[data-grid-stage-paste]')
   if (button === null) throw new Error('Grid paste control is unavailable.')
+  return button
+}
+
+function conditionActionButton(container: HTMLElement, testId: string): HTMLButtonElement {
+  const button = container.querySelector<HTMLButtonElement>(`[data-testid="${testId}"]`)
+  if (button === null) throw new Error(`Condition action ${testId} is unavailable.`)
   return button
 }
 

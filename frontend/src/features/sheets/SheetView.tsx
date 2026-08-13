@@ -844,6 +844,7 @@ function SheetEditor({
   )
   const [currentLayerOnly, setCurrentLayerOnly] = useState(false)
   const [pendingLayerJump, setPendingLayerJump] = useState<string | null>(null)
+  const [pendingConditionFocus, setPendingConditionFocus] = useState<string | null>(null)
   const [recentLayerKeys, setRecentLayerKeys] = useState<readonly string[]>([])
   const [layerQuery, setLayerQuery] = useState('')
   const [navigatorCollapsed, setNavigatorCollapsed] = useState(false)
@@ -941,6 +942,16 @@ function SheetEditor({
     }),
     [activeLayerKey, currentLayerOnly, data, displayRows, validation.statuses, choiceResources],
   )
+
+  useEffect(() => {
+    if (pendingConditionFocus === null) return
+    // invalidateQueries can resolve just before its observer render commits. Do not restore focus
+    // against the previous row set; wait until this editor has consumed the refreshed Sheet object.
+    if (queryClient.getQueryData<SheetOut>(['sheet', projectId]) !== sheet) return
+    if (!gridData.rows.some((row) => row.id === pendingConditionFocus)) return
+    gridRef.current?.scrollToCondition(pendingConditionFocus)
+    setPendingConditionFocus(null)
+  }, [gridData.rows, pendingConditionFocus, projectId, queryClient, sheet])
 
   useEffect(() => {
     if (pendingLayerJump === null) return
@@ -1192,35 +1203,37 @@ function SheetEditor({
     }
   }, [activeRow, data.rows])
 
-  const refreshSheet = useCallback(() => {
-    void queryClient.invalidateQueries({ queryKey: ['sheet', projectId] })
+  const refreshSheet = useCallback(async () => {
     // Structural mutations also change Project layer condition_count metadata consumed by the
     // exact validation adapter; refresh both halves before provisional evaluation resumes.
-    void queryClient.invalidateQueries({ queryKey: ['project', projectId] })
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['sheet', projectId] }),
+      queryClient.invalidateQueries({ queryKey: ['project', projectId] }),
+    ])
   }, [queryClient, projectId])
 
   const retryValidationDefinitions = useCallback(() => {
-    refreshSheet()
+    void refreshSheet()
     for (const resource of choiceResources.values()) void resource.retry()
   }, [refreshSheet, choiceResources])
 
   // 구조 변경 공용 실행: 잠금 검사·더티 flush·잠금 상실 처리(runStructuralChange)를 감싸
-  // UI 상태(진행 중/에러)와 재조회를 얹는다. 성공하면 true, 실패하면 에러를 표시하고 false.
+  // UI 상태(진행 중/에러)와 재조회를 얹는다. 성공하면 API 결과, 실패하면 null을 반환한다.
   const performStructural = useCallback(
-    async (fn: (token: string) => Promise<unknown>): Promise<boolean> => {
-      if (structInFlightRef.current) return false
+    async <T,>(fn: (token: string) => Promise<T>): Promise<T | null> => {
+      if (structInFlightRef.current) return null
       structInFlightRef.current = true
       setStructBusy(true)
       setStructError(null)
       try {
-        await runStructuralChange(fn)
+        const result = await runStructuralChange(fn)
         invalidateProjectHistory()
         invalidateProjectBackboneDiff()
-        refreshSheet()
-        return true
+        await refreshSheet()
+        return result
       } catch (error) {
         setStructError(getApiErrorMessage(error))
-        return false
+        return null
       } finally {
         structInFlightRef.current = false
         setStructBusy(false)
@@ -1234,21 +1247,33 @@ function SheetEditor({
     ],
   )
 
-  const handleAddEmpty = useCallback(() => {
+  const handleAddEmpty = useCallback(async () => {
     if (!interaction.canManageConditions) return
     if (pasteRef.current !== null) return
     if (activeRow === null) return
     const layerKey = activeRow.layerKey
-    void performStructural((token) => addCondition(projectId, layerKey, null, token))
+    const created = await performStructural((token) =>
+      addCondition(projectId, layerKey, null, token),
+    )
+    if (created === null) return
+    const conditionId = String(created.id)
+    setActiveRow({ conditionId, layerKey: created.layer_key })
+    setPendingConditionFocus(conditionId)
   }, [activeRow, interaction.canManageConditions, performStructural, projectId])
 
-  const handleDuplicate = useCallback(() => {
+  const handleDuplicate = useCallback(async () => {
     if (!interaction.canManageConditions) return
     if (pasteRef.current !== null) return
     if (activeRow === null) return
     const { layerKey } = activeRow
     const sourceId = Number(activeRow.conditionId)
-    void performStructural((token) => addCondition(projectId, layerKey, sourceId, token))
+    const created = await performStructural((token) =>
+      addCondition(projectId, layerKey, sourceId, token),
+    )
+    if (created === null) return
+    const conditionId = String(created.id)
+    setActiveRow({ conditionId, layerKey: created.layer_key })
+    setPendingConditionFocus(conditionId)
   }, [activeRow, interaction.canManageConditions, performStructural, projectId])
 
   const handleDelete = useCallback(async () => {
@@ -1258,9 +1283,22 @@ function SheetEditor({
     // 하드 삭제(셀 값까지 캐스케이드)라 되돌릴 수 없다 — 실행 전 한 번 확인한다.
     if (!window.confirm('이 조건 행을 삭제한다. 되돌릴 수 없다. 계속할까?')) return
     const conditionId = Number(activeRow.conditionId)
-    const ok = await performStructural((token) => deleteCondition(projectId, conditionId, token))
-    if (ok) setActiveRow(null)
-  }, [activeRow, interaction.canManageConditions, performStructural, projectId])
+    const layerRows = data.rows.filter((row) => row.layerKey === activeRow.layerKey)
+    const targetIndex = layerRows.findIndex((row) => row.id === activeRow.conditionId)
+    const focusTarget = targetIndex < 0
+      ? undefined
+      : layerRows[targetIndex + 1] ?? layerRows[targetIndex - 1]
+    const result = await performStructural((token) =>
+      deleteCondition(projectId, conditionId, token),
+    )
+    if (result === null) return
+    if (focusTarget === undefined) {
+      setActiveRow(null)
+      return
+    }
+    setActiveRow({ conditionId: focusTarget.id, layerKey: focusTarget.layerKey })
+    setPendingConditionFocus(focusTarget.id)
+  }, [activeRow, data.rows, interaction.canManageConditions, performStructural, projectId])
 
   const clearActive = useCallback(() => {
     setActiveRow(null)

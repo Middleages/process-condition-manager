@@ -67,6 +67,7 @@ import {
 } from './model'
 import type {
   CellStatus,
+  ConditionGridCallbacks,
   ConditionGridColumn,
   ConditionGridComponent,
   ConditionGridHandle,
@@ -130,6 +131,26 @@ export function currentGridSelectionForLayout<Selection>(
   return state.layoutAuthority === currentLayoutAuthority
     ? state.selection
     : emptySelection
+}
+
+export function porCellBehavior(
+  isPor: boolean,
+  layerRowCount: number,
+): { mark: '●' | '○'; canTransfer: boolean } {
+  return {
+    mark: isPor ? '●' : '○',
+    canTransfer: layerRowCount > 1 && !isPor,
+  }
+}
+
+export function requestPorTransfer(
+  row: Pick<ConditionGridRow, 'id' | 'layerKey' | 'isPor'>,
+  layerRowCount: number,
+  onPorChange: ConditionGridCallbacks['onPorChange'],
+): void {
+  if (porCellBehavior(row.isPor, layerRowCount).canTransfer) {
+    onPorChange?.(row.layerKey, row.id)
+  }
 }
 
 function selectionForCell(col: number, row: number): GridSelection {
@@ -490,11 +511,14 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
       }
       if (col === 3) {
         // POR 표식 ●/○ — 표시는 읽기 전용 셀이고, 이양은 onCellClicked(col===3)가 처리한다(T7).
-        const mark = rowData.isPor ? '●' : '○'
+        const behavior = porCellBehavior(
+          rowData.isPor,
+          groupMeta.groups[groupMeta.groupIndexByRow[row]]?.rowCount ?? 0,
+        )
         return {
           kind: GridCellKind.Text,
-          data: mark,
-          displayData: mark,
+          data: behavior.mark,
+          displayData: behavior.mark,
           allowOverlay: false,
           contentAlign: 'center',
           themeOverride: {
@@ -779,15 +803,18 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
       }
       if (readOnly) return
       if (col === 3) {
-        // 이미 POR인 행은 무시 — 이양 대상이 아니고 불필요한 재조회를 피한다(POR 해제는 없다).
-        if (!rowData.isPor) callbacks?.onPorChange?.(rowData.layerKey, rowData.id)
+        requestPorTransfer(
+          rowData,
+          groupMeta.groups[groupMeta.groupIndexByRow[row]]?.rowCount ?? 0,
+          callbacks?.onPorChange,
+        )
         return
       }
       if (col === 0 || col === 1 || col === 2) {
         callbacks?.onConditionActivate?.({ conditionId: rowData.id, layerKey: rowData.layerKey })
       }
     },
-    [readOnly, rows, callbacks, visibleColumns],
+    [readOnly, rows, callbacks, visibleColumns, groupMeta],
   )
 
   useImperativeHandle(

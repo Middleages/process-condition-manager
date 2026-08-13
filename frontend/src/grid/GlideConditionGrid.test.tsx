@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import {
   cellHistoryMenuActionForKey,
@@ -9,12 +9,29 @@ import {
   currentGridSelectionForLayout,
   gridLayoutAuthority,
   isCellHistoryMenuInvocation,
+  porCellBehavior,
+  requestPorTransfer,
   resolveCellHistoryMenuPosition,
   resolveCellHistoryRequest,
 } from './GlideConditionGrid'
 import source from './GlideConditionGrid.tsx?raw'
 
 describe('composite cell status rendering priority', () => {
+  it('keeps a single-row POR selected and non-actionable', () => {
+    const onPorChange = vi.fn()
+    expect(porCellBehavior(true, 1)).toEqual({ mark: '●', canTransfer: false })
+    requestPorTransfer({ id: '11', layerKey: 'L1', isPor: true }, 1, onPorChange)
+    expect(onPorChange).not.toHaveBeenCalled()
+    expect(source).toMatch(/const behavior = porCellBehavior\([\s\S]*?data: behavior\.mark/)
+  })
+
+  it('calls onPorChange for a non-POR click in a multi-row Layer', () => {
+    const onPorChange = vi.fn()
+    expect(porCellBehavior(false, 2)).toEqual({ mark: '○', canTransfer: true })
+    requestPorTransfer({ id: '12', layerKey: 'L1', isPor: false }, 2, onPorChange)
+    expect(onPorChange).toHaveBeenCalledWith('L1', '12')
+  })
+
   it('freezes four identity columns, uses POR column 3, and includes optional units in parameter headers', () => {
     const handleCellClicked = source.match(
       /const handleCellClicked = useCallback\([\s\S]*?(?=\n  useImperativeHandle)/,
