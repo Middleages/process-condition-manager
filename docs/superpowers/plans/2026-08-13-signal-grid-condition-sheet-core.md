@@ -76,6 +76,7 @@ expect(IDENTITY_COLUMN_COUNT).toBe(4)
 ```
 
 Add a Glide source-contract test that fixed columns are frozen and the POR click branch uses column index 3.
+Also assert a Parameter with `unit: '°C'` produces the header title `ZONE TEMP. · °C`, while a Parameter without a unit keeps only its display name.
 
 - [ ] **Step 2: Run the focused tests and confirm RED**
 
@@ -110,7 +111,7 @@ Extend `ConditionGridRow` with required `stepSeq: string` and `layerId: string`.
 
 Change `IDENTITY_COLUMNS` to the four-entry contract above. In `GlideConditionGrid`, render Step Seq and Layer only at `groupMeta.isGroupStart[row]`, condition on every row, and POR at column 3. Parameter lookup remains `col - IDENTITY_COLUMN_COUNT`; `freezeColumns` remains derived from the constant.
 
-Use widths near 84/120/104/64px and retain the existing compact row height, group shading, overlays, editing, copy, and paste behavior. Parameter header units remain available through the existing tooltip/display mechanism; do not create a second header row.
+Use widths near 84/120/104/64px and retain the existing compact row height, group shading, overlays, editing, copy, and paste behavior. Build each Parameter header title as `unit ? `${headerName} · ${unit}` : headerName`; do not create a second header row.
 
 - [ ] **Step 5: Run focused tests and confirm GREEN**
 
