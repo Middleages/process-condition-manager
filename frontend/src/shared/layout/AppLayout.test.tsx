@@ -17,26 +17,31 @@ function renderLayout(): string {
 }
 
 describe('AppLayout', () => {
-  it('keeps the approved 52px global shell, navigation, and full-width main boundary', () => {
+  it('renders the product rail navigation with compact destination codes', () => {
     const html = renderLayout()
-    const headerTag = html.match(/<header[^>]*>/)?.[0]
+    const primaryNavigation = html.match(/<nav aria-label="주요 메뉴"[^>]*>([\s\S]*?)<\/nav>/)?.[1]
+
+    expect(primaryNavigation).toBeDefined()
+    expect(primaryNavigation).toContain('href="/projects"')
+    expect(primaryNavigation).toContain('href="/processes"')
+    expect(primaryNavigation).toContain('href="/parameters"')
+    expect(primaryNavigation).toContain('aria-current="page"')
+    expect(primaryNavigation).toContain('PRJ')
+    expect(primaryNavigation).toContain('PCS')
+    expect(primaryNavigation).toContain('PAR')
+  })
+
+  it('keeps a 76px rail, skip link, and one main outlet boundary', () => {
+    const html = renderLayout()
     const mainTag = html.match(/<main[^>]*id="main-content"[^>]*>/)?.[0]
 
-    expect(headerTag).toBeDefined()
-    expect(headerTag).toContain('h-[52px]')
+    expect(html).toContain('grid-cols-[76px_minmax(0,1fr)]')
+    expect(html).toContain('w-[76px]')
     expect(html).toContain('href="#main-content"')
     expect(html).toContain('본문으로 건너뛰기')
-    expect(html).toContain('aria-label="주요 메뉴"')
-    expect(html).toContain('aria-label="좁은 화면 주요 메뉴"')
-    expect(html).toContain('aria-label="PCM 프로젝트"')
-    expect(html).toContain('aria-current="page"')
-    expect(html).toContain('프로젝트')
-    expect(html).toContain('공정 카탈로그')
-    expect(html).toContain('파라미터 관리')
-    expect(html).toContain('lg:hidden')
     expect(mainTag).toBeDefined()
     expect(mainTag).toContain('w-full')
     expect(mainTag).not.toContain('max-w-')
-    expect(html).toContain('project child')
+    expect(html.match(/project child/g)).toHaveLength(1)
   })
 })
