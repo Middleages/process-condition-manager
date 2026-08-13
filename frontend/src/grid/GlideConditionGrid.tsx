@@ -52,6 +52,7 @@ import {
   IDENTITY_COLUMNS,
   cellScrollTarget,
   columnScrollIndex,
+  conditionRowScrollTarget,
   commitPasteCallbackRuntime,
   computeRowGroups,
   headerTooltip,
@@ -792,6 +793,19 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
   useImperativeHandle(
     ref,
     (): ConditionGridHandle => ({
+      scrollToCondition(conditionId) {
+        const target = conditionRowScrollTarget(conditionId, rows)
+        if (target !== null) {
+          gridRef.current?.scrollTo(target.col, target.row, 'vertical', 0, 0, {
+            vAlign: 'center',
+          })
+          requestedFocusRef.current = [target.col, target.row]
+          setSelectionState({
+            layoutAuthority,
+            selection: selectionForCell(target.col, target.row),
+          })
+        }
+      },
       scrollToCell(conditionId, parameterCode) {
         const target = cellScrollTarget(conditionId, parameterCode, visibleColumns, rows, IDENTITY_COLUMN_COUNT)
         if (target !== null) {

@@ -233,6 +233,15 @@ export function cellScrollTarget(
   return { col: identityCount + colIndex, row: rowIndex }
 }
 
+/** 조건 행을 Glide Step Seq 셀 좌표로 — Layer 탐색기에서 행으로 세로 점프. */
+export function conditionRowScrollTarget(
+  conditionId: string,
+  rows: readonly ConditionGridRow[],
+): { col: 0; row: number } | null {
+  const row = rows.findIndex((candidate) => candidate.id === conditionId)
+  return row < 0 ? null : { col: 0, row }
+}
+
 /** 셀 오버레이(상태/스테이징) 조회용 합성 키. */
 export function overlayKey(conditionId: string, parameterCode: string): string {
   return `${conditionId} ${parameterCode}`

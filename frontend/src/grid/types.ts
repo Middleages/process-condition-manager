@@ -169,6 +169,8 @@ export interface ConditionGridViewState {
  * 일회성 명령만 노출한다. 구현체는 `useImperativeHandle`로 이 형태를 만족시킨다.
  */
 export interface ConditionGridHandle {
+  /** 특정 조건 행으로 세로 스크롤하고 Step Seq 셀을 선택한 뒤 그리드 focus를 복원한다. */
+  scrollToCondition(conditionId: string): void
   /** 특정 셀로 스크롤하고 그 셀을 선택한 뒤 그리드 focus를 복원한다(Phase 3). */
   scrollToCell(conditionId: string, parameterCode: string): void
   /** 특정 파라미터 컬럼으로 스크롤 점프(컬럼 검색-점프, T6). */

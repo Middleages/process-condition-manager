@@ -5,6 +5,7 @@ import {
   IDENTITY_COLUMNS,
   cellScrollTarget,
   columnScrollIndex,
+  conditionRowScrollTarget,
   computeRowGroups,
   distinctCategories,
   formatNumberDisplay,
@@ -290,6 +291,16 @@ describe('cellScrollTarget', () => {
   it('returns null when the row or column is missing', () => {
     expect(cellScrollTarget('999', 'exposure', visible, rows, IDENTITY_COLUMN_COUNT)).toBeNull()
     expect(cellScrollTarget('1', 'nope', visible, rows, IDENTITY_COLUMN_COUNT)).toBeNull()
+  })
+})
+
+describe('conditionRowScrollTarget', () => {
+  it('targets the Step Seq cell for a known condition row', () => {
+    expect(conditionRowScrollTarget('3', rows)).toEqual({ col: 0, row: 2 })
+  })
+
+  it('returns null when the condition row is missing', () => {
+    expect(conditionRowScrollTarget('missing', rows)).toBeNull()
   })
 })
 

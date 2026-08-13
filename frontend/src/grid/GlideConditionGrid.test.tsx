@@ -100,6 +100,20 @@ describe('composite cell status rendering priority', () => {
     expect(source).toContain('onGridSelectionChange={handleGridSelectionChange}')
   })
 
+  it('makes scrollToCondition scroll vertically, select Step Seq, and request Grid focus', () => {
+    const command = source.match(
+      /scrollToCondition\(conditionId\)[\s\S]*?(?=\n      scrollToCell)/,
+    )?.[0]
+
+    expect(command).toMatch(/conditionRowScrollTarget\(conditionId, rows\)/)
+    expect(command).toMatch(/scrollTo\(target\.col, target\.row, 'vertical'/)
+    expect(command).toContain('requestedFocusRef.current = [target.col, target.row]')
+    expect(command).toContain(
+      'selection: selectionForCell(target.col, target.row)',
+    )
+    expect(command).not.toContain('gridRef.current?.focus()')
+  })
+
   it('invalidates controlled selection when visible keys or row identity/order changes', () => {
     const columns = [{ key: 'amount' }, { key: 'equipment' }]
     const rows = [{ id: '11' }, { id: '12' }]

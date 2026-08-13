@@ -24,6 +24,7 @@ vi.mock('@/grid', async (importOriginal) => {
       return (
         <div
           data-testid="rendered-condition-grid"
+          data-condition-ids={JSON.stringify(data.rows.map((row) => row.id))}
           data-validation-statuses={JSON.stringify(data.statuses ?? [])}
           data-choice-resource-keys={JSON.stringify(Array.from(data.choiceResources?.keys() ?? []))}
         >
@@ -1240,9 +1241,102 @@ describe('SheetView focus shell integration', () => {
     )
   })
 
-  it('supplies the inert current-Layer toggle props until viewport wiring lands', () => {
-    expect(sheetViewSource).toContain('currentOnly={false}')
-    expect(sheetViewSource).toContain('onCurrentOnlyChange={() => undefined}')
+  it('composes every Layer row into the Grid by default', () => {
+    const queryClient = client()
+    queryClient.setQueryData(['project', 7], {
+      ...project,
+      layers: [
+        {
+          id: 1,
+          layer_key: 'L1::10::ETCH',
+          step_seq: '10',
+          layer_id: 'ETCH',
+          eqp_type: null,
+          eqp_type_desc: null,
+          area_name: null,
+          sort_order: 0,
+          condition_count: 1,
+          cell_count: 1,
+          source_project_id: null,
+          source_layer_key: null,
+        },
+        {
+          id: 2,
+          layer_key: 'L1::20::CLEAN',
+          step_seq: '20',
+          layer_id: 'CLEAN',
+          eqp_type: null,
+          eqp_type_desc: null,
+          area_name: null,
+          sort_order: 1,
+          condition_count: 1,
+          cell_count: 1,
+          source_project_id: null,
+          source_layer_key: null,
+        },
+      ],
+    })
+    queryClient.setQueryData(['sheet', 7], {
+      ...sheet,
+      rows: [
+        sheet.rows[0],
+        {
+          ...sheet.rows[0],
+          condition_id: 22,
+          layer_key: 'L1::20::CLEAN',
+          step_seq: '20',
+          layer_id: 'CLEAN',
+          layer_label: 'CLEAN (20)',
+        },
+      ],
+    })
+
+    const html = renderSheet(queryClient)
+
+    expect(html).toContain(
+      'data-condition-ids="[&quot;11&quot;,&quot;22&quot;]"',
+    )
+  })
+
+  it('wires current-only as a controlled row view without replacing the continuous source', () => {
+    expect(sheetViewSource).toContain(
+      'const [currentLayerOnly, setCurrentLayerOnly] = useState(false)',
+    )
+    expect(sheetViewSource).toMatch(
+      /rows: rowsForLayerViewport\(displayRows, activeLayerKey, currentLayerOnly\)/,
+    )
+    expect(sheetViewSource).toContain('currentOnly={currentLayerOnly}')
+    expect(sheetViewSource).toContain('onCurrentOnlyChange={setCurrentLayerOnly}')
+    expect(sheetViewSource).not.toMatch(
+      /rows: displayRows\.filter\(\(row\) => row\.layerKey === activeLayerKey\)/,
+    )
+  })
+
+  it('activates a Layer by publishing its first condition for a post-commit Grid jump', () => {
+    const activateStart = sheetViewSource.indexOf('const activateLayer = useCallback(')
+    const activateEnd = sheetViewSource.indexOf('\n\n  const {', activateStart)
+    const activateBody = sheetViewSource.slice(activateStart, activateEnd)
+
+    expect(activateStart).toBeGreaterThan(-1)
+    expect(activateBody).toContain('firstConditionIdForLayer(displayRows, layerKey)')
+    expect(activateBody).toContain('setPendingLayerJump(conditionId)')
+    expect(activateBody).toContain('setActiveLayerKey(layerKey)')
+    expect(activateBody).toContain('붙여넣기를 적용 또는 취소한 뒤 이동해 주세요.')
+    expect(sheetViewSource).toMatch(
+      /useEffect\(\(\) => \{[\s\S]*?pendingLayerJump[\s\S]*?gridData\.rows\.some\([\s\S]*?gridRef\.current\?\.scrollToCondition\(pendingLayerJump\)[\s\S]*?setPendingLayerJump\(null\)/,
+    )
+  })
+
+  it('tracks the active Layer from Grid and workbench row coordinates', () => {
+    expect(sheetViewSource).toMatch(
+      /onConditionActivate: \(payload\) => \{\s*setActiveLayerKey\(payload\.layerKey\)/,
+    )
+    expect(sheetViewSource).toMatch(
+      /onCellActivate: \(payload\) => \{\s*setActiveLayerKey\(payload\.layerKey\)\s*setSelectedCell\(payload\)/,
+    )
+    expect(sheetViewSource).toMatch(
+      /const targetRow = displayRows\.find\([\s\S]*?setActiveLayerKey\(targetRow\.layerKey\)/,
+    )
   })
 
   it('keeps the workbench toggle outside validation gating and auto-opens only on a first issue', () => {

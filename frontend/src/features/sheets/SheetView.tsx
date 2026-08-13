@@ -83,6 +83,11 @@ import {
   buildLayerNavigatorItems,
   updateRecentLayerKeys,
 } from './layerNavigatorState'
+import {
+  firstConditionIdForLayer,
+  recoverLayerSelection,
+  rowsForLayerViewport,
+} from './layerViewportState'
 import { SheetWorkbenchPanel, SheetWorkbenchToggle, useSheetWorkbenchState } from './SheetWorkbench'
 import {
   BackboneDiffWorkbench,
@@ -832,14 +837,31 @@ function SheetEditor({
   const [activeLayerKey, setActiveLayerKey] = useState(
     () => sortedProjectLayers[0]?.layer_key ?? data.rows[0]?.layerKey ?? '',
   )
+  const [currentLayerOnly, setCurrentLayerOnly] = useState(false)
+  const [pendingLayerJump, setPendingLayerJump] = useState<string | null>(null)
   const [recentLayerKeys, setRecentLayerKeys] = useState<readonly string[]>([])
   const [layerQuery, setLayerQuery] = useState('')
   const [navigatorCollapsed, setNavigatorCollapsed] = useState(false)
 
   useEffect(() => {
-    if (activeLayerKey === '' || !data.rows.some((row) => row.layerKey === activeLayerKey)) {
-      setActiveLayerKey(sortedProjectLayers[0]?.layer_key ?? data.rows[0]?.layerKey ?? '')
+    if (activeLayerKey !== '' && data.rows.some((row) => row.layerKey === activeLayerKey)) return
+
+    const recovery = recoverLayerSelection(
+      data.rows,
+      sortedProjectLayers.map((layer) => layer.layer_key),
+      activeLayerKey,
+    )
+    const firstRow = data.rows[0]
+    const next = recovery ??
+      (firstRow === undefined ? null : { layerKey: firstRow.layerKey, conditionId: firstRow.id })
+
+    if (next === null) {
+      setActiveLayerKey('')
+      setPendingLayerJump(null)
+      return
     }
+    setActiveLayerKey(next.layerKey)
+    setPendingLayerJump(next.conditionId)
   }, [activeLayerKey, data.rows, sortedProjectLayers])
 
   // 서버 행 위에 더티 값을 얹어 표시(편집값 즉시 반영) + 더티 셀 상태 오버레이.
@@ -900,12 +922,19 @@ function SheetEditor({
   const gridData = useMemo(
     () => ({
       ...data,
-      rows: displayRows.filter((row) => row.layerKey === activeLayerKey),
+      rows: rowsForLayerViewport(displayRows, activeLayerKey, currentLayerOnly),
       statuses: validation.statuses,
       choiceResources,
     }),
-    [activeLayerKey, data, displayRows, validation.statuses, choiceResources],
+    [activeLayerKey, currentLayerOnly, data, displayRows, validation.statuses, choiceResources],
   )
+
+  useEffect(() => {
+    if (pendingLayerJump === null) return
+    if (!gridData.rows.some((row) => row.id === pendingLayerJump)) return
+    gridRef.current?.scrollToCondition(pendingLayerJump)
+    setPendingLayerJump(null)
+  }, [gridData.rows, pendingLayerJump])
 
   // 붙여넣기 대상 매핑 기준 컬럼 순서 — 그리드가 view.activeCategory로 거르는 것과 동일한
   // 부분집합이어야 대상 셀 해석이 어긋나지 않는다(같은 activeCategory·같은 함수).
@@ -1006,10 +1035,12 @@ function SheetEditor({
       setCoordinateNavigationStatus('붙여넣기를 적용 또는 취소한 뒤 이동해 주세요.')
       return
     }
+    const conditionId = firstConditionIdForLayer(displayRows, layerKey)
+    setPendingLayerJump(conditionId)
     setActiveLayerKey(layerKey)
     setRecentLayerKeys((current) => updateRecentLayerKeys(current, layerKey))
     setCoordinateNavigationStatus(null)
-  }, [])
+  }, [displayRows])
 
   const {
     readOnly,
@@ -1238,11 +1269,15 @@ function SheetEditor({
       },
       // 좌측 식별 컬럼 클릭 → 그 행을 추가/복제/삭제 대상으로 활성화(하단 액션 바에 노출).
       onConditionActivate: (payload) => {
+        setActiveLayerKey(payload.layerKey)
         if (!interaction.canManageConditions || pasteRef.current !== null) return
         setStructError(null)
         setActiveRow(payload)
       },
-      onCellActivate: setSelectedCell,
+      onCellActivate: (payload) => {
+        setActiveLayerKey(payload.layerKey)
+        setSelectedCell(payload)
+      },
       onCellHistoryRequest: (payload) => {
         if (historyWorkbench.onCellHistoryRequest(payload)) {
           workbenchState.selectMode('history')
@@ -1362,8 +1397,21 @@ function SheetEditor({
         setCoordinateNavigationStatus('이동할 대상 셀을 찾지 못했습니다.')
         return
       }
+      const targetRow = displayRows.find(
+        (row) => row.id === String(navigation.target.conditionId),
+      )
+      if (targetRow === undefined) {
+        setCoordinateNavigationStatus('이동할 대상 셀을 찾지 못했습니다.')
+        return
+      }
+      const waitsForLayerCommit = currentLayerOnly && targetRow.layerKey !== activeLayerKey
+      setActiveLayerKey(targetRow.layerKey)
       if (navigation.kind === 'reveal-category') {
         setActiveCategory(navigation.categoryCode)
+        setPendingCoordinateJump(navigation.target)
+        return
+      }
+      if (waitsForLayerCommit) {
         setPendingCoordinateJump(navigation.target)
         return
       }
@@ -1373,7 +1421,14 @@ function SheetEditor({
       )
       setCoordinateNavigationStatus('대상 셀로 이동했습니다.')
     },
-    [interaction.canSwitchCategory, data.columns, displayRows, activeCategory],
+    [
+      interaction.canSwitchCategory,
+      data.columns,
+      displayRows,
+      activeCategory,
+      activeLayerKey,
+      currentLayerOnly,
+    ],
   )
 
   const activateWorkbenchJumpTarget = useCallback(
@@ -1859,11 +1914,11 @@ function SheetEditor({
           recentLayerKeys={recentLayerKeys}
           query={layerQuery}
           collapsed={navigatorCollapsed}
-          currentOnly={false}
+          currentOnly={currentLayerOnly}
           onQueryChange={setLayerQuery}
           onActivate={activateLayer}
           onCollapsedChange={setNavigatorCollapsed}
-          onCurrentOnlyChange={() => undefined}
+          onCurrentOnlyChange={setCurrentLayerOnly}
         />
       }
       inspector={
