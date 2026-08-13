@@ -1240,6 +1240,11 @@ describe('SheetView focus shell integration', () => {
     )
   })
 
+  it('supplies the inert current-Layer toggle props until viewport wiring lands', () => {
+    expect(sheetViewSource).toContain('currentOnly={false}')
+    expect(sheetViewSource).toContain('onCurrentOnlyChange={() => undefined}')
+  })
+
   it('keeps the workbench toggle outside validation gating and auto-opens only on a first issue', () => {
     expect(sheetViewSource).toContain('const workbenchState = useSheetWorkbenchState()')
     expect(sheetViewSource).toContain('const previousValidationIssueCountRef = useRef(0)')

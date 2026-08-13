@@ -1859,9 +1859,11 @@ function SheetEditor({
           recentLayerKeys={recentLayerKeys}
           query={layerQuery}
           collapsed={navigatorCollapsed}
+          currentOnly={false}
           onQueryChange={setLayerQuery}
           onActivate={activateLayer}
           onCollapsedChange={setNavigatorCollapsed}
+          onCurrentOnlyChange={() => undefined}
         />
       }
       inspector={
