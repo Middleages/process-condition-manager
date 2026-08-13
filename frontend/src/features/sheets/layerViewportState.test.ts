@@ -35,6 +35,15 @@ describe('layerViewportState', () => {
     })
   })
 
+  it('recovers to the previous Layer when there is no following Layer with a row', () => {
+    const rowsWithoutL3 = rows.filter((row) => row.layerKey !== 'L3')
+
+    expect(recoverLayerSelection(rowsWithoutL3, ['L1', 'L2', 'L3'], 'L3')).toEqual({
+      layerKey: 'L2',
+      conditionId: '3',
+    })
+  })
+
   it('does not recover a selection without any rows', () => {
     expect(recoverLayerSelection([], ['L1', 'L2'], 'L2')).toBeNull()
   })

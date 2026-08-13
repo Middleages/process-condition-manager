@@ -1,7 +1,9 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { forwardRef } from 'react'
+import { JSDOM } from 'jsdom'
+import { act, forwardRef, useImperativeHandle } from 'react'
+import { createRoot, type Root } from 'react-dom/client'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { Route, Routes, StaticRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, StaticRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type {
@@ -11,7 +13,11 @@ import type {
   HistoryTimelineItemOut,
 } from '@/api/history'
 import type { ProjectOut, SheetOut } from '@/api/types'
-import type { ConditionGridProps } from '@/grid'
+import type { ConditionGridHandle, ConditionGridProps } from '@/grid'
+
+let mockScrollToCondition = vi.fn<(conditionId: string) => void>()
+let mockScrollToCell = vi.fn<(conditionId: string, parameterCode: string) => void>()
+let mockScrollToColumn = vi.fn<(parameterCode: string) => void>()
 
 vi.mock('@/grid', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/grid')>()
@@ -19,8 +25,16 @@ vi.mock('@/grid', async (importOriginal) => {
     ...actual,
     GlideConditionGrid: forwardRef(function FakeGrid(
       { data }: ConditionGridProps,
-      _ref,
+      ref,
     ) {
+      useImperativeHandle(
+        ref,
+        (): ConditionGridHandle => ({
+          scrollToCondition: mockScrollToCondition,
+          scrollToCell: mockScrollToCell,
+          scrollToColumn: mockScrollToColumn,
+        }),
+      )
       return (
         <div
           data-testid="rendered-condition-grid"
@@ -105,6 +119,9 @@ import type { BackboneDiffWorkbenchController } from './useBackboneDiffWorkbench
 import sheetViewSource from './SheetView.tsx?raw'
 
 beforeEach(() => {
+  mockScrollToCondition = vi.fn()
+  mockScrollToCell = vi.fn()
+  mockScrollToColumn = vi.fn()
   mockSheetWorkbenchState = createMockSheetWorkbenchState()
   mockHistoryWorkbenchController = createMockHistoryController()
   mockBackboneDiffWorkbenchController = createMockBackboneDiffWorkbenchController()
@@ -1299,44 +1316,104 @@ describe('SheetView focus shell integration', () => {
   })
 
   it('wires current-only as a controlled row view without replacing the continuous source', () => {
-    expect(sheetViewSource).toContain(
-      'const [currentLayerOnly, setCurrentLayerOnly] = useState(false)',
-    )
-    expect(sheetViewSource).toMatch(
-      /rows: rowsForLayerViewport\(displayRows, activeLayerKey, currentLayerOnly\)/,
-    )
-    expect(sheetViewSource).toContain('currentOnly={currentLayerOnly}')
-    expect(sheetViewSource).toContain('onCurrentOnlyChange={setCurrentLayerOnly}')
-    expect(sheetViewSource).not.toMatch(
-      /rows: displayRows\.filter\(\(row\) => row\.layerKey === activeLayerKey\)/,
-    )
+    const interactive = renderInteractiveSheet()
+
+    try {
+      expect(renderedConditionIds(interactive.container)).toEqual(['11', '22', '33'])
+
+      click(interactive, layerButton(interactive.container, 'L1::20::CLEAN'))
+      expect(mockScrollToCondition).toHaveBeenLastCalledWith('22')
+
+      mockScrollToCondition.mockClear()
+      click(interactive, currentOnlyButton(interactive.container))
+      expect(renderedConditionIds(interactive.container)).toEqual(['22'])
+      expect(mockScrollToCondition).toHaveBeenLastCalledWith('22')
+
+      mockScrollToCondition.mockClear()
+      click(interactive, currentOnlyButton(interactive.container))
+      expect(renderedConditionIds(interactive.container)).toEqual(['11', '22', '33'])
+      expect(mockScrollToCondition).toHaveBeenLastCalledWith('22')
+    } finally {
+      interactive.cleanup()
+    }
   })
 
-  it('activates a Layer by publishing its first condition for a post-commit Grid jump', () => {
-    const activateStart = sheetViewSource.indexOf('const activateLayer = useCallback(')
-    const activateEnd = sheetViewSource.indexOf('\n\n  const {', activateStart)
-    const activateBody = sheetViewSource.slice(activateStart, activateEnd)
+  it('synchronizes Backbone evidence to Layer activation while preserving other filters', () => {
+    const onFiltersChange = vi.fn()
+    mockSheetWorkbenchState = createMockSheetWorkbenchState('backbone-diff')
+    mockBackboneDiffWorkbenchController = createMockBackboneDiffWorkbenchController()
+    mockBackboneDiffWorkbenchController.state = {
+      ...mockBackboneDiffWorkbenchController.state,
+      filters: {
+        ...mockBackboneDiffWorkbenchController.state.filters,
+        categoryCode: 'process',
+        parameterCode: 'ETCH_P001',
+        includeUnchanged: true,
+      },
+    }
+    mockBackboneDiffWorkbenchController.onFiltersChange = onFiltersChange
+    const interactive = renderInteractiveSheet()
 
-    expect(activateStart).toBeGreaterThan(-1)
-    expect(activateBody).toContain('firstConditionIdForLayer(displayRows, layerKey)')
-    expect(activateBody).toContain('setPendingLayerJump(conditionId)')
-    expect(activateBody).toContain('setActiveLayerKey(layerKey)')
-    expect(activateBody).toContain('붙여넣기를 적용 또는 취소한 뒤 이동해 주세요.')
-    expect(sheetViewSource).toMatch(
-      /useEffect\(\(\) => \{[\s\S]*?pendingLayerJump[\s\S]*?gridData\.rows\.some\([\s\S]*?gridRef\.current\?\.scrollToCondition\(pendingLayerJump\)[\s\S]*?setPendingLayerJump\(null\)/,
-    )
+    try {
+      onFiltersChange.mockClear()
+      click(interactive, layerButton(interactive.container, 'L1::20::CLEAN'))
+
+      expect(onFiltersChange).toHaveBeenLastCalledWith(expect.objectContaining({
+        layerKey: 'L1::20::CLEAN',
+        categoryCode: 'process',
+        parameterCode: 'ETCH_P001',
+        includeUnchanged: true,
+      }))
+    } finally {
+      interactive.cleanup()
+    }
   })
 
-  it('tracks the active Layer from Grid and workbench row coordinates', () => {
-    expect(sheetViewSource).toMatch(
-      /onConditionActivate: \(payload\) => \{\s*setActiveLayerKey\(payload\.layerKey\)/,
-    )
-    expect(sheetViewSource).toMatch(
-      /onCellActivate: \(payload\) => \{\s*setActiveLayerKey\(payload\.layerKey\)\s*setSelectedCell\(payload\)/,
-    )
-    expect(sheetViewSource).toMatch(
-      /const targetRow = displayRows\.find\([\s\S]*?setActiveLayerKey\(targetRow\.layerKey\)/,
-    )
+  it('shows Validation evidence only for the active Layer', () => {
+    mockSheetWorkbenchState = createMockSheetWorkbenchState('validation')
+    const interactive = renderInteractiveSheet({ requiredCellsEmpty: true })
+
+    try {
+      expect(validationIssueLabels(interactive.container)).toEqual([
+        expect.stringContaining('ETCH (10)'),
+      ])
+
+      click(interactive, layerButton(interactive.container, 'L1::20::CLEAN'))
+
+      expect(validationIssueLabels(interactive.container)).toEqual([
+        expect.stringContaining('CLEAN (20)'),
+      ])
+    } finally {
+      interactive.cleanup()
+    }
+  })
+
+  it('recovers with the prior Layer order when current metadata removes the active Layer', async () => {
+    const interactive = renderInteractiveSheet()
+
+    try {
+      click(interactive, layerButton(interactive.container, 'L1::20::CLEAN'))
+      mockScrollToCondition.mockClear()
+
+      await act(async () => {
+        interactive.queryClient.setQueryData(['project', 7], {
+          ...interactive.project,
+          layers: interactive.project.layers.filter(
+            (layer) => layer.layer_key !== 'L1::20::CLEAN',
+          ),
+        })
+        interactive.queryClient.setQueryData(['sheet', 7], {
+          ...interactive.sheet,
+          rows: interactive.sheet.rows.filter((row) => row.condition_id !== 22),
+        })
+        await Promise.resolve()
+      })
+
+      expect(activeLayerKey(interactive.container)).toBe('L1::30::CMP')
+      expect(mockScrollToCondition).toHaveBeenLastCalledWith('33')
+    } finally {
+      interactive.cleanup()
+    }
   })
 
   it('keeps the workbench toggle outside validation gating and auto-opens only on a first issue', () => {
@@ -1355,3 +1432,145 @@ describe('SheetView focus shell integration', () => {
     expect(sheetViewSource).not.toContain('showValidationWorkbench ? (')
   })
 })
+
+function renderInteractiveSheet({ requiredCellsEmpty = false } = {}) {
+  const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', {
+    url: 'https://pcm.test/projects/7/sheet',
+  })
+  const container = dom.window.document.querySelector<HTMLDivElement>('#root')
+  if (container === null) throw new Error('Interactive Sheet root is unavailable.')
+
+  const layers = [
+    ['L1::10::ETCH', '10', 'ETCH', 0],
+    ['L1::20::CLEAN', '20', 'CLEAN', 1],
+    ['L1::30::CMP', '30', 'CMP', 2],
+  ] as const
+  const interactiveProject: ProjectOut = {
+    ...project,
+    layers: layers.map(([layerKey, stepSeq, layerId, sortOrder], index) => ({
+      id: index + 1,
+      layer_key: layerKey,
+      step_seq: stepSeq,
+      layer_id: layerId,
+      eqp_type: null,
+      eqp_type_desc: null,
+      area_name: null,
+      sort_order: sortOrder,
+      condition_count: 1,
+      cell_count: requiredCellsEmpty ? 0 : 1,
+      source_project_id: null,
+      source_layer_key: null,
+    })),
+  }
+  const interactiveSheet: SheetOut = {
+    ...sheet,
+    columns: [{ ...sheet.columns[0], required: requiredCellsEmpty }],
+    rows: layers.map((
+      [layerKey, stepSeq, layerId, sortOrder],
+      index,
+    ): SheetOut['rows'][number] => ({
+      ...sheet.rows[0],
+      condition_id: 11 * (index + 1),
+      layer_key: layerKey,
+      step_seq: stepSeq,
+      layer_id: layerId,
+      layer_label: `${layerId} (${stepSeq})`,
+      layer_sort_order: sortOrder,
+      cells: requiredCellsEmpty ? {} : { ETCH_P001: String(index + 1) },
+    })),
+  }
+  const queryClient = client()
+  queryClient.setQueryData(['project', 7], interactiveProject)
+  queryClient.setQueryData(['sheet', 7], interactiveSheet)
+  const globals = globalThis as unknown as {
+    document?: Document
+    HTMLElement?: typeof HTMLElement
+    Node?: typeof Node
+    window?: Window
+    IS_REACT_ACT_ENVIRONMENT?: boolean
+  }
+  const previousGlobals = {
+    document: globals.document,
+    HTMLElement: globals.HTMLElement,
+    Node: globals.Node,
+    window: globals.window,
+    IS_REACT_ACT_ENVIRONMENT: globals.IS_REACT_ACT_ENVIRONMENT,
+  }
+  let root: Root | null = null
+
+  globals.window = dom.window as unknown as Window
+  globals.document = dom.window.document
+  globals.HTMLElement = dom.window.HTMLElement as unknown as typeof HTMLElement
+  globals.Node = dom.window.Node as unknown as typeof Node
+  globals.IS_REACT_ACT_ENVIRONMENT = true
+
+  act(() => {
+    root = createRoot(container)
+    root.render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={['/projects/7/sheet']}>
+          <SheetView projectId={7} />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+  })
+
+  return {
+    container,
+    project: interactiveProject,
+    queryClient,
+    sheet: interactiveSheet,
+    window: dom.window,
+    cleanup: () => {
+      act(() => root?.unmount())
+      queryClient.clear()
+      globals.window = previousGlobals.window
+      globals.document = previousGlobals.document
+      globals.HTMLElement = previousGlobals.HTMLElement
+      globals.Node = previousGlobals.Node
+      globals.IS_REACT_ACT_ENVIRONMENT = previousGlobals.IS_REACT_ACT_ENVIRONMENT
+      dom.window.close()
+    },
+  }
+}
+
+function click(
+  interactive: ReturnType<typeof renderInteractiveSheet>,
+  element: Element,
+): void {
+  act(() => {
+    element.dispatchEvent(new interactive.window.MouseEvent('click', { bubbles: true }))
+  })
+}
+
+function layerButton(container: HTMLElement, layerKey: string): HTMLButtonElement {
+  const button = container.querySelector<HTMLButtonElement>(`[data-layer-row="${layerKey}"]`)
+  if (button === null) throw new Error(`Layer button ${layerKey} is unavailable.`)
+  return button
+}
+
+function currentOnlyButton(container: HTMLElement): HTMLButtonElement {
+  const button = [...container.querySelectorAll<HTMLButtonElement>('button')].find(
+    (candidate) => candidate.textContent?.trim() === '현재만',
+  )
+  if (button === undefined) throw new Error('Current-only button is unavailable.')
+  return button
+}
+
+function renderedConditionIds(container: HTMLElement): string[] {
+  return JSON.parse(
+    container.querySelector('[data-condition-ids]')?.getAttribute('data-condition-ids') ?? '[]',
+  ) as string[]
+}
+
+function activeLayerKey(container: HTMLElement): string | null {
+  return container.querySelector('[data-layer-row][aria-selected="true"]')?.getAttribute(
+    'data-layer-row',
+  ) ?? null
+}
+
+function validationIssueLabels(container: HTMLElement): string[] {
+  return [...container.querySelectorAll<HTMLButtonElement>('[data-validation-workbench] button')]
+    .map((button) => button.getAttribute('aria-label'))
+    .filter((label): label is string => label !== null)
+}

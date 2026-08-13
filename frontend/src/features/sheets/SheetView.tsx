@@ -110,7 +110,7 @@ import {
 import { useSheetChoiceSets } from './useSheetChoiceSets'
 import { useSheetEditing, type SheetEditing } from './useSheetEditing'
 import { useSheetValidation } from './useSheetValidation'
-import { VALIDATION_SERVER_FAILURE } from './validationState'
+import { summarizeIssues, VALIDATION_SERVER_FAILURE } from './validationState'
 import { useOptionalAuth } from '@/app/AuthContext'
 import {
   enrichValidationIssues,
@@ -834,6 +834,10 @@ function SheetEditor({
     () => [...(project?.layers ?? [])].sort((left, right) => left.sort_order - right.sort_order),
     [project?.layers],
   )
+  const orderedLayerKeys = useMemo(
+    () => sortedProjectLayers.map((layer) => layer.layer_key),
+    [sortedProjectLayers],
+  )
   const [activeLayerKey, setActiveLayerKey] = useState(
     () => sortedProjectLayers[0]?.layer_key ?? data.rows[0]?.layerKey ?? '',
   )
@@ -842,13 +846,17 @@ function SheetEditor({
   const [recentLayerKeys, setRecentLayerKeys] = useState<readonly string[]>([])
   const [layerQuery, setLayerQuery] = useState('')
   const [navigatorCollapsed, setNavigatorCollapsed] = useState(false)
+  const previousLayerKeysRef = useRef(orderedLayerKeys)
 
   useEffect(() => {
-    if (activeLayerKey !== '' && data.rows.some((row) => row.layerKey === activeLayerKey)) return
+    if (activeLayerKey !== '' && data.rows.some((row) => row.layerKey === activeLayerKey)) {
+      previousLayerKeysRef.current = orderedLayerKeys
+      return
+    }
 
     const recovery = recoverLayerSelection(
       data.rows,
-      sortedProjectLayers.map((layer) => layer.layer_key),
+      previousLayerKeysRef.current,
       activeLayerKey,
     )
     const firstRow = data.rows[0]
@@ -858,11 +866,13 @@ function SheetEditor({
     if (next === null) {
       setActiveLayerKey('')
       setPendingLayerJump(null)
+      previousLayerKeysRef.current = orderedLayerKeys
       return
     }
     setActiveLayerKey(next.layerKey)
     setPendingLayerJump(next.conditionId)
-  }, [activeLayerKey, data.rows, sortedProjectLayers])
+    previousLayerKeysRef.current = orderedLayerKeys
+  }, [activeLayerKey, data.rows, orderedLayerKeys])
 
   // 서버 행 위에 더티 값을 얹어 표시(편집값 즉시 반영) + 더티 셀 상태 오버레이.
   const displayRows = useMemo(() => applyDirtyToRows(data.rows, dirtyCells), [data.rows, dirtyCells])
@@ -946,6 +956,18 @@ function SheetEditor({
     () => enrichValidationIssues(validation.issues, data.columns, displayRows),
     [validation.issues, data.columns, displayRows],
   )
+  const activeLayerValidationIssues = useMemo(() => {
+    const activeConditionIds = new Set(
+      displayRows
+        .filter((row) => row.layerKey === activeLayerKey)
+        .map((row) => row.id),
+    )
+    return validationIssues.filter((issue) => activeConditionIds.has(issue.conditionId))
+  }, [activeLayerKey, displayRows, validationIssues])
+  const activeLayerValidationSummary = useMemo(
+    () => summarizeIssues(activeLayerValidationIssues),
+    [activeLayerValidationIssues],
+  )
   const issueCountsByLayer = useMemo(() => {
     const counts = new Map<string, number>()
     for (const issue of validation.issues) {
@@ -993,6 +1015,18 @@ function SheetEditor({
     workbenchState.mode === 'backbone-diff',
     backboneDiffMutationRevision,
   )
+  useEffect(() => {
+    if (
+      workbenchState.mode === 'backbone-diff' &&
+      activeLayerKey !== '' &&
+      backboneDiffWorkbench.state.filters.layerKey !== activeLayerKey
+    ) {
+      backboneDiffWorkbench.onFiltersChange({
+        ...backboneDiffWorkbench.state.filters,
+        layerKey: activeLayerKey,
+      })
+    }
+  }, [activeLayerKey, backboneDiffWorkbench, workbenchState.mode])
   const { onClearNavigationAnnouncement: onClearBackboneNavigationAnnouncement } =
     backboneDiffWorkbench
   const [backboneDiffRefreshAnnouncement, setBackboneDiffRefreshAnnouncement] = useState<string | null>(
@@ -1010,7 +1044,7 @@ function SheetEditor({
   const previousValidationIssueCountRef = useRef(0)
 
   useEffect(() => {
-    const issueCount = validationIssues.length
+    const issueCount = activeLayerValidationIssues.length
     if (
       shouldAutoOpenValidationWorkbench(
         previousValidationIssueCountRef.current,
@@ -1021,7 +1055,7 @@ function SheetEditor({
       workbenchState.selectMode('validation')
     }
     previousValidationIssueCountRef.current = issueCount
-  }, [validationIssues.length, workbenchState.mode, workbenchState.selectMode])
+  }, [activeLayerValidationIssues.length, workbenchState.mode, workbenchState.selectMode])
 
   // 붙여넣기 스테이징(적용 전 미리보기). null = 대기 중인 붙여넣기 없음.
   const [paste, setPasteState] = useState<PasteStagingResult | null>(null)
@@ -1041,6 +1075,11 @@ function SheetEditor({
     setRecentLayerKeys((current) => updateRecentLayerKeys(current, layerKey))
     setCoordinateNavigationStatus(null)
   }, [displayRows])
+  const changeCurrentLayerOnly = useCallback((currentOnly: boolean) => {
+    const conditionId = firstConditionIdForLayer(displayRows, activeLayerKey)
+    setPendingLayerJump(conditionId)
+    setCurrentLayerOnly(currentOnly)
+  }, [activeLayerKey, displayRows])
 
   const {
     readOnly,
@@ -1918,7 +1957,7 @@ function SheetEditor({
           onQueryChange={setLayerQuery}
           onActivate={activateLayer}
           onCollapsedChange={setNavigatorCollapsed}
-          onCurrentOnlyChange={setCurrentLayerOnly}
+          onCurrentOnlyChange={changeCurrentLayerOnly}
         />
       }
       inspector={
@@ -1929,12 +1968,12 @@ function SheetEditor({
             onResizeBy={workbenchState.resizeBy}
             onSetWidth={workbenchState.setInspectorWidth}
             inspectorWidth={workbenchState.inspectorWidth}
-            validationIssueCount={validationIssues.length}
+            validationIssueCount={activeLayerValidationIssues.length}
             validationContent={
               <ValidationWorkbench
                 definitionsPending={validationDefinitionsPending}
-                issues={validationIssues}
-                summary={validation.summary}
+                issues={activeLayerValidationIssues}
+                summary={activeLayerValidationSummary}
                 issueAuthority={validation.issueAuthority}
                 serverConfirmation={validation.serverConfirmation}
                 serverFailure={validation.serverFailure}
