@@ -143,6 +143,40 @@ export function porCellBehavior(
   }
 }
 
+export function porCellAccessibility(
+  layerLabel: string,
+  conditionLabel: string,
+  isPor: boolean,
+): string {
+  return `Layer ${layerLabel}, 조건 ${conditionLabel}, POR ${isPor ? '선택됨' : '선택 안 됨'}, 단일 선택`
+}
+
+export function gridSelectionActivation(
+  col: number,
+  row: number,
+  columns: readonly Pick<ConditionGridColumn, 'key'>[],
+  rows: readonly ConditionGridRow[],
+): {
+  condition: { conditionId: string; layerKey: string } | null
+  cell: { conditionId: string; parameterCode: string; layerKey: string } | null
+} {
+  const rowData = rows[row]
+  if (rowData === undefined) return { condition: null, cell: null }
+  if (col < IDENTITY_COLUMN_COUNT) {
+    return {
+      condition: { conditionId: rowData.id, layerKey: rowData.layerKey },
+      cell: null,
+    }
+  }
+  const column = columns[col - IDENTITY_COLUMN_COUNT]
+  return {
+    condition: null,
+    cell: column === undefined
+      ? null
+      : { conditionId: rowData.id, parameterCode: column.key, layerKey: rowData.layerKey },
+  }
+}
+
 export function requestPorTransfer(
   row: Pick<ConditionGridRow, 'id' | 'layerKey' | 'isPor'>,
   layerRowCount: number,
@@ -391,17 +425,9 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
       setSelectionState({ layoutAuthority, selection })
       const cell = selection.current?.cell
       if (cell === undefined) return
-      const target = resolveCellTarget(
-        cell[0],
-        cell[1],
-        visibleColumns,
-        rows,
-        IDENTITY_COLUMN_COUNT,
-      )
-      if (target === null) return
-      const row = rows[cell[1]]
-      if (row === undefined) return
-      callbacks?.onCellActivate?.({ ...target, layerKey: row.layerKey })
+      const activation = gridSelectionActivation(cell[0], cell[1], visibleColumns, rows)
+      if (activation.condition !== null) callbacks?.onConditionActivate?.(activation.condition)
+      if (activation.cell !== null) callbacks?.onCellActivate?.(activation.cell)
     },
     [callbacks, layoutAuthority, rows, visibleColumns],
   )
@@ -517,7 +543,7 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
         )
         return {
           kind: GridCellKind.Text,
-          data: behavior.mark,
+          data: porCellAccessibility(rowData.layerLabel, rowData.conditionLabel, rowData.isPor),
           displayData: behavior.mark,
           allowOverlay: false,
           contentAlign: 'center',
@@ -656,8 +682,20 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
 
   const handleGridKeyDown = useCallback(
     (event: GridKeyEventArgs) => {
-      if (!isCellHistoryMenuInvocation(event.key, event.shiftKey)) return
       const item = event.location ?? effectiveGridSelection.current?.cell
+      if (event.key === 'Enter' && item?.[0] === 3 && !readOnly) {
+        const rowData = rows[item[1]]
+        if (rowData === undefined) return
+        event.cancel()
+        event.preventDefault()
+        requestPorTransfer(
+          rowData,
+          groupMeta.groups[groupMeta.groupIndexByRow[item[1]]]?.rowCount ?? 0,
+          callbacks?.onPorChange,
+        )
+        return
+      }
+      if (!isCellHistoryMenuInvocation(event.key, event.shiftKey)) return
       if (item === undefined) return
       const target = resolveCellHistoryRequest(item, visibleColumns, rows)
       if (target === null) return
@@ -666,7 +704,15 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
       event.stopPropagation()
       openCellHistoryMenu(target, event.bounds)
     },
-    [effectiveGridSelection.current?.cell, visibleColumns, rows, openCellHistoryMenu],
+    [
+      effectiveGridSelection.current?.cell,
+      visibleColumns,
+      rows,
+      openCellHistoryMenu,
+      readOnly,
+      groupMeta,
+      callbacks,
+    ],
   )
 
   const requestCellHistory = useCallback(() => {
@@ -783,24 +829,13 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
     [visibleColumns, rows, stagingIndex, statusIndex],
   )
 
-  // 식별 컬럼 클릭 처리(T7). Glide는 캔버스 렌더라 네이티브 컨텍스트 메뉴가 없으므로 셀 클릭을
-  // 도메인 이벤트로 올린다: POR 컬럼(col===3)은 POR 이양, Step Seq/Layer/조건 컬럼(col 0~2)은
-  // 행 관리 대상 활성화. 읽기 전용이거나 파라미터 셀(col>=4)이면 관여하지 않는다.
+  // POR 클릭만 별도 구조 변경으로 올린다. 행/셀 활성화는 클릭과 키보드에 공통인
+  // onGridSelectionChange 한 경로가 담당해 콜백 중복을 피한다.
   const handleCellClicked = useCallback(
     (item: Item) => {
       const [col, row] = item
       const rowData = rows[row]
       if (rowData === undefined) return
-      const target = resolveCellTarget(
-        col,
-        row,
-        visibleColumns,
-        rows,
-        IDENTITY_COLUMN_COUNT,
-      )
-      if (target !== null) {
-        callbacks?.onCellActivate?.({ ...target, layerKey: rowData.layerKey })
-      }
       if (readOnly) return
       if (col === 3) {
         requestPorTransfer(
@@ -810,11 +845,8 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
         )
         return
       }
-      if (col === 0 || col === 1 || col === 2) {
-        callbacks?.onConditionActivate?.({ conditionId: rowData.id, layerKey: rowData.layerKey })
-      }
     },
-    [readOnly, rows, callbacks, visibleColumns, groupMeta],
+    [readOnly, rows, callbacks, groupMeta],
   )
 
   useImperativeHandle(

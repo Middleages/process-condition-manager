@@ -1186,6 +1186,7 @@ function SheetEditor({
   const [activeRow, setActiveRow] = useState<{ conditionId: string; layerKey: string } | null>(null)
   const [selectedCell, setSelectedCell] = useState<CellCommentTarget | null>(null)
   const [structError, setStructError] = useState<string | null>(null)
+  const [structRefreshError, setStructRefreshError] = useState<string | null>(null)
   const [structBusy, setStructBusy] = useState(false)
   const structInFlightRef = useRef(false) // 구조 변경 중복 실행(빠른 연타) 방지 — 동기 가드.
 
@@ -1198,10 +1199,14 @@ function SheetEditor({
 
   // 활성 행이 (삭제·외부 변경으로) 시트에서 사라지면 선택을 정리한다 — 없는 행에 대한 조작 방지.
   useEffect(() => {
-    if (activeRow !== null && !data.rows.some((row) => row.id === activeRow.conditionId)) {
+    if (
+      activeRow !== null &&
+      activeRow.conditionId !== pendingConditionFocus &&
+      !data.rows.some((row) => row.id === activeRow.conditionId)
+    ) {
       setActiveRow(null)
     }
-  }, [activeRow, data.rows])
+  }, [activeRow, data.rows, pendingConditionFocus])
 
   const refreshSheet = useCallback(async () => {
     // Structural mutations also change Project layer condition_count metadata consumed by the
@@ -1222,18 +1227,24 @@ function SheetEditor({
   }, [refreshSheet, choiceResources])
 
   // 구조 변경 공용 실행: 잠금 검사·더티 flush·잠금 상실 처리(runStructuralChange)를 감싸
-  // UI 상태(진행 중/에러)와 재조회를 얹는다. 성공하면 API 결과, 실패하면 null을 반환한다.
+  // UI 상태(진행 중/에러)와 재조회를 얹는다. 저장 성공 뒤 조회만 실패한 경우 API 결과를
+  // 보존하고 별도 복구 안내를 띄워 같은 비멱등 mutation을 다시 실행하지 않게 한다.
   const performStructural = useCallback(
     async <T,>(fn: (token: string) => Promise<T>): Promise<T | null> => {
       if (structInFlightRef.current) return null
       structInFlightRef.current = true
       setStructBusy(true)
       setStructError(null)
+      setStructRefreshError(null)
       try {
         const result = await runStructuralChange(fn)
         invalidateProjectHistory()
         invalidateProjectBackboneDiff()
-        await refreshSheet()
+        try {
+          await refreshSheet()
+        } catch (error) {
+          setStructRefreshError(getApiErrorMessage(error))
+        }
         return result
       } catch (error) {
         setStructError(getApiErrorMessage(error))
@@ -1250,6 +1261,18 @@ function SheetEditor({
       refreshSheet,
     ],
   )
+
+  const retryStructuralRefresh = useCallback(async () => {
+    setStructBusy(true)
+    try {
+      await refreshSheet()
+      setStructRefreshError(null)
+    } catch (error) {
+      setStructRefreshError(getApiErrorMessage(error))
+    } finally {
+      setStructBusy(false)
+    }
+  }, [refreshSheet])
 
   const handleAddEmpty = useCallback(async () => {
     if (!interaction.canManageConditions) return
@@ -1306,6 +1329,7 @@ function SheetEditor({
 
   const clearActive = useCallback(() => {
     setActiveRow(null)
+    setPendingConditionFocus(null)
     setStructError(null)
   }, [])
 
@@ -1984,10 +2008,12 @@ function SheetEditor({
               activeLabel={activeRowLabel}
               busy={structBusy}
               error={structError}
+              refreshError={structRefreshError}
               onAddEmpty={handleAddEmpty}
               onDuplicate={handleDuplicate}
               onDelete={handleDelete}
               onClear={clearActive}
+              onRetryRefresh={() => void retryStructuralRefresh()}
             />
           ) : null}
           <CellCommentPanel projectId={projectId} target={selectedCell} />
@@ -2122,18 +2148,22 @@ function ConditionRowManager({
   activeLabel,
   busy,
   error,
+  refreshError,
   onAddEmpty,
   onDuplicate,
   onDelete,
   onClear,
+  onRetryRefresh,
 }: {
   activeLabel: string | null
   busy: boolean
   error: string | null
+  refreshError: string | null
   onAddEmpty: () => void
   onDuplicate: () => void
   onDelete: () => void
   onClear: () => void
+  onRetryRefresh: () => void
 }) {
   const noSelection = activeLabel === null
   return (
@@ -2205,6 +2235,24 @@ function ConditionRowManager({
           tone="error"
         >
           {error}
+        </InlineAlert>
+      ) : null}
+      {refreshError !== null ? (
+        <InlineAlert
+          className="basis-full rounded-md px-2 py-1.5 text-xs"
+          data-testid="condition-refresh-warning"
+          tone="warning"
+        >
+          변경은 저장되었지만 최신 시트를 불러오지 못했습니다: {refreshError}{' '}
+          <Button
+            type="button"
+            onClick={onRetryRefresh}
+            disabled={busy}
+            size="compact"
+            variant="secondary"
+          >
+            다시 불러오기
+          </Button>
         </InlineAlert>
       ) : null}
     </div>

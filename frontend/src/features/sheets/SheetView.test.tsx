@@ -1678,7 +1678,7 @@ describe('SheetView focus shell integration', () => {
     },
   )
 
-  it('keeps selection and clears latent focus when Sheet refetch fails after add', async () => {
+  it('preserves a successful add and offers refresh recovery without re-running the mutation', async () => {
     const interactive = renderInteractiveSheet({ firstLayerConditionIds: [11, 12] })
     const refreshMessage = 'refreshed Sheet unavailable'
     const createdId = 44
@@ -1703,7 +1703,9 @@ describe('SheetView focus shell integration', () => {
       condition_index: 3,
       is_por: false,
     })
-    vi.mocked(getSheet).mockRejectedValue(new Error(refreshMessage))
+    vi.mocked(getSheet)
+      .mockRejectedValueOnce(new Error(refreshMessage))
+      .mockResolvedValue(laterSheet)
 
     try {
       await settleInteractiveSheet()
@@ -1716,21 +1718,24 @@ describe('SheetView focus shell integration', () => {
 
       expect(activeLayerKey(interactive.container)).toBe('L1::10::ETCH')
       expect(renderedConditionIds(interactive.container)).toEqual(['11', '12'])
-      expect(interactive.container.textContent).toContain('선택: ETCH (10) · POR')
+      expect(interactive.container.textContent).toContain('Layer/조건 셀을 클릭해 대상 행을 선택합니다.')
       expect(
-        interactive.container.querySelector('[data-testid="condition-error"]')?.textContent,
-      ).toContain(refreshMessage)
+        interactive.container.querySelector('[data-testid="condition-refresh-warning"]')?.textContent,
+      ).toContain('변경은 저장되었지만 최신 시트를 불러오지 못했습니다')
+      expect(interactive.container.textContent).toContain(refreshMessage)
       expect(mockScrollToCondition).not.toHaveBeenCalled()
+      expect(addCondition).toHaveBeenCalledTimes(1)
 
-      await act(async () => {
-        interactive.queryClient.setQueryData(['sheet', 7], laterSheet)
-        await new Promise((resolve) => setTimeout(resolve, 10))
-      })
+      click(interactive, buttonByText(interactive.container, '다시 불러오기'))
+      await settleInteractiveSheet()
 
-      expect(mockScrollToCondition).not.toHaveBeenCalled()
+      expect(addCondition).toHaveBeenCalledTimes(1)
+      expect(getSheet).toHaveBeenCalledTimes(2)
+      expect(mockScrollToCondition).toHaveBeenCalledTimes(1)
+      expect(mockScrollToCondition).toHaveBeenCalledWith(String(createdId))
       expect(activeLayerKey(interactive.container)).toBe('L1::10::ETCH')
       expect(renderedConditionIds(interactive.container)).toEqual(['11', '12', '44'])
-      expect(interactive.container.textContent).toContain('선택: ETCH (10) · POR')
+      expect(interactive.container.textContent).toContain('선택: ETCH (10) · C3')
     } finally {
       interactive.cleanup()
     }
@@ -2010,6 +2015,14 @@ function gridPasteButton(container: HTMLElement): HTMLButtonElement {
 function conditionActionButton(container: HTMLElement, testId: string): HTMLButtonElement {
   const button = container.querySelector<HTMLButtonElement>(`[data-testid="${testId}"]`)
   if (button === null) throw new Error(`Condition action ${testId} is unavailable.`)
+  return button
+}
+
+function buttonByText(container: HTMLElement, label: string): HTMLButtonElement {
+  const button = [...container.querySelectorAll<HTMLButtonElement>('button')].find(
+    (candidate) => candidate.textContent?.trim() === label,
+  )
+  if (button === undefined) throw new Error(`Button ${label} is unavailable.`)
   return button
 }
 

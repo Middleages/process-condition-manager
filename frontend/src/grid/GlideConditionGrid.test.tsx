@@ -8,8 +8,10 @@ import {
   cellStatusVisualPriority,
   currentGridSelectionForLayout,
   gridLayoutAuthority,
+  gridSelectionActivation,
   isCellHistoryMenuInvocation,
   porCellBehavior,
+  porCellAccessibility,
   requestPorTransfer,
   resolveCellHistoryMenuPosition,
   resolveCellHistoryRequest,
@@ -17,13 +19,24 @@ import {
 import source from './GlideConditionGrid.tsx?raw'
 
 describe('composite cell status rendering priority', () => {
+  it('describes POR as a Layer-scoped single-selection state for Glide accessibility', () => {
+    expect(porCellAccessibility('L1', 'POR', true)).toBe(
+      'Layer L1, 조건 POR, POR 선택됨, 단일 선택',
+    )
+    expect(porCellAccessibility('L1', 'C2', false)).toBe(
+      'Layer L1, 조건 C2, POR 선택 안 됨, 단일 선택',
+    )
+  })
+
   it('keeps a single-row POR selected and non-actionable', () => {
     const onPorChange = vi.fn()
     expect(porCellBehavior(true, 1)).toEqual({ mark: '●', canTransfer: false })
     requestPorTransfer({ id: '11', layerKey: 'L1', isPor: true }, 1, onPorChange)
     requestPorTransfer({ id: '11', layerKey: 'L1', isPor: false }, 1, onPorChange)
     expect(onPorChange).not.toHaveBeenCalled()
-    expect(source).toMatch(/const behavior = porCellBehavior\([\s\S]*?data: behavior\.mark/)
+    expect(source).toMatch(
+      /const behavior = porCellBehavior\([\s\S]*?data: porCellAccessibility\([\s\S]*?displayData: behavior\.mark/,
+    )
   })
 
   it('calls onPorChange for a non-POR click in a multi-row Layer', () => {
@@ -165,6 +178,41 @@ describe('composite cell status rendering priority', () => {
         'empty selection',
       ),
     ).toBe('selected cell')
+  })
+
+  it.each([0, 1, 2, 3])(
+    'activates the row Layer when keyboard selection lands on fixed column %i',
+    (column) => {
+      expect(gridSelectionActivation(column, 0, [], [{
+        id: 'condition-11',
+        layerKey: 'layer-1',
+        stepSeq: '010',
+        layerId: 'L1',
+        layerLabel: 'Layer 1',
+        conditionLabel: 'POR',
+        isPor: true,
+        values: {},
+      }])).toEqual({
+        condition: { conditionId: 'condition-11', layerKey: 'layer-1' },
+        cell: null,
+      })
+    },
+  )
+
+  it('publishes one parameter activation without also treating it as a fixed-column row activation', () => {
+    expect(gridSelectionActivation(4, 0, [{ key: 'amount' }], [{
+      id: 'condition-11',
+      layerKey: 'layer-1',
+      stepSeq: '010',
+      layerId: 'L1',
+      layerLabel: 'Layer 1',
+      conditionLabel: 'POR',
+      isPor: true,
+      values: { amount: '7' },
+    }])).toEqual({
+      condition: null,
+      cell: { conditionId: 'condition-11', parameterCode: 'amount', layerKey: 'layer-1' },
+    })
   })
 
   it('publishes navigation selection against the current layout authority after a category commit', () => {
