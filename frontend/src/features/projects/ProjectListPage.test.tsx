@@ -1,36 +1,21 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { JSDOM } from 'jsdom'
+import { act } from 'react'
+import { createRoot, type Root } from 'react-dom/client'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { ChoiceSetSummaryOut, ProjectListOut } from '@/api/types'
-import { choiceSetKeys } from '@/features/choiceSets/choiceQueries'
-import type { ChoiceSetOptionsResource } from '@/features/choiceSets/useChoiceSetOptions'
+import { listProjects } from '@/api/projects'
+import type { ProjectListOut } from '@/api/types'
 
-import { ProjectChoiceFilter, ProjectListPage } from './ProjectListPage'
+import { ProjectListPage } from './ProjectListPage'
 import { projectListQueryKey } from './projectListQuery'
 import { parseProjectListSearch } from './urlState'
 
-const deviceTypeSummary: ChoiceSetSummaryOut = {
-  code: 'device_type',
-  display_name: 'Device Type',
-  description: null,
-  is_active: true,
-  version: 1,
-  option_count: 2,
-  active_option_count: 1,
-  parameter_usage_count: 0,
-  profile_usage_fields: ['device_type'],
-  created_at: '2026-07-14T00:00:00Z',
-  updated_at: '2026-07-14T00:00:00Z',
-}
+vi.mock('@/api/projects', () => ({ listProjects: vi.fn() }))
 
-const categorySummary: ChoiceSetSummaryOut = {
-  ...deviceTypeSummary,
-  code: 'project_category',
-  display_name: 'Project Category',
-  profile_usage_fields: ['project_category'],
-}
+const listProjectsMock = vi.mocked(listProjects)
 
 const projects: ProjectListOut = {
   items: [
@@ -40,13 +25,13 @@ const projects: ProjectListOut = {
       process_id: 'coat',
       part_id: 'P-42',
       name: 'Coat baseline',
-  status: 'draft',
-  version: 1,
-  revision_root_id: null,
-  predecessor_project_id: null,
-  successor_project_id: null,
-  allowed_actions: ['request_review', 'approve'],
-  device_type: { code: 'FOUNDRY', label: 'Foundry', is_active: true },
+      status: 'draft',
+      version: 1,
+      revision_root_id: null,
+      predecessor_project_id: null,
+      successor_project_id: null,
+      allowed_actions: ['request_review', 'approve'],
+      device_type: { code: 'FOUNDRY', label: 'Foundry', is_active: true },
       project_category: { code: 'LEGACY', label: 'Legacy product', is_active: false },
       layer_total: '8',
       updated_at: '2026-07-14T02:30:00Z',
@@ -57,32 +42,51 @@ const projects: ProjectListOut = {
   next_cursor: null,
 }
 
-function renderList(location: string): string {
-  const queryClient = new QueryClient({
+type PageState = 'loaded' | 'loading' | 'error' | 'empty' | 'paginated'
+
+function createProjectListQueryClient() {
+  return new QueryClient({
     defaultOptions: {
-      queries: { retry: false, staleTime: Number.POSITIVE_INFINITY },
+      queries: {
+        refetchOnMount: false,
+        retry: false,
+        retryOnMount: false,
+        staleTime: Number.POSITIVE_INFINITY,
+      },
     },
   })
+}
+
+function seedProjectListQuery(queryClient: QueryClient, location: string, state: PageState) {
   const routeState = parseProjectListSearch(new URL(location, 'https://pcm.test').searchParams)
-  queryClient.setQueryData(projectListQueryKey(routeState), {
-    pages: [projects],
-    pageParams: [null],
-  })
-  queryClient.setQueryData(choiceSetKeys.summary('device_type'), deviceTypeSummary)
-  queryClient.setQueryData(choiceSetKeys.options('device_type', 1, true), {
-    set_code: 'device_type',
-    version: 1,
-    items: [
-      { code: 'FOUNDRY', label: 'Foundry', sort_order: 0, is_active: true },
-      { code: 'MEMORY', label: 'Memory', sort_order: 1, is_active: false },
-    ],
-  })
-  queryClient.setQueryData(choiceSetKeys.summary('project_category'), categorySummary)
-  queryClient.setQueryData(choiceSetKeys.options('project_category', 1, true), {
-    set_code: 'project_category',
-    version: 1,
-    items: [{ code: 'LEGACY', label: 'Legacy product', sort_order: 0, is_active: false }],
-  })
+  const queryKey = projectListQueryKey(routeState)
+
+  if (state !== 'loading') {
+    const result = state === 'empty'
+      ? { items: [], next_cursor: null }
+      : state === 'paginated'
+        ? { ...projects, next_cursor: 100 }
+        : projects
+
+    queryClient.setQueryData(queryKey, {
+      pages: [result],
+      pageParams: [null],
+    })
+  }
+
+  if (state === 'error') {
+    queryClient.getQueryCache().find({ queryKey })?.setState({
+      data: undefined,
+      error: new Error('프로젝트 목록 조회에 실패했습니다.'),
+      fetchStatus: 'idle',
+      status: 'error',
+    })
+  }
+}
+
+function renderList(location: string, state: PageState = 'loaded'): string {
+  const queryClient = createProjectListQueryClient()
+  seedProjectListQuery(queryClient, location, state)
 
   const router = createMemoryRouter(
     [{ path: '/projects', element: <ProjectListPage /> }],
@@ -106,91 +110,191 @@ function renderList(location: string): string {
 }
 
 describe('ProjectListPage', () => {
-  it('restores both exact managed-choice filters and keeps historical inactive choices filterable', () => {
+  beforeEach(() => {
+    listProjectsMock.mockReset()
+    listProjectsMock.mockImplementation(() => new Promise(() => {}))
+  })
+
+  it('renders the project command index with search, creation, and status-only filtering', () => {
     const html = renderList(
       '/projects?query=coat&status=draft&device_type=FOUNDRY&project_category=LEGACY',
     )
+    const document = new JSDOM(html).window.document
+    const statusGroup = document.querySelector('[role="group"][aria-label="프로젝트 상태 필터"]')
+    const statusButtons = [...(statusGroup?.querySelectorAll('button') ?? [])]
 
-    expect(html).toContain('Device Type')
-    expect(html).toContain('Project Category')
-    expect(html).toContain('FOUNDRY · Foundry')
-    expect(html).toContain('LEGACY · Legacy product')
-    expect(html).toContain('사용 중지됨')
-    expect(html).toContain('>L1</a>')
+    expect(document.querySelector('h1')?.textContent).toBe('프로젝트')
+    expect(document.querySelector('input[type="search"]')?.getAttribute('placeholder')).toBe(
+      'LINE, Process 또는 Part ID',
+    )
+    expect(document.querySelector('a[href="/projects/new"]')?.textContent).toContain('새 프로젝트')
+    expect(statusButtons.map((button) => button.textContent?.trim())).toEqual([
+      '전체',
+      '초안',
+      '검토중',
+      '승인',
+      '반려',
+    ])
+    expect(statusButtons.map((button) => button.getAttribute('aria-pressed'))).toEqual([
+      'false',
+      'true',
+      'false',
+      'false',
+      'false',
+    ])
+    expect(html).not.toContain('Device Type')
+    expect(html).not.toContain('Project Category')
     expect(html).not.toContain('Coat baseline')
-    expect(html).toContain('href="/projects/42"')
+    expect(html).toContain('>L1</a>')
   })
 
-  it('renders raw selected filter codes while choice data is still unavailable', () => {
+  it('announces the loaded project count in Korean', () => {
+    const document = new JSDOM(renderList('/projects')).window.document
+    const announcement = document.querySelector('[role="status"][aria-live="polite"]')
+
+    expect(announcement?.textContent).toContain('프로젝트 1개')
+    expect(announcement?.textContent).toContain('불러왔습니다')
+  })
+
+  it('renders loading, error with retry, empty, and pagination states', () => {
+    const loadingHtml = renderList('/projects', 'loading')
+    expect(loadingHtml).toContain('프로젝트 목록을 불러오는 중입니다.')
+    expect(loadingHtml).not.toContain('개를 불러왔습니다.')
+
+    const errorHtml = renderList('/projects?query=coat', 'error')
+    expect(errorHtml).toContain('프로젝트 목록 조회에 실패했습니다.')
+    expect(errorHtml).toContain('다시 시도')
+    expect(errorHtml).toContain('value="coat"')
+    expect(errorHtml).not.toContain('개를 불러왔습니다.')
+
+    expect(renderList('/projects', 'empty')).toContain('조건에 맞는 프로젝트가 없습니다.')
+    expect(renderList('/projects', 'paginated')).toContain('더 보기')
+  })
+
+  it('keeps legacy managed-choice URL filters server-side without exposing controls', () => {
     const html = renderList(
       '/projects?device_type=UNKNOWN_DEVICE&project_category=UNKNOWN_CATEGORY',
     )
 
-    expect(html).toContain('UNKNOWN_DEVICE')
-    expect(html).toContain('UNKNOWN_CATEGORY')
+    expect(html).not.toContain('UNKNOWN_DEVICE')
+    expect(html).not.toContain('UNKNOWN_CATEGORY')
+    expect(html).not.toContain('Device Type')
+    expect(html).not.toContain('Project Category')
   })
 
-  it('uses one restrained work frame and one semantic three-control finder', () => {
-    const html = renderList('/projects')
-    const finder = html.match(
-      /<section(?=[^>]*aria-labelledby="project-filter-title")[^>]*>[\s\S]*?<\/section>/,
-    )?.[0]
+  it('retries with the current query and forwards hidden legacy URL filters', async () => {
+    const location =
+      '/projects?query=coat&status=review&device_type=FOUNDRY&project_category=LEGACY'
+    listProjectsMock
+      .mockRejectedValueOnce(new Error('프로젝트 목록 조회에 실패했습니다.'))
+      .mockResolvedValueOnce(projects)
+    const interactive = renderInteractiveList(location)
 
-    expect(html).toContain('max-w-[1600px]')
-    expect(finder).toBeDefined()
-    expect(finder).toContain('id="project-filter-title"')
-    expect(finder).toContain('>프로젝트 찾기<')
-    expect(finder).toContain('불러온 1개')
-    expect(finder).toContain('lg:grid-cols-3')
-    expect(finder).not.toContain('lg:grid-cols-[minmax(18rem,1.4fr)')
-  })
-})
+    try {
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 25))
+      })
 
-describe('ProjectChoiceFilter', () => {
-  it('retains and can clear a raw URL code during a real lookup error', () => {
-    const retryOptions = vi.fn().mockResolvedValue(undefined)
-    const resource: ChoiceSetOptionsResource = {
-      setCode: 'device_type',
-      version: null,
-      setIsActive: null,
-      displayOptions: [],
-      selectableOptions: [],
-      selectionReady: false,
-      loading: false,
-      refreshing: false,
-      error: 'Device Type 조회에 실패했습니다.',
-      prepareToOpen: vi.fn().mockRejectedValue(new Error('request failed')),
-      refetchSummary: vi.fn().mockRejectedValue(new Error('request failed')),
-      retryOptions,
+      const retryButton = [...interactive.container.querySelectorAll('button')].find(
+        (button) => button.textContent?.trim() === '다시 시도',
+      )
+      const searchInput = interactive.container.querySelector<HTMLInputElement>(
+        'input[type="search"]',
+      )
+
+      expect(retryButton).toBeDefined()
+      expect(searchInput?.value).toBe('coat')
+      expect(listProjectsMock).toHaveBeenCalledTimes(1)
+      expect(listProjectsMock).toHaveBeenNthCalledWith(1, {
+        query: 'coat',
+        status: 'review',
+        deviceTypeCode: 'FOUNDRY',
+        projectCategoryCode: 'LEGACY',
+        cursor: undefined,
+        limit: 50,
+      })
+
+      await act(async () => {
+        retryButton?.dispatchEvent(
+          new interactive.window.MouseEvent('click', { bubbles: true }),
+        )
+        await new Promise((resolve) => setTimeout(resolve, 0))
+      })
+
+      expect(listProjectsMock).toHaveBeenCalledTimes(2)
+      expect(listProjectsMock).toHaveBeenLastCalledWith({
+        query: 'coat',
+        status: 'review',
+        deviceTypeCode: 'FOUNDRY',
+        projectCategoryCode: 'LEGACY',
+        cursor: undefined,
+        limit: 50,
+      })
+      expect(searchInput?.value).toBe('coat')
+      expect(interactive.container.textContent).not.toContain('Device Type')
+      expect(interactive.container.textContent).not.toContain('Project Category')
+    } finally {
+      interactive.cleanup()
     }
-
-    const html = renderToStaticMarkup(
-      <ProjectChoiceFilter
-        id="project-list-device-type"
-        label="Device Type"
-        value="RAW_DEVICE"
-        resource={resource}
-        onChange={vi.fn()}
-      />,
-    )
-
-    expect(html).toContain('RAW_DEVICE')
-    expect(html).toContain('Device Type 조회에 실패했습니다.')
-    expect(html).toContain('선택 해제')
-    expect(html).toContain('다시 시도')
-
-    const emptyHtml = renderToStaticMarkup(
-      <ProjectChoiceFilter
-        id="project-list-device-type"
-        label="Device Type"
-        value={null}
-        resource={resource}
-        onChange={vi.fn()}
-      />,
-    )
-    expect(emptyHtml).toMatch(
-      /id="project-list-device-type-selected-status"[^>]*class="[^"]*sr-only[^"]*"|class="[^"]*sr-only[^"]*"[^>]*id="project-list-device-type-selected-status"/,
-    )
-    expect(emptyHtml).toContain('선택 없음')
   })
 })
+
+function renderInteractiveList(location: string) {
+  const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', {
+    url: `https://pcm.test${location}`,
+  })
+  const container = dom.window.document.querySelector<HTMLDivElement>('#root')
+  if (!container) throw new Error('Interactive test root is unavailable.')
+
+  const queryClient = createProjectListQueryClient()
+  seedProjectListQuery(queryClient, location, 'loading')
+  const router = createMemoryRouter(
+    [{ path: '/projects', element: <ProjectListPage /> }],
+    { initialEntries: [location] },
+  )
+  const globals = globalThis as unknown as {
+    document?: Document
+    HTMLElement?: typeof HTMLElement
+    Node?: typeof Node
+    window?: Window
+    IS_REACT_ACT_ENVIRONMENT?: boolean
+  }
+  const previousGlobals = {
+    document: globals.document,
+    HTMLElement: globals.HTMLElement,
+    Node: globals.Node,
+    window: globals.window,
+    IS_REACT_ACT_ENVIRONMENT: globals.IS_REACT_ACT_ENVIRONMENT,
+  }
+  let root: Root | null = null
+
+  globals.window = dom.window as unknown as Window
+  globals.document = dom.window.document
+  globals.HTMLElement = dom.window.HTMLElement as unknown as typeof HTMLElement
+  globals.Node = dom.window.Node as unknown as typeof Node
+  globals.IS_REACT_ACT_ENVIRONMENT = true
+
+  act(() => {
+    root = createRoot(container)
+    root.render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    )
+  })
+
+  return {
+    container,
+    window: dom.window,
+    cleanup: () => {
+      act(() => root?.unmount())
+      queryClient.clear()
+      globals.window = previousGlobals.window
+      globals.document = previousGlobals.document
+      globals.HTMLElement = previousGlobals.HTMLElement
+      globals.Node = previousGlobals.Node
+      globals.IS_REACT_ACT_ENVIRONMENT = previousGlobals.IS_REACT_ACT_ENVIRONMENT
+      dom.window.close()
+    },
+  }
+}

@@ -35,8 +35,23 @@ describe('project list URL state', () => {
     )
   })
 
-  it('canonicalizes unknown status to all', () => {
-    expect(parseProjectListSearch(new URLSearchParams('status=approved')).status).toBe('all')
+  it.each(['draft', 'review', 'approved', 'rejected'] as const)(
+    'round-trips the visible %s status filter',
+    (status) => {
+      const state = {
+        query: '',
+        status,
+        deviceTypeCode: null,
+        projectCategoryCode: null,
+      }
+
+      expect(parseProjectListSearch(serializeProjectListSearch(state)).status).toBe(status)
+    },
+  )
+
+  it('canonicalizes unknown and non-visible status values to all', () => {
+    expect(parseProjectListSearch(new URLSearchParams('status=archived')).status).toBe('all')
+    expect(parseProjectListSearch(new URLSearchParams('status=unknown')).status).toBe('all')
   })
 
   it('builds a project-list href with encoded special characters', () => {
