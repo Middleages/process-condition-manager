@@ -141,6 +141,8 @@ export interface ConditionGridData {
   columns: readonly ConditionGridColumn[]
   rows: readonly ConditionGridRow[]
   statuses?: readonly CellStatus[]
+  /** Persistence와 분리해 보존하는 거부된 단일 셀 원문. */
+  invalidDrafts?: readonly InvalidCellDraft[]
   /** set code별 공유 resource. 셀/column별 option 복제를 만들지 않는다. */
   choiceResources?: ReadonlyMap<string, SheetChoiceResource>
 }
@@ -148,6 +150,10 @@ export interface ConditionGridData {
 export interface ConditionGridCallbacks {
   /** 셀 편집 확정 → 더티 버퍼 진입(T3). */
   onCellEdit?(cell: DirtyCell): void
+  /** 거부된 단일 셀 원문을 persistence 밖의 상위 draft projection에 올린다. */
+  onCellInvalid?(draft: InvalidCellDraft): void
+  /** 유효한 교정이 들어오면 해당 셀의 거부 원문 하나를 먼저 제거한다. */
+  onInvalidDraftClear?(conditionId: string, parameterCode: string): void
   /**
    * 범위 붙여넣기 가로채기. 그리드는 기본 붙여넣기를 막고, 붙여넣기 대상 좌상단 셀과
    * 원본 TSV 텍스트를 넘긴다. 스테이징 파이프라인 구현은 T4의 몫.

@@ -38,6 +38,7 @@ import {
   type GridMouseEventArgs,
   type GridSelection,
   type Item,
+  type Rectangle,
   type Theme,
 } from '@glideapps/glide-data-grid'
 import '@glideapps/glide-data-grid/dist/index.css'
@@ -73,6 +74,7 @@ import type {
   ConditionGridHandle,
   ConditionGridProps,
   ConditionGridRow,
+  InvalidCellDraft,
   PasteStagingCell,
 } from './types'
 import { GRID_COLORS } from './theme'
@@ -111,6 +113,46 @@ const EMPTY_GRID_SELECTION: GridSelection = {
   columns: CompactSelection.empty(),
   rows: CompactSelection.empty(),
   current: undefined,
+}
+
+interface InvalidDraftPopoverPosition {
+  x: number
+  y: number
+  placement: 'below' | 'above'
+}
+
+const INVALID_DRAFT_POPOVER_SIZE = { width: 280, height: 104 }
+const INVALID_DRAFT_POPOVER_MARGIN = 8
+
+/** Prefer below the cell, flip above at the bottom edge, and clamp inside the viewport. */
+export function invalidDraftPopoverPlacement(
+  bounds: Rectangle,
+  viewport: { width: number; height: number },
+  size: { width: number; height: number },
+): InvalidDraftPopoverPosition {
+  const margin = INVALID_DRAFT_POPOVER_MARGIN
+  const belowY = bounds.y + bounds.height
+  const aboveY = bounds.y - size.height
+  const placement =
+    belowY + size.height <= viewport.height - margin || aboveY < margin
+      ? 'below'
+      : 'above'
+  const preferredY = placement === 'below' ? belowY : aboveY
+  return {
+    x: Math.min(Math.max(bounds.x, margin), Math.max(margin, viewport.width - size.width - margin)),
+    y: Math.min(Math.max(preferredY, margin), Math.max(margin, viewport.height - size.height - margin)),
+    placement,
+  }
+}
+
+function indexInvalidDrafts(
+  drafts: readonly InvalidCellDraft[] | undefined,
+): ReadonlyMap<string, InvalidCellDraft> {
+  const index = new Map<string, InvalidCellDraft>()
+  for (const draft of drafts ?? []) {
+    index.set(overlayKey(draft.conditionId, draft.parameterCode), draft)
+  }
+  return index
 }
 
 export function gridLayoutAuthority(
@@ -316,12 +358,14 @@ export function cellStatusTooltip(status: CellStatus | undefined): string | null
 function overlayTheme(
   status: CellStatus | undefined,
   staging: PasteStagingCell | undefined,
+  invalid: boolean,
 ): Partial<Theme> | undefined {
   if (staging !== undefined) {
     return staging.valid
       ? { bgCell: GRID_COLORS.successSurface, textDark: GRID_COLORS.success }
       : { bgCell: GRID_COLORS.errorSurface, textDark: GRID_COLORS.error }
   }
+  if (invalid) return { bgCell: GRID_COLORS.errorSurface, textDark: GRID_COLORS.error }
   if (status !== undefined) {
     switch (cellStatusVisualPriority(status)) {
       case 'error':
@@ -471,6 +515,54 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
   const groupMeta = useMemo(() => computeRowGroups(rows), [rows])
   const statusIndex = useMemo(() => indexStatuses(data.statuses), [data.statuses])
   const stagingIndex = useMemo(() => indexStaging(pasteStaging), [pasteStaging])
+  const invalidDraftIndex = useMemo(
+    () => indexInvalidDrafts(data.invalidDrafts),
+    [data.invalidDrafts],
+  )
+
+  const selectedCell = effectiveGridSelection.current?.cell
+  const activeInvalidDraft = useMemo(() => {
+    if (selectedCell === undefined) return null
+    const target = resolveCellTarget(
+      selectedCell[0],
+      selectedCell[1],
+      visibleColumns,
+      rows,
+      IDENTITY_COLUMN_COUNT,
+    )
+    if (target === null) return null
+    const draft = invalidDraftIndex.get(overlayKey(target.conditionId, target.parameterCode))
+    if (draft === undefined) return null
+    const row = rows[selectedCell[1]]
+    const column = visibleColumns[selectedCell[0] - IDENTITY_COLUMN_COUNT]
+    if (row === undefined || column === undefined) return null
+    return { draft, row, column, item: selectedCell }
+  }, [invalidDraftIndex, rows, selectedCell, visibleColumns])
+  const [invalidDraftPopover, setInvalidDraftPopover] =
+    useState<InvalidDraftPopoverPosition | null>(null)
+  const refreshInvalidDraftPopover = useCallback(() => {
+    if (activeInvalidDraft === null) {
+      setInvalidDraftPopover(null)
+      return
+    }
+    const bounds = gridRef.current?.getBounds(
+      activeInvalidDraft.item[0],
+      activeInvalidDraft.item[1],
+    )
+    if (bounds === undefined) {
+      setInvalidDraftPopover(null)
+      return
+    }
+    setInvalidDraftPopover(invalidDraftPopoverPlacement(
+      bounds,
+      { width: window.innerWidth, height: window.innerHeight },
+      INVALID_DRAFT_POPOVER_SIZE,
+    ))
+  }, [activeInvalidDraft])
+
+  useIsomorphicLayoutEffect(() => {
+    refreshInvalidDraftPopover()
+  }, [refreshInvalidDraftPopover])
 
   // Imperative navigation publishes selection first; focus again after that controlled selection
   // commits so Glide targets the requested accessible cell rather than the previous selection.
@@ -560,15 +652,36 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
         return { kind: GridCellKind.Loading, allowOverlay: false }
       }
       const serverValue = rowData.values[column.key] ?? null
-      const staging = stagingIndex.get(overlayKey(rowData.id, column.key))
-      const raw = previewCellValue(serverValue, staging)
+      const key = overlayKey(rowData.id, column.key)
+      const staging = stagingIndex.get(key)
+      const invalidDraft = invalidDraftIndex.get(key)
+      // Whole-surface paste preview remains authoritative; otherwise retain the rejected raw edit.
+      const raw = staging === undefined && invalidDraft !== undefined
+        ? invalidDraft.rawValue
+        : previewCellValue(serverValue, staging)
       const overlay = overlayTheme(
-        statusIndex.get(overlayKey(rowData.id, column.key)),
+        statusIndex.get(key),
         staging,
+        invalidDraft !== undefined,
       )
       const oddGroup = groupMeta.groupIndexByRow[row] % 2 === 1
       const base = oddGroup ? GROUP_SHADE : undefined
       const themeOverride = overlay ? { ...base, ...overlay } : base
+
+      if (staging === undefined && invalidDraft !== undefined) {
+        const reason = invalidDraft.constraint === null
+          ? invalidDraft.message
+          : `${invalidDraft.message}, ${invalidDraft.constraint}`
+        return {
+          kind: GridCellKind.Text,
+          data: `${rowData.conditionLabel} · ${column.headerName}, ${reason}, 저장되지 않음`,
+          displayData: invalidDraft.rawValue,
+          copyData: invalidDraft.rawValue,
+          allowOverlay: !readOnly,
+          readonly: readOnly,
+          themeOverride,
+        }
+      }
 
       if (column.valueType === 'number') {
         return makeDecimalCell(raw, column.unit ?? null, readOnly, themeOverride)
@@ -615,6 +728,7 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
       groupMeta,
       statusIndex,
       stagingIndex,
+      invalidDraftIndex,
       readOnly,
       data.choiceResources,
       restoreGridFocus,
@@ -636,13 +750,27 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
           : data.choiceResources?.get(column.choiceSetCode)
       const oldValue = row.values[column.key] ?? null
       const validation = validateSingleCellEdit(column, oldValue, candidate ?? '', resource)
-      if (!validation.ok) return
-      if (!shouldPersistCellChange(oldValue, validation.value)) return
-      callbacks?.onCellEdit?.({
-        conditionId: target.conditionId,
-        parameterCode: target.parameterCode,
-        value: validation.value,
-      })
+      if (!validation.ok) {
+        if (validation.code !== 'choice_resource_unavailable') {
+          callbacks?.onCellInvalid?.({
+            conditionId: target.conditionId,
+            parameterCode: target.parameterCode,
+            rawValue: validation.rawValue,
+            code: validation.code,
+            message: validation.message,
+            constraint: validation.constraint,
+          })
+        }
+        return
+      }
+      callbacks?.onInvalidDraftClear?.(target.conditionId, target.parameterCode)
+      if (shouldPersistCellChange(oldValue, validation.value)) {
+        callbacks?.onCellEdit?.({
+          conditionId: target.conditionId,
+          parameterCode: target.parameterCode,
+          value: validation.value,
+        })
+      }
     },
     [visibleColumns, rows, callbacks, data.choiceResources],
   )
@@ -804,6 +932,20 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
       const key = overlayKey(target.conditionId, target.parameterCode)
       // Paste staging owns the complete surface until apply/cancel.
       if (stagingIndex.has(key)) return
+      const invalidDraft = invalidDraftIndex.get(key)
+      if (invalidDraft !== undefined) {
+        const { ctx, rect } = args
+        ctx.save()
+        ctx.strokeStyle = GRID_COLORS.error
+        ctx.lineWidth = 2
+        ctx.strokeRect(rect.x + 2, rect.y + 2, rect.width - 4, rect.height - 4)
+        ctx.fillStyle = GRID_COLORS.error
+        ctx.font = '700 12px sans-serif'
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        ctx.fillText('!', rect.x + 7, rect.y + rect.height / 2)
+        ctx.restore()
+      }
       const markers = cellStatusMarkerFacts(statusIndex.get(key))
       if (!markers.dirty && !markers.comment) return
 
@@ -826,7 +968,7 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
       }
       ctx.restore()
     },
-    [visibleColumns, rows, stagingIndex, statusIndex],
+    [visibleColumns, rows, stagingIndex, invalidDraftIndex, statusIndex],
   )
 
   // POR 클릭만 별도 구조 변경으로 올린다. 행/셀 활성화는 클릭과 키보드에 공통인
@@ -898,6 +1040,8 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
         drawCell={drawCell}
         gridSelection={effectiveGridSelection}
         onGridSelectionChange={handleGridSelectionChange}
+        onVisibleRegionChanged={refreshInvalidDraftPopover}
+        onColumnResizeEnd={refreshInvalidDraftPopover}
         onCellEdited={readOnly ? undefined : handleCellEdited}
         onCellClicked={handleCellClicked}
         onCellContextMenu={handleCellContextMenu}
@@ -937,6 +1081,39 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
           }}
         >
           {tooltip.text}
+        </div>
+      ) : null}
+      {activeInvalidDraft !== null && invalidDraftPopover !== null ? (
+        <div
+          role="alert"
+          data-placement={invalidDraftPopover.placement}
+          style={{
+            position: 'fixed',
+            left: invalidDraftPopover.x,
+            top: invalidDraftPopover.y,
+            zIndex: 55,
+            width: INVALID_DRAFT_POPOVER_SIZE.width,
+            minHeight: INVALID_DRAFT_POPOVER_SIZE.height,
+            pointerEvents: 'none',
+            border: `1px solid ${GRID_COLORS.error}`,
+            borderRadius: 6,
+            background: GRID_COLORS.errorSurface,
+            color: GRID_COLORS.ink,
+            padding: '8px 10px',
+            fontSize: 12,
+            lineHeight: 1.4,
+            boxShadow: `0 8px 24px ${GRID_COLORS.border}`,
+          }}
+        >
+          <div>{activeInvalidDraft.row.conditionLabel} · {activeInvalidDraft.column.headerName}</div>
+          <div>{activeInvalidDraft.draft.rawValue}</div>
+          <div>
+            {activeInvalidDraft.draft.message}
+            {activeInvalidDraft.draft.constraint === null
+              ? null
+              : ` · ${activeInvalidDraft.draft.constraint}`}
+          </div>
+          <div>저장되지 않음</div>
         </div>
       ) : null}
       {cellHistoryMenu !== null ? (

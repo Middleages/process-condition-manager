@@ -75,18 +75,15 @@ export const DecimalEditor: ProvideEditorComponent<DecimalCell> = ({
   onFinishedEditing,
 }) => {
   const [draft, setDraft] = useState(initialValue ?? cell.data.value ?? '')
-  const [error, setError] = useState<string | null>(null)
 
   const finish = (): void => {
-    const result = commitDecimalDraft(draft, (value) => {
-      setError(null)
-      onFinishedEditing({
-        ...cell,
-        copyData: value ?? '',
-        data: { ...cell.data, value },
-      })
+    const result = validateDecimalDraft(draft)
+    const candidate = result.ok ? result.value : draft
+    onFinishedEditing({
+      ...cell,
+      copyData: candidate ?? '',
+      data: { ...cell.data, value: candidate },
     })
-    if (!result.ok) setError(result.message)
   }
 
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {
@@ -105,22 +102,12 @@ export const DecimalEditor: ProvideEditorComponent<DecimalCell> = ({
     <div className="grid min-w-0 gap-1 bg-surface p-2">
       <input
         autoFocus
-        aria-invalid={error === null ? undefined : true}
         className="input w-full font-mono"
         inputMode="decimal"
         value={draft}
-        onChange={(event) => {
-          const next = event.currentTarget.value
-          setDraft(next)
-          if (error !== null && validateDecimalDraft(next).ok) setError(null)
-        }}
+        onChange={(event) => setDraft(event.currentTarget.value)}
         onKeyDown={onKeyDown}
       />
-      {error !== null ? (
-        <p className="text-xs text-error" role="alert">
-          {error}
-        </p>
-      ) : null}
     </div>
   )
 }

@@ -1,4 +1,45 @@
+import { act, forwardRef, useImperativeHandle } from 'react'
+import { createRoot, type Root } from 'react-dom/client'
+import { JSDOM } from 'jsdom'
 import { describe, expect, it, vi } from 'vitest'
+import {
+  CompactSelection,
+  GridCellKind,
+  type DataEditorProps,
+  type DataEditorRef,
+  type EditableGridCell,
+  type GridSelection,
+  type Rectangle,
+} from '@glideapps/glide-data-grid'
+
+import type { ConditionGridProps, SheetChoiceResource } from './types'
+
+const dataEditorHarness = vi.hoisted(() => ({
+  props: undefined as DataEditorProps | undefined,
+  getBounds: vi.fn<(col?: number, row?: number) => Rectangle | undefined>(
+    () => ({ x: 300, y: 120, width: 150, height: 32 }),
+  ),
+}))
+
+vi.mock('@glideapps/glide-data-grid', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@glideapps/glide-data-grid')>()
+  return {
+    ...actual,
+    DataEditor: forwardRef<DataEditorRef, DataEditorProps>(function FakeDataEditor(props, ref) {
+      dataEditorHarness.props = props
+      useImperativeHandle(ref, () => ({
+        appendRow: async () => undefined,
+        updateCells: vi.fn(),
+        getBounds: dataEditorHarness.getBounds,
+        focus: vi.fn(),
+        emit: async () => undefined,
+        scrollTo: vi.fn(),
+        remeasureColumns: vi.fn(),
+      }))
+      return <div data-testid="data-editor" />
+    }),
+  }
+})
 
 import {
   cellHistoryMenuActionForKey,
@@ -15,7 +56,9 @@ import {
   requestPorTransfer,
   resolveCellHistoryMenuPosition,
   resolveCellHistoryRequest,
+  invalidDraftPopoverPlacement,
 } from './GlideConditionGrid'
+import { GlideConditionGrid } from './GlideConditionGrid'
 import source from './GlideConditionGrid.tsx?raw'
 
 describe('composite cell status rendering priority', () => {
@@ -334,3 +377,326 @@ describe('cell-history context action boundary', () => {
     )
   })
 })
+
+describe('invalid draft Glide boundary', () => {
+  it('publishes an invalid draft and never publishes persistence for a rejected edit', () => {
+    const onCellInvalid = vi.fn()
+    const onCellEdit = vi.fn()
+    const grid = renderGrid({
+      data: gridData(),
+      callbacks: { onCellInvalid, onCellEdit },
+    })
+    try {
+      dataEditorProps().onCellEdited?.([4, 0], textCell('abc'))
+
+      expect(onCellInvalid).toHaveBeenCalledWith(expect.objectContaining({
+        conditionId: '1',
+        parameterCode: 'pressure',
+        rawValue: 'abc',
+        code: 'invalid_decimal',
+        message: '숫자로 입력하세요',
+        constraint: null,
+      }))
+      expect(onCellEdit).not.toHaveBeenCalled()
+    } finally {
+      grid.cleanup()
+    }
+  })
+
+  it('clears one invalid draft before publishing one valid correction', () => {
+    const calls: string[] = []
+    const onInvalidDraftClear = vi.fn(() => calls.push('clear'))
+    const onCellEdit = vi.fn(() => calls.push('edit'))
+    const grid = renderGrid({
+      data: gridData(),
+      callbacks: { onInvalidDraftClear, onCellEdit },
+    })
+    try {
+      dataEditorProps().onCellEdited?.([4, 0], textCell('120'))
+
+      expect(onInvalidDraftClear).toHaveBeenCalledWith('1', 'pressure')
+      expect(onCellEdit).toHaveBeenCalledTimes(1)
+      expect(onCellEdit).toHaveBeenCalledWith({
+        conditionId: '1',
+        parameterCode: 'pressure',
+        value: '120',
+      })
+      expect(calls).toEqual(['clear', 'edit'])
+    } finally {
+      grid.cleanup()
+    }
+  })
+
+  it('does not publish invalid or persistence callbacks when a Choice resource is unavailable', () => {
+    const onCellInvalid = vi.fn()
+    const onCellEdit = vi.fn()
+    const grid = renderGrid({
+      data: gridData(),
+      callbacks: { onCellInvalid, onCellEdit },
+    })
+    try {
+      dataEditorProps().onCellEdited?.([5, 0], textCell('AUTO'))
+      expect(onCellInvalid).not.toHaveBeenCalled()
+      expect(onCellEdit).not.toHaveBeenCalled()
+    } finally {
+      grid.cleanup()
+    }
+  })
+
+  it('does not expose the Glide edit callback in read-only mode', () => {
+    const grid = renderGrid({ data: gridData(), view: { readOnly: true } })
+    try {
+      expect(dataEditorProps().onCellEdited).toBeUndefined()
+    } finally {
+      grid.cleanup()
+    }
+  })
+
+  it('uses invalid raw input for display and copy while exposing coordinate, reason, and unsaved state', () => {
+    const grid = renderGrid({ data: gridData({ invalid: true }) })
+    try {
+      const cell = dataEditorProps().getCellContent([4, 0])
+      expect(cell).toMatchObject({
+        kind: GridCellKind.Text,
+        displayData: 'abc',
+        copyData: 'abc',
+      })
+      expect(cell.kind === GridCellKind.Text ? cell.data : '').toContain('Condition 1 · Pressure')
+      expect(cell.kind === GridCellKind.Text ? cell.data : '').toContain('숫자로 입력하세요')
+      expect(cell.kind === GridCellKind.Text ? cell.data : '').toContain('저장되지 않음')
+    } finally {
+      grid.cleanup()
+    }
+  })
+
+  it('draws an inset invalid boundary and non-color marker without changing row geometry', () => {
+    const grid = renderGrid({ data: gridData({ invalid: true }) })
+    try {
+      const strokeRect = vi.fn()
+      const fillText = vi.fn()
+      const drawContent = vi.fn()
+      dataEditorProps().drawCell?.({
+        col: 4,
+        row: 0,
+        cell: dataEditorProps().getCellContent([4, 0]),
+        ctx: {
+          save: vi.fn(),
+          restore: vi.fn(),
+          strokeRect,
+          fillText,
+        },
+        rect: { x: 10, y: 20, width: 150, height: 32 },
+      } as never, drawContent)
+
+      expect(drawContent).toHaveBeenCalledTimes(1)
+      expect(strokeRect).toHaveBeenCalledWith(12, 22, 146, 28)
+      expect(fillText).toHaveBeenCalledWith('!', 17, 36)
+      expect(dataEditorProps().rowHeight).toBe(32)
+    } finally {
+      grid.cleanup()
+    }
+  })
+
+  it('keeps paste staging as the complete visual-surface priority', () => {
+    const grid = renderGrid({
+      data: gridData({ invalid: true }),
+      pasteStaging: [{
+        conditionId: '1',
+        parameterCode: 'pressure',
+        value: '130',
+        valid: true,
+      }],
+    })
+    try {
+      const strokeRect = vi.fn()
+      dataEditorProps().drawCell?.({
+        col: 4,
+        row: 0,
+        cell: dataEditorProps().getCellContent([4, 0]),
+        ctx: { save: vi.fn(), restore: vi.fn(), strokeRect, fillText: vi.fn() },
+        rect: { x: 10, y: 20, width: 150, height: 32 },
+      } as never, vi.fn())
+      expect(dataEditorProps().getCellContent([4, 0]).copyData).toBe('130')
+      expect(strokeRect).not.toHaveBeenCalled()
+    } finally {
+      grid.cleanup()
+    }
+  })
+
+  it('shows one selected invalid alert without clearing the retained draft', () => {
+    const onInvalidDraftClear = vi.fn()
+    const grid = renderGrid({
+      data: gridData({ invalid: true }),
+      callbacks: { onInvalidDraftClear },
+    })
+    try {
+      act(() => dataEditorProps().onGridSelectionChange?.(selection([4, 0])))
+      const alert = grid.container.querySelector('[role="alert"]')
+      expect(alert?.textContent).toContain('Condition 1 · Pressure')
+      expect(alert?.textContent).toContain('abc')
+      expect(alert?.textContent).toContain('숫자로 입력하세요')
+      expect(alert?.textContent).toContain('저장되지 않음')
+      expect(grid.container.querySelectorAll('[role="alert"]')).toHaveLength(1)
+      expect(dataEditorHarness.getBounds).toHaveBeenLastCalledWith(4, 0)
+
+      act(() => dataEditorProps().onGridSelectionChange?.(selection([0, 0])))
+      expect(grid.container.querySelector('[role="alert"]')).toBeNull()
+      expect(onInvalidDraftClear).not.toHaveBeenCalled()
+
+      act(() => dataEditorProps().onGridSelectionChange?.(selection([4, 0])))
+      expect(grid.container.querySelectorAll('[role="alert"]')).toHaveLength(1)
+      expect(onInvalidDraftClear).not.toHaveBeenCalled()
+    } finally {
+      grid.cleanup()
+    }
+  })
+
+  it('prefers below placement and flips above near the viewport bottom', () => {
+    expect(invalidDraftPopoverPlacement(
+      { x: 300, y: 120, width: 120, height: 32 },
+      { width: 1024, height: 768 },
+      { width: 280, height: 104 },
+    )).toMatchObject({ placement: 'below', y: 152 })
+    expect(invalidDraftPopoverPlacement(
+      { x: 300, y: 700, width: 120, height: 32 },
+      { width: 1024, height: 768 },
+      { width: 280, height: 104 },
+    ).placement).toBe('above')
+  })
+})
+
+function dataEditorProps(): DataEditorProps {
+  if (dataEditorHarness.props === undefined) throw new Error('DataEditor props were not captured.')
+  return dataEditorHarness.props
+}
+
+function selection(cell: readonly [number, number]): GridSelection {
+  return {
+    columns: CompactSelection.empty(),
+    rows: CompactSelection.empty(),
+    current: {
+      cell,
+      range: { x: cell[0], y: cell[1], width: 1, height: 1 },
+      rangeStack: [],
+    },
+  }
+}
+
+function textCell(value: string): EditableGridCell {
+  return {
+    kind: GridCellKind.Text,
+    allowOverlay: true,
+    data: value,
+    displayData: value,
+  }
+}
+
+function unavailableChoiceResource(): SheetChoiceResource {
+  return {
+    setCode: 'modes',
+    targetVersion: 1,
+    summaryVersion: null,
+    setIsActive: null,
+    displayAggregate: null,
+    selectableAggregate: null,
+    selectionReady: false,
+    isStale: false,
+    loading: true,
+    error: null,
+    prepareToOpen: async () => undefined,
+    retry: async () => undefined,
+  }
+}
+
+function gridData(options: { invalid?: boolean } = {}): ConditionGridProps['data'] {
+  return {
+    columns: [
+      {
+        key: 'pressure',
+        headerName: 'Pressure',
+        valueType: 'number',
+        categoryCode: null,
+        unit: 'kPa',
+        choiceSetCode: null,
+        choiceSetVersion: null,
+        required: true,
+        minValue: '0',
+        maxValue: '500',
+      },
+      {
+        key: 'mode',
+        headerName: 'Mode',
+        valueType: 'choice',
+        categoryCode: null,
+        choiceSetCode: 'modes',
+        choiceSetVersion: 1,
+        required: false,
+        minValue: null,
+        maxValue: null,
+      },
+    ],
+    rows: [{
+      id: '1',
+      layerKey: 'layer-1',
+      stepSeq: '010',
+      layerId: 'L1',
+      layerLabel: 'Layer 1',
+      conditionLabel: 'Condition 1',
+      isPor: true,
+      values: { pressure: '100', mode: null },
+    }],
+    choiceResources: new Map([['modes', unavailableChoiceResource()]]),
+    invalidDrafts: options.invalid ? [{
+      conditionId: '1',
+      parameterCode: 'pressure',
+      rawValue: 'abc',
+      code: 'invalid_decimal',
+      message: '숫자로 입력하세요',
+      constraint: null,
+    }] : undefined,
+  }
+}
+
+function renderGrid(props: ConditionGridProps) {
+  const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>')
+  const container = dom.window.document.querySelector<HTMLDivElement>('#root')
+  if (container === null) throw new Error('Grid root is unavailable.')
+  const globals = globalThis as unknown as {
+    document?: Document
+    HTMLElement?: typeof HTMLElement
+    Node?: typeof Node
+    window?: Window
+    IS_REACT_ACT_ENVIRONMENT?: boolean
+  }
+  const previous = {
+    document: globals.document,
+    HTMLElement: globals.HTMLElement,
+    Node: globals.Node,
+    window: globals.window,
+    IS_REACT_ACT_ENVIRONMENT: globals.IS_REACT_ACT_ENVIRONMENT,
+  }
+  let root: Root | null = null
+  globals.window = dom.window as unknown as Window
+  globals.document = dom.window.document
+  globals.HTMLElement = dom.window.HTMLElement as unknown as typeof HTMLElement
+  globals.Node = dom.window.Node as unknown as typeof Node
+  globals.IS_REACT_ACT_ENVIRONMENT = true
+  dataEditorHarness.props = undefined
+  dataEditorHarness.getBounds.mockClear()
+  act(() => {
+    root = createRoot(container)
+    root.render(<GlideConditionGrid {...props} />)
+  })
+  return {
+    container,
+    cleanup: () => {
+      act(() => root?.unmount())
+      globals.window = previous.window
+      globals.document = previous.document
+      globals.HTMLElement = previous.HTMLElement
+      globals.Node = previous.Node
+      globals.IS_REACT_ACT_ENVIRONMENT = previous.IS_REACT_ACT_ENVIRONMENT
+      dom.window.close()
+    },
+  }
+}
