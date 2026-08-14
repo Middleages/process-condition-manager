@@ -1,5 +1,6 @@
 import { act, forwardRef, useImperativeHandle } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
+import { Simulate } from 'react-dom/test-utils'
 import { JSDOM } from 'jsdom'
 import { describe, expect, it, vi } from 'vitest'
 import {
@@ -469,7 +470,7 @@ describe('invalid draft Glide boundary', () => {
     }
   })
 
-  it('opens a retained invalid cell editor with the raw draft instead of its accessible description', () => {
+  it('uses printable-key initialValue as invalid edit authority through change and Enter', () => {
     const grid = renderGrid({ data: gridData({ invalid: true }) })
     let editorRoot: Root | null = null
     try {
@@ -481,23 +482,19 @@ describe('invalid draft Glide boundary', () => {
 
       const editorHost = grid.container.ownerDocument.createElement('div')
       grid.container.ownerDocument.body.append(editorHost)
-      const elementPrototype = grid.container.ownerDocument.defaultView?.HTMLElement.prototype
-      if (elementPrototype !== undefined) {
-        Object.defineProperties(elementPrototype, {
-          attachEvent: { configurable: true, value: vi.fn() },
-          detachEvent: { configurable: true, value: vi.fn() },
-        })
-      }
+      installLegacyInputFocusStubs(grid.container.ownerDocument)
       const Editor = provided.editor
       const onChange = vi.fn()
+      const onFinishedEditing = vi.fn()
       editorRoot = createRoot(editorHost)
       act(() => {
         editorRoot?.render(
           <Editor
             forceEditMode
+            initialValue="9"
             isHighlighted={false}
             onChange={onChange}
-            onFinishedEditing={vi.fn()}
+            onFinishedEditing={onFinishedEditing}
             target={{ x: 300, y: 120, width: 150, height: 32 }}
             theme={{} as never}
             value={cell as EditableGridCell}
@@ -505,13 +502,85 @@ describe('invalid draft Glide boundary', () => {
         )
       })
 
-      expect(editorHost.querySelector<HTMLInputElement>('input')?.value).toBe('abc')
+      const input = editorHost.querySelector<HTMLInputElement>('input')
+      expect(input?.value).toBe('9')
+      expect(grid.container.ownerDocument.activeElement).toBe(input)
       expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
         kind: GridCellKind.Text,
-        data: 'abc',
-        displayData: 'abc',
-        copyData: 'abc',
+        data: '9',
+        displayData: '9',
+        copyData: '9',
       }))
+
+      act(() => {
+        setInputValue(input, '99')
+        if (input !== null) Simulate.change(input)
+      })
+      expect(input?.value).toBe('99')
+      expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({
+        data: '99',
+        displayData: '99',
+        copyData: '99',
+      }))
+
+      act(() => {
+        input?.dispatchEvent(new grid.container.ownerDocument.defaultView!.KeyboardEvent('keydown', {
+          key: 'Enter',
+          bubbles: true,
+        }))
+      })
+      expect(onFinishedEditing).toHaveBeenCalledWith(expect.objectContaining({
+        data: '99',
+        displayData: '99',
+        copyData: '99',
+      }))
+    } finally {
+      act(() => editorRoot?.unmount())
+      grid.cleanup()
+    }
+  })
+
+  it('seeds a retained raw draft without initialValue and cancels Escape from focused input', () => {
+    const grid = renderGrid({ data: gridData({ invalid: true }) })
+    let editorRoot: Root | null = null
+    try {
+      const cell = dataEditorProps().getCellContent([4, 0])
+      const provided = dataEditorProps().provideEditor?.(cell)
+      expect(provided).toBeDefined()
+      expect(typeof provided).toBe('object')
+      if (provided === undefined || typeof provided !== 'object') return
+
+      const editorHost = grid.container.ownerDocument.createElement('div')
+      grid.container.ownerDocument.body.append(editorHost)
+      installLegacyInputFocusStubs(grid.container.ownerDocument)
+      const Editor = provided.editor
+      const onFinishedEditing = vi.fn()
+      editorRoot = createRoot(editorHost)
+      act(() => {
+        editorRoot?.render(
+          <Editor
+            forceEditMode
+            isHighlighted={false}
+            onChange={vi.fn()}
+            onFinishedEditing={onFinishedEditing}
+            target={{ x: 300, y: 120, width: 150, height: 32 }}
+            theme={{} as never}
+            value={cell as EditableGridCell}
+          />,
+        )
+      })
+
+      const input = editorHost.querySelector<HTMLInputElement>('input')
+      expect(input?.value).toBe('abc')
+      expect(grid.container.ownerDocument.activeElement).toBe(input)
+      act(() => {
+        input?.dispatchEvent(new grid.container.ownerDocument.defaultView!.KeyboardEvent('keydown', {
+          key: 'Escape',
+          bubbles: true,
+        }))
+      })
+      expect(onFinishedEditing).toHaveBeenCalledTimes(1)
+      expect(onFinishedEditing).toHaveBeenCalledWith(undefined)
     } finally {
       act(() => editorRoot?.unmount())
       grid.cleanup()
@@ -600,19 +669,83 @@ describe('invalid draft Glide boundary', () => {
     }
   })
 
-  it('prefers below placement and flips above near the viewport bottom', () => {
-    expect(invalidDraftPopoverPlacement(
-      { x: 300, y: 120, width: 120, height: 32 },
+  it('keeps a fixed separation gap below and above the active cell', () => {
+    const upperCell = { x: 300, y: 120, width: 120, height: 32 }
+    const below = invalidDraftPopoverPlacement(
+      upperCell,
       { width: 1024, height: 768 },
       { width: 280, height: 104 },
-    )).toMatchObject({ placement: 'below', y: 152 })
-    expect(invalidDraftPopoverPlacement(
-      { x: 300, y: 700, width: 120, height: 32 },
+    )
+    expect(below).toMatchObject({ placement: 'below', y: 160 })
+    expect(below.y - (upperCell.y + upperCell.height)).toBe(8)
+
+    const lowerCell = { x: 300, y: 700, width: 120, height: 32 }
+    const above = invalidDraftPopoverPlacement(
+      lowerCell,
       { width: 1024, height: 768 },
       { width: 280, height: 104 },
-    ).placement).toBe('above')
+    )
+    expect(above).toMatchObject({ placement: 'above', y: 588 })
+    expect(lowerCell.y - (above.y + 104)).toBe(8)
+  })
+
+  it('refreshes invalid popover from post-layout cell bounds on the next animation frame', () => {
+    const grid = renderGrid({ data: gridData({ invalid: true }) })
+    let scheduledFrame: FrameRequestCallback | undefined
+    const window = grid.container.ownerDocument.defaultView!
+    Object.defineProperty(window, 'requestAnimationFrame', {
+      configurable: true,
+      value: vi.fn((callback: FrameRequestCallback) => {
+        scheduledFrame = callback
+        return 1
+      }),
+    })
+    Object.defineProperty(window, 'cancelAnimationFrame', {
+      configurable: true,
+      value: vi.fn(),
+    })
+    try {
+      act(() => dataEditorProps().onGridSelectionChange?.(selection([4, 0])))
+      const callsBeforeVisibleChange = dataEditorHarness.getBounds.mock.calls.length
+      dataEditorHarness.getBounds.mockReturnValue({ x: 300, y: 700, width: 150, height: 32 })
+
+      act(() => dataEditorProps().onVisibleRegionChanged?.(
+        { x: 0, y: 0, width: 8, height: 10 },
+        0,
+        0,
+        { selected: [4, 0] },
+      ))
+      expect(dataEditorHarness.getBounds).toHaveBeenCalledTimes(callsBeforeVisibleChange)
+
+      dataEditorHarness.getBounds.mockReturnValue({ x: 460, y: 420, width: 150, height: 32 })
+      expect(scheduledFrame).toBeDefined()
+      act(() => scheduledFrame?.(16))
+
+      const alert = grid.container.querySelector<HTMLElement>('[role="alert"]')
+      expect(dataEditorHarness.getBounds).toHaveBeenLastCalledWith(4, 0)
+      expect(alert?.dataset.anchorY).toBe('420')
+      expect(alert?.style.left).toBe('460px')
+      expect(alert?.style.top).toBe('460px')
+    } finally {
+      grid.cleanup()
+    }
   })
 })
+
+function installLegacyInputFocusStubs(document: Document): void {
+  const elementPrototype = document.defaultView?.HTMLElement.prototype
+  if (elementPrototype === undefined) return
+  Object.defineProperties(elementPrototype, {
+    attachEvent: { configurable: true, value: vi.fn() },
+    detachEvent: { configurable: true, value: vi.fn() },
+  })
+}
+
+function setInputValue(input: HTMLInputElement | null, value: string): void {
+  if (input === null) return
+  const setter = Object.getOwnPropertyDescriptor(input.ownerDocument.defaultView!.HTMLInputElement.prototype, 'value')?.set
+  setter?.call(input, value)
+}
 
 function dataEditorProps(): DataEditorProps {
   if (dataEditorHarness.props === undefined) throw new Error('DataEditor props were not captured.')

@@ -117,10 +117,14 @@ const EMPTY_GRID_SELECTION: GridSelection = {
   current: undefined,
 }
 
-interface InvalidDraftPopoverPosition {
+interface InvalidDraftPopoverPlacement {
   x: number
   y: number
   placement: 'below' | 'above'
+}
+
+interface InvalidDraftPopoverPosition extends InvalidDraftPopoverPlacement {
+  anchor: Rectangle
 }
 
 const INVALID_DRAFT_POPOVER_SIZE = { width: 280, height: 104 }
@@ -149,20 +153,25 @@ function invalidDraftEditingCell(
 
 const InvalidDraftEditor: ProvideEditorComponent<GridCell> = ({
   value,
+  initialValue,
   onChange,
   onFinishedEditing,
 }) => {
   const invalidCell = isInvalidDraftTextCell(value) ? value : null
+  const [draft, setDraft] = useState(initialValue ?? invalidCell?.invalidDraftRawValue ?? '')
 
   useEffect(() => {
-    if (invalidCell === null || invalidCell.data === invalidCell.invalidDraftRawValue) return
-    onChange(invalidDraftEditingCell(invalidCell, invalidCell.invalidDraftRawValue))
-  }, [invalidCell, onChange])
+    if (
+      invalidCell === null ||
+      (invalidCell.data === draft && invalidCell.invalidDraftRawValue === draft)
+    ) return
+    onChange(invalidDraftEditingCell(invalidCell, draft))
+  }, [draft, invalidCell, onChange])
 
   if (invalidCell === null) return null
 
   const finish = (): void => {
-    onFinishedEditing(invalidDraftEditingCell(invalidCell, invalidCell.invalidDraftRawValue))
+    onFinishedEditing(invalidDraftEditingCell(invalidCell, draft))
   }
 
   return (
@@ -170,8 +179,8 @@ const InvalidDraftEditor: ProvideEditorComponent<GridCell> = ({
       <input
         autoFocus
         className="input w-full font-mono"
-        value={invalidCell.invalidDraftRawValue}
-        onChange={(event) => onChange(invalidDraftEditingCell(invalidCell, event.currentTarget.value))}
+        value={draft}
+        onChange={(event) => setDraft(event.currentTarget.value)}
         onKeyDown={(event) => {
           if (event.key === 'Enter') {
             event.preventDefault()
@@ -199,10 +208,10 @@ export function invalidDraftPopoverPlacement(
   bounds: Rectangle,
   viewport: { width: number; height: number },
   size: { width: number; height: number },
-): InvalidDraftPopoverPosition {
+): InvalidDraftPopoverPlacement {
   const margin = INVALID_DRAFT_POPOVER_MARGIN
-  const belowY = bounds.y + bounds.height
-  const aboveY = bounds.y - size.height
+  const belowY = bounds.y + bounds.height + margin
+  const aboveY = bounds.y - size.height - margin
   const placement =
     belowY + size.height <= viewport.height - margin || aboveY < margin
       ? 'below'
@@ -610,6 +619,7 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
   }, [invalidDraftIndex, rows, selectedCell, visibleColumns])
   const [invalidDraftPopover, setInvalidDraftPopover] =
     useState<InvalidDraftPopoverPosition | null>(null)
+  const invalidDraftPopoverFrameRef = useRef<number | null>(null)
   const refreshInvalidDraftPopover = useCallback(() => {
     if (activeInvalidDraft === null) {
       setInvalidDraftPopover(null)
@@ -623,16 +633,38 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
       setInvalidDraftPopover(null)
       return
     }
-    setInvalidDraftPopover(invalidDraftPopoverPlacement(
-      bounds,
-      { width: window.innerWidth, height: window.innerHeight },
-      INVALID_DRAFT_POPOVER_SIZE,
-    ))
+    setInvalidDraftPopover({
+      ...invalidDraftPopoverPlacement(
+        bounds,
+        { width: window.innerWidth, height: window.innerHeight },
+        INVALID_DRAFT_POPOVER_SIZE,
+      ),
+      anchor: bounds,
+    })
   }, [activeInvalidDraft])
+  const scheduleInvalidDraftPopoverRefresh = useCallback(() => {
+    if (invalidDraftPopoverFrameRef.current !== null) {
+      window.cancelAnimationFrame(invalidDraftPopoverFrameRef.current)
+    }
+    invalidDraftPopoverFrameRef.current = window.requestAnimationFrame(() => {
+      invalidDraftPopoverFrameRef.current = null
+      refreshInvalidDraftPopover()
+    })
+  }, [refreshInvalidDraftPopover])
 
   useIsomorphicLayoutEffect(() => {
+    if (invalidDraftPopoverFrameRef.current !== null) {
+      window.cancelAnimationFrame(invalidDraftPopoverFrameRef.current)
+      invalidDraftPopoverFrameRef.current = null
+    }
     refreshInvalidDraftPopover()
   }, [refreshInvalidDraftPopover])
+
+  useEffect(() => () => {
+    if (invalidDraftPopoverFrameRef.current !== null) {
+      window.cancelAnimationFrame(invalidDraftPopoverFrameRef.current)
+    }
+  }, [])
 
   // Imperative navigation publishes selection first; focus again after that controlled selection
   // commits so Glide targets the requested accessible cell rather than the previous selection.
@@ -1112,8 +1144,8 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
         drawCell={drawCell}
         gridSelection={effectiveGridSelection}
         onGridSelectionChange={handleGridSelectionChange}
-        onVisibleRegionChanged={refreshInvalidDraftPopover}
-        onColumnResizeEnd={refreshInvalidDraftPopover}
+        onVisibleRegionChanged={scheduleInvalidDraftPopoverRefresh}
+        onColumnResizeEnd={scheduleInvalidDraftPopoverRefresh}
         provideEditor={provideInvalidDraftEditor}
         onCellEdited={readOnly ? undefined : handleCellEdited}
         onCellClicked={handleCellClicked}
@@ -1160,13 +1192,19 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
         <div
           role="alert"
           data-placement={invalidDraftPopover.placement}
+          data-anchor-x={invalidDraftPopover.anchor.x}
+          data-anchor-y={invalidDraftPopover.anchor.y}
+          data-anchor-width={invalidDraftPopover.anchor.width}
+          data-anchor-height={invalidDraftPopover.anchor.height}
           style={{
             position: 'fixed',
             left: invalidDraftPopover.x,
             top: invalidDraftPopover.y,
             zIndex: 55,
             width: INVALID_DRAFT_POPOVER_SIZE.width,
-            minHeight: INVALID_DRAFT_POPOVER_SIZE.height,
+            height: INVALID_DRAFT_POPOVER_SIZE.height,
+            boxSizing: 'border-box',
+            overflow: 'auto',
             pointerEvents: 'none',
             border: `1px solid ${GRID_COLORS.error}`,
             borderRadius: 6,
