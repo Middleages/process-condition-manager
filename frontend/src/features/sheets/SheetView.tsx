@@ -998,8 +998,8 @@ function SheetEditor({
     [data.columns, activeCategory],
   )
   const validationIssues = useMemo(
-    () => enrichValidationIssues(validation.issues, data.columns, displayRows),
-    [validation.issues, data.columns, displayRows],
+    () => enrichValidationIssues(validation.issues, data.columns, persistableDisplayRows),
+    [validation.issues, data.columns, persistableDisplayRows],
   )
   const activeLayerValidationIssues = useMemo(() => {
     const activeConditionIds = new Set(
@@ -1106,6 +1106,7 @@ function SheetEditor({
   const [paste, setPasteState] = useState<PasteStagingResult | null>(null)
   const pasteRef = useRef<PasteStagingResult | null>(null)
   const pasteIdentityRef = useRef<symbol | null>(null)
+  const pastePersistedCellsRef = useRef<readonly PersistedCell[]>([])
   const [pasteError, setPasteError] = useState<string | null>(null)
   const [applying, setApplying] = useState(false)
   const applyingRef = useRef(false)
@@ -1150,7 +1151,7 @@ function SheetEditor({
       interaction.canStagePaste,
       activeCategory,
       visibleColumns,
-      displayRows,
+      persistableDisplayRows,
       choiceAuthorizationEpoch,
     ],
   )
@@ -1172,17 +1173,17 @@ function SheetEditor({
   const pasteCommitRuntimeRef = useRef({
     generation: pasteCallbackGeneration,
     columns: data.columns,
-    rows: displayRows,
+    rows: persistableDisplayRows,
     choiceResources,
   })
   useIsomorphicLayoutEffect(() => {
     commitPasteCallbackRuntime(pasteCommitRuntimeRef, {
       generation: pasteCallbackGeneration,
       columns: data.columns,
-      rows: displayRows,
+      rows: persistableDisplayRows,
       choiceResources,
     })
-  }, [pasteCallbackGeneration, data.columns, displayRows, choiceResources])
+  }, [pasteCallbackGeneration, data.columns, persistableDisplayRows, choiceResources])
 
   // 숨겨진 category 결과는 category state가 실제 commit되어 visibleColumns가 바뀐 뒤에만
   // 스크롤한다. setActiveCategory 직후의 오래된 adapter ref에는 명령하지 않는다.
@@ -1397,7 +1398,7 @@ function SheetEditor({
           target,
           parseTsv(tsv),
           visibleColumns,
-          displayRows,
+          persistableDisplayRows,
           choiceResources,
         )
         // 매핑되는 셀도 없고 잘린 것도 없으면(대상 밖 등) 무시.
@@ -1406,6 +1407,7 @@ function SheetEditor({
         }
         setPasteError(null)
         pasteIdentityRef.current = Symbol('sheet-paste-review')
+        pastePersistedCellsRef.current = []
         setPaste(result)
       },
       // POR 이양: 클릭된 행을 POR로. 성공 시 두 행(기존/신규)의 is_por가 바뀌므로 재조회한다.
@@ -1435,7 +1437,7 @@ function SheetEditor({
       interaction,
       setCell,
       visibleColumns,
-      displayRows,
+      persistableDisplayRows,
       choiceResources,
       performStructural,
       projectId,
@@ -1451,6 +1453,7 @@ function SheetEditor({
     const pasteIdentity = pasteIdentityRef.current
     if (pasteIdentity !== null) abandonPaste(pasteIdentity)
     pasteIdentityRef.current = null
+    pastePersistedCellsRef.current = []
     setPaste(null)
     setPasteError(null)
   }, [interaction.canCancelPaste, abandonPaste, setPaste])
@@ -1476,9 +1479,14 @@ function SheetEditor({
         setPaste(latestPaste)
         // 현재 권한으로 다시 검증한 유효 셀만 첫 revision snapshot에 포함한다.
         const validCells: PersistedCell[] = persistablePasteCells(latestPaste, current.rows)
+        pastePersistedCellsRef.current = validCells
         return validCells
       })
       if (saved) {
+        for (const cell of pastePersistedCellsRef.current) {
+          useEditStore.getState().clearInvalidDraft(cell.conditionId, cell.parameterCode)
+        }
+        pastePersistedCellsRef.current = []
         pasteIdentityRef.current = null
         setPaste(null) // 성공 → 스테이징 종료(서버 스냅샷에 반영됨)
       }

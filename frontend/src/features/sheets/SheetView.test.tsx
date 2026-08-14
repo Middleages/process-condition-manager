@@ -971,7 +971,7 @@ describe('SheetView focus shell integration', () => {
     expect(sheetViewSource).toContain('buildReadOnlySheetChoiceResources(')
     expect(sheetViewSource).toContain('choiceResources')
     expect(sheetViewSource).toMatch(
-      /buildPasteStaging\([\s\S]*?visibleColumns,[\s\S]*?displayRows,[\s\S]*?choiceResources/,
+      /buildPasteStaging\([\s\S]*?visibleColumns,[\s\S]*?persistableDisplayRows,[\s\S]*?choiceResources/,
     )
     expect(sheetViewSource).toContain('reconcileSuccessfulPatch(')
     expect(sheetViewSource).toContain('commitSaved')
@@ -1945,6 +1945,82 @@ describe('SheetView focus shell integration', () => {
     }
   }, 8_000)
 
+  it('keeps validation workbench values persistable while the Grid displays rejected raw input', async () => {
+    mockSheetWorkbenchState = createMockSheetWorkbenchState('validation')
+    const interactive = renderInteractiveSheet({ minimumValue: '10' })
+
+    try {
+      await settleInteractiveSheet()
+      click(interactive, gridDraftButton(interactive.container, 'invalid', '11'))
+
+      expect(renderedValues(interactive.container)[0]?.ETCH_P001).toBe('not-a-number')
+      const issue = interactive.container.querySelector<HTMLButtonElement>(
+        '[data-validation-workbench] button[aria-label]',
+      )
+      expect(issue?.textContent).toContain('현재 1')
+      expect(issue?.getAttribute('aria-label')).toContain('현재 값 1.')
+      expect(issue?.textContent).not.toContain('not-a-number')
+      expect(issue?.getAttribute('aria-label')).not.toContain('not-a-number')
+    } finally {
+      interactive.cleanup()
+    }
+  })
+
+  it('treats paste over an invalid draft as a real correction and clears only persisted coordinates', async () => {
+    const interactive = renderInteractiveSheet()
+
+    try {
+      await settleInteractiveSheet()
+      act(() => {
+        useEditStore.getState().setInvalidDraft(testInvalidDraft('99'))
+        useEditStore.getState().setInvalidDraft({
+          ...testInvalidDraft('kept-on-other-row'),
+          conditionId: '22',
+        })
+      })
+
+      click(interactive, gridPasteButton(interactive.container))
+      click(interactive, pasteApplyButton(interactive.container))
+      await settleInteractiveSheet()
+
+      expect(patchCells).toHaveBeenCalledWith(
+        7,
+        [{ condition_id: 11, parameter_code: 'ETCH_P001', value: '99' }],
+        'paste',
+        'test-lock-token',
+      )
+      expect(useEditStore.getState().invalidDrafts.has(dirtyKey('11', 'ETCH_P001'))).toBe(false)
+      expect(useEditStore.getState().invalidDrafts.get(dirtyKey('22', 'ETCH_P001'))?.rawValue)
+        .toBe('kept-on-other-row')
+    } finally {
+      interactive.cleanup()
+    }
+  })
+
+  it('preserves invalid drafts when paste persistence fails or the review is cancelled', async () => {
+    vi.mocked(patchCells).mockRejectedValueOnce(new Error('paste offline'))
+    const interactive = renderInteractiveSheet()
+
+    try {
+      await settleInteractiveSheet()
+      act(() => useEditStore.getState().setInvalidDraft(testInvalidDraft('99')))
+
+      click(interactive, gridPasteButton(interactive.container))
+      click(interactive, pasteApplyButton(interactive.container))
+      await settleInteractiveSheet()
+
+      expect(interactive.container.textContent).toContain('paste offline')
+      expect(useEditStore.getState().invalidDrafts.get(dirtyKey('11', 'ETCH_P001'))?.rawValue)
+        .toBe('99')
+
+      click(interactive, buttonByText(interactive.container, '취소'))
+      expect(useEditStore.getState().invalidDrafts.get(dirtyKey('11', 'ETCH_P001'))?.rawValue)
+        .toBe('99')
+    } finally {
+      interactive.cleanup()
+    }
+  })
+
   it('preserves drafts across authoritative refreshes and prunes only removed row or column identities', async () => {
     const interactive = renderInteractiveSheet()
 
@@ -2097,16 +2173,49 @@ describe('SheetView focus shell integration', () => {
       interactive.cleanup()
     }
   })
+
+  it('keeps the same project session across heartbeat refreshes but clears on project change', async () => {
+    const interactive = renderInteractiveSheet()
+
+    try {
+      await settleInteractiveSheet()
+      click(interactive, gridDraftButton(interactive.container, 'invalid', '11'))
+      expect(acquireLock).toHaveBeenCalledTimes(1)
+
+      await act(async () => {
+        interactive.queryClient.setQueryData(['sheet', 7], {
+          ...interactive.sheet,
+          lock: { ...interactive.sheet.lock, heartbeat_seconds: 30 },
+        })
+        await new Promise((resolve) => setTimeout(resolve, 10))
+      })
+
+      expect(useEditStore.getState().invalidDrafts.size).toBe(1)
+      expect(acquireLock).toHaveBeenCalledTimes(1)
+
+      await act(async () => {
+        await interactive.router.navigate('/projects/8/sheet')
+        await new Promise((resolve) => setTimeout(resolve, 50))
+      })
+
+      expect(useEditStore.getState().invalidDrafts.size).toBe(0)
+      expect(interactive.router.state.location.pathname).toBe('/projects/8/sheet')
+    } finally {
+      interactive.cleanup()
+    }
+  })
 })
 
 function renderInteractiveSheet({
   requiredConditionIds = [],
   firstLayerConditionIds = [11],
   heartbeatSeconds = 45,
+  minimumValue = null,
 }: {
   requiredConditionIds?: readonly number[]
   firstLayerConditionIds?: readonly number[]
   heartbeatSeconds?: number
+  minimumValue?: string | null
 } = {}) {
   const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', {
     url: 'https://pcm.test/projects/7/sheet',
@@ -2139,7 +2248,11 @@ function renderInteractiveSheet({
   const interactiveSheet: SheetOut = {
     ...sheet,
     lock: { ...sheet.lock, heartbeat_seconds: heartbeatSeconds },
-    columns: [{ ...sheet.columns[0], required: requiredConditionIds.length > 0 }],
+    columns: [{
+      ...sheet.columns[0],
+      required: requiredConditionIds.length > 0,
+      min_value: minimumValue,
+    }],
     rows: layers.flatMap((
       [layerKey, stepSeq, layerId, sortOrder],
       layerIndex,
@@ -2191,7 +2304,7 @@ function renderInteractiveSheet({
   dom.window.confirm = vi.fn(() => true)
   const router = createMemoryRouter(
     [
-      { path: '/projects/:projectId/sheet', element: <SheetView projectId={7} /> },
+      { path: '/projects/:projectId/sheet', element: <SheetViewPage /> },
       { path: '/projects/:projectId', element: <div>project detail</div> },
     ],
     { initialEntries: ['/projects/7/sheet'] },
@@ -2287,6 +2400,14 @@ function gridCallbackButton(
 function gridPasteButton(container: HTMLElement): HTMLButtonElement {
   const button = container.querySelector<HTMLButtonElement>('[data-grid-stage-paste]')
   if (button === null) throw new Error('Grid paste control is unavailable.')
+  return button
+}
+
+function pasteApplyButton(container: HTMLElement): HTMLButtonElement {
+  const button = [...container.querySelectorAll<HTMLButtonElement>(
+    '[data-testid="paste-staging-panel"] button',
+  )].find((candidate) => candidate.textContent?.trim().startsWith('적용'))
+  if (button === undefined) throw new Error('Paste apply control is unavailable.')
   return button
 }
 

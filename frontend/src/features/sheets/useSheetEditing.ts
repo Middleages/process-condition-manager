@@ -275,6 +275,7 @@ export function useSheetEditing(
   const onPersistedRef = useRef(options.onPersisted)
   const saveOriginRef = useRef<'manual' | 'paste'>('manual')
   const pasteSnapshotRef = useRef<RetainedPasteSnapshot | null>(null)
+  const heartbeatMsRef = useRef(heartbeatMs)
 
   const updateLockStatus = useCallback((next: LockStatus) => {
     lockStatusRef.current = next
@@ -331,8 +332,19 @@ export function useSheetEditing(
           // 409 = 잠금 상실. 그 외(네트워크 일시 오류)는 무시 — 다음 주기 재시도, TTL이 최종 보험.
           if (isLockConflict(error)) handleLockLost(error)
         })
-    }, heartbeatMs)
-  }, [stopHeartbeat, handleLockLost, heartbeatMs, isCurrentSession])
+    }, heartbeatMsRef.current)
+  }, [stopHeartbeat, handleLockLost, isCurrentSession])
+
+  useEffect(() => {
+    onPersistedRef.current = options.onPersisted
+  }, [options.onPersisted])
+
+  useEffect(() => {
+    heartbeatMsRef.current = heartbeatMs
+    if (sessionActiveRef.current && lockStatusRef.current === 'held') {
+      startHeartbeat(sessionGenerationRef.current)
+    }
+  }, [heartbeatMs, startHeartbeat])
 
   // 자동저장 엔진은 한 번만 생성한다(안정 클로저 — 위 useCallback들은 deps가 안정적이다).
   if (engineRef.current === null) {
@@ -603,7 +615,6 @@ export function useSheetEditing(
     sessionGenerationRef.current = generation
     sessionActiveRef.current = true
     projectIdRef.current = projectId
-    onPersistedRef.current = options.onPersisted
 
     useEditStore.getState().clearAll() // 새 시트 → 세션 편집 버퍼 리셋
     pasteSnapshotRef.current = null
@@ -646,42 +657,11 @@ export function useSheetEditing(
       },
     )
 
-    // 비보유자는 서버가 공급한 heartbeat 주기로 조용히 재획득을 시도한다. 성공하면
-    // 새로고침 없이 편집 모드로 전환하고, 실패 중에는 readonly 표시를 유지한다.
-    const readonlyRetry = setInterval(() => {
-      if (
-        cancelled ||
-        acquireInFlightRef.current ||
-        lockStatusRef.current !== 'readonly'
-      ) {
-        return
-      }
-      acquireInFlightRef.current = true
-      acquireLock(projectId)
-        .then((lock) => {
-          if (cancelled || !isCurrentSession(generation)) {
-            void releaseLock(projectId, lock.lock_token)
-            return
-          }
-          lockTokenRef.current = lock.lock_token
-          setEditingBy(null)
-          updateLockStatus('held')
-          startHeartbeat(generation)
-        })
-        .catch((error: unknown) => {
-          if (isCurrentSession(generation)) setEditingBy(getLockConflictHolder(error))
-        })
-        .finally(() => {
-          if (isCurrentSession(generation)) acquireInFlightRef.current = false
-        })
-    }, heartbeatMs)
-
     return () => {
       cancelled = true
       sessionActiveRef.current = false
       if (isCurrentSession(generation)) sessionGenerationRef.current += 1
       acquireInFlightRef.current = false
-      clearInterval(readonlyRetry)
       stopHeartbeat()
       useEditStore.getState().clearAll()
       const token = lockTokenRef.current
@@ -709,13 +689,47 @@ export function useSheetEditing(
     }
   }, [
     projectId,
-    options.onPersisted,
     updateLockStatus,
     startHeartbeat,
     stopHeartbeat,
-    heartbeatMs,
     isCurrentSession,
   ])
+
+  // 비보유자는 최신 heartbeat cadence로 조용히 재획득을 시도한다. Cadence 변경은 이
+  // timer만 교체하며 project session/편집 버퍼/보유 잠금은 건드리지 않는다.
+  useEffect(() => {
+    const generation = sessionGenerationRef.current
+    const readonlyRetry = setInterval(() => {
+      if (
+        !sessionActiveRef.current ||
+        !isCurrentSession(generation) ||
+        acquireInFlightRef.current ||
+        lockStatusRef.current !== 'readonly'
+      ) {
+        return
+      }
+      const sessionProjectId = projectIdRef.current
+      acquireInFlightRef.current = true
+      acquireLock(sessionProjectId)
+        .then((lock) => {
+          if (!sessionActiveRef.current || !isCurrentSession(generation)) {
+            void releaseLock(sessionProjectId, lock.lock_token)
+            return
+          }
+          lockTokenRef.current = lock.lock_token
+          setEditingBy(null)
+          updateLockStatus('held')
+          startHeartbeat(generation)
+        })
+        .catch((error: unknown) => {
+          if (isCurrentSession(generation)) setEditingBy(getLockConflictHolder(error))
+        })
+        .finally(() => {
+          if (isCurrentSession(generation)) acquireInFlightRef.current = false
+        })
+    }, heartbeatMs)
+    return () => clearInterval(readonlyRetry)
+  }, [heartbeatMs, isCurrentSession, projectId, startHeartbeat, updateLockStatus])
 
   // 탭 종료 대비: sendBeacon 전용 POST release 별칭으로 해제를 큐에 넣는다. 전송 자체가
   // 거부되거나 브라우저가 종료되면 TTL 만료가 최종 보험이다.
