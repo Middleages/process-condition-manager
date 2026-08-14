@@ -126,6 +126,33 @@ describe('useHistoryWorkbenchController seams', () => {
     expect(controller.result.current.batchDetailStatus).toBe('ready')
   })
 
+  it('waits for current-Layer authority before issuing the first timeline request', async () => {
+    historyApi.getHistoryTimeline.mockResolvedValue(timelinePage(1, null))
+    const controller = renderController(true)
+
+    await flushHistoryRequests()
+
+    expect(historyApi.getHistoryTimeline).not.toHaveBeenCalled()
+
+    act(() => controller.result.current.onLayerScopeChange('L1::10::ETCH'))
+    await flushHistoryRequests()
+
+    expect(historyApi.getHistoryTimeline).toHaveBeenCalledTimes(1)
+    expect(historyApi.getHistoryTimeline).toHaveBeenCalledWith(
+      7,
+      {
+        createdFrom: null,
+        createdTo: null,
+        layerKey: 'L1::10::ETCH',
+        eventTypes: [],
+        actor: null,
+        origin: null,
+        sourceProjectId: null,
+      },
+      { cursor: null },
+    )
+  })
+
   it('does not publish a late cell result after Layer scope replaces its authority', async () => {
     const cellRequest = deferred<HistoryCellHistoryOut>()
     historyApi.getHistoryTimeline.mockResolvedValue(timelinePage(1, null))
@@ -183,9 +210,10 @@ describe('useHistoryWorkbenchController seams', () => {
   it('gates timeline and cell queries by the outer and inner modes', () => {
     const scope = { conditionId: 11, parameterCode: 'ETCH_P001' }
 
-    expect(historyTimelineQueryEnabled(false, 'timeline')).toBe(false)
-    expect(historyTimelineQueryEnabled(true, 'timeline')).toBe(true)
-    expect(historyTimelineQueryEnabled(true, 'cell')).toBe(false)
+    expect(historyTimelineQueryEnabled(false, 'timeline', 'L1::10::ETCH')).toBe(false)
+    expect(historyTimelineQueryEnabled(true, 'timeline', null)).toBe(false)
+    expect(historyTimelineQueryEnabled(true, 'timeline', 'L1::10::ETCH')).toBe(true)
+    expect(historyTimelineQueryEnabled(true, 'cell', 'L1::10::ETCH')).toBe(false)
     expect(historyCellHistoryQueryEnabled(false, 'cell', scope)).toBe(false)
     expect(historyCellHistoryQueryEnabled(true, 'timeline', scope)).toBe(false)
     expect(historyCellHistoryQueryEnabled(true, 'cell', null)).toBe(false)

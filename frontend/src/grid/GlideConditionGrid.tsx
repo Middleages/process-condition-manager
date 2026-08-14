@@ -82,6 +82,8 @@ import type {
 } from './types'
 import { GRID_COLORS } from './theme'
 
+export const GRID_SCROLL_TO_CELL_EVENT = 'pcm:grid-scroll-to-cell'
+
 const GLIDE_THEME: Partial<Theme> = {
   accentColor: GRID_COLORS.brand,
   accentFg: GRID_COLORS.surface,
@@ -1197,6 +1199,11 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
             hAlign: 'center',
             vAlign: 'center',
           })
+          window.dispatchEvent(
+            new window.CustomEvent(GRID_SCROLL_TO_CELL_EVENT, {
+              detail: { conditionId, parameterCode, col: target.col, row: target.row },
+            }),
+          )
           requestedFocusRef.current = [target.col, target.row]
           setSelectionState({ layoutAuthority, selection: selectionForCell(target.col, target.row) })
         }

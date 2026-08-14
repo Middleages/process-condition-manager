@@ -1,4 +1,4 @@
-import { act, forwardRef, useImperativeHandle } from 'react'
+import { act, createRef, forwardRef, useImperativeHandle, type Ref } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { Simulate } from 'react-dom/test-utils'
 import { JSDOM } from 'jsdom'
@@ -13,12 +13,13 @@ import {
   type Rectangle,
 } from '@glideapps/glide-data-grid'
 
-import type { ConditionGridProps, SheetChoiceResource } from './types'
+import type { ConditionGridHandle, ConditionGridProps, SheetChoiceResource } from './types'
 import { makeChoiceCell } from './choiceCell'
 import { makeDecimalCell } from './decimalCell'
 
 const dataEditorHarness = vi.hoisted(() => ({
   props: undefined as DataEditorProps | undefined,
+  scrollTo: vi.fn<DataEditorRef['scrollTo']>(),
   getBounds: vi.fn<(col?: number, row?: number) => Rectangle | undefined>(
     () => ({ x: 300, y: 120, width: 150, height: 32 }),
   ),
@@ -36,7 +37,7 @@ vi.mock('@glideapps/glide-data-grid', async (importOriginal) => {
         getBounds: dataEditorHarness.getBounds,
         focus: vi.fn(),
         emit: async () => undefined,
-        scrollTo: vi.fn(),
+        scrollTo: dataEditorHarness.scrollTo,
         remeasureColumns: vi.fn(),
       }))
       return <div data-testid="data-editor" />
@@ -177,6 +178,28 @@ describe('composite cell status rendering priority', () => {
     )
     expect(source).toContain('gridSelection={effectiveGridSelection}')
     expect(source).toContain('onGridSelectionChange={handleGridSelectionChange}')
+  })
+
+  it('announces each resolved scrollToCell at the imperative Glide scroll boundary', () => {
+    const handle = createRef<ConditionGridHandle>()
+    const grid = renderGrid({ data: gridData() }, handle)
+    const observer = vi.fn()
+    window.addEventListener('pcm:grid-scroll-to-cell', observer)
+    try {
+      act(() => handle.current?.scrollToCell('1', 'pressure'))
+
+      expect(dataEditorHarness.scrollTo).toHaveBeenCalledTimes(1)
+      expect(observer).toHaveBeenCalledTimes(1)
+      expect((observer.mock.calls[0]?.[0] as CustomEvent).detail).toEqual({
+        conditionId: '1',
+        parameterCode: 'pressure',
+        col: 4,
+        row: 0,
+      })
+    } finally {
+      window.removeEventListener('pcm:grid-scroll-to-cell', observer)
+      grid.cleanup()
+    }
   })
 
   it('makes scrollToCondition scroll vertically, select Step Seq, and request Grid focus', () => {
@@ -1069,7 +1092,7 @@ function gridData(options: {
   }
 }
 
-function renderGrid(props: ConditionGridProps) {
+function renderGrid(props: ConditionGridProps, ref?: Ref<ConditionGridHandle>) {
   const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>')
   const container = dom.window.document.querySelector<HTMLDivElement>('#root')
   if (container === null) throw new Error('Grid root is unavailable.')
@@ -1094,10 +1117,11 @@ function renderGrid(props: ConditionGridProps) {
   globals.Node = dom.window.Node as unknown as typeof Node
   globals.IS_REACT_ACT_ENVIRONMENT = true
   dataEditorHarness.props = undefined
+  dataEditorHarness.scrollTo.mockClear()
   dataEditorHarness.getBounds.mockClear()
   act(() => {
     root = createRoot(container)
-    root.render(<GlideConditionGrid {...props} />)
+    root.render(<GlideConditionGrid {...props} ref={ref} />)
   })
   return {
     container,

@@ -111,8 +111,9 @@ interface HistoryBatchDetailRequest {
 export function historyTimelineQueryEnabled(
   outerHistoryEnabled: boolean,
   mode: HistoryWorkbenchMode,
+  layerKey: string | null,
 ): boolean {
-  return outerHistoryEnabled && mode === 'timeline'
+  return outerHistoryEnabled && mode === 'timeline' && layerKey !== null
 }
 
 export function historyCellHistoryQueryEnabled(
@@ -300,7 +301,11 @@ export function useHistoryWorkbenchController(
     enabledRef.current = enabled
   }, [commitDetailRequest, commitState, enabled, historyMutationRevision])
 
-  const timelineEnabled = historyTimelineQueryEnabled(enabled, state.mode)
+  const timelineEnabled = historyTimelineQueryEnabled(
+    enabled,
+    state.mode,
+    state.filters.layerKey,
+  )
   const timelineQuery = useInfiniteQuery({
     queryKey: historyWorkbenchTimelineKey(projectId, state.filters),
     initialPageParam: null as string | null,
