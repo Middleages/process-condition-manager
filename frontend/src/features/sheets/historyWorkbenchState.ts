@@ -192,6 +192,29 @@ export function updateHistoryWorkbenchFilters(
   return reduceHistoryWorkbenchState(state, { type: 'replace-filters', filters })
 }
 
+export function rememberHistoryCellScope(
+  state: HistoryWorkbenchState,
+  scope: HistoryCellScope | null,
+): HistoryWorkbenchState {
+  if (scope === null) {
+    return state.mode === 'cell'
+      ? { ...state, mode: 'timeline', cellScope: null, expandedBatchKey: null }
+      : { ...state, cellScope: null }
+  }
+  return { ...state, cellScope: scope }
+}
+
+export function replaceHistoryLayerScope(
+  state: HistoryWorkbenchState,
+  layerKey: string,
+): HistoryWorkbenchState {
+  const next = updateHistoryWorkbenchFilters(state, {
+    ...state.filters,
+    layerKey,
+  })
+  return { ...next, mode: 'timeline', cellScope: null }
+}
+
 export function normalizeHistoryWorkbenchFilters(
   filters: HistoryTimelineFilterInput,
 ): HistoryTimelineFilters {

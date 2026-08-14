@@ -1,4 +1,9 @@
-import { describe, expect, it } from 'vitest'
+// @vitest-environment jsdom
+
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { act, createElement } from 'react'
+import { createRoot, type Root } from 'react-dom/client'
+import { afterEach, describe, expect, it } from 'vitest'
 
 import type {
   HistoryCellHistoryOut,
@@ -15,10 +20,50 @@ import {
   mergeHistoryCellHistoryPages,
   mergeHistoryTimelinePages,
   parseHistoryCellScope,
+  useHistoryWorkbenchController,
+  type HistoryWorkbenchController,
 } from './useHistoryWorkbenchController'
 import source from './useHistoryWorkbenchController.ts?raw'
 
 describe('useHistoryWorkbenchController seams', () => {
+  it('keeps a selected cell passive until cell scope is explicitly chosen', () => {
+    const controller = renderController()
+
+    expect(controller.result.current.onScopeChange('cell')).toBe(false)
+
+    act(() => {
+      controller.result.current.onFiltersChange({ actor: 'dev-admin', layerKey: 'L1::10::ETCH' })
+      expect(
+        controller.result.current.onSelectedCellChange({
+          conditionId: '11',
+          parameterCode: 'ETCH_P001',
+        }),
+      ).toBe(true)
+    })
+
+    expect(controller.result.current.state.mode).toBe('timeline')
+
+    act(() => {
+      expect(controller.result.current.onScopeChange('cell')).toBe(true)
+    })
+
+    expect(controller.result.current.state.mode).toBe('cell')
+
+    act(() => controller.result.current.onLayerScopeChange('L2::20::CLEAN'))
+
+    expect(controller.result.current.state.mode).toBe('timeline')
+    expect(controller.result.current.state.filters.actor).toBe('dev-admin')
+    expect(controller.result.current.state.filters.layerKey).toBe('L2::20::CLEAN')
+    expect(controller.result.current.state.cellScope).toBeNull()
+    expect(
+      historyCellHistoryQueryEnabled(
+        true,
+        controller.result.current.state.mode,
+        controller.result.current.state.cellScope,
+      ),
+    ).toBe(false)
+  })
+
   it('gates timeline and cell queries by the outer and inner modes', () => {
     const scope = { conditionId: 11, parameterCode: 'ETCH_P001' }
 
@@ -138,7 +183,7 @@ describe('useHistoryWorkbenchController seams', () => {
     expect(source).toContain('onLoadMoreBatchDetail')
   })
 
-  it('rejects late detail results after filter, key, mode, scope, or outer-mode changes', () => {
+  it('rejects late batch results after filter, key, mode, cell scope, or outer-mode changes', () => {
     const expected = {
       enabled: true,
       outerGeneration: 4,
@@ -162,6 +207,50 @@ describe('useHistoryWorkbenchController seams', () => {
     ).toBe(false)
   })
 })
+
+const mountedControllers: Array<{ root: Root; container: HTMLDivElement }> = []
+
+afterEach(() => {
+  for (const controller of mountedControllers.splice(0)) {
+    act(() => controller.root.unmount())
+    controller.container.remove()
+  }
+})
+
+function renderController(): { readonly result: { readonly current: HistoryWorkbenchController } } {
+  const reactActEnvironment = globalThis as typeof globalThis & {
+    IS_REACT_ACT_ENVIRONMENT: boolean
+  }
+  reactActEnvironment.IS_REACT_ACT_ENVIRONMENT = true
+  const container = document.createElement('div')
+  const root = createRoot(container)
+  const result: { current: HistoryWorkbenchController | null } = { current: null }
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, retryOnMount: false, gcTime: Number.POSITIVE_INFINITY },
+    },
+  })
+
+  function Probe() {
+    result.current = useHistoryWorkbenchController(7, false)
+    return null
+  }
+
+  document.body.append(container)
+  act(() => {
+    root.render(
+      createElement(
+        QueryClientProvider,
+        { client: queryClient },
+        createElement(Probe),
+      ),
+    )
+  })
+  mountedControllers.push({ root, container })
+
+  if (result.current === null) throw new Error('History controller did not render')
+  return { result: result as { readonly current: HistoryWorkbenchController } }
+}
 
 function timelinePage(cursorId: number, nextCursor: string | null): HistoryTimelineOut {
   return {

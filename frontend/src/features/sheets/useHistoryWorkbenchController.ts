@@ -22,7 +22,8 @@ import {
   historyWorkbenchCellHistoryKey,
   historyWorkbenchTimelineKey,
   invalidateHistoryBatchDetailsForMutation,
-  openHistoryCellScope,
+  rememberHistoryCellScope,
+  replaceHistoryLayerScope,
   storeHistoryBatchDetail,
   toggleHistoryBatchDetail,
   updateHistoryWorkbenchFilters,
@@ -56,6 +57,11 @@ export interface HistoryWorkbenchController {
   batchDetailNextPageError: string | null
   onFiltersChange: (filters: HistoryTimelineFilterInput) => void
   onModeChange: (mode: HistoryWorkbenchMode) => void
+  onLayerScopeChange: (layerKey: string) => void
+  onSelectedCellChange: (
+    target: { conditionId: string; parameterCode: string } | null,
+  ) => boolean
+  onScopeChange: (mode: HistoryWorkbenchMode) => boolean
   onBatchToggle: (item: HistoryTimelineItemOut, shouldRequestDetail: boolean) => void
   onRetryBatchDetail: (item: HistoryTimelineItemOut) => void
   onLoadMoreBatchDetail: (item: HistoryTimelineItemOut, cursor: string | null) => void
@@ -488,24 +494,66 @@ export function useHistoryWorkbenchController(
     [commitDetailRequest, commitState],
   )
 
-  const onModeChange = useCallback(
-    (mode: HistoryWorkbenchMode) => {
-      if (stateRef.current.mode === mode) return
-      if (mode === 'cell') {
-        detailRequestTokenRef.current += 1
-        commitDetailRequest({
-          key: null,
-          status: 'idle',
-          error: null,
-          phase: null,
-          cursor: null,
-        })
-      }
+  const onScopeChange = useCallback(
+    (mode: HistoryWorkbenchMode): boolean => {
+      if (mode === 'cell' && stateRef.current.cellScope === null) return false
+      if (stateRef.current.mode === mode) return true
+      detailRequestTokenRef.current += 1
+      commitDetailRequest({
+        key: null,
+        status: 'idle',
+        error: null,
+        phase: null,
+        cursor: null,
+      })
       commitState((current) => ({
         ...current,
         mode,
         expandedBatchKey: mode === 'cell' ? null : current.expandedBatchKey,
       }))
+      return true
+    },
+    [commitDetailRequest, commitState],
+  )
+
+  const onModeChange = useCallback(
+    (mode: HistoryWorkbenchMode) => {
+      onScopeChange(mode)
+    },
+    [onScopeChange],
+  )
+
+  const onLayerScopeChange = useCallback(
+    (layerKey: string) => {
+      const normalizedLayerKey = layerKey.trim()
+      if (normalizedLayerKey.length === 0) return
+      detailRequestTokenRef.current += 1
+      commitDetailRequest({
+        key: null,
+        status: 'idle',
+        error: null,
+        phase: null,
+        cursor: null,
+      })
+      commitState((current) => replaceHistoryLayerScope(current, normalizedLayerKey))
+    },
+    [commitDetailRequest, commitState],
+  )
+
+  const onSelectedCellChange = useCallback(
+    (target: { conditionId: string; parameterCode: string } | null): boolean => {
+      const scope = target === null ? null : parseHistoryCellScope(target)
+      if (target !== null && scope === null) return false
+      detailRequestTokenRef.current += 1
+      commitDetailRequest({
+        key: null,
+        status: 'idle',
+        error: null,
+        phase: null,
+        cursor: null,
+      })
+      commitState((current) => rememberHistoryCellScope(current, scope))
+      return true
     },
     [commitDetailRequest, commitState],
   )
@@ -579,20 +627,10 @@ export function useHistoryWorkbenchController(
 
   const onCellHistoryRequest = useCallback(
     (target: { conditionId: string; parameterCode: string }): boolean => {
-      const scope = parseHistoryCellScope(target)
-      if (scope === null) return false
-      detailRequestTokenRef.current += 1
-      commitDetailRequest({
-        key: null,
-        status: 'idle',
-        error: null,
-        phase: null,
-        cursor: null,
-      })
-      commitState((current) => openHistoryCellScope(current, scope))
-      return true
+      if (!onSelectedCellChange(target)) return false
+      return onScopeChange('cell')
     },
-    [commitDetailRequest, commitState],
+    [onScopeChange, onSelectedCellChange],
   )
 
   const onLoadMoreTimeline = useCallback(
@@ -670,6 +708,9 @@ export function useHistoryWorkbenchController(
     batchDetailNextPageError,
     onFiltersChange,
     onModeChange,
+    onLayerScopeChange,
+    onSelectedCellChange,
+    onScopeChange,
     onBatchToggle,
     onRetryBatchDetail,
     onLoadMoreBatchDetail,
