@@ -65,6 +65,8 @@ describe('HistoryWorkbench', () => {
     expect(html).toContain('다음 페이지 불러오기')
     expect(html).toContain('다음 페이지를 불러오지 못했습니다.')
     expect(html).toContain('서버에서 이력 목록을 불러오지 못했습니다.')
+    expect(html).toContain('기존 변경 이력은 유지됩니다.')
+    expect(html).not.toContain('현재 Layer 변경 이력을 표시할 수 없습니다.')
     expect(html).toContain('aria-live="polite"')
     expect(source).not.toContain('handleHistoryWorkbenchItemActivationKey(')
     expect(source).not.toMatch(/onClick=\{handleJumpTargetActivate\}[\s\S]{0,100}onKeyDown=/)
@@ -110,6 +112,56 @@ describe('HistoryWorkbench', () => {
       expect(container.querySelectorAll('[role="status"]')).toHaveLength(1)
     } finally {
       cleanup()
+    }
+  })
+
+  it('uses roving radio focus and arrow keys without entering a disabled cell scope', () => {
+    const state = createHistoryWorkbenchState()
+    const onScopeChange = vi.fn(() => true)
+    const { container, cleanup } = renderInteractive(state, {
+      onScopeChange,
+      selectedCellAvailable: true,
+    })
+
+    try {
+      const layerScope = findScopeRadio(container, '현재 Layer')
+      const cellScope = findScopeRadio(container, '현재 셀만')
+      expect(layerScope.tabIndex).toBe(0)
+      expect(cellScope.tabIndex).toBe(-1)
+
+      layerScope.focus()
+      act(() =>
+        layerScope.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'ArrowRight' })),
+      )
+      expect(onScopeChange).toHaveBeenLastCalledWith('cell')
+      expect(document.activeElement).toBe(cellScope)
+
+      act(() =>
+        cellScope.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'ArrowUp' })),
+      )
+      expect(onScopeChange).toHaveBeenLastCalledWith('timeline')
+      expect(document.activeElement).toBe(layerScope)
+    } finally {
+      cleanup()
+    }
+
+    const disabledScopeChange = vi.fn(() => true)
+    const disabled = renderInteractive(state, {
+      onScopeChange: disabledScopeChange,
+      selectedCellAvailable: false,
+    })
+    try {
+      const layerScope = findScopeRadio(disabled.container, '현재 Layer')
+      const cellScope = findScopeRadio(disabled.container, '현재 셀만')
+      layerScope.focus()
+      act(() =>
+        layerScope.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'ArrowDown' })),
+      )
+      expect(disabledScopeChange).not.toHaveBeenCalled()
+      expect(document.activeElement).toBe(layerScope)
+      expect(cellScope.tabIndex).toBe(-1)
+    } finally {
+      disabled.cleanup()
     }
   })
 
@@ -234,6 +286,26 @@ describe('HistoryWorkbench', () => {
     expect(html).toContain('셀 다음 페이지를 불러오지 못했습니다.')
   })
 
+  it('keeps initial Choice context while rendering a successful empty cell ledger', () => {
+    const state = openHistoryCellScope(createHistoryWorkbenchState(), {
+      conditionId: 11,
+      parameterCode: 'ETCH_P001',
+    })
+    const html = render(state, {
+      cellHistory: {
+        items: [],
+        baseline_entry: { code: 'BASE', label: 'POR' },
+        initial_entry: { code: 'INIT', label: 'Recipe A' },
+        initial_state_unavailable: false,
+        next_cursor: null,
+      },
+    })
+
+    expect(html).toContain('선택한 셀에 기록된 변경이 없습니다.')
+    expect(html).toContain('기준 셀 POR (BASE)')
+    expect(html).toContain('초기 항목 Recipe A (INIT)')
+  })
+
   it('keeps the first batch detail fetch lazy and cached in the state path', () => {
     const state = buildTimelineState()
     const item = state.pages[0].items[1]
@@ -248,6 +320,15 @@ describe('HistoryWorkbench', () => {
     expect(html).toContain('변경 값')
     expect(html).toContain('OLD')
     expect(html).toContain('NEW')
+    expect(html).not.toContain('event_desc')
+    expect(html).not.toContain('>available<')
+
+    const alternateDetail = detailFixture()
+    alternateDetail.order_kind = 'capture_asc'
+    alternateDetail.detail_status = 'legacy_unavailable'
+    const alternateHtml = render(buildTimelineState(alternateDetail))
+    expect(alternateHtml).not.toContain('capture_asc')
+    expect(alternateHtml).not.toContain('legacy_unavailable')
 
     const collapsed = toggleHistoryBatchDetail(state, batchKey)
     expect(render(collapsed)).toContain('2개 변경 펼치기')
@@ -272,6 +353,7 @@ describe('HistoryWorkbench', () => {
     })
 
     expect(html).toContain('상세 조회 실패')
+    expect(html).toContain('이 배치의 개별 변경을 표시할 수 없습니다.')
     expect(html).toContain('상세 다시 시도')
     expect(html).not.toContain('상세 이력을 불러오는 중입니다.')
   })
@@ -419,6 +501,14 @@ function renderInteractive(
       container.remove()
     },
   }
+}
+
+function findScopeRadio(container: HTMLElement, label: string): HTMLButtonElement {
+  const radio = [...container.querySelectorAll<HTMLButtonElement>('[role="radio"]')].find(
+    (candidate) => candidate.textContent === label,
+  )
+  if (radio === undefined) throw new Error(`${label} scope radio is unavailable`)
+  return radio
 }
 
 function buildTimelineState(detail: HistoryDetailOut = detailFixture()): HistoryWorkbenchState {

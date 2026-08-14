@@ -1,8 +1,10 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ChangeEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from 'react'
 
@@ -181,6 +183,8 @@ export function HistoryWorkbench({
   )
   const [filterError, setFilterError] = useState<string | null>(null)
   const [filtersExpanded, setFiltersExpanded] = useState(false)
+  const layerScopeRef = useRef<HTMLButtonElement>(null)
+  const cellScopeRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
     setDraft(createHistoryWorkbenchState(state.filters).filters)
@@ -212,14 +216,31 @@ export function HistoryWorkbench({
     onFiltersChange?.(reset)
   }
 
-  function handleModeChange(mode: HistoryWorkbenchMode): void {
+  function handleModeChange(mode: HistoryWorkbenchMode): boolean {
     const changed = onScopeChange?.(mode)
     if (changed === false) {
       emitAnnouncement('선택한 셀 이력을 열 수 없습니다.')
-      return
+      return false
     }
     emitAnnouncement(null)
     if (onScopeChange === undefined) onModeChange?.(mode)
+    return true
+  }
+
+  function handleScopeKeyDown(
+    event: ReactKeyboardEvent<HTMLButtonElement>,
+    currentMode: HistoryWorkbenchMode,
+  ): void {
+    if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return
+    event.preventDefault()
+    if (!selectedCellAvailable) {
+      layerScopeRef.current?.focus()
+      return
+    }
+    const nextMode = currentMode === 'timeline' ? 'cell' : 'timeline'
+    if (!handleModeChange(nextMode)) return
+    const nextScopeRef = nextMode === 'timeline' ? layerScopeRef : cellScopeRef
+    nextScopeRef.current?.focus()
   }
 
   function handleLoadMoreTimeline(): void {
@@ -397,7 +418,11 @@ export function HistoryWorkbench({
                   role="alert"
                 >
                   <div className="flex flex-wrap items-center gap-2">
-                    <span>{batchDetailError ?? '상세 이력을 불러오지 못했습니다.'}</span>
+                    <span>
+                      {batchDetailError ?? '상세 이력을 불러오지 못했습니다.'}{' '}
+                      이 배치의 개별 변경을 표시할 수 없습니다.
+                      {onRetryBatchDetail === undefined ? ' 잠시 후 다시 시도해 주세요.' : ''}
+                    </span>
                     {onRetryBatchDetail !== undefined ? (
                       <button
                         className="rounded-sm border border-error/30 px-2 py-1 font-semibold"
@@ -504,7 +529,10 @@ export function HistoryWorkbench({
             aria-checked={state.mode === 'timeline'}
             className={modeButtonClass(state.mode === 'timeline')}
             onClick={() => handleModeChange('timeline')}
+            onKeyDown={(event) => handleScopeKeyDown(event, 'timeline')}
+            ref={layerScopeRef}
             role="radio"
+            tabIndex={state.mode === 'timeline' || !selectedCellAvailable ? 0 : -1}
             type="button"
           >
             현재 Layer
@@ -515,7 +543,10 @@ export function HistoryWorkbench({
             className={modeButtonClass(state.mode === 'cell')}
             disabled={!selectedCellAvailable}
             onClick={() => handleModeChange('cell')}
+            onKeyDown={(event) => handleScopeKeyDown(event, 'cell')}
+            ref={cellScopeRef}
             role="radio"
+            tabIndex={state.mode === 'cell' && selectedCellAvailable ? 0 : -1}
             type="button"
           >
             현재 셀만
@@ -665,7 +696,12 @@ export function HistoryWorkbench({
           {hasTimelineError ? (
             <div className="rounded-md border border-error/40 bg-error/10 p-3 text-sm text-error-700" role="alert">
               <div className="flex flex-wrap items-center gap-2">
-                <span>{timelineError} 현재 Layer 변경 이력을 표시할 수 없습니다.</span>
+                <span>
+                  {timelineError}{' '}
+                  {hasTimelineRows
+                    ? '기존 변경 이력은 유지됩니다.'
+                    : '현재 Layer 변경 이력을 표시할 수 없습니다.'}
+                </span>
                 {onRetryTimeline !== undefined ? (
                   <button
                     className="rounded-sm border border-error/30 px-2 py-1 text-xs font-semibold"
@@ -742,7 +778,12 @@ export function HistoryWorkbench({
           {hasCellError ? (
             <div className="rounded-md border border-error/40 bg-error/10 p-3 text-sm text-error-700" role="alert">
               <div className="flex flex-wrap items-center gap-2">
-                <span>{cellError} 선택한 셀의 변경 이력을 표시할 수 없습니다.</span>
+                <span>
+                  {cellError}{' '}
+                  {cellHistory !== null
+                    ? '기존 셀 이력은 유지됩니다.'
+                    : '선택한 셀의 변경 이력을 표시할 수 없습니다.'}
+                </span>
                 {onRetryCell !== undefined ? (
                   <button
                     className="rounded-sm border border-error/30 px-2 py-1 text-xs font-semibold"
@@ -763,12 +804,12 @@ export function HistoryWorkbench({
                 <p className="mt-1 text-xs text-muted">
                   {cellHistory.baseline_entry === null
                     ? '기준 셀이 없는 초기 상태입니다.'
-                    : `기준 셀 ${cellHistory.baseline_entry.label ?? cellHistory.baseline_entry.code}`}
+                    : `기준 셀 ${formatHistoryStateEntry(cellHistory.baseline_entry)}`}
                 </p>
                 <p className="mt-1 text-xs text-muted">
                   {cellHistory.initial_entry === null
                     ? '초기 항목이 없습니다.'
-                    : `초기 항목 ${cellHistory.initial_entry.label ?? cellHistory.initial_entry.code}`}
+                    : `초기 항목 ${formatHistoryStateEntry(cellHistory.initial_entry)}`}
                 </p>
                 {cellHistory.initial_state_unavailable ? (
                   <p className="mt-2 rounded-sm border border-warning/40 bg-warning/10 px-2 py-1 text-xs text-warning-700">
@@ -777,7 +818,15 @@ export function HistoryWorkbench({
                 ) : null}
               </div>
 
-              <div className="border-t border-border-subtle">{cellHistory.items.map((item) => renderCellHistoryItem(item))}</div>
+              {cellHistory.items.length > 0 ? (
+                <div className="border-t border-border-subtle">
+                  {cellHistory.items.map((item) => renderCellHistoryItem(item))}
+                </div>
+              ) : (
+                <p className="border-y border-border-subtle bg-canvas p-3 text-sm text-muted">
+                  선택한 셀에 기록된 변경이 없습니다.
+                </p>
+              )}
 
               {hasCellNextPageError ? (
                 <div className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-warning-700" role="status">
@@ -857,8 +906,6 @@ function HistoryBatchDetailList({
     <div className="border-t border-border-subtle bg-canvas px-2 py-3 text-xs" id={id}>
       <div className="flex flex-wrap items-center gap-2 text-muted">
         <strong className="text-foreground">상세</strong>
-        <span>{detail.order_kind}</span>
-        <span>{detail.detail_status}</span>
         {detail.reason !== null ? <span>{detail.reason}</span> : null}
       </div>
       {detail.items.length > 0 ? (
@@ -992,4 +1039,12 @@ function parsePositiveIntegerText(value: string): number | null {
   if (!/^[1-9]\d*$/.test(trimmed)) return null
   const parsed = Number(trimmed)
   return Number.isSafeInteger(parsed) ? parsed : null
+}
+
+function formatHistoryStateEntry(entry: {
+  readonly code: string | null
+  readonly label: string | null
+}): string {
+  if (entry.label === null) return entry.code ?? '없음'
+  return entry.code === null ? entry.label : `${entry.label} (${entry.code})`
 }
