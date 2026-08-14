@@ -3,13 +3,25 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type {
   HistoryCellHistoryOut,
   HistoryDetailOut,
+  HistoryTimelineItemOut,
   HistoryTimelineOut,
 } from '@/api/history'
+
+const historyApi = vi.hoisted(() => ({
+  getHistoryBatchDetail: vi.fn(),
+  getHistoryCellHistory: vi.fn(),
+  getHistoryTimeline: vi.fn(),
+}))
+
+vi.mock('@/api/history', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/api/history')>()),
+  ...historyApi,
+}))
 
 import {
   historyCellHistoryQueryEnabled,
@@ -62,6 +74,60 @@ describe('useHistoryWorkbenchController seams', () => {
         controller.result.current.state.cellScope,
       ),
     ).toBe(false)
+  })
+
+  it('does not publish a late cell result after Layer scope replaces its authority', async () => {
+    const cellRequest = deferred<HistoryCellHistoryOut>()
+    historyApi.getHistoryTimeline.mockResolvedValue(timelinePage(1, null))
+    historyApi.getHistoryCellHistory.mockReturnValueOnce(cellRequest.promise)
+    const controller = renderController(true)
+
+    act(() => {
+      controller.result.current.onSelectedCellChange({
+        conditionId: '11',
+        parameterCode: 'ETCH_P001',
+      })
+      controller.result.current.onScopeChange('cell')
+    })
+    await flushHistoryRequests()
+
+    expect(historyApi.getHistoryCellHistory).toHaveBeenCalledWith(7, 11, 'ETCH_P001', {
+      cursor: null,
+    })
+
+    act(() => controller.result.current.onLayerScopeChange('L2::20::CLEAN'))
+    cellRequest.resolve(cellPage(701, null, 'OLD', 'STALE'))
+    await flushHistoryRequests()
+
+    expect(controller.result.current.state).toMatchObject({
+      mode: 'timeline',
+      cellScope: null,
+      filters: { layerKey: 'L2::20::CLEAN' },
+    })
+    expect(controller.result.current.cellHistory).toBeNull()
+  })
+
+  it('does not cache a late batch detail after Layer scope replaces its authority', async () => {
+    const detailRequest = deferred<HistoryDetailOut>()
+    historyApi.getHistoryTimeline.mockResolvedValue(timelinePage(1, null))
+    historyApi.getHistoryBatchDetail.mockReturnValueOnce(detailRequest.promise)
+    const controller = renderController(true)
+    const item = batchTimelineItem(71)
+
+    act(() => controller.result.current.onBatchToggle(item, true))
+    await flushHistoryRequests()
+
+    expect(historyApi.getHistoryBatchDetail).toHaveBeenCalledWith(7, 'scope-71', 'batch-71', {
+      cursor: null,
+    })
+
+    act(() => controller.result.current.onLayerScopeChange('L2::20::CLEAN'))
+    detailRequest.resolve(detailPage(701, null))
+    await flushHistoryRequests()
+
+    expect(controller.result.current.state.expandedBatchKey).toBeNull()
+    expect(controller.result.current.state.batchDetailCache).toEqual({})
+    expect(controller.result.current.batchDetailStatus).toBe('idle')
   })
 
   it('gates timeline and cell queries by the outer and inner modes', () => {
@@ -215,9 +281,14 @@ afterEach(() => {
     act(() => controller.root.unmount())
     controller.container.remove()
   }
+  historyApi.getHistoryBatchDetail.mockReset()
+  historyApi.getHistoryCellHistory.mockReset()
+  historyApi.getHistoryTimeline.mockReset()
 })
 
-function renderController(): { readonly result: { readonly current: HistoryWorkbenchController } } {
+function renderController(
+  enabled = false,
+): { readonly result: { readonly current: HistoryWorkbenchController } } {
   const reactActEnvironment = globalThis as typeof globalThis & {
     IS_REACT_ACT_ENVIRONMENT: boolean
   }
@@ -232,7 +303,7 @@ function renderController(): { readonly result: { readonly current: HistoryWorkb
   })
 
   function Probe() {
-    result.current = useHistoryWorkbenchController(7, false)
+    result.current = useHistoryWorkbenchController(7, enabled)
     return null
   }
 
@@ -250,6 +321,24 @@ function renderController(): { readonly result: { readonly current: HistoryWorkb
 
   if (result.current === null) throw new Error('History controller did not render')
   return { result: result as { readonly current: HistoryWorkbenchController } }
+}
+
+async function flushHistoryRequests(): Promise<void> {
+  await act(async () => {
+    await Promise.resolve()
+    await Promise.resolve()
+  })
+}
+
+function deferred<T>(): {
+  readonly promise: Promise<T>
+  readonly resolve: (value: T) => void
+} {
+  let resolve: (value: T) => void = () => undefined
+  const promise = new Promise<T>((next) => {
+    resolve = next
+  })
+  return { promise, resolve }
 }
 
 function timelinePage(cursorId: number, nextCursor: string | null): HistoryTimelineOut {
@@ -280,6 +369,16 @@ function timelinePage(cursorId: number, nextCursor: string | null): HistoryTimel
       legacy_detail_unavailable_count: 0,
     },
     next_cursor: nextCursor,
+  }
+}
+
+function batchTimelineItem(cursorId: number): HistoryTimelineItemOut {
+  return {
+    ...timelinePage(cursorId, null).items[0]!,
+    kind: 'batch',
+    batch_id: `batch-${cursorId}`,
+    detail_scope: `scope-${cursorId}`,
+    detail_status: 'available',
   }
 }
 
