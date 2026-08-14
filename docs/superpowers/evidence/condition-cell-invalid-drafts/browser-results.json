@@ -1,0 +1,515 @@
+{
+  "generatedAt": "2026-08-14T02:33:57.146Z",
+  "baseUrl": "http://127.0.0.1:4181",
+  "browser": {
+    "playwrightRoot": "/home/appuser/.npm/_npx/fd3bca3c548369c0/node_modules/playwright",
+    "browserExecutable": "/home/appuser/.cache/ms-playwright/chromium-1187/chrome-linux/chrome",
+    "version": "1.55.0"
+  },
+  "fixture": {
+    "projectId": 7,
+    "layers": 3,
+    "rows": 18,
+    "parameters": 60,
+    "mutableInMemoryApi": true
+  },
+  "assertions": [
+    {
+      "name": "page identity",
+      "passed": true,
+      "url": "http://127.0.0.1:4181/projects/7/sheet",
+      "title": "PCM - Process Condition Manager"
+    },
+    {
+      "name": "not blank / no framework overlay",
+      "passed": true
+    },
+    {
+      "name": "invalid numeric raw value remains visible",
+      "passed": true,
+      "firstAlertText": "POR · Chamber pressure\n1e3\n숫자로 입력하세요\n저장되지 않음",
+      "firstAccessibleText": "11"
+    },
+    {
+      "name": "invalid numeric marker is painted",
+      "passed": true,
+      "firstMarkerPixels": 721
+    },
+    {
+      "name": "invalid numeric popover explains problem and repair",
+      "passed": true,
+      "firstAlertText": "POR · Chamber pressure\n1e3\n숫자로 입력하세요\n저장되지 않음"
+    },
+    {
+      "name": "invalid numeric sends zero PATCH calls",
+      "passed": true
+    },
+    {
+      "name": "moving away closes popover but keeps raw draft and marker",
+      "passed": true,
+      "retainedAccessibleText": "POR · Chamber pressure, 숫자로 입력하세요, 저장되지 않음",
+      "retainedMarkerPixels": 721
+    },
+    {
+      "name": "returning to invalid cell reopens popover",
+      "passed": true
+    },
+    {
+      "name": "out-of-range draft provides repair copy",
+      "passed": true,
+      "rangeAlertText": "POR · Chamber pressure\n999\n허용 범위를 벗어났습니다 · 0–100 Torr 범위로 입력하세요\n저장되지 않음"
+    },
+    {
+      "name": "required draft provides repair copy",
+      "passed": true,
+      "requiredAlertText": "POR · Endpoint time\n필수값을 입력하세요\n저장되지 않음"
+    },
+    {
+      "name": "one valid correction sends exactly one PATCH and leaves the other draft",
+      "passed": true,
+      "patchCalls": [
+        {
+          "phase": "correct-one-draft",
+          "method": "PATCH",
+          "pathname": "/api/projects/7/cells",
+          "search": "",
+          "body": {
+            "cells": [
+              {
+                "condition_id": 101,
+                "parameter_code": "PARAM_001",
+                "value": "55"
+              }
+            ],
+            "origin": "manual"
+          }
+        }
+      ],
+      "requiredRawAfterCorrection": "POR · Endpoint time, 필수값을 입력하세요, 저장되지 않음"
+    },
+    {
+      "name": "cancelled route navigation preserves invalid draft",
+      "passed": true,
+      "url": "http://127.0.0.1:4181/projects/7/sheet",
+      "cancelledDraftText": "POR · Endpoint time, 필수값을 입력하세요, 저장되지 않음"
+    },
+    {
+      "name": "confirmed departure discards draft and re-entry restores server value",
+      "passed": true,
+      "restoredRequiredText": "12"
+    },
+    {
+      "name": "bottom-visible invalid edit flips popover above",
+      "passed": true,
+      "placement": "above"
+    },
+    {
+      "name": "accessible description includes coordinate reason and unsaved state",
+      "passed": true,
+      "accessibleDescription": "Trial 6 · Chamber pressure, 숫자로 입력하세요, 저장되지 않음"
+    },
+    {
+      "name": "document overflow bounded at 1024x768",
+      "passed": true,
+      "clientWidth": 1024,
+      "scrollWidth": 1024,
+      "overflowX": 0
+    },
+    {
+      "name": "Grid owns horizontal overflow at 1024x768",
+      "passed": true,
+      "clientWidth": 804,
+      "scrollWidth": 9372,
+      "clientHeight": 507,
+      "scrollHeight": 610,
+      "scrollLeft": 0,
+      "scrollTop": 103
+    },
+    {
+      "name": "active invalid cell remains selected and marked at 1024x768",
+      "passed": true,
+      "selectedCell": "glide-cell-4-17",
+      "markerPixels": 721,
+      "activeCell": {
+        "x": 592,
+        "y": 736,
+        "width": 150,
+        "height": 32
+      }
+    },
+    {
+      "name": "popover stays inside viewport at 1024x768",
+      "passed": true,
+      "popoverPlacement": "above",
+      "popover": {
+        "x": 592,
+        "y": 656,
+        "width": 280,
+        "height": 104
+      },
+      "popoverInsideViewport": true
+    },
+    {
+      "name": "document overflow bounded at 1440x900",
+      "passed": true,
+      "clientWidth": 1440,
+      "scrollWidth": 1440,
+      "overflowX": 0
+    },
+    {
+      "name": "Grid owns horizontal overflow at 1440x900",
+      "passed": true,
+      "clientWidth": 1220,
+      "scrollWidth": 9372,
+      "clientHeight": 681,
+      "scrollHeight": 681,
+      "scrollLeft": 0,
+      "scrollTop": 0
+    },
+    {
+      "name": "active invalid cell remains selected and marked at 1440x900",
+      "passed": true,
+      "selectedCell": "glide-cell-4-17",
+      "markerPixels": 721,
+      "activeCell": {
+        "x": 592,
+        "y": 797,
+        "width": 150,
+        "height": 32
+      }
+    },
+    {
+      "name": "popover stays inside viewport at 1440x900",
+      "passed": true,
+      "popoverPlacement": "below",
+      "popover": {
+        "x": 592,
+        "y": 727,
+        "width": 280,
+        "height": 104
+      },
+      "popoverInsideViewport": true
+    },
+    {
+      "name": "document overflow bounded at 1920x1080",
+      "passed": true,
+      "clientWidth": 1920,
+      "scrollWidth": 1920,
+      "overflowX": 0
+    },
+    {
+      "name": "Grid owns horizontal overflow at 1920x1080",
+      "passed": true,
+      "clientWidth": 1700,
+      "scrollWidth": 9372,
+      "clientHeight": 861,
+      "scrollHeight": 861,
+      "scrollLeft": 0,
+      "scrollTop": 0
+    },
+    {
+      "name": "active invalid cell remains selected and marked at 1920x1080",
+      "passed": true,
+      "selectedCell": "glide-cell-4-17",
+      "markerPixels": 721,
+      "activeCell": {
+        "x": 592,
+        "y": 797,
+        "width": 150,
+        "height": 32
+      }
+    },
+    {
+      "name": "popover stays inside viewport at 1920x1080",
+      "passed": true,
+      "popoverPlacement": "below",
+      "popover": {
+        "x": 592,
+        "y": 830,
+        "width": 280,
+        "height": 104
+      },
+      "popoverInsideViewport": true
+    },
+    {
+      "name": "no page errors",
+      "passed": true,
+      "pageErrors": []
+    },
+    {
+      "name": "no unexpected console errors/warnings",
+      "passed": true,
+      "expectedFixtureConsole": [
+        {
+          "phase": "move-away",
+          "type": "warning",
+          "text": "Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: https://html.spec.whatwg.org/multipage/canvas.html#concept-canvas-will-read-frequently"
+        },
+        {
+          "phase": "move-away",
+          "type": "warning",
+          "text": "Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: https://html.spec.whatwg.org/multipage/canvas.html#concept-canvas-will-read-frequently"
+        },
+        {
+          "phase": "viewport-batch",
+          "type": "warning",
+          "text": "Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: https://html.spec.whatwg.org/multipage/canvas.html#concept-canvas-will-read-frequently"
+        }
+      ],
+      "unexpectedConsole": []
+    },
+    {
+      "name": "fixture makes exactly one persistence call overall",
+      "passed": true
+    }
+  ],
+  "measurements": {
+    "1024x768": {
+      "viewport": {
+        "width": 1024,
+        "height": 768
+      },
+      "document": {
+        "clientWidth": 1024,
+        "scrollWidth": 1024,
+        "overflowX": 0
+      },
+      "gridHost": {
+        "clientWidth": 804,
+        "scrollWidth": 804
+      },
+      "gridScroller": {
+        "clientWidth": 804,
+        "scrollWidth": 9372,
+        "clientHeight": 507,
+        "scrollHeight": 610,
+        "scrollLeft": 0,
+        "scrollTop": 103
+      },
+      "selectedCell": "glide-cell-4-17",
+      "popoverPlacement": "above",
+      "popoverColors": {
+        "color": "rgb(23, 47, 53)",
+        "backgroundColor": "rgb(254, 242, 242)",
+        "borderColor": "rgb(185, 28, 28)"
+      },
+      "activeCell": {
+        "x": 592,
+        "y": 736,
+        "width": 150,
+        "height": 32
+      },
+      "popover": {
+        "x": 592,
+        "y": 656,
+        "width": 280,
+        "height": 104
+      },
+      "popoverInsideViewport": true,
+      "markerPixels": 721
+    },
+    "1440x900": {
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "document": {
+        "clientWidth": 1440,
+        "scrollWidth": 1440,
+        "overflowX": 0
+      },
+      "gridHost": {
+        "clientWidth": 1220,
+        "scrollWidth": 1220
+      },
+      "gridScroller": {
+        "clientWidth": 1220,
+        "scrollWidth": 9372,
+        "clientHeight": 681,
+        "scrollHeight": 681,
+        "scrollLeft": 0,
+        "scrollTop": 0
+      },
+      "selectedCell": "glide-cell-4-17",
+      "popoverPlacement": "below",
+      "popoverColors": {
+        "color": "rgb(23, 47, 53)",
+        "backgroundColor": "rgb(254, 242, 242)",
+        "borderColor": "rgb(185, 28, 28)"
+      },
+      "activeCell": {
+        "x": 592,
+        "y": 797,
+        "width": 150,
+        "height": 32
+      },
+      "popover": {
+        "x": 592,
+        "y": 727,
+        "width": 280,
+        "height": 104
+      },
+      "popoverInsideViewport": true,
+      "markerPixels": 721
+    },
+    "1920x1080": {
+      "viewport": {
+        "width": 1920,
+        "height": 1080
+      },
+      "document": {
+        "clientWidth": 1920,
+        "scrollWidth": 1920,
+        "overflowX": 0
+      },
+      "gridHost": {
+        "clientWidth": 1700,
+        "scrollWidth": 1700
+      },
+      "gridScroller": {
+        "clientWidth": 1700,
+        "scrollWidth": 9372,
+        "clientHeight": 861,
+        "scrollHeight": 861,
+        "scrollLeft": 0,
+        "scrollTop": 0
+      },
+      "selectedCell": "glide-cell-4-17",
+      "popoverPlacement": "below",
+      "popoverColors": {
+        "color": "rgb(23, 47, 53)",
+        "backgroundColor": "rgb(254, 242, 242)",
+        "borderColor": "rgb(185, 28, 28)"
+      },
+      "activeCell": {
+        "x": 592,
+        "y": 797,
+        "width": 150,
+        "height": 32
+      },
+      "popover": {
+        "x": 592,
+        "y": 830,
+        "width": 280,
+        "height": 104
+      },
+      "popoverInsideViewport": true,
+      "markerPixels": 721
+    }
+  },
+  "consoleMessages": [
+    {
+      "phase": "move-away",
+      "type": "warning",
+      "text": "Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: https://html.spec.whatwg.org/multipage/canvas.html#concept-canvas-will-read-frequently"
+    },
+    {
+      "phase": "move-away",
+      "type": "warning",
+      "text": "Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: https://html.spec.whatwg.org/multipage/canvas.html#concept-canvas-will-read-frequently"
+    },
+    {
+      "phase": "viewport-batch",
+      "type": "warning",
+      "text": "Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: https://html.spec.whatwg.org/multipage/canvas.html#concept-canvas-will-read-frequently"
+    }
+  ],
+  "pageErrors": [],
+  "apiCalls": [
+    {
+      "phase": "page-identity",
+      "method": "GET",
+      "pathname": "/api/auth/me",
+      "search": "",
+      "body": null
+    },
+    {
+      "phase": "page-identity",
+      "method": "GET",
+      "pathname": "/api/projects/7/sheet",
+      "search": "",
+      "body": null
+    },
+    {
+      "phase": "page-identity",
+      "method": "GET",
+      "pathname": "/api/projects/7",
+      "search": "",
+      "body": null
+    },
+    {
+      "phase": "page-identity",
+      "method": "POST",
+      "pathname": "/api/projects/7/lock",
+      "search": "",
+      "body": null
+    },
+    {
+      "phase": "invalid-numeric-form",
+      "method": "GET",
+      "pathname": "/api/projects/7/comments",
+      "search": "?target=cell&layer_key=L1&parameter_code=PARAM_001&condition_id=101",
+      "body": null
+    },
+    {
+      "phase": "move-away",
+      "method": "GET",
+      "pathname": "/api/projects/7/comments",
+      "search": "?target=cell&layer_key=L1&parameter_code=PARAM_002&condition_id=101",
+      "body": null
+    },
+    {
+      "phase": "correct-one-draft",
+      "method": "PATCH",
+      "pathname": "/api/projects/7/cells",
+      "search": "",
+      "body": {
+        "cells": [
+          {
+            "condition_id": 101,
+            "parameter_code": "PARAM_001",
+            "value": "55"
+          }
+        ],
+        "origin": "manual"
+      }
+    },
+    {
+      "phase": "confirm-navigation",
+      "method": "GET",
+      "pathname": "/api/projects",
+      "search": "?limit=50",
+      "body": null
+    },
+    {
+      "phase": "confirm-navigation",
+      "method": "DELETE",
+      "pathname": "/api/projects/7/lock",
+      "search": "",
+      "body": {
+        "lock_token": "fixture-lock-token"
+      }
+    },
+    {
+      "phase": "confirm-navigation",
+      "method": "GET",
+      "pathname": "/api/projects/7/comments",
+      "search": "?target=project",
+      "body": null
+    },
+    {
+      "phase": "confirm-navigation",
+      "method": "POST",
+      "pathname": "/api/projects/7/lock",
+      "search": "",
+      "body": null
+    },
+    {
+      "phase": "bottom-popover",
+      "method": "GET",
+      "pathname": "/api/projects/7/comments",
+      "search": "?target=cell&layer_key=L3&parameter_code=PARAM_001&condition_id=306",
+      "body": null
+    }
+  ]
+}
