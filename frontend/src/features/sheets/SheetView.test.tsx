@@ -3,7 +3,13 @@ import { JSDOM } from 'jsdom'
 import { act, forwardRef, useImperativeHandle } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { MemoryRouter, Route, Routes, StaticRouter } from 'react-router-dom'
+import {
+  createMemoryRouter,
+  Route,
+  RouterProvider,
+  Routes,
+  StaticRouter,
+} from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type {
@@ -42,6 +48,11 @@ vi.mock('@/api/conditions', () => ({
   setConditionPor: vi.fn(),
 }))
 
+vi.mock('@/api/cells', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/api/cells')>()
+  return { ...actual, patchCells: vi.fn() }
+})
+
 vi.mock('@/api/sheets', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/api/sheets')>()
   return { ...actual, getSheet: vi.fn() }
@@ -72,6 +83,8 @@ vi.mock('@/grid', async (importOriginal) => {
         <div
           data-testid="rendered-condition-grid"
           data-condition-ids={JSON.stringify(data.rows.map((row) => row.id))}
+          data-condition-values={JSON.stringify(data.rows.map((row) => row.values))}
+          data-invalid-drafts={JSON.stringify(data.invalidDrafts ?? [])}
           data-validation-statuses={JSON.stringify(data.statuses ?? [])}
           data-choice-resource-keys={JSON.stringify(Array.from(data.choiceResources?.keys() ?? []))}
         >
@@ -97,6 +110,46 @@ vi.mock('@/grid', async (importOriginal) => {
                 type="button"
               >
                 condition {row.id}
+              </button>
+              <button
+                data-grid-invalid={row.id}
+                onClick={() => callbacks?.onCellInvalid?.({
+                  conditionId: row.id,
+                  parameterCode: data.columns[0]?.key ?? '',
+                  rawValue: 'not-a-number',
+                  code: 'invalid_decimal',
+                  message: '숫자로 입력하세요',
+                  constraint: null,
+                })}
+                type="button"
+              >
+                invalid {row.id}
+              </button>
+              <button
+                data-grid-clear-invalid={row.id}
+                onClick={() => callbacks?.onInvalidDraftClear?.(
+                  row.id,
+                  data.columns[0]?.key ?? '',
+                )}
+                type="button"
+              >
+                clear invalid {row.id}
+              </button>
+              <button
+                data-grid-valid={row.id}
+                onClick={() => {
+                  const parameterCode = data.columns[0]?.key
+                  if (parameterCode === undefined) return
+                  callbacks?.onInvalidDraftClear?.(row.id, parameterCode)
+                  callbacks?.onCellEdit?.({
+                    conditionId: row.id,
+                    parameterCode,
+                    value: '21',
+                  })
+                }}
+                type="button"
+              >
+                valid {row.id}
               </button>
             </span>
           ))}
@@ -179,7 +232,9 @@ vi.mock('./useBackboneDiffWorkbenchController', () => ({
 }))
 
 import { shouldFocusLiveSheetTitle, SheetView, SheetViewPage } from './SheetView'
+import { patchCells } from '@/api/cells'
 import { addCondition, deleteCondition, setConditionPor } from '@/api/conditions'
+import { acquireLock, heartbeatLock, releaseLockOnUnload } from '@/api/locks'
 import { getProject } from '@/api/projects'
 import { getSheet } from '@/api/sheets'
 import {
@@ -192,9 +247,11 @@ import {
   type HistoryWorkbenchState,
 } from './historyWorkbenchState'
 import type { BackboneDiffWorkbenchController } from './useBackboneDiffWorkbenchController'
+import { dirtyKey, useEditStore } from './editStore'
 import sheetViewSource from './SheetView.tsx?raw'
 
 beforeEach(() => {
+  useEditStore.getState().clearAll()
   mockScrollToCondition = vi.fn()
   mockScrollToCell = vi.fn()
   mockScrollToColumn = vi.fn()
@@ -206,6 +263,23 @@ beforeEach(() => {
   vi.mocked(setConditionPor).mockReset()
   vi.mocked(getProject).mockReset()
   vi.mocked(getSheet).mockReset()
+  vi.mocked(acquireLock).mockReset().mockResolvedValue({
+    locked_by: 'test-user',
+    lock_token: 'test-lock-token',
+    locked_at: '2026-08-14T00:00:00Z',
+    expires_at: '2026-08-14T00:01:00Z',
+  })
+  vi.mocked(heartbeatLock).mockReset().mockResolvedValue({
+    locked_by: 'test-user',
+    lock_token: 'test-lock-token',
+    locked_at: '2026-08-14T00:00:00Z',
+    expires_at: '2026-08-14T00:01:00Z',
+  })
+  vi.mocked(releaseLockOnUnload).mockReset().mockReturnValue(true)
+  vi.mocked(patchCells).mockReset().mockImplementation(async (_projectId, cells) => ({
+    cells,
+    batch_id: 'sheet-view-test-batch',
+  }))
   vi.mocked(deleteCondition).mockResolvedValue(undefined)
 })
 
@@ -1831,14 +1905,208 @@ describe('SheetView focus shell integration', () => {
     expect(sheetViewSource).not.toContain('workbenchState.visible')
     expect(sheetViewSource).not.toContain('showValidationWorkbench ? (')
   })
+
+  it('keeps rejected raw input out of persistence and saves a later valid correction through autosave', async () => {
+    const interactive = renderInteractiveSheet()
+
+    try {
+      await settleInteractiveSheet()
+      click(interactive, gridDraftButton(interactive.container, 'invalid', '11'))
+
+      expect(useEditStore.getState().invalidDrafts.get(dirtyKey('11', 'ETCH_P001')))
+        .toMatchObject({ rawValue: 'not-a-number', code: 'invalid_decimal' })
+      expect(useEditStore.getState().dirtyCells.size).toBe(0)
+      expect(renderedValues(interactive.container)[0]?.ETCH_P001).toBe('not-a-number')
+      expect(renderedInvalidDrafts(interactive.container)).toHaveLength(1)
+      expect(
+        interactive.container.querySelector('[data-validation-statuses]')
+          ?.getAttribute('data-validation-statuses'),
+      ).not.toContain('not-a-number')
+      interactive.window.dispatchEvent(new interactive.window.Event('beforeunload'))
+      expect(releaseLockOnUnload).not.toHaveBeenCalled()
+      expect(patchCells).not.toHaveBeenCalled()
+
+      click(interactive, gridDraftButton(interactive.container, 'valid', '11'))
+      expect(useEditStore.getState().invalidDrafts.size).toBe(0)
+
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 3_100))
+      })
+
+      expect(patchCells).toHaveBeenCalledTimes(1)
+      expect(patchCells).toHaveBeenCalledWith(
+        7,
+        [{ condition_id: 11, parameter_code: 'ETCH_P001', value: '21' }],
+        'manual',
+        'test-lock-token',
+      )
+    } finally {
+      interactive.cleanup()
+    }
+  }, 8_000)
+
+  it('preserves drafts across authoritative refreshes and prunes only removed row or column identities', async () => {
+    const interactive = renderInteractiveSheet()
+
+    try {
+      await settleInteractiveSheet()
+      click(interactive, layerButton(interactive.container, 'L1::20::CLEAN'))
+      click(interactive, currentOnlyButton(interactive.container))
+      click(interactive, gridDraftButton(interactive.container, 'invalid', '22'))
+
+      click(interactive, layerButton(interactive.container, 'L1::10::ETCH'))
+      expect(renderedConditionIds(interactive.container)).toEqual(['11'])
+      expect(useEditStore.getState().invalidDrafts.has(dirtyKey('22', 'ETCH_P001'))).toBe(true)
+
+      await act(async () => {
+        interactive.queryClient.setQueryData(['sheet', 7], {
+          ...interactive.sheet,
+          rows: interactive.sheet.rows.map((row) =>
+            row.condition_id === 22
+              ? { ...row, cells: { ...row.cells, ETCH_P001: 'server-refresh' } }
+              : row,
+          ),
+        })
+        await new Promise((resolve) => setTimeout(resolve, 10))
+      })
+      expect(useEditStore.getState().invalidDrafts.has(dirtyKey('22', 'ETCH_P001'))).toBe(true)
+
+      await act(async () => {
+        interactive.queryClient.setQueryData(['sheet', 7], {
+          ...interactive.sheet,
+          rows: interactive.sheet.rows.filter((row) => row.condition_id !== 22),
+        })
+        await new Promise((resolve) => setTimeout(resolve, 10))
+      })
+      expect(useEditStore.getState().invalidDrafts.has(dirtyKey('22', 'ETCH_P001'))).toBe(false)
+
+      click(interactive, gridDraftButton(interactive.container, 'invalid', '11'))
+      await act(async () => {
+        interactive.queryClient.setQueryData(['sheet', 7], {
+          ...interactive.sheet,
+          columns: [{ ...interactive.sheet.columns[0], parameter_code: 'OTHER' }],
+        })
+        await new Promise((resolve) => setTimeout(resolve, 10))
+      })
+      expect(useEditStore.getState().invalidDrafts.has(dirtyKey('11', 'ETCH_P001'))).toBe(false)
+    } finally {
+      interactive.cleanup()
+    }
+  })
+
+  it('blocks invalid draft installation and clearing in read-only, lost-lock, and paste-review modes', async () => {
+    vi.mocked(acquireLock).mockRejectedValue(lockConflict('other-editor'))
+    const readOnly = renderInteractiveSheet()
+    try {
+      await settleInteractiveSheet()
+      click(readOnly, gridDraftButton(readOnly.container, 'invalid', '11'))
+      expect(useEditStore.getState().invalidDrafts.size).toBe(0)
+      act(() => useEditStore.getState().setInvalidDraft(testInvalidDraft('kept-readonly')))
+      click(readOnly, gridDraftButton(readOnly.container, 'clear', '11'))
+      expect(useEditStore.getState().invalidDrafts.get(dirtyKey('11', 'ETCH_P001'))?.rawValue)
+        .toBe('kept-readonly')
+    } finally {
+      readOnly.cleanup()
+    }
+
+    vi.mocked(acquireLock).mockResolvedValue({
+      locked_by: 'test-user',
+      lock_token: 'test-lock-token',
+      locked_at: '2026-08-14T00:00:00Z',
+      expires_at: '2026-08-14T00:01:00Z',
+    })
+    vi.mocked(heartbeatLock).mockRejectedValue(lockConflict('lock-taker'))
+    const lost = renderInteractiveSheet({ heartbeatSeconds: 0.001 })
+    try {
+      await settleInteractiveSheet()
+      expect(lost.container.textContent).toContain('잠금 상실')
+      act(() => useEditStore.getState().setInvalidDraft(testInvalidDraft('kept-lost')))
+      click(lost, gridDraftButton(lost.container, 'invalid', '11'))
+      click(lost, gridDraftButton(lost.container, 'clear', '11'))
+      expect(useEditStore.getState().invalidDrafts.get(dirtyKey('11', 'ETCH_P001'))?.rawValue)
+        .toBe('kept-lost')
+    } finally {
+      lost.cleanup()
+    }
+
+    vi.mocked(heartbeatLock).mockResolvedValue({
+      locked_by: 'test-user',
+      lock_token: 'test-lock-token',
+      locked_at: '2026-08-14T00:00:00Z',
+      expires_at: '2026-08-14T00:01:00Z',
+    })
+    const pasteReview = renderInteractiveSheet()
+    try {
+      await settleInteractiveSheet()
+      click(pasteReview, gridPasteButton(pasteReview.container))
+      act(() => useEditStore.getState().setInvalidDraft(testInvalidDraft('kept-paste')))
+      click(pasteReview, gridDraftButton(pasteReview.container, 'invalid', '11'))
+      click(pasteReview, gridDraftButton(pasteReview.container, 'clear', '11'))
+      expect(useEditStore.getState().invalidDrafts.get(dirtyKey('11', 'ETCH_P001'))?.rawValue)
+        .toBe('kept-paste')
+    } finally {
+      pasteReview.cleanup()
+    }
+  })
+
+  it('reports invalid and persistable counts separately and explicit discard clears both', async () => {
+    const interactive = renderInteractiveSheet()
+
+    try {
+      await settleInteractiveSheet()
+      click(interactive, gridDraftButton(interactive.container, 'invalid', '11'))
+      click(interactive, gridDraftButton(interactive.container, 'valid', '22'))
+
+      expect(interactive.container.textContent).toContain('입력 오류 1')
+      expect(interactive.container.textContent).toContain('미저장 1')
+      click(interactive, buttonByText(interactive.container, '변경 취소'))
+      expect(useEditStore.getState().invalidDrafts.size).toBe(0)
+      expect(useEditStore.getState().dirtyCells.size).toBe(0)
+      expect(patchCells).not.toHaveBeenCalled()
+    } finally {
+      interactive.cleanup()
+    }
+  })
+
+  it('guards invalid-only route changes, preserving cancel and clearing on confirmed unmount', async () => {
+    const interactive = renderInteractiveSheet()
+
+    try {
+      await settleInteractiveSheet()
+      click(interactive, gridDraftButton(interactive.container, 'invalid', '11'))
+      const confirm = vi.spyOn(window, 'confirm')
+        .mockReturnValueOnce(false)
+        .mockReturnValueOnce(true)
+
+      click(interactive, detailLink(interactive.container))
+      await settleInteractiveSheet()
+      expect(confirm).toHaveBeenNthCalledWith(
+        1,
+        '저장되지 않은 입력이 있습니다. 조건표를 나갈까요?',
+      )
+      expect(interactive.router.state.location.pathname).toBe('/projects/7/sheet')
+      expect(useEditStore.getState().invalidDrafts.size).toBe(1)
+
+      click(interactive, detailLink(interactive.container))
+      await settleInteractiveSheet()
+      expect(confirm).toHaveBeenCalledTimes(2)
+      expect(interactive.router.state.location.pathname).toBe('/projects/7')
+      expect(interactive.container.textContent).toContain('project detail')
+      expect(useEditStore.getState().invalidDrafts.size).toBe(0)
+    } finally {
+      interactive.cleanup()
+    }
+  })
 })
 
 function renderInteractiveSheet({
   requiredConditionIds = [],
   firstLayerConditionIds = [11],
+  heartbeatSeconds = 45,
 }: {
   requiredConditionIds?: readonly number[]
   firstLayerConditionIds?: readonly number[]
+  heartbeatSeconds?: number
 } = {}) {
   const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', {
     url: 'https://pcm.test/projects/7/sheet',
@@ -1870,6 +2138,7 @@ function renderInteractiveSheet({
   }
   const interactiveSheet: SheetOut = {
     ...sheet,
+    lock: { ...sheet.lock, heartbeat_seconds: heartbeatSeconds },
     columns: [{ ...sheet.columns[0], required: requiredConditionIds.length > 0 }],
     rows: layers.flatMap((
       [layerKey, stepSeq, layerId, sortOrder],
@@ -1920,14 +2189,19 @@ function renderInteractiveSheet({
   globals.Node = dom.window.Node as unknown as typeof Node
   globals.IS_REACT_ACT_ENVIRONMENT = true
   dom.window.confirm = vi.fn(() => true)
+  const router = createMemoryRouter(
+    [
+      { path: '/projects/:projectId/sheet', element: <SheetView projectId={7} /> },
+      { path: '/projects/:projectId', element: <div>project detail</div> },
+    ],
+    { initialEntries: ['/projects/7/sheet'] },
+  )
 
   act(() => {
     root = createRoot(container)
     root.render(
       <QueryClientProvider client={queryClient}>
-        <MemoryRouter initialEntries={['/projects/7/sheet']}>
-          <SheetView projectId={7} />
-        </MemoryRouter>
+        <RouterProvider router={router} />
       </QueryClientProvider>,
     )
   })
@@ -1936,6 +2210,7 @@ function renderInteractiveSheet({
     container,
     project: interactiveProject,
     queryClient,
+    router,
     sheet: interactiveSheet,
     window: dom.window,
     cleanup: () => {
@@ -1976,7 +2251,10 @@ function click(
   element: Element,
 ): void {
   act(() => {
-    element.dispatchEvent(new interactive.window.MouseEvent('click', { bubbles: true }))
+    element.dispatchEvent(new interactive.window.MouseEvent('click', {
+      bubbles: true,
+      cancelable: true,
+    }))
   })
 }
 
@@ -2010,6 +2288,61 @@ function gridPasteButton(container: HTMLElement): HTMLButtonElement {
   const button = container.querySelector<HTMLButtonElement>('[data-grid-stage-paste]')
   if (button === null) throw new Error('Grid paste control is unavailable.')
   return button
+}
+
+function gridDraftButton(
+  container: HTMLElement,
+  action: 'invalid' | 'clear' | 'valid',
+  conditionId: string,
+): HTMLButtonElement {
+  const attribute = action === 'clear' ? 'data-grid-clear-invalid' : `data-grid-${action}`
+  const button = container.querySelector<HTMLButtonElement>(`[${attribute}="${conditionId}"]`)
+  if (button === null) throw new Error(`${action} draft callback for ${conditionId} is unavailable.`)
+  return button
+}
+
+function renderedValues(container: HTMLElement): Array<Record<string, string | null>> {
+  return JSON.parse(
+    container.querySelector('[data-condition-values]')?.getAttribute('data-condition-values') ?? '[]',
+  ) as Array<Record<string, string | null>>
+}
+
+function renderedInvalidDrafts(container: HTMLElement): unknown[] {
+  return JSON.parse(
+    container.querySelector('[data-invalid-drafts]')?.getAttribute('data-invalid-drafts') ?? '[]',
+  ) as unknown[]
+}
+
+function detailLink(container: HTMLElement): HTMLAnchorElement {
+  const link = container.querySelector<HTMLAnchorElement>('a[aria-label="프로젝트 상세로 돌아가기"]')
+  if (link === null) throw new Error('Project detail link is unavailable.')
+  return link
+}
+
+function testInvalidDraft(rawValue: string) {
+  return {
+    conditionId: '11',
+    parameterCode: 'ETCH_P001',
+    rawValue,
+    code: 'invalid_decimal' as const,
+    message: '숫자로 입력하세요',
+    constraint: null,
+  }
+}
+
+function lockConflict(lockedBy: string) {
+  return {
+    isAxiosError: true,
+    message: 'lock conflict',
+    response: {
+      status: 409,
+      data: {
+        code: 'lock_conflict',
+        message: 'lock conflict',
+        details: { locked_by: lockedBy },
+      },
+    },
+  }
 }
 
 function conditionActionButton(container: HTMLElement, testId: string): HTMLButtonElement {

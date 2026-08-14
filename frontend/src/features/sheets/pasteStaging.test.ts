@@ -162,7 +162,7 @@ describe('buildPasteStaging — number strict parsing', () => {
       parameterCode: 'exposure',
       value: '1,234',
       valid: false,
-      message: '올바른 소수 형식이 아닙니다.',
+      message: '숫자로 입력하세요',
       errorCode: 'invalid_decimal',
     })
   })

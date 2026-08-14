@@ -56,10 +56,13 @@ import { ErrorMessage, LoadingMessage } from '@/shared/components/StatusMessage'
 import { cn } from '@/shared/lib/cn'
 import { useIsomorphicLayoutEffect } from '@/shared/lib/useIsomorphicLayoutEffect'
 import { parsePositiveInt } from '@/shared/navigation/routeState'
+import { useUnsavedChanges } from '@/shared/navigation/useUnsavedChanges'
 
 import {
   applyDirtyToRows,
+  applyInvalidDraftsToRows,
   selectDirtyCells,
+  selectInvalidDrafts,
   useEditStore,
   type DirtyCell,
   type PersistedCell,
@@ -779,6 +782,7 @@ function SheetEditor({
 
   const choiceResources = useSheetChoiceSets(sheet.columns)
   const dirtyCells = useEditStore(selectDirtyCells)
+  const invalidDrafts = useEditStore(selectInvalidDrafts)
 
   // 저장 성공분을 서버 스냅샷(캐시)에 확정 반영 → 더티 제거 후에도 저장값 유지.
   const commitSaved = useCallback(
@@ -805,6 +809,16 @@ function SheetEditor({
     heartbeatMs: sheet.lock.heartbeat_seconds * 1000,
     initialEditingBy: sheet.lock.locked_by,
   })
+  useEffect(() => {
+    if (invalidDrafts.size === 0) return
+    const rowIds = new Set(data.rows.map((row) => row.id))
+    const columnKeys = new Set(data.columns.map((column) => column.key))
+    const hasOrphan = [...invalidDrafts.values()].some(
+      (draft) => !rowIds.has(draft.conditionId) || !columnKeys.has(draft.parameterCode),
+    )
+    if (!hasOrphan) return
+    useEditStore.getState().pruneInvalidDrafts(data.rows, data.columns)
+  }, [data.rows, data.columns, invalidDrafts])
 
   // Loading/error headers are replaced without a pathname change, so RootLayout's pathname-only
   // focus effect does not run again. Restore focus once only when replacement left it on body (or
@@ -878,8 +892,16 @@ function SheetEditor({
     previousLayerKeysRef.current = orderedLayerKeys
   }, [activeLayerKey, data.rows, orderedLayerKeys])
 
-  // 서버 행 위에 더티 값을 얹어 표시(편집값 즉시 반영) + 더티 셀 상태 오버레이.
-  const displayRows = useMemo(() => applyDirtyToRows(data.rows, dirtyCells), [data.rows, dirtyCells])
+  // Persistable rows remain the validation/persistence authority; rejected raw drafts are a
+  // final display-only projection for the Grid.
+  const persistableDisplayRows = useMemo(
+    () => applyDirtyToRows(data.rows, dirtyCells),
+    [data.rows, dirtyCells],
+  )
+  const displayRows = useMemo(
+    () => applyInvalidDraftsToRows(persistableDisplayRows, invalidDrafts),
+    [persistableDisplayRows, invalidDrafts],
+  )
   const choiceAuthorizationEpoch = useMemo(
     () => sheetChoiceAuthorizationEpoch(choiceResources),
     [choiceResources],
@@ -923,7 +945,7 @@ function SheetEditor({
     definitions: validationDefinitions,
     definitionAuthority: validationDefinitionAuthority,
     validationBasisHash: sheet.validation_basis_hash,
-    displayRows,
+    displayRows: persistableDisplayRows,
     displayGeneration: editing.displayGeneration,
     persistedGeneration: editing.persistedGeneration,
     persistenceIdle: editing.persistenceIdle,
@@ -938,9 +960,18 @@ function SheetEditor({
       ...data,
       rows: rowsForLayerViewport(displayRows, activeLayerKey, currentLayerOnly),
       statuses: validation.statuses,
+      invalidDrafts: [...invalidDrafts.values()],
       choiceResources,
     }),
-    [activeLayerKey, currentLayerOnly, data, displayRows, validation.statuses, choiceResources],
+    [
+      activeLayerKey,
+      currentLayerOnly,
+      data,
+      displayRows,
+      invalidDrafts,
+      validation.statuses,
+      choiceResources,
+    ],
   )
 
   useEffect(() => {
@@ -1339,6 +1370,14 @@ function SheetEditor({
         if (!interaction.canEditCells) return
         if (pasteRef.current !== null) return
         setCell(cell.conditionId, cell.parameterCode, cell.value)
+      },
+      onCellInvalid: (draft) => {
+        if (!interaction.canEditCells || pasteRef.current !== null) return
+        useEditStore.getState().setInvalidDraft(draft)
+      },
+      onInvalidDraftClear: (conditionId, parameterCode) => {
+        if (!interaction.canEditCells || pasteRef.current !== null) return
+        useEditStore.getState().clearInvalidDraft(conditionId, parameterCode)
       },
       onPaste: (target, tsv) => {
         // ref 가드는 첫 paste setState가 commit되기 전 들어오는 두 번째 Canvas callback도 막는다.
@@ -2122,6 +2161,9 @@ function SheetEditor({
         ) : undefined
       }
     >
+      {typeof document !== 'undefined' ? (
+        <SheetUnsavedChangesGuard when={editing.unsavedCount > 0} />
+      ) : null}
       <div
         className="h-full min-h-0 min-w-0 overflow-hidden bg-surface"
         data-sheet-editor
@@ -2137,6 +2179,14 @@ function SheetEditor({
       </div>
     </SheetFocusFrame>
   )
+}
+
+function SheetUnsavedChangesGuard({ when }: { when: boolean }) {
+  useUnsavedChanges({
+    when,
+    message: '저장되지 않은 입력이 있습니다. 조건표를 나갈까요?',
+  })
+  return null
 }
 
 /**
@@ -2606,9 +2656,14 @@ function LockChip({ editing }: { editing: SheetEditing }) {
 }
 
 function SaveStatus({ editing }: { editing: SheetEditing }) {
-  const { saveStatus, dirtyCount, discard, retrySave } = editing
+  const { saveStatus, dirtyCount, invalidDraftCount, unsavedCount, discard, retrySave } = editing
   return (
     <span className="flex min-w-0 items-center gap-2">
+      {invalidDraftCount > 0 ? (
+        <span className="rounded-full bg-error-surface px-2 py-0.5 text-error">
+          입력 오류 {invalidDraftCount}
+        </span>
+      ) : null}
       {dirtyCount > 0 ? (
         <span className="rounded-full bg-white/10 px-2 py-0.5 text-white">미저장 {dirtyCount}</span>
       ) : null}
@@ -2628,7 +2683,7 @@ function SaveStatus({ editing }: { editing: SheetEditing }) {
           </button>
         </span>
       ) : null}
-      {dirtyCount > 0 ? (
+      {unsavedCount > 0 ? (
         <button
           type="button"
           onClick={discard}
