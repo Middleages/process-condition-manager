@@ -76,7 +76,7 @@ it('replaces only the Layer filter and defaults to the Layer ledger', () => {
     origin: 'manual',
     eventTypes: ['cell_update'],
   })
-  expect(next.cellScope).toEqual({ conditionId: 11, parameterCode: 'ETCH_P001' })
+  expect(next.cellScope).toBeNull()
 })
 
 it('remembers a selected cell without opening cell history', () => {
@@ -125,7 +125,7 @@ export function replaceHistoryLayerScope(
     ...state.filters,
     layerKey,
   })
-  return { ...next, mode: 'timeline', cellScope: state.cellScope }
+  return { ...next, mode: 'timeline', cellScope: null }
 }
 ```
 
@@ -251,7 +251,11 @@ expect(
   ),
 ).toBe('직접 입력 · 변경 유형 2개 · 김민수')
 
-const html = render(buildTimelineState())
+  const timelineOnlyState = appendHistoryWorkbenchPage(createHistoryWorkbenchState(), {
+    items: [createDeletedEvent()],
+    nextCursor: null,
+  })
+  const html = render(timelineOnlyState)
 expect(html).toContain('aria-expanded="false"')
 expect(html).toContain('전체 변경 · 전체 작업자')
 expect(html).not.toContain('>Layer<')
@@ -507,7 +511,7 @@ expect(mockHistoryController.onScopeChange).toHaveBeenCalledWith('cell')
 expect(mockWorkbenchState.selectMode).toHaveBeenCalledWith('history')
 ```
 
-When Layer changes, assert `onLayerScopeChange(activeLayerKey)` is called once and actor/date/type filters are not reconstructed in `SheetView`.
+When Layer changes, assert `onLayerScopeChange(activeLayerKey)` is called once, the prior Layer's remembered cell is cleared, and actor/date/type filters are not reconstructed in `SheetView`.
 
 - [ ] **Step 2: Run SheetView tests and verify RED**
 
