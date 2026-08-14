@@ -1,9 +1,9 @@
 # Invalid condition-cell drafts — verification evidence
 
 Captured on 2026-08-14 from `feat/condition-cell-invalid-drafts`. Tasks 1–4 were verified at
-`464272a`; the bounded screenshot repair is the separate product commit `136ea8a`. The fixture,
-result transcript, and PNGs in this evidence set are reproducible without a live backend, package
-installation, or browser download.
+`464272a`; the initial editor repair is `136ea8a`, and review-round product corrections are the
+separate commits `0213539` and `c99b63f`. The fixture, result transcript, and PNGs in this evidence
+set are reproducible without a live backend, package installation, or browser download.
 
 ## Automated gates
 
@@ -33,18 +33,32 @@ passed
 
 The bounded visual pass found that reopening a retained invalid Text projection gave Glide's editor
 the accessibility description instead of the raw draft. The regression was written first and
-failed with `expected undefined to be defined` because no editor override existed. After the repair:
+failed with `expected undefined to be defined` because no editor override existed.
+
+Review then exposed two additional boundaries. The first RED run had 32 existing passes and three
+new failures: printable-key `initialValue="9"` opened as retained raw `abc`, placement used a 0 px
+gap instead of 8 px, and visible-region refresh read bounds immediately. The first GREEN introduced
+the editor authority, fixed popover geometry, and a deferred bounds read. Screenshot comparison then
+proved that one animation frame could still observe Glide's preceding scroll transform. A tightened
+component RED failed because `getBounds` was called on that first frame; `c99b63f` moved the read to
+the second cancellable frame without adding a global listener. Final gates after both corrections:
 
 ```text
 cd frontend
 npm test -- --run src/grid/GlideConditionGrid.test.tsx
-1 file / 33 tests passed
+1 file / 35 tests passed
+
+npm run typecheck
+passed
+
+npm run lint
+passed
 
 npm test -- --run
-99 files / 1,087 tests passed
+99 files / 1,089 tests passed
 
 npm run build
-passed in 8.04s
+passed in 6.46s
 ```
 
 The final build emitted only the pre-existing third-party Glide PURE-comment messages and bundle
@@ -91,7 +105,7 @@ PLAYWRIGHT_CHROMIUM_EXECUTABLE=/home/appuser/.cache/ms-playwright/chromium-1187/
 node docs/superpowers/evidence/condition-cell-invalid-drafts/browser-fixture.cjs
 ```
 
-The final run passed 30/30 recorded assertions and made 12 fixture API calls. Exactly one call used
+The final run passed 37/37 recorded assertions and made 12 fixture API calls. Exactly one call used
 `PATCH /api/projects/7/cells`, with the single correction
 `{ condition_id: 101, parameter_code: "PARAM_001", value: "55" }`.
 
@@ -110,20 +124,24 @@ The single batched scenario covered all required interactions:
 9. The debounced Grid accessibility cell contains `Trial 6`, `Chamber pressure`,
    `숫자로 입력하세요`, and `저장되지 않음`.
 
-There were zero page errors and zero unexpected console errors or warnings. Three Chromium Canvas2D
-readback advice messages are expected fixture instrumentation: the marker assertion reads pixels
-with `getImageData`; application code does not perform those reads.
+There were zero page errors and zero unexpected console errors or warnings. The allowlist accepts
+only a `warning` whose complete text exactly equals Chromium's known Canvas2D readback advice; a
+synthetic same-text `error`, suffixed warning, and substring-only warning were all rejected by the
+fixture assertion. Three exact advice messages are expected fixture instrumentation because marker
+assertions read pixels with `getImageData`; application code does not perform those reads.
 
 ## Viewport measurements
 
-The active-cell bounds are the fixture's fixed-grid/scroller geometry record; popover bounds are
-Playwright DOM bounds. `marker pixels` counts red pixels in the active Canvas cell.
+The active-cell bounds are the fixture's fixed-grid/scroller geometry record; Glide anchor bounds
+come from the production popover state, and popover bounds are Playwright DOM bounds. Every anchor
+matches its active cell within Glide's 1 px rule, and the active-cell/popover intersection area is
+exactly zero. `marker pixels` counts red pixels in the active Canvas cell.
 
-| Viewport | Document client / scroll / overflow | Grid scroller client / scroll / left / top | Active cell bounds | Popover placement and bounds | Inside | Marker pixels |
+| Viewport | Document client / scroll / overflow | Grid scroller client / scroll / left / top | Active / Glide anchor | Popover placement and bounds | Intersection / inside | Marker pixels |
 | --- | --- | --- | --- | --- | --- | ---: |
-| 1024×768 | 1024 / 1024 / 0 px | 804 / 9372 / 0 / 103 px | x592 y736 w150 h32 | above · x592 y656 w280 h104 | yes | 721 |
-| 1440×900 | 1440 / 1440 / 0 px | 1220 / 9372 / 0 / 0 px | x592 y797 w150 h32 | below · x592 y727 w280 h104 | yes | 721 |
-| 1920×1080 | 1920 / 1920 / 0 px | 1700 / 9372 / 0 / 0 px | x592 y797 w150 h32 | below · x592 y830 w280 h104 | yes | 721 |
+| 1024×768 | 1024 / 1024 / 0 px | 804 / 9372 / 0 / 103 px | x592 y736 w150 h32 / x592 y736 w151 h33 | above · x592 y624 w280 h104 | 0 px² / yes | 721 |
+| 1440×900 | 1440 / 1440 / 0 px | 1220 / 9372 / 0 / 0 px | x592 y797 w150 h32 / x592 y797 w151 h33 | above · x592 y685 w280 h104 | 0 px² / yes | 721 |
+| 1920×1080 | 1920 / 1920 / 0 px | 1700 / 9372 / 0 / 0 px | x592 y797 w150 h32 / x592 y797 w151 h33 | below · x592 y838 w280 h104 | 0 px² / yes | 721 |
 
 At every width, document horizontal overflow is zero, the Grid scroller owns the 9,372 px virtual
 sheet width, the same invalid coordinate remains selected, and the popover stays within the viewport.
@@ -134,20 +152,21 @@ border `rgb(185, 28, 28)`. Their text/surface contrast is 12.85:1 and border/sur
 ## PNG evidence and visual review
 
 - `.impeccable/review/condition-cell-invalid-draft-1024.png` — SHA-256
-  `a556d64e7017d57f70d62e22c88b12155d7d6e8cbc2e880ceb388bc919f7a3f3`
+  `337e6ee4954671dd81f568f1c2fd24170f1e13f8a1a6087e9af08d183e603d6c`
 - `.impeccable/review/condition-cell-invalid-draft-1440.png` — SHA-256
-  `4f2d7d741dff76932ec541c8bb5b45f8581fbbaf04c116bda70fcb224a03c4d0`
+  `bb9258bf53e1416599769f6a76ffb7b37ba631356a4b6136cfa80523ef328c36`
 - `.impeccable/review/condition-cell-invalid-draft-1920.png` — SHA-256
-  `192882d9b3c92af4fb377c8869eab08be463861554332ad84fd9f9b977a6a38c`
+  `ad964ee01a43a37d3007d757e85308639c2d996c84abc263fda999c4301f55e3`
 
-All three PNGs were inspected together at original resolution, followed by one bounded repair and
-one final confirmation. The Drafting Table remains a flat 1 px-rule workspace with stable 32 px
-Grid rows. The invalid raw value, marker, selected-cell focus, and Korean problem/repair copy remain
-legible without document overflow. The first-pass full accessibility-description editor overlay is
-absent in the confirmed images; reopening the editor now starts from raw `1e3`.
+All three regenerated PNGs were inspected together at original resolution after the review-round
+correction. The Drafting Table remains a flat 1 px-rule workspace with stable 32 px Grid rows. The
+invalid raw value, marker, selected-cell focus, and Korean problem/repair copy remain legible without
+document overflow. At 1024 and 1440 the popover ends 8 px above the active cell; at 1920 it begins
+9 px below the fixture's 32 px cell (8 px below Glide's inclusive 33 px bound). The first-pass full
+accessibility-description editor overlay is absent; reopening the editor starts from raw `1e3`.
 
 ## Scope hygiene
 
-The product repair changes only `GlideConditionGrid.tsx` and its regression test. The evidence
+The product repairs change only `GlideConditionGrid.tsx` and its regression test. The evidence
 commit contains only this directory and the three requested PNGs. `.superpowers/sdd/**` artifacts
 remain untracked by design.

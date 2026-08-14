@@ -12,6 +12,8 @@ const playwrightRoot = process.env.PLAYWRIGHT_PACKAGE_ROOT
 const browserExecutable = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE
 const port = Number(process.env.PCM_FIXTURE_PORT ?? '4181')
 const baseUrl = `http://127.0.0.1:${port}`
+const EXPECTED_CANVAS_READBACK_WARNING =
+  'Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: https://html.spec.whatwg.org/multipage/canvas.html#concept-canvas-will-read-frequently'
 
 if (!playwrightRoot || !browserExecutable) {
   throw new Error(
@@ -314,6 +316,23 @@ function record(name, passed, details = {}) {
   if (!passed) throw new Error(`Assertion failed: ${name} ${JSON.stringify(details)}`)
 }
 
+function isExpectedFixtureConsole(entry) {
+  return entry.type === 'warning' && entry.text === EXPECTED_CANVAS_READBACK_WARNING
+}
+
+function rectangleIntersectionArea(first, second) {
+  if (first === null || second === null) return null
+  const width = Math.max(
+    0,
+    Math.min(first.x + first.width, second.x + second.width) - Math.max(first.x, second.x),
+  )
+  const height = Math.max(
+    0,
+    Math.min(first.y + first.height, second.y + second.height) - Math.max(first.y, second.y),
+  )
+  return width * height
+}
+
 async function waitForSheet(page) {
   await page.locator('[data-sheet-editor]').waitFor({ state: 'visible' })
   await page.locator('[data-sheet-editing-status]').filter({ hasText: '편집 잠금' }).waitFor({
@@ -423,6 +442,12 @@ async function viewportMeasurement(page, col, rowIndex) {
         scrollTop: scroller.scrollTop,
       },
       selectedCell: document.querySelector('[role="gridcell"][aria-selected="true"]')?.id ?? null,
+      popoverAnchor: alert === null ? null : {
+        x: Number(alert.getAttribute('data-anchor-x')),
+        y: Number(alert.getAttribute('data-anchor-y')),
+        width: Number(alert.getAttribute('data-anchor-width')),
+        height: Number(alert.getAttribute('data-anchor-height')),
+      },
       popoverPlacement: alert?.getAttribute('data-placement') ?? null,
       popoverColors: style === null ? null : {
         color: style.color,
@@ -435,6 +460,7 @@ async function viewportMeasurement(page, col, rowIndex) {
     ...facts,
     activeCell,
     popover,
+    popoverIntersectionArea: rectangleIntersectionArea(activeCell, popover),
     popoverInsideViewport:
       popover !== null &&
       popover.x >= 0 &&
@@ -671,6 +697,26 @@ async function runBrowser() {
           popoverInsideViewport: measurements[key].popoverInsideViewport,
         },
       )
+      record(
+        `popover does not overlap active cell at ${key}`,
+        measurements[key].popoverIntersectionArea === 0,
+        {
+          activeCell: measurements[key].activeCell,
+          popover: measurements[key].popover,
+          popoverIntersectionArea: measurements[key].popoverIntersectionArea,
+        },
+      )
+      const anchor = measurements[key].popoverAnchor
+      const cell = measurements[key].activeCell
+      record(
+        `popover uses fresh active cell bounds at ${key}`,
+        anchor !== null &&
+          Math.abs(anchor.x - cell.x) <= 1 &&
+          Math.abs(anchor.y - cell.y) <= 1 &&
+          Math.abs(anchor.width - cell.width) <= 1 &&
+          Math.abs(anchor.height - cell.height) <= 1,
+        { activeCell: cell, popoverAnchor: anchor },
+      )
       await page.screenshot({
         path: path.join(reviewRoot, `condition-cell-invalid-draft-${viewport.width}.png`),
         fullPage: false,
@@ -678,9 +724,18 @@ async function runBrowser() {
     }
 
     record('no page errors', pageErrors.length === 0, { pageErrors })
-    const unexpectedConsole = consoleMessages.filter(
-      (entry) => !entry.text.includes('Multiple readback operations using getImageData'),
+    const consoleFilterChecks = [
+      { entry: { type: 'warning', text: EXPECTED_CANVAS_READBACK_WARNING }, expected: true },
+      { entry: { type: 'error', text: EXPECTED_CANVAS_READBACK_WARNING }, expected: false },
+      { entry: { type: 'warning', text: `${EXPECTED_CANVAS_READBACK_WARNING} extra` }, expected: false },
+      { entry: { type: 'warning', text: 'Multiple readback operations using getImageData' }, expected: false },
+    ].map(({ entry, expected }) => ({ entry, expected, accepted: isExpectedFixtureConsole(entry) }))
+    record(
+      'console allowlist accepts only the exact known warning',
+      consoleFilterChecks.every((check) => check.accepted === check.expected),
+      { consoleFilterChecks },
     )
+    const unexpectedConsole = consoleMessages.filter((entry) => !isExpectedFixtureConsole(entry))
     record('no unexpected console errors/warnings', unexpectedConsole.length === 0, {
       expectedFixtureConsole: consoleMessages.filter((entry) => !unexpectedConsole.includes(entry)),
       unexpectedConsole,

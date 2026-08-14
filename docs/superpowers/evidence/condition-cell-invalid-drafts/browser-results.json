@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-14T02:33:57.146Z",
+  "generatedAt": "2026-08-14T02:57:16.454Z",
   "baseUrl": "http://127.0.0.1:4181",
   "browser": {
     "playwrightRoot": "/home/appuser/.npm/_npx/fd3bca3c548369c0/node_modules/playwright",
@@ -143,11 +143,44 @@
       "popoverPlacement": "above",
       "popover": {
         "x": 592,
-        "y": 656,
+        "y": 624,
         "width": 280,
         "height": 104
       },
       "popoverInsideViewport": true
+    },
+    {
+      "name": "popover does not overlap active cell at 1024x768",
+      "passed": true,
+      "activeCell": {
+        "x": 592,
+        "y": 736,
+        "width": 150,
+        "height": 32
+      },
+      "popover": {
+        "x": 592,
+        "y": 624,
+        "width": 280,
+        "height": 104
+      },
+      "popoverIntersectionArea": 0
+    },
+    {
+      "name": "popover uses fresh active cell bounds at 1024x768",
+      "passed": true,
+      "activeCell": {
+        "x": 592,
+        "y": 736,
+        "width": 150,
+        "height": 32
+      },
+      "popoverAnchor": {
+        "x": 592,
+        "y": 736,
+        "width": 151,
+        "height": 33
+      }
     },
     {
       "name": "document overflow bounded at 1440x900",
@@ -181,14 +214,47 @@
     {
       "name": "popover stays inside viewport at 1440x900",
       "passed": true,
-      "popoverPlacement": "below",
+      "popoverPlacement": "above",
       "popover": {
         "x": 592,
-        "y": 727,
+        "y": 685,
         "width": 280,
         "height": 104
       },
       "popoverInsideViewport": true
+    },
+    {
+      "name": "popover does not overlap active cell at 1440x900",
+      "passed": true,
+      "activeCell": {
+        "x": 592,
+        "y": 797,
+        "width": 150,
+        "height": 32
+      },
+      "popover": {
+        "x": 592,
+        "y": 685,
+        "width": 280,
+        "height": 104
+      },
+      "popoverIntersectionArea": 0
+    },
+    {
+      "name": "popover uses fresh active cell bounds at 1440x900",
+      "passed": true,
+      "activeCell": {
+        "x": 592,
+        "y": 797,
+        "width": 150,
+        "height": 32
+      },
+      "popoverAnchor": {
+        "x": 592,
+        "y": 797,
+        "width": 151,
+        "height": 33
+      }
     },
     {
       "name": "document overflow bounded at 1920x1080",
@@ -225,16 +291,87 @@
       "popoverPlacement": "below",
       "popover": {
         "x": 592,
-        "y": 830,
+        "y": 838,
         "width": 280,
         "height": 104
       },
       "popoverInsideViewport": true
     },
     {
+      "name": "popover does not overlap active cell at 1920x1080",
+      "passed": true,
+      "activeCell": {
+        "x": 592,
+        "y": 797,
+        "width": 150,
+        "height": 32
+      },
+      "popover": {
+        "x": 592,
+        "y": 838,
+        "width": 280,
+        "height": 104
+      },
+      "popoverIntersectionArea": 0
+    },
+    {
+      "name": "popover uses fresh active cell bounds at 1920x1080",
+      "passed": true,
+      "activeCell": {
+        "x": 592,
+        "y": 797,
+        "width": 150,
+        "height": 32
+      },
+      "popoverAnchor": {
+        "x": 592,
+        "y": 797,
+        "width": 151,
+        "height": 33
+      }
+    },
+    {
       "name": "no page errors",
       "passed": true,
       "pageErrors": []
+    },
+    {
+      "name": "console allowlist accepts only the exact known warning",
+      "passed": true,
+      "consoleFilterChecks": [
+        {
+          "entry": {
+            "type": "warning",
+            "text": "Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: https://html.spec.whatwg.org/multipage/canvas.html#concept-canvas-will-read-frequently"
+          },
+          "expected": true,
+          "accepted": true
+        },
+        {
+          "entry": {
+            "type": "error",
+            "text": "Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: https://html.spec.whatwg.org/multipage/canvas.html#concept-canvas-will-read-frequently"
+          },
+          "expected": false,
+          "accepted": false
+        },
+        {
+          "entry": {
+            "type": "warning",
+            "text": "Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: https://html.spec.whatwg.org/multipage/canvas.html#concept-canvas-will-read-frequently extra"
+          },
+          "expected": false,
+          "accepted": false
+        },
+        {
+          "entry": {
+            "type": "warning",
+            "text": "Multiple readback operations using getImageData"
+          },
+          "expected": false,
+          "accepted": false
+        }
+      ]
     },
     {
       "name": "no unexpected console errors/warnings",
@@ -287,6 +424,12 @@
         "scrollTop": 103
       },
       "selectedCell": "glide-cell-4-17",
+      "popoverAnchor": {
+        "x": 592,
+        "y": 736,
+        "width": 151,
+        "height": 33
+      },
       "popoverPlacement": "above",
       "popoverColors": {
         "color": "rgb(23, 47, 53)",
@@ -301,10 +444,11 @@
       },
       "popover": {
         "x": 592,
-        "y": 656,
+        "y": 624,
         "width": 280,
         "height": 104
       },
+      "popoverIntersectionArea": 0,
       "popoverInsideViewport": true,
       "markerPixels": 721
     },
@@ -331,7 +475,13 @@
         "scrollTop": 0
       },
       "selectedCell": "glide-cell-4-17",
-      "popoverPlacement": "below",
+      "popoverAnchor": {
+        "x": 592,
+        "y": 797,
+        "width": 151,
+        "height": 33
+      },
+      "popoverPlacement": "above",
       "popoverColors": {
         "color": "rgb(23, 47, 53)",
         "backgroundColor": "rgb(254, 242, 242)",
@@ -345,10 +495,11 @@
       },
       "popover": {
         "x": 592,
-        "y": 727,
+        "y": 685,
         "width": 280,
         "height": 104
       },
+      "popoverIntersectionArea": 0,
       "popoverInsideViewport": true,
       "markerPixels": 721
     },
@@ -375,6 +526,12 @@
         "scrollTop": 0
       },
       "selectedCell": "glide-cell-4-17",
+      "popoverAnchor": {
+        "x": 592,
+        "y": 797,
+        "width": 151,
+        "height": 33
+      },
       "popoverPlacement": "below",
       "popoverColors": {
         "color": "rgb(23, 47, 53)",
@@ -389,10 +546,11 @@
       },
       "popover": {
         "x": 592,
-        "y": 830,
+        "y": 838,
         "width": 280,
         "height": 104
       },
+      "popoverIntersectionArea": 0,
       "popoverInsideViewport": true,
       "markerPixels": 721
     }
