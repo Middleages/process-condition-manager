@@ -580,6 +580,31 @@ describe('invalid draft Glide boundary', () => {
     }
   })
 
+  it('preserves single-click activation only for an editable invalid Choice cell', () => {
+    const resource = availableChoiceResource()
+    const data = gridData({
+      choiceResource: resource,
+      invalidDrafts: [
+        invalidDraft('pressure', 'abc', 'invalid_decimal', '숫자로 입력하세요'),
+        invalidDraft('mode', 'BOGUS', 'choice_unknown', '현재 선택지에 없는 코드입니다.'),
+        invalidDraft('note', 'raw note', 'required_value', '필수값을 입력하세요'),
+      ],
+    })
+    const grid = renderGrid({ data })
+    try {
+      expect(dataEditorProps().getCellContent([4, 0]).activationBehaviorOverride).toBeUndefined()
+      expect(dataEditorProps().getCellContent([5, 0]).activationBehaviorOverride).toBe(
+        'single-click',
+      )
+      expect(dataEditorProps().getCellContent([6, 0]).activationBehaviorOverride).toBeUndefined()
+
+      grid.rerender({ data, view: { readOnly: true } })
+      expect(dataEditorProps().getCellContent([5, 0]).activationBehaviorOverride).toBeUndefined()
+    } finally {
+      grid.cleanup()
+    }
+  })
+
   it('keeps a required Choice draft in SearchableChoice and repairs it through the picker path', () => {
     const resource = availableChoiceResource()
     const onCellInvalid = vi.fn()

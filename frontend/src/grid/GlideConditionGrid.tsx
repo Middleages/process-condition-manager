@@ -858,6 +858,8 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
           invalidDraftEditor,
           allowOverlay: !readOnly && invalidDraftEditor.kind !== 'blocked-choice',
           readonly: readOnly || invalidDraftEditor.kind === 'blocked-choice',
+          activationBehaviorOverride:
+            !readOnly && invalidDraftEditor.kind === 'choice' ? 'single-click' : undefined,
           contentAlign: column.valueType === 'number' ? 'right' : undefined,
           themeOverride,
         }
