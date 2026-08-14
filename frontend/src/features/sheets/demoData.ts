@@ -82,7 +82,7 @@ function buildColumns(count: number, rand: () => number): ConditionGridColumn[] 
       unit: valueType === 'number' ? UNITS[i % UNITS.length] : null,
       description: `${category.label} 파라미터 #${i} (${valueType})`,
       choiceSetCode: choiceAggregate?.set_code ?? null,
-      choiceSetVersion: choiceAggregate?.version ?? null,
+      choiceSetVersion: choiceAggregate?.version ?? null, required: false, minValue: null, maxValue: null,
     })
   }
   return columns

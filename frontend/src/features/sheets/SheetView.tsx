@@ -56,10 +56,12 @@ import { ErrorMessage, LoadingMessage } from '@/shared/components/StatusMessage'
 import { cn } from '@/shared/lib/cn'
 import { useIsomorphicLayoutEffect } from '@/shared/lib/useIsomorphicLayoutEffect'
 import { parsePositiveInt } from '@/shared/navigation/routeState'
+import { useUnsavedChanges } from '@/shared/navigation/useUnsavedChanges'
 
 import {
   applyDirtyToRows,
   selectDirtyCells,
+  selectInvalidDrafts,
   useEditStore,
   type DirtyCell,
   type PersistedCell,
@@ -779,6 +781,7 @@ function SheetEditor({
 
   const choiceResources = useSheetChoiceSets(sheet.columns)
   const dirtyCells = useEditStore(selectDirtyCells)
+  const invalidDrafts = useEditStore(selectInvalidDrafts)
 
   // 저장 성공분을 서버 스냅샷(캐시)에 확정 반영 → 더티 제거 후에도 저장값 유지.
   const commitSaved = useCallback(
@@ -805,6 +808,16 @@ function SheetEditor({
     heartbeatMs: sheet.lock.heartbeat_seconds * 1000,
     initialEditingBy: sheet.lock.locked_by,
   })
+  useEffect(() => {
+    if (invalidDrafts.size === 0) return
+    const rowIds = new Set(data.rows.map((row) => row.id))
+    const columnKeys = new Set(data.columns.map((column) => column.key))
+    const hasOrphan = [...invalidDrafts.values()].some(
+      (draft) => !rowIds.has(draft.conditionId) || !columnKeys.has(draft.parameterCode),
+    )
+    if (!hasOrphan) return
+    useEditStore.getState().pruneInvalidDrafts(data.rows, data.columns)
+  }, [data.rows, data.columns, invalidDrafts])
 
   // Loading/error headers are replaced without a pathname change, so RootLayout's pathname-only
   // focus effect does not run again. Restore focus once only when replacement left it on body (or
@@ -878,8 +891,12 @@ function SheetEditor({
     previousLayerKeysRef.current = orderedLayerKeys
   }, [activeLayerKey, data.rows, orderedLayerKeys])
 
-  // 서버 행 위에 더티 값을 얹어 표시(편집값 즉시 반영) + 더티 셀 상태 오버레이.
-  const displayRows = useMemo(() => applyDirtyToRows(data.rows, dirtyCells), [data.rows, dirtyCells])
+  // Persistable rows remain the validation/persistence authority; rejected raw drafts are a
+  // final display-only projection for the Grid.
+  const persistableDisplayRows = useMemo(
+    () => applyDirtyToRows(data.rows, dirtyCells),
+    [data.rows, dirtyCells],
+  )
   const choiceAuthorizationEpoch = useMemo(
     () => sheetChoiceAuthorizationEpoch(choiceResources),
     [choiceResources],
@@ -923,7 +940,7 @@ function SheetEditor({
     definitions: validationDefinitions,
     definitionAuthority: validationDefinitionAuthority,
     validationBasisHash: sheet.validation_basis_hash,
-    displayRows,
+    displayRows: persistableDisplayRows,
     displayGeneration: editing.displayGeneration,
     persistedGeneration: editing.persistedGeneration,
     persistenceIdle: editing.persistenceIdle,
@@ -936,11 +953,20 @@ function SheetEditor({
   const gridData = useMemo(
     () => ({
       ...data,
-      rows: rowsForLayerViewport(displayRows, activeLayerKey, currentLayerOnly),
+      rows: rowsForLayerViewport(persistableDisplayRows, activeLayerKey, currentLayerOnly),
       statuses: validation.statuses,
+      invalidDrafts: [...invalidDrafts.values()],
       choiceResources,
     }),
-    [activeLayerKey, currentLayerOnly, data, displayRows, validation.statuses, choiceResources],
+    [
+      activeLayerKey,
+      currentLayerOnly,
+      data,
+      persistableDisplayRows,
+      invalidDrafts,
+      validation.statuses,
+      choiceResources,
+    ],
   )
 
   useEffect(() => {
@@ -967,17 +993,17 @@ function SheetEditor({
     [data.columns, activeCategory],
   )
   const validationIssues = useMemo(
-    () => enrichValidationIssues(validation.issues, data.columns, displayRows),
-    [validation.issues, data.columns, displayRows],
+    () => enrichValidationIssues(validation.issues, data.columns, persistableDisplayRows),
+    [validation.issues, data.columns, persistableDisplayRows],
   )
   const activeLayerValidationIssues = useMemo(() => {
     const activeConditionIds = new Set(
-      displayRows
+      persistableDisplayRows
         .filter((row) => row.layerKey === activeLayerKey)
         .map((row) => row.id),
     )
     return validationIssues.filter((issue) => activeConditionIds.has(issue.conditionId))
-  }, [activeLayerKey, displayRows, validationIssues])
+  }, [activeLayerKey, persistableDisplayRows, validationIssues])
   const activeLayerValidationSummary = useMemo(
     () => summarizeIssues(activeLayerValidationIssues),
     [activeLayerValidationIssues],
@@ -1075,6 +1101,7 @@ function SheetEditor({
   const [paste, setPasteState] = useState<PasteStagingResult | null>(null)
   const pasteRef = useRef<PasteStagingResult | null>(null)
   const pasteIdentityRef = useRef<symbol | null>(null)
+  const pastePersistedCellsRef = useRef<readonly PersistedCell[]>([])
   const [pasteError, setPasteError] = useState<string | null>(null)
   const [applying, setApplying] = useState(false)
   const applyingRef = useRef(false)
@@ -1083,17 +1110,17 @@ function SheetEditor({
       setCoordinateNavigationStatus('붙여넣기를 적용 또는 취소한 뒤 이동해 주세요.')
       return
     }
-    const conditionId = firstConditionIdForLayer(displayRows, layerKey)
+    const conditionId = firstConditionIdForLayer(persistableDisplayRows, layerKey)
     setPendingLayerJump(conditionId)
     setActiveLayerKey(layerKey)
     setRecentLayerKeys((current) => updateRecentLayerKeys(current, layerKey))
     setCoordinateNavigationStatus(null)
-  }, [displayRows])
+  }, [persistableDisplayRows])
   const changeCurrentLayerOnly = useCallback((currentOnly: boolean) => {
-    const conditionId = firstConditionIdForLayer(displayRows, activeLayerKey)
+    const conditionId = firstConditionIdForLayer(persistableDisplayRows, activeLayerKey)
     setPendingLayerJump(conditionId)
     setCurrentLayerOnly(currentOnly)
-  }, [activeLayerKey, displayRows])
+  }, [activeLayerKey, persistableDisplayRows])
 
   const {
     readOnly,
@@ -1119,7 +1146,7 @@ function SheetEditor({
       interaction.canStagePaste,
       activeCategory,
       visibleColumns,
-      displayRows,
+      persistableDisplayRows,
       choiceAuthorizationEpoch,
     ],
   )
@@ -1141,17 +1168,17 @@ function SheetEditor({
   const pasteCommitRuntimeRef = useRef({
     generation: pasteCallbackGeneration,
     columns: data.columns,
-    rows: displayRows,
+    rows: persistableDisplayRows,
     choiceResources,
   })
   useIsomorphicLayoutEffect(() => {
     commitPasteCallbackRuntime(pasteCommitRuntimeRef, {
       generation: pasteCallbackGeneration,
       columns: data.columns,
-      rows: displayRows,
+      rows: persistableDisplayRows,
       choiceResources,
     })
-  }, [pasteCallbackGeneration, data.columns, displayRows, choiceResources])
+  }, [pasteCallbackGeneration, data.columns, persistableDisplayRows, choiceResources])
 
   // 숨겨진 category 결과는 category state가 실제 commit되어 visibleColumns가 바뀐 뒤에만
   // 스크롤한다. setActiveCategory 직후의 오래된 adapter ref에는 명령하지 않는다.
@@ -1169,7 +1196,7 @@ function SheetEditor({
     if (!visibleColumns.some((column) => column.key === pendingCoordinateJump.parameterCode)) return
     const conditionId = String(pendingCoordinateJump.conditionId)
     const parameterCode = String(pendingCoordinateJump.parameterCode)
-    if (!displayRows.some((row) => row.id === conditionId)) {
+    if (!persistableDisplayRows.some((row) => row.id === conditionId)) {
       setCoordinateNavigationStatus('이동할 대상 셀을 찾지 못했습니다.')
       setPendingCoordinateJump(null)
       return
@@ -1177,7 +1204,7 @@ function SheetEditor({
     gridRef.current?.scrollToCell(conditionId, parameterCode)
     setCoordinateNavigationStatus('대상 셀로 이동했습니다.')
     setPendingCoordinateJump(null)
-  }, [pendingCoordinateJump, visibleColumns, displayRows])
+  }, [pendingCoordinateJump, visibleColumns, persistableDisplayRows])
 
   // 조건 행 관리(T7): 추가/복제/삭제 대상은 좌측 식별 컬럼 클릭으로 활성화한 행 하나다.
   // POR 이양은 활성 행과 무관하게 POR 컬럼 클릭으로 바로 실행한다. 구조 변경은 더티 셀 버퍼와
@@ -1340,6 +1367,14 @@ function SheetEditor({
         if (pasteRef.current !== null) return
         setCell(cell.conditionId, cell.parameterCode, cell.value)
       },
+      onCellInvalid: (draft) => {
+        if (!interaction.canEditCells || pasteRef.current !== null) return
+        useEditStore.getState().setInvalidDraft(draft)
+      },
+      onInvalidDraftClear: (conditionId, parameterCode) => {
+        if (!interaction.canEditCells || pasteRef.current !== null) return
+        useEditStore.getState().clearInvalidDraft(conditionId, parameterCode)
+      },
       onPaste: (target, tsv) => {
         // ref 가드는 첫 paste setState가 commit되기 전 들어오는 두 번째 Canvas callback도 막는다.
         if (!interaction.canStagePaste) return
@@ -1358,7 +1393,7 @@ function SheetEditor({
           target,
           parseTsv(tsv),
           visibleColumns,
-          displayRows,
+          persistableDisplayRows,
           choiceResources,
         )
         // 매핑되는 셀도 없고 잘린 것도 없으면(대상 밖 등) 무시.
@@ -1367,6 +1402,7 @@ function SheetEditor({
         }
         setPasteError(null)
         pasteIdentityRef.current = Symbol('sheet-paste-review')
+        pastePersistedCellsRef.current = []
         setPaste(result)
       },
       // POR 이양: 클릭된 행을 POR로. 성공 시 두 행(기존/신규)의 is_por가 바뀌므로 재조회한다.
@@ -1396,7 +1432,7 @@ function SheetEditor({
       interaction,
       setCell,
       visibleColumns,
-      displayRows,
+      persistableDisplayRows,
       choiceResources,
       performStructural,
       projectId,
@@ -1412,6 +1448,7 @@ function SheetEditor({
     const pasteIdentity = pasteIdentityRef.current
     if (pasteIdentity !== null) abandonPaste(pasteIdentity)
     pasteIdentityRef.current = null
+    pastePersistedCellsRef.current = []
     setPaste(null)
     setPasteError(null)
   }, [interaction.canCancelPaste, abandonPaste, setPaste])
@@ -1437,9 +1474,14 @@ function SheetEditor({
         setPaste(latestPaste)
         // 현재 권한으로 다시 검증한 유효 셀만 첫 revision snapshot에 포함한다.
         const validCells: PersistedCell[] = persistablePasteCells(latestPaste, current.rows)
+        pastePersistedCellsRef.current = validCells
         return validCells
       })
       if (saved) {
+        for (const cell of pastePersistedCellsRef.current) {
+          useEditStore.getState().clearInvalidDraft(cell.conditionId, cell.parameterCode)
+        }
+        pastePersistedCellsRef.current = []
         pasteIdentityRef.current = null
         setPaste(null) // 성공 → 스테이징 종료(서버 스냅샷에 반영됨)
       }
@@ -1496,7 +1538,7 @@ function SheetEditor({
       const navigation = resolveWorkbenchCoordinateNavigation(
         coordinate,
         data.columns,
-        displayRows,
+        persistableDisplayRows,
         activeCategory,
       )
       setPendingColumnJump(null)
@@ -1505,7 +1547,7 @@ function SheetEditor({
         setCoordinateNavigationStatus('이동할 대상 셀을 찾지 못했습니다.')
         return
       }
-      const targetRow = displayRows.find(
+      const targetRow = persistableDisplayRows.find(
         (row) => row.id === String(navigation.target.conditionId),
       )
       if (targetRow === undefined) {
@@ -1532,7 +1574,7 @@ function SheetEditor({
     [
       interaction.canSwitchCategory,
       data.columns,
-      displayRows,
+      persistableDisplayRows,
       activeCategory,
       activeLayerKey,
       currentLayerOnly,
@@ -2122,6 +2164,9 @@ function SheetEditor({
         ) : undefined
       }
     >
+      {typeof document !== 'undefined' ? (
+        <SheetUnsavedChangesGuard when={editing.unsavedCount > 0} />
+      ) : null}
       <div
         className="h-full min-h-0 min-w-0 overflow-hidden bg-surface"
         data-sheet-editor
@@ -2137,6 +2182,14 @@ function SheetEditor({
       </div>
     </SheetFocusFrame>
   )
+}
+
+function SheetUnsavedChangesGuard({ when }: { when: boolean }) {
+  useUnsavedChanges({
+    when,
+    message: '저장되지 않은 입력이 있습니다. 조건표를 나갈까요?',
+  })
+  return null
 }
 
 /**
@@ -2606,9 +2659,14 @@ function LockChip({ editing }: { editing: SheetEditing }) {
 }
 
 function SaveStatus({ editing }: { editing: SheetEditing }) {
-  const { saveStatus, dirtyCount, discard, retrySave } = editing
+  const { saveStatus, dirtyCount, invalidDraftCount, unsavedCount, discard, retrySave } = editing
   return (
     <span className="flex min-w-0 items-center gap-2">
+      {invalidDraftCount > 0 ? (
+        <span className="rounded-full bg-error-surface px-2 py-0.5 text-error">
+          입력 오류 {invalidDraftCount}
+        </span>
+      ) : null}
       {dirtyCount > 0 ? (
         <span className="rounded-full bg-white/10 px-2 py-0.5 text-white">미저장 {dirtyCount}</span>
       ) : null}
@@ -2628,7 +2686,7 @@ function SaveStatus({ editing }: { editing: SheetEditing }) {
           </button>
         </span>
       ) : null}
-      {dirtyCount > 0 ? (
+      {unsavedCount > 0 ? (
         <button
           type="button"
           onClick={discard}

@@ -4,9 +4,13 @@ import type { ConditionGridRow } from '@/grid/types'
 
 import {
   applyDirtyToRows,
+  applyInvalidDraftsToRows,
   dirtyKey,
   fromCellUpdateOut,
   removeSavedCells,
+  pruneInvalidDraftMap,
+  selectInvalidDraftCount,
+  selectInvalidDrafts,
   setDirtyCell,
   setDirtyCells,
   toCellUpdateIn,
@@ -14,6 +18,16 @@ import {
   type DirtyCell,
   type PersistedCell,
 } from './editStore'
+import type { InvalidCellDraft } from '@/grid/types'
+
+const invalid = (rawValue = 'abc'): InvalidCellDraft => ({
+  conditionId: '1',
+  parameterCode: 'spin',
+  rawValue,
+  code: 'invalid_decimal',
+  message: '숫자로 입력하세요',
+  constraint: null,
+})
 
 const persisted = (
   value: string | null,
@@ -89,6 +103,37 @@ describe('transport and display projections', () => {
     expect(rows[0].values.spin).toBe('90')
     expect(applyDirtyToRows(rows, new Map())).toEqual(rows)
   })
+
+  it('overlays a raw invalid draft without adding a dirty cell', () => {
+    const rows: ConditionGridRow[] = [
+      {
+        id: '1', layerKey: 'L1', stepSeq: 'S01', layerId: 'L1', layerLabel: 'L1',
+        conditionLabel: 'C1', isPor: true, values: { spin: '90' },
+      },
+    ]
+    useEditStore.getState().setInvalidDraft(invalid())
+    expect(useEditStore.getState().dirtyCells.size).toBe(0)
+    expect(applyInvalidDraftsToRows(rows, useEditStore.getState().invalidDrafts)[0].values.spin)
+      .toBe('abc')
+    expect(rows[0].values.spin).toBe('90')
+  })
+
+  it('prunes drafts whose condition or parameter disappeared', () => {
+    const rows: ConditionGridRow[] = [
+      {
+        id: '1', layerKey: 'L1', stepSeq: 'S01', layerId: 'L1', layerLabel: 'L1',
+        conditionLabel: 'C1', isPor: true, values: { spin: '90' },
+      },
+    ]
+    const columns = [{ key: 'spin' }]
+    const retained = new Map([
+      [dirtyKey('1', 'spin'), invalid()],
+      [dirtyKey('gone', 'spin'), { ...invalid(), conditionId: 'gone' }],
+      [dirtyKey('1', 'gone'), { ...invalid(), parameterCode: 'gone' }],
+    ])
+    expect([...pruneInvalidDraftMap(retained, rows, columns).keys()])
+      .toEqual([dirtyKey('1', 'spin')])
+  })
 })
 
 describe('useEditStore monotonic allocator', () => {
@@ -141,5 +186,25 @@ describe('useEditStore monotonic allocator', () => {
 
     expect(second).toBe(first + 1)
     expect(useEditStore.getState().persistedGeneration).toBe(second)
+  })
+
+  it('clears one invalid coordinate and clears invalid drafts with the session', () => {
+    useEditStore.getState().setInvalidDraft(invalid())
+    useEditStore.getState().setInvalidDraft({ ...invalid(), parameterCode: 'mode' })
+    useEditStore.getState().clearInvalidDraft('1', 'spin')
+    expect(useEditStore.getState().invalidDrafts.has(dirtyKey('1', 'spin'))).toBe(false)
+    expect(useEditStore.getState().invalidDrafts.has(dirtyKey('1', 'mode'))).toBe(true)
+    expect(selectInvalidDrafts(useEditStore.getState())).toBe(useEditStore.getState().invalidDrafts)
+    expect(selectInvalidDraftCount(useEditStore.getState())).toBe(1)
+    const revisionBefore = useEditStore.getState().revision
+    const displayBefore = useEditStore.getState().displayGeneration
+    const persistedBefore = useEditStore.getState().persistedGeneration
+    useEditStore.getState().clearAll()
+    expect(useEditStore.getState().invalidDrafts.size).toBe(0)
+    expect(selectInvalidDrafts(useEditStore.getState()).size).toBe(0)
+    expect(selectInvalidDraftCount(useEditStore.getState())).toBe(0)
+    expect(useEditStore.getState().revision).toBe(revisionBefore)
+    expect(useEditStore.getState().displayGeneration).toBe(displayBefore)
+    expect(useEditStore.getState().persistedGeneration).toBe(persistedBefore)
   })
 })

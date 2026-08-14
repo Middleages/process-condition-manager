@@ -38,9 +38,6 @@ export type SheetAdapterErrorCode =
   | 'display_rows_mismatch'
 
 export interface AdaptedConditionGridColumn extends ConditionGridColumn {
-  minValue: string | null
-  maxValue: string | null
-  required: boolean
   pattern: string | null
   patternHint: string | null
   sortOrder: number

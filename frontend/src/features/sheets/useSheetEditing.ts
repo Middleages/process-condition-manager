@@ -25,6 +25,7 @@ import {
 } from './autosave'
 import {
   dirtyCellList,
+  selectInvalidDraftCount,
   toCellUpdateIn,
   useEditStore,
   type DirtyCell,
@@ -195,6 +196,8 @@ export interface SheetEditing {
   lockStatus: LockStatus
   saveStatus: SaveState
   dirtyCount: number
+  invalidDraftCount: number
+  unsavedCount: number
   /** accepted committed-display edits/pastes; monotonic across project/session clearing. */
   displayGeneration: number
   /** successful durable cell/structure/POR mutation generation. */
@@ -229,7 +232,7 @@ export interface SheetEditing {
    *  4. 저장 중 409(잠금 상실)면 상실 처리 후 그대로 reject(상위가 UI로 안내).
    */
   runStructuralChange<T>(fn: (lockToken: string) => Promise<T>): Promise<T>
-  /** 변경 취소(더티 폐기 + 자동저장 중단). */
+  /** 변경 취소(더티와 invalid draft 폐기 + 자동저장 중단). */
   discard(): void
   /** 저장 실패 수동 재시도. */
   retrySave(): void
@@ -250,6 +253,8 @@ export function useSheetEditing(
   const [editingBy, setEditingBy] = useState<string | null>(options.initialEditingBy ?? null)
   const [writeBusy, setWriteBusy] = useState(false)
   const dirtyCount = useEditStore((state) => state.dirtyCells.size)
+  const invalidDraftCount = useEditStore(selectInvalidDraftCount)
+  const unsavedCount = dirtyCount + invalidDraftCount
   const displayGeneration = useEditStore((state) => state.displayGeneration)
   const [persistedGeneration, setPersistedGeneration] = useState(
     () => useEditStore.getState().persistedGeneration,
@@ -270,6 +275,7 @@ export function useSheetEditing(
   const onPersistedRef = useRef(options.onPersisted)
   const saveOriginRef = useRef<'manual' | 'paste'>('manual')
   const pasteSnapshotRef = useRef<RetainedPasteSnapshot | null>(null)
+  const heartbeatMsRef = useRef(heartbeatMs)
 
   const updateLockStatus = useCallback((next: LockStatus) => {
     lockStatusRef.current = next
@@ -326,8 +332,19 @@ export function useSheetEditing(
           // 409 = 잠금 상실. 그 외(네트워크 일시 오류)는 무시 — 다음 주기 재시도, TTL이 최종 보험.
           if (isLockConflict(error)) handleLockLost(error)
         })
-    }, heartbeatMs)
-  }, [stopHeartbeat, handleLockLost, heartbeatMs, isCurrentSession])
+    }, heartbeatMsRef.current)
+  }, [stopHeartbeat, handleLockLost, isCurrentSession])
+
+  useEffect(() => {
+    onPersistedRef.current = options.onPersisted
+  }, [options.onPersisted])
+
+  useEffect(() => {
+    heartbeatMsRef.current = heartbeatMs
+    if (sessionActiveRef.current && lockStatusRef.current === 'held') {
+      startHeartbeat(sessionGenerationRef.current)
+    }
+  }, [heartbeatMs, startHeartbeat])
 
   // 자동저장 엔진은 한 번만 생성한다(안정 클로저 — 위 useCallback들은 deps가 안정적이다).
   if (engineRef.current === null) {
@@ -589,7 +606,8 @@ export function useSheetEditing(
       })
   }, [updateLockStatus, startHeartbeat, isCurrentSession])
 
-  // 마운트/프로젝트 전환: 더티 리셋 → 잠금 획득 → 하트비트 시작. 언마운트: flush 시도 → 해제.
+  // 마운트/프로젝트 전환: 세션 버퍼 리셋 → 잠금 획득 → 하트비트 시작.
+  // 언마운트: 세션 버퍼를 폐기하고 이미 실행 중인 쓰기만 기다린 뒤 잠금을 해제한다.
   useEffect(() => {
     const engine = engineRef.current
     let cancelled = false
@@ -597,9 +615,8 @@ export function useSheetEditing(
     sessionGenerationRef.current = generation
     sessionActiveRef.current = true
     projectIdRef.current = projectId
-    onPersistedRef.current = options.onPersisted
 
-    useEditStore.getState().clearAll() // 새 시트 → 더티 버퍼 리셋
+    useEditStore.getState().clearAll() // 새 시트 → 세션 편집 버퍼 리셋
     pasteSnapshotRef.current = null
     saveOriginRef.current = 'manual'
     engine?.cancel()
@@ -640,47 +657,17 @@ export function useSheetEditing(
       },
     )
 
-    // 비보유자는 서버가 공급한 heartbeat 주기로 조용히 재획득을 시도한다. 성공하면
-    // 새로고침 없이 편집 모드로 전환하고, 실패 중에는 readonly 표시를 유지한다.
-    const readonlyRetry = setInterval(() => {
-      if (
-        cancelled ||
-        acquireInFlightRef.current ||
-        lockStatusRef.current !== 'readonly'
-      ) {
-        return
-      }
-      acquireInFlightRef.current = true
-      acquireLock(projectId)
-        .then((lock) => {
-          if (cancelled || !isCurrentSession(generation)) {
-            void releaseLock(projectId, lock.lock_token)
-            return
-          }
-          lockTokenRef.current = lock.lock_token
-          setEditingBy(null)
-          updateLockStatus('held')
-          startHeartbeat(generation)
-        })
-        .catch((error: unknown) => {
-          if (isCurrentSession(generation)) setEditingBy(getLockConflictHolder(error))
-        })
-        .finally(() => {
-          if (isCurrentSession(generation)) acquireInFlightRef.current = false
-        })
-    }, heartbeatMs)
-
     return () => {
       cancelled = true
       sessionActiveRef.current = false
       if (isCurrentSession(generation)) sessionGenerationRef.current += 1
       acquireInFlightRef.current = false
-      clearInterval(readonlyRetry)
       stopHeartbeat()
+      useEditStore.getState().clearAll()
       const token = lockTokenRef.current
       if (lockStatusRef.current === 'held' && token !== null) {
-        // 남은 더티 best-effort flush 후 해제. 진행 중 저장 뒤에 새 더티가 남아 있을 수 있으므로
-        // flushNow 전체가 끝날 때까지 토큰을 유지한다. release도 그 뒤로 미뤄 저장과 경합하지 않는다.
+        // 이미 실행 중인 저장 뒤 해제. 세션 버퍼는 위에서 폐기했지만 flushNow가 진행 중 요청을
+        // 기다리므로 토큰은 요청이 끝날 때까지 유지되고 release가 PATCH를 추월하지 않는다.
         // 큐에 이미 들어간 붙여넣기/구조 변경까지 먼저 기다린다. 이탈로 generation이
         // 무효화된 대기 작업은 실행 전에 중단되고, 이미 실행 중인 요청만 끝까지 마무리된다.
         const done = operationQueueRef.current
@@ -702,13 +689,47 @@ export function useSheetEditing(
     }
   }, [
     projectId,
-    options.onPersisted,
     updateLockStatus,
     startHeartbeat,
     stopHeartbeat,
-    heartbeatMs,
     isCurrentSession,
   ])
+
+  // 비보유자는 최신 heartbeat cadence로 조용히 재획득을 시도한다. Cadence 변경은 이
+  // timer만 교체하며 project session/편집 버퍼/보유 잠금은 건드리지 않는다.
+  useEffect(() => {
+    const generation = sessionGenerationRef.current
+    const readonlyRetry = setInterval(() => {
+      if (
+        !sessionActiveRef.current ||
+        !isCurrentSession(generation) ||
+        acquireInFlightRef.current ||
+        lockStatusRef.current !== 'readonly'
+      ) {
+        return
+      }
+      const sessionProjectId = projectIdRef.current
+      acquireInFlightRef.current = true
+      acquireLock(sessionProjectId)
+        .then((lock) => {
+          if (!sessionActiveRef.current || !isCurrentSession(generation)) {
+            void releaseLock(sessionProjectId, lock.lock_token)
+            return
+          }
+          lockTokenRef.current = lock.lock_token
+          setEditingBy(null)
+          updateLockStatus('held')
+          startHeartbeat(generation)
+        })
+        .catch((error: unknown) => {
+          if (isCurrentSession(generation)) setEditingBy(getLockConflictHolder(error))
+        })
+        .finally(() => {
+          if (isCurrentSession(generation)) acquireInFlightRef.current = false
+        })
+    }, heartbeatMs)
+    return () => clearInterval(readonlyRetry)
+  }, [heartbeatMs, isCurrentSession, projectId, startHeartbeat, updateLockStatus])
 
   // 탭 종료 대비: sendBeacon 전용 POST release 별칭으로 해제를 큐에 넣는다. 전송 자체가
   // 거부되거나 브라우저가 종료되면 TTL 만료가 최종 보험이다.
@@ -718,7 +739,11 @@ export function useSheetEditing(
       if (token === null || lockStatusRef.current !== 'held') return
       // 브라우저 종료 시 dirty/in-flight/queued 쓰기가 있으면 해제가 PATCH보다 먼저 도착할 수
       // 있다. 이때는 즉시 해제하지 않고 서버 TTL이 최종 정리를 맡는다.
-      if (useEditStore.getState().dirtyCells.size > 0 || immediatePendingRef.current > 0) return
+      if (
+        useEditStore.getState().dirtyCells.size > 0 ||
+        useEditStore.getState().invalidDrafts.size > 0 ||
+        immediatePendingRef.current > 0
+      ) return
       releaseLockOnUnload(projectIdRef.current, token)
     }
     window.addEventListener('beforeunload', handler)
@@ -729,6 +754,8 @@ export function useSheetEditing(
     lockStatus,
     saveStatus,
     dirtyCount,
+    invalidDraftCount,
+    unsavedCount,
     displayGeneration,
     persistedGeneration,
     persistenceIdle:

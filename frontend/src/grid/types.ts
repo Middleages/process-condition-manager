@@ -48,10 +48,24 @@ export interface SheetChoiceResource {
 
 export type CellValidationErrorCode =
   | 'invalid_decimal'
+  | 'required_value'
+  | 'number_out_of_range'
   | 'choice_resource_unavailable'
   | 'choice_set_inactive'
   | 'choice_option_inactive'
   | 'choice_unknown'
+
+/** A rejected edit retained for display without entering the persistence buffer. */
+export interface InvalidCellDraft {
+  conditionId: string
+  parameterCode: string
+  rawValue: string
+  code: CellValidationErrorCode
+  message: string
+  constraint: string | null
+}
+
+export type InvalidCellDraftMap = ReadonlyMap<string, InvalidCellDraft>
 
 /** 레지스트리 파라미터 1개 = 그리드 컬럼 1개 (동적 구성). */
 export interface ConditionGridColumn {
@@ -63,6 +77,9 @@ export interface ConditionGridColumn {
   description?: string | null // 헤더 툴팁(축약 컬럼명 전체 의미)
   choiceSetCode: string | null
   choiceSetVersion: number | null
+  required: boolean
+  minValue: string | null
+  maxValue: string | null
   pinned?: boolean // 좌측 고정(식별 컬럼)
 }
 
@@ -124,6 +141,8 @@ export interface ConditionGridData {
   columns: readonly ConditionGridColumn[]
   rows: readonly ConditionGridRow[]
   statuses?: readonly CellStatus[]
+  /** Persistence와 분리해 보존하는 거부된 단일 셀 원문. */
+  invalidDrafts?: readonly InvalidCellDraft[]
   /** set code별 공유 resource. 셀/column별 option 복제를 만들지 않는다. */
   choiceResources?: ReadonlyMap<string, SheetChoiceResource>
 }
@@ -131,6 +150,10 @@ export interface ConditionGridData {
 export interface ConditionGridCallbacks {
   /** 셀 편집 확정 → 더티 버퍼 진입(T3). */
   onCellEdit?(cell: DirtyCell): void
+  /** 거부된 단일 셀 원문을 persistence 밖의 상위 draft projection에 올린다. */
+  onCellInvalid?(draft: InvalidCellDraft): void
+  /** 유효한 교정이 들어오면 해당 셀의 거부 원문 하나를 먼저 제거한다. */
+  onInvalidDraftClear?(conditionId: string, parameterCode: string): void
   /**
    * 범위 붙여넣기 가로채기. 그리드는 기본 붙여넣기를 막고, 붙여넣기 대상 좌상단 셀과
    * 원본 TSV 텍스트를 넘긴다. 스테이징 파이프라인 구현은 T4의 몫.

@@ -13,10 +13,10 @@ import {
 
 // 컬럼 순서(= 화면에 보이는 순서): exposure(number) · spin_speed(number) · pr_type(choice) · memo(text)
 const columns: ConditionGridColumn[] = [
-  { key: 'exposure', headerName: '노광량', valueType: 'number', categoryCode: 'litho', unit: 'mJ', choiceSetCode: null, choiceSetVersion: null },
-  { key: 'spin_speed', headerName: 'Spin', valueType: 'number', categoryCode: 'coat', unit: 'rpm', choiceSetCode: null, choiceSetVersion: null },
-  { key: 'pr_type', headerName: 'PR', valueType: 'choice', categoryCode: 'coat', choiceSetCode: 'photo_resist', choiceSetVersion: 7 },
-  { key: 'memo', headerName: '메모', valueType: 'text', categoryCode: null, choiceSetCode: null, choiceSetVersion: null },
+  { key: 'exposure', headerName: '노광량', valueType: 'number', categoryCode: 'litho', unit: 'mJ', choiceSetCode: null, choiceSetVersion: null, required: false, minValue: null, maxValue: null,},
+  { key: 'spin_speed', headerName: 'Spin', valueType: 'number', categoryCode: 'coat', unit: 'rpm', choiceSetCode: null, choiceSetVersion: null, required: false, minValue: null, maxValue: null,},
+  { key: 'pr_type', headerName: 'PR', valueType: 'choice', categoryCode: 'coat', choiceSetCode: 'photo_resist', choiceSetVersion: 7, required: false, minValue: null, maxValue: null,},
+  { key: 'memo', headerName: '메모', valueType: 'text', categoryCode: null, choiceSetCode: null, choiceSetVersion: null, required: false, minValue: null, maxValue: null,},
 ]
 
 const choiceAggregate: ChoiceOptionAggregate = {
@@ -162,7 +162,7 @@ describe('buildPasteStaging — number strict parsing', () => {
       parameterCode: 'exposure',
       value: '1,234',
       valid: false,
-      message: '올바른 소수 형식이 아닙니다.',
+      message: '숫자로 입력하세요',
       errorCode: 'invalid_decimal',
     })
   })

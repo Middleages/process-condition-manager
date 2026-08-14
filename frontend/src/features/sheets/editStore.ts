@@ -2,7 +2,7 @@ import { create } from 'zustand'
 
 import type { CellUpdateIn } from '@/api/types'
 import { overlayKey } from '@/grid/model'
-import type { ConditionGridRow } from '@/grid/types'
+import type { ConditionGridColumn, ConditionGridRow, InvalidCellDraft, InvalidCellDraftMap } from '@/grid/types'
 
 /** 서버에 저장할 셀 값. 클라이언트 세대 정보는 없다. */
 export interface PersistedCell {
@@ -87,8 +87,43 @@ export function applyDirtyToRows<Row extends ConditionGridRow>(
   })
 }
 
+export function applyInvalidDraftsToRows<Row extends ConditionGridRow>(
+  rows: readonly Row[],
+  invalidDrafts: InvalidCellDraftMap,
+): Row[] {
+  if (invalidDrafts.size === 0) return [...rows]
+  const byCondition = new Map<string, InvalidCellDraft[]>()
+  for (const draft of invalidDrafts.values()) {
+    const list = byCondition.get(draft.conditionId)
+    if (list === undefined) byCondition.set(draft.conditionId, [draft])
+    else list.push(draft)
+  }
+  return rows.map((row) => {
+    const drafts = byCondition.get(row.id)
+    if (drafts === undefined) return row
+    const values = { ...row.values }
+    for (const draft of drafts) values[draft.parameterCode] = draft.rawValue
+    return { ...row, values }
+  })
+}
+
+export function pruneInvalidDraftMap(
+  map: InvalidCellDraftMap,
+  rows: readonly Pick<ConditionGridRow, 'id'>[],
+  columns: readonly Pick<ConditionGridColumn, 'key'>[],
+): InvalidCellDraftMap {
+  const rowIds = new Set(rows.map((row) => row.id))
+  const columnKeys = new Set(columns.map((column) => column.key))
+  const next = new Map<string, InvalidCellDraft>()
+  for (const [key, draft] of map) {
+    if (rowIds.has(draft.conditionId) && columnKeys.has(draft.parameterCode)) next.set(key, draft)
+  }
+  return next
+}
+
 interface EditState {
   dirtyCells: DirtyCellMap
+  invalidDrafts: InvalidCellDraftMap
   /** 지워지지 않는 store-wide monotonic allocator. */
   revision: number
   /** accepted edit/paste display buffer generation; project/session clearing never resets it. */
@@ -97,6 +132,12 @@ interface EditState {
   persistedGeneration: number
   setCell(cell: PersistedCell): DirtyCell
   setCells(cells: readonly PersistedCell[]): DirtyCell[]
+  setInvalidDraft(draft: InvalidCellDraft): void
+  clearInvalidDraft(conditionId: string, parameterCode: string): void
+  pruneInvalidDrafts(
+    rows: readonly ConditionGridRow[],
+    columns: readonly Pick<ConditionGridColumn, 'key'>[],
+  ): void
   advancePersistedGeneration(): number
   clearAll(): void
   markSaved(cells: readonly DirtyCell[]): void
@@ -104,6 +145,7 @@ interface EditState {
 
 export const useEditStore = create<EditState>((set) => ({
   dirtyCells: new Map(),
+  invalidDrafts: new Map(),
   revision: 0,
   displayGeneration: 0,
   persistedGeneration: 0,
@@ -133,6 +175,22 @@ export const useEditStore = create<EditState>((set) => ({
     })
     return allocated
   },
+  setInvalidDraft: (draft) =>
+    set((state) => {
+      const invalidDrafts = new Map(state.invalidDrafts)
+      invalidDrafts.set(dirtyKey(draft.conditionId, draft.parameterCode), draft)
+      return { invalidDrafts }
+    }),
+  clearInvalidDraft: (conditionId, parameterCode) =>
+    set((state) => {
+      const key = dirtyKey(conditionId, parameterCode)
+      if (!state.invalidDrafts.has(key)) return state
+      const invalidDrafts = new Map(state.invalidDrafts)
+      invalidDrafts.delete(key)
+      return { invalidDrafts }
+    }),
+  pruneInvalidDrafts: (rows, columns) =>
+    set((state) => ({ invalidDrafts: pruneInvalidDraftMap(state.invalidDrafts, rows, columns) })),
   advancePersistedGeneration: () => {
     let generation = 0
     set((state) => {
@@ -142,10 +200,12 @@ export const useEditStore = create<EditState>((set) => ({
     return generation
   },
   // 세션 전환은 map만 비운다. 늦은 응답이 새 세대를 지우지 못하게 counter는 유지.
-  clearAll: () => set({ dirtyCells: new Map() }),
+  clearAll: () => set({ dirtyCells: new Map(), invalidDrafts: new Map() }),
   markSaved: (cells) =>
     set((state) => ({ dirtyCells: removeSavedCells(state.dirtyCells, cells) })),
 }))
 
 export const selectDirtyCount = (state: EditState): number => state.dirtyCells.size
 export const selectDirtyCells = (state: EditState): DirtyCellMap => state.dirtyCells
+export const selectInvalidDrafts = (state: EditState): InvalidCellDraftMap => state.invalidDrafts
+export const selectInvalidDraftCount = (state: EditState): number => state.invalidDrafts.size

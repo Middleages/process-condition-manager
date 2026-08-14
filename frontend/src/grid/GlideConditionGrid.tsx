@@ -38,15 +38,18 @@ import {
   type GridMouseEventArgs,
   type GridSelection,
   type Item,
+  type ProvideEditorComponent,
+  type Rectangle,
+  type TextCell,
   type Theme,
 } from '@glideapps/glide-data-grid'
 import '@glideapps/glide-data-grid/dist/index.css'
 
 import { useIsomorphicLayoutEffect } from '@/shared/lib/useIsomorphicLayoutEffect'
 
-import { choiceCellRenderer, isChoiceCell, makeChoiceCell } from './choiceCell'
+import { ChoiceEditor, choiceCellRenderer, isChoiceCell, makeChoiceCell } from './choiceCell'
 import { shouldPersistCellChange, validateSingleCellEdit } from './cellValue'
-import { decimalCellRenderer, isDecimalCell, makeDecimalCell } from './decimalCell'
+import { DecimalEditor, decimalCellRenderer, isDecimalCell, makeDecimalCell } from './decimalCell'
 import {
   IDENTITY_COLUMN_COUNT,
   IDENTITY_COLUMNS,
@@ -73,7 +76,9 @@ import type {
   ConditionGridHandle,
   ConditionGridProps,
   ConditionGridRow,
+  InvalidCellDraft,
   PasteStagingCell,
+  SheetChoiceResource,
 } from './types'
 import { GRID_COLORS } from './theme'
 
@@ -111,6 +116,189 @@ const EMPTY_GRID_SELECTION: GridSelection = {
   columns: CompactSelection.empty(),
   rows: CompactSelection.empty(),
   current: undefined,
+}
+
+interface InvalidDraftPopoverPlacement {
+  x: number
+  y: number
+  placement: 'below' | 'above'
+}
+
+interface InvalidDraftPopoverPosition extends InvalidDraftPopoverPlacement {
+  anchor: Rectangle
+}
+
+const INVALID_DRAFT_POPOVER_SIZE = { width: 280, height: 104 }
+const INVALID_DRAFT_POPOVER_MARGIN = 8
+
+type InvalidDraftEditorAuthority =
+  | { readonly kind: 'text' }
+  | { readonly kind: 'number'; readonly unit: string | null }
+  | {
+      readonly kind: 'choice'
+      readonly resource: SheetChoiceResource
+      readonly restoreGridFocus: () => void
+    }
+  | { readonly kind: 'blocked-choice' }
+
+interface InvalidDraftTextCell extends TextCell {
+  readonly invalidDraftRawValue: string
+  readonly invalidDraftEditor: InvalidDraftEditorAuthority
+}
+
+function isInvalidDraftTextCell(cell: GridCell): cell is InvalidDraftTextCell {
+  return cell.kind === GridCellKind.Text && 'invalidDraftRawValue' in cell
+}
+
+function invalidDraftEditingCell(
+  cell: InvalidDraftTextCell,
+  rawValue: string,
+): InvalidDraftTextCell {
+  return {
+    ...cell,
+    data: rawValue,
+    displayData: rawValue,
+    copyData: rawValue,
+    invalidDraftRawValue: rawValue,
+  }
+}
+
+const InvalidDraftTextEditor: ProvideEditorComponent<GridCell> = ({
+  value,
+  initialValue,
+  onChange,
+  onFinishedEditing,
+}) => {
+  const invalidCell = isInvalidDraftTextCell(value) ? value : null
+  const [draft, setDraft] = useState(initialValue ?? invalidCell?.invalidDraftRawValue ?? '')
+
+  useEffect(() => {
+    if (
+      invalidCell === null ||
+      (invalidCell.data === draft && invalidCell.invalidDraftRawValue === draft)
+    ) return
+    onChange(invalidDraftEditingCell(invalidCell, draft))
+  }, [draft, invalidCell, onChange])
+
+  if (invalidCell === null) return null
+
+  const finish = (): void => {
+    onFinishedEditing(invalidDraftEditingCell(invalidCell, draft))
+  }
+
+  return (
+    <div className="grid min-w-0 gap-1 bg-surface p-2">
+      <input
+        autoFocus
+        className="input w-full font-mono"
+        value={draft}
+        onChange={(event) => setDraft(event.currentTarget.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') {
+            event.preventDefault()
+            event.stopPropagation()
+            finish()
+          } else if (event.key === 'Escape') {
+            event.preventDefault()
+            event.stopPropagation()
+            onFinishedEditing(undefined)
+          }
+        }}
+      />
+    </div>
+  )
+}
+
+const InvalidDraftDecimalEditor: ProvideEditorComponent<GridCell> = (props) => {
+  const invalidCell = isInvalidDraftTextCell(props.value) ? props.value : null
+  if (invalidCell === null || invalidCell.invalidDraftEditor.kind !== 'number') return null
+  return (
+    <DecimalEditor
+      {...props}
+      value={makeDecimalCell(
+        invalidCell.invalidDraftRawValue,
+        invalidCell.invalidDraftEditor.unit,
+        invalidCell.readonly ?? false,
+        invalidCell.themeOverride,
+      )}
+    />
+  )
+}
+
+const InvalidDraftChoiceEditor: ProvideEditorComponent<GridCell> = (props) => {
+  const invalidCell = isInvalidDraftTextCell(props.value) ? props.value : null
+  if (invalidCell === null || invalidCell.invalidDraftEditor.kind !== 'choice') return null
+  return (
+    <ChoiceEditor
+      {...props}
+      value={makeChoiceCell(
+        invalidCell.invalidDraftRawValue,
+        invalidCell.invalidDraftEditor.resource,
+        invalidCell.readonly ?? false,
+        invalidCell.themeOverride,
+        invalidCell.invalidDraftEditor.restoreGridFocus,
+      )}
+    />
+  )
+}
+
+function provideInvalidDraftEditor(cell: GridCell) {
+  if (!isInvalidDraftTextCell(cell)) return undefined
+  if (cell.invalidDraftEditor.kind === 'blocked-choice') return undefined
+  if (cell.invalidDraftEditor.kind === 'number') {
+    return { editor: InvalidDraftDecimalEditor, disablePadding: true }
+  }
+  if (cell.invalidDraftEditor.kind === 'choice') {
+    return {
+      editor: InvalidDraftChoiceEditor,
+      disablePadding: true,
+      styleOverride: { minWidth: 320, minHeight: 320 },
+    }
+  }
+  return { editor: InvalidDraftTextEditor, disablePadding: true }
+}
+
+/** Prefer below the cell, flip above at the bottom edge, and clamp inside the viewport. */
+export function invalidDraftPopoverPlacement(
+  bounds: Rectangle,
+  viewport: { width: number; height: number },
+  size: { width: number; height: number },
+): InvalidDraftPopoverPlacement {
+  const margin = INVALID_DRAFT_POPOVER_MARGIN
+  const belowY = bounds.y + bounds.height + margin
+  const aboveY = bounds.y - size.height - margin
+  const placement =
+    belowY + size.height <= viewport.height - margin || aboveY < margin
+      ? 'below'
+      : 'above'
+  const preferredY = placement === 'below' ? belowY : aboveY
+  return {
+    x: Math.min(Math.max(bounds.x, margin), Math.max(margin, viewport.width - size.width - margin)),
+    y: Math.min(Math.max(preferredY, margin), Math.max(margin, viewport.height - size.height - margin)),
+    placement,
+  }
+}
+
+function indexInvalidDrafts(
+  drafts: readonly InvalidCellDraft[] | undefined,
+): ReadonlyMap<string, InvalidCellDraft> {
+  const index = new Map<string, InvalidCellDraft>()
+  for (const draft of drafts ?? []) {
+    index.set(overlayKey(draft.conditionId, draft.parameterCode), draft)
+  }
+  return index
+}
+
+function invalidDraftAccessibility(
+  row: Pick<ConditionGridRow, 'layerLabel' | 'conditionLabel'>,
+  column: Pick<ConditionGridColumn, 'headerName'>,
+  draft: InvalidCellDraft,
+): string {
+  const raw = draft.rawValue === '' ? '입력값 비어 있음' : `입력값 "${draft.rawValue}"`
+  const error = draft.constraint === null
+    ? draft.message
+    : `${draft.message}, ${draft.constraint}`
+  return `Layer: ${row.layerLabel}, 조건 ${row.conditionLabel}, 파라미터 ${column.headerName}, ${raw}, 오류 ${error}, 저장되지 않음`
 }
 
 export function gridLayoutAuthority(
@@ -316,12 +504,14 @@ export function cellStatusTooltip(status: CellStatus | undefined): string | null
 function overlayTheme(
   status: CellStatus | undefined,
   staging: PasteStagingCell | undefined,
+  invalid: boolean,
 ): Partial<Theme> | undefined {
   if (staging !== undefined) {
     return staging.valid
       ? { bgCell: GRID_COLORS.successSurface, textDark: GRID_COLORS.success }
       : { bgCell: GRID_COLORS.errorSurface, textDark: GRID_COLORS.error }
   }
+  if (invalid) return { bgCell: GRID_COLORS.errorSurface, textDark: GRID_COLORS.error }
   if (status !== undefined) {
     switch (cellStatusVisualPriority(status)) {
       case 'error':
@@ -345,12 +535,10 @@ function editedValue(cell: EditableGridCell): string | null | undefined {
     return cell.data.value
   }
   if (cell.kind === GridCellKind.Custom && isChoiceCell(cell)) {
-    const value = cell.data.value.trim()
-    return value === '' ? null : value
+    return cell.data.value
   }
   if (cell.kind === GridCellKind.Text) {
-    const value = cell.data.trim()
-    return value === '' ? null : value
+    return cell.data
   }
   return null
 }
@@ -471,6 +659,79 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
   const groupMeta = useMemo(() => computeRowGroups(rows), [rows])
   const statusIndex = useMemo(() => indexStatuses(data.statuses), [data.statuses])
   const stagingIndex = useMemo(() => indexStaging(pasteStaging), [pasteStaging])
+  const invalidDraftIndex = useMemo(
+    () => indexInvalidDrafts(data.invalidDrafts),
+    [data.invalidDrafts],
+  )
+
+  const selectedCell = effectiveGridSelection.current?.cell
+  const activeInvalidDraft = useMemo(() => {
+    if (selectedCell === undefined) return null
+    const target = resolveCellTarget(
+      selectedCell[0],
+      selectedCell[1],
+      visibleColumns,
+      rows,
+      IDENTITY_COLUMN_COUNT,
+    )
+    if (target === null) return null
+    const draft = invalidDraftIndex.get(overlayKey(target.conditionId, target.parameterCode))
+    if (draft === undefined) return null
+    const row = rows[selectedCell[1]]
+    const column = visibleColumns[selectedCell[0] - IDENTITY_COLUMN_COUNT]
+    if (row === undefined || column === undefined) return null
+    return { draft, row, column, item: selectedCell }
+  }, [invalidDraftIndex, rows, selectedCell, visibleColumns])
+  const [invalidDraftPopover, setInvalidDraftPopover] =
+    useState<InvalidDraftPopoverPosition | null>(null)
+  const invalidDraftPopoverFrameRef = useRef<number | null>(null)
+  const refreshInvalidDraftPopover = useCallback(() => {
+    if (activeInvalidDraft === null) {
+      setInvalidDraftPopover(null)
+      return
+    }
+    const bounds = gridRef.current?.getBounds(
+      activeInvalidDraft.item[0],
+      activeInvalidDraft.item[1],
+    )
+    if (bounds === undefined) {
+      setInvalidDraftPopover(null)
+      return
+    }
+    setInvalidDraftPopover({
+      ...invalidDraftPopoverPlacement(
+        bounds,
+        { width: window.innerWidth, height: window.innerHeight },
+        INVALID_DRAFT_POPOVER_SIZE,
+      ),
+      anchor: bounds,
+    })
+  }, [activeInvalidDraft])
+  const scheduleInvalidDraftPopoverRefresh = useCallback(() => {
+    if (invalidDraftPopoverFrameRef.current !== null) {
+      window.cancelAnimationFrame(invalidDraftPopoverFrameRef.current)
+    }
+    invalidDraftPopoverFrameRef.current = window.requestAnimationFrame(() => {
+      invalidDraftPopoverFrameRef.current = window.requestAnimationFrame(() => {
+        invalidDraftPopoverFrameRef.current = null
+        refreshInvalidDraftPopover()
+      })
+    })
+  }, [refreshInvalidDraftPopover])
+
+  useIsomorphicLayoutEffect(() => {
+    if (invalidDraftPopoverFrameRef.current !== null) {
+      window.cancelAnimationFrame(invalidDraftPopoverFrameRef.current)
+      invalidDraftPopoverFrameRef.current = null
+    }
+    refreshInvalidDraftPopover()
+  }, [refreshInvalidDraftPopover])
+
+  useEffect(() => () => {
+    if (invalidDraftPopoverFrameRef.current !== null) {
+      window.cancelAnimationFrame(invalidDraftPopoverFrameRef.current)
+    }
+  }, [])
 
   // Imperative navigation publishes selection first; focus again after that controlled selection
   // commits so Glide targets the requested accessible cell rather than the previous selection.
@@ -560,26 +821,57 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
         return { kind: GridCellKind.Loading, allowOverlay: false }
       }
       const serverValue = rowData.values[column.key] ?? null
-      const staging = stagingIndex.get(overlayKey(rowData.id, column.key))
-      const raw = previewCellValue(serverValue, staging)
+      const key = overlayKey(rowData.id, column.key)
+      const staging = stagingIndex.get(key)
+      const invalidDraft = invalidDraftIndex.get(key)
+      const choiceResource = column.choiceSetCode === null
+        ? undefined
+        : data.choiceResources?.get(column.choiceSetCode)
+      // Whole-surface paste preview remains authoritative; otherwise retain the rejected raw edit.
+      const raw = staging === undefined && invalidDraft !== undefined
+        ? invalidDraft.rawValue
+        : previewCellValue(serverValue, staging)
       const overlay = overlayTheme(
-        statusIndex.get(overlayKey(rowData.id, column.key)),
+        statusIndex.get(key),
         staging,
+        invalidDraft !== undefined,
       )
       const oddGroup = groupMeta.groupIndexByRow[row] % 2 === 1
       const base = oddGroup ? GROUP_SHADE : undefined
       const themeOverride = overlay ? { ...base, ...overlay } : base
 
+      if (staging === undefined && invalidDraft !== undefined) {
+        const invalidDraftEditor: InvalidDraftEditorAuthority =
+          column.valueType === 'number'
+            ? { kind: 'number', unit: column.unit ?? null }
+            : column.valueType === 'choice'
+              ? choiceResource === undefined
+                ? { kind: 'blocked-choice' }
+                : { kind: 'choice', resource: choiceResource, restoreGridFocus }
+              : { kind: 'text' }
+        const invalidCell: InvalidDraftTextCell = {
+          kind: GridCellKind.Text,
+          data: invalidDraftAccessibility(rowData, column, invalidDraft),
+          displayData: invalidDraft.rawValue,
+          copyData: invalidDraft.rawValue,
+          invalidDraftRawValue: invalidDraft.rawValue,
+          invalidDraftEditor,
+          allowOverlay: !readOnly && invalidDraftEditor.kind !== 'blocked-choice',
+          readonly: readOnly || invalidDraftEditor.kind === 'blocked-choice',
+          activationBehaviorOverride:
+            !readOnly && invalidDraftEditor.kind === 'choice' ? 'single-click' : undefined,
+          contentAlign: column.valueType === 'number' ? 'right' : undefined,
+          themeOverride,
+        }
+        return invalidCell
+      }
+
       if (column.valueType === 'number') {
         return makeDecimalCell(raw, column.unit ?? null, readOnly, themeOverride)
       }
       if (column.valueType === 'choice') {
-        const resource =
-          column.choiceSetCode === null
-            ? undefined
-            : data.choiceResources?.get(column.choiceSetCode)
         // Adapter/hook 계약을 위반한 resource 누락은 raw 값만 보존하고 fail-closed한다.
-        if (resource === undefined) {
+        if (choiceResource === undefined) {
           return {
             kind: GridCellKind.Text,
             data: raw ?? '',
@@ -592,7 +884,7 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
         }
         return makeChoiceCell(
           raw ?? '',
-          resource,
+          choiceResource,
           readOnly,
           themeOverride,
           restoreGridFocus,
@@ -615,6 +907,7 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
       groupMeta,
       statusIndex,
       stagingIndex,
+      invalidDraftIndex,
       readOnly,
       data.choiceResources,
       restoreGridFocus,
@@ -636,13 +929,27 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
           : data.choiceResources?.get(column.choiceSetCode)
       const oldValue = row.values[column.key] ?? null
       const validation = validateSingleCellEdit(column, oldValue, candidate ?? '', resource)
-      if (!validation.ok) return
-      if (!shouldPersistCellChange(oldValue, validation.value)) return
-      callbacks?.onCellEdit?.({
-        conditionId: target.conditionId,
-        parameterCode: target.parameterCode,
-        value: validation.value,
-      })
+      if (!validation.ok) {
+        if (validation.code !== 'choice_resource_unavailable') {
+          callbacks?.onCellInvalid?.({
+            conditionId: target.conditionId,
+            parameterCode: target.parameterCode,
+            rawValue: validation.rawValue,
+            code: validation.code,
+            message: validation.message,
+            constraint: validation.constraint,
+          })
+        }
+        return
+      }
+      callbacks?.onInvalidDraftClear?.(target.conditionId, target.parameterCode)
+      if (shouldPersistCellChange(oldValue, validation.value)) {
+        callbacks?.onCellEdit?.({
+          conditionId: target.conditionId,
+          parameterCode: target.parameterCode,
+          value: validation.value,
+        })
+      }
     },
     [visibleColumns, rows, callbacks, data.choiceResources],
   )
@@ -804,6 +1111,20 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
       const key = overlayKey(target.conditionId, target.parameterCode)
       // Paste staging owns the complete surface until apply/cancel.
       if (stagingIndex.has(key)) return
+      const invalidDraft = invalidDraftIndex.get(key)
+      if (invalidDraft !== undefined) {
+        const { ctx, rect } = args
+        ctx.save()
+        ctx.strokeStyle = GRID_COLORS.error
+        ctx.lineWidth = 2
+        ctx.strokeRect(rect.x + 2, rect.y + 2, rect.width - 4, rect.height - 4)
+        ctx.fillStyle = GRID_COLORS.error
+        ctx.font = '700 12px sans-serif'
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        ctx.fillText('!', rect.x + 7, rect.y + rect.height / 2)
+        ctx.restore()
+      }
       const markers = cellStatusMarkerFacts(statusIndex.get(key))
       if (!markers.dirty && !markers.comment) return
 
@@ -826,7 +1147,7 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
       }
       ctx.restore()
     },
-    [visibleColumns, rows, stagingIndex, statusIndex],
+    [visibleColumns, rows, stagingIndex, invalidDraftIndex, statusIndex],
   )
 
   // POR 클릭만 별도 구조 변경으로 올린다. 행/셀 활성화는 클릭과 키보드에 공통인
@@ -898,6 +1219,9 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
         drawCell={drawCell}
         gridSelection={effectiveGridSelection}
         onGridSelectionChange={handleGridSelectionChange}
+        onVisibleRegionChanged={scheduleInvalidDraftPopoverRefresh}
+        onColumnResizeEnd={scheduleInvalidDraftPopoverRefresh}
+        provideEditor={provideInvalidDraftEditor}
         onCellEdited={readOnly ? undefined : handleCellEdited}
         onCellClicked={handleCellClicked}
         onCellContextMenu={handleCellContextMenu}
@@ -937,6 +1261,42 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
           }}
         >
           {tooltip.text}
+        </div>
+      ) : null}
+      {activeInvalidDraft !== null && invalidDraftPopover !== null ? (
+        <div
+          role="alert"
+          data-placement={invalidDraftPopover.placement}
+          data-anchor-x={invalidDraftPopover.anchor.x}
+          data-anchor-y={invalidDraftPopover.anchor.y}
+          data-anchor-width={invalidDraftPopover.anchor.width}
+          data-anchor-height={invalidDraftPopover.anchor.height}
+          style={{
+            position: 'fixed',
+            left: invalidDraftPopover.x,
+            top: invalidDraftPopover.y,
+            zIndex: 55,
+            width: INVALID_DRAFT_POPOVER_SIZE.width,
+            height: INVALID_DRAFT_POPOVER_SIZE.height,
+            boxSizing: 'border-box',
+            overflow: 'auto',
+            pointerEvents: 'none',
+            border: `1px solid ${GRID_COLORS.error}`,
+            borderRadius: 6,
+            background: GRID_COLORS.errorSurface,
+            color: GRID_COLORS.ink,
+            padding: '8px 10px',
+            fontSize: 12,
+            lineHeight: 1.4,
+            boxShadow: `0 8px 24px ${GRID_COLORS.border}`,
+          }}
+        >
+          <div>{activeInvalidDraft.draft.message}</div>
+          {activeInvalidDraft.draft.constraint === null
+            ? null
+            : <div>{activeInvalidDraft.draft.constraint}</div>}
+          <div>입력값은 저장되지 않았습니다</div>
+          <div>값을 수정하면 저장됩니다</div>
         </div>
       ) : null}
       {cellHistoryMenu !== null ? (
