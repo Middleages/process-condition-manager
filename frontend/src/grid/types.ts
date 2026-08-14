@@ -53,6 +53,18 @@ export type CellValidationErrorCode =
   | 'choice_option_inactive'
   | 'choice_unknown'
 
+/** A rejected edit retained for display without entering the persistence buffer. */
+export interface InvalidCellDraft {
+  conditionId: string
+  parameterCode: string
+  rawValue: string
+  code: CellValidationErrorCode
+  message: string
+  constraint: string | null
+}
+
+export type InvalidCellDraftMap = ReadonlyMap<string, InvalidCellDraft>
+
 /** 레지스트리 파라미터 1개 = 그리드 컬럼 1개 (동적 구성). */
 export interface ConditionGridColumn {
   key: string // parameter_code
