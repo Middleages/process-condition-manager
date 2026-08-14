@@ -689,15 +689,15 @@ describe('invalid draft Glide boundary', () => {
     expect(lowerCell.y - (above.y + 104)).toBe(8)
   })
 
-  it('refreshes invalid popover from post-layout cell bounds on the next animation frame', () => {
+  it('refreshes invalid popover only after Glide commits the next-frame scroll layout', () => {
     const grid = renderGrid({ data: gridData({ invalid: true }) })
-    let scheduledFrame: FrameRequestCallback | undefined
+    const scheduledFrames: FrameRequestCallback[] = []
     const window = grid.container.ownerDocument.defaultView!
     Object.defineProperty(window, 'requestAnimationFrame', {
       configurable: true,
       value: vi.fn((callback: FrameRequestCallback) => {
-        scheduledFrame = callback
-        return 1
+        scheduledFrames.push(callback)
+        return scheduledFrames.length
       }),
     })
     Object.defineProperty(window, 'cancelAnimationFrame', {
@@ -717,9 +717,13 @@ describe('invalid draft Glide boundary', () => {
       ))
       expect(dataEditorHarness.getBounds).toHaveBeenCalledTimes(callsBeforeVisibleChange)
 
+      expect(scheduledFrames).toHaveLength(1)
+      act(() => scheduledFrames.shift()?.(16))
+      expect(dataEditorHarness.getBounds).toHaveBeenCalledTimes(callsBeforeVisibleChange)
+
       dataEditorHarness.getBounds.mockReturnValue({ x: 460, y: 420, width: 150, height: 32 })
-      expect(scheduledFrame).toBeDefined()
-      act(() => scheduledFrame?.(16))
+      expect(scheduledFrames).toHaveLength(1)
+      act(() => scheduledFrames.shift()?.(32))
 
       const alert = grid.container.querySelector<HTMLElement>('[role="alert"]')
       expect(dataEditorHarness.getBounds).toHaveBeenLastCalledWith(4, 0)

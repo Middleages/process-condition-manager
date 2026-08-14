@@ -647,8 +647,10 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
       window.cancelAnimationFrame(invalidDraftPopoverFrameRef.current)
     }
     invalidDraftPopoverFrameRef.current = window.requestAnimationFrame(() => {
-      invalidDraftPopoverFrameRef.current = null
-      refreshInvalidDraftPopover()
+      invalidDraftPopoverFrameRef.current = window.requestAnimationFrame(() => {
+        invalidDraftPopoverFrameRef.current = null
+        refreshInvalidDraftPopover()
+      })
     })
   }, [refreshInvalidDraftPopover])
 
