@@ -1044,9 +1044,9 @@ function SheetEditor({
     historyMutationRevision,
   )
   useEffect(() => {
-    if (workbenchState.mode !== 'history' || activeLayerKey === '') return
+    if (activeLayerKey === '') return
     historyWorkbench.onLayerScopeChange(activeLayerKey)
-  }, [activeLayerKey, historyWorkbench.onLayerScopeChange, workbenchState.mode])
+  }, [activeLayerKey, historyWorkbench.onLayerScopeChange])
   const backboneDiffWorkbench = useBackboneDiffWorkbenchController(
     projectId,
     workbenchState.mode === 'backbone-diff',
@@ -1198,8 +1198,10 @@ function SheetEditor({
       setPendingCoordinateJump(null)
       return
     }
-    gridRef.current?.scrollToCell(conditionId, parameterCode)
-    setCoordinateNavigationStatus('대상 셀로 이동했습니다.')
+    const resolved = gridRef.current?.scrollToCell(conditionId, parameterCode) ?? false
+    setCoordinateNavigationStatus(
+      resolved ? '대상 셀로 이동했습니다.' : '이동할 대상 셀을 찾지 못했습니다.',
+    )
     setPendingCoordinateJump(null)
   }, [pendingCoordinateJump, visibleColumns, persistableDisplayRows])
 
@@ -1568,11 +1570,13 @@ function SheetEditor({
         setPendingCoordinateJump(navigation.target)
         return
       }
-      gridRef.current?.scrollToCell(
+      const resolved = gridRef.current?.scrollToCell(
         String(navigation.target.conditionId),
         String(navigation.target.parameterCode),
+      ) ?? false
+      setCoordinateNavigationStatus(
+        resolved ? '대상 셀로 이동했습니다.' : '이동할 대상 셀을 찾지 못했습니다.',
       )
-      setCoordinateNavigationStatus('대상 셀로 이동했습니다.')
     },
     [
       interaction.canSwitchCategory,
@@ -2112,9 +2116,11 @@ function SheetEditor({
                 timelineStatus={historyWorkbench.timelineStatus}
                 timelineError={historyWorkbench.timelineError}
                 nextPageError={historyWorkbench.nextPageError}
+                timelineIsFetchingNextPage={historyWorkbench.timelineIsFetchingNextPage}
                 cellStatus={historyWorkbench.cellStatus}
                 cellError={historyWorkbench.cellError}
                 cellNextPageError={historyWorkbench.cellNextPageError}
+                cellIsFetchingNextPage={historyWorkbench.cellIsFetchingNextPage}
                 batchDetailStatus={historyWorkbench.batchDetailStatus}
                 batchDetailError={historyWorkbench.batchDetailError}
                 batchDetailIsFetchingNextPage={historyWorkbench.batchDetailIsFetchingNextPage}

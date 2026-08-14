@@ -47,10 +47,12 @@ export interface HistoryWorkbenchController {
   timelineStatus: HistoryQueryStatus
   timelineError: string | null
   nextPageError: string | null
+  timelineIsFetchingNextPage: boolean
   cellHistory: HistoryCellHistoryOut | null
   cellStatus: HistoryQueryStatus
   cellError: string | null
   cellNextPageError: string | null
+  cellIsFetchingNextPage: boolean
   batchDetailStatus: HistoryDetailStatus
   batchDetailError: string | null
   batchDetailIsFetchingNextPage: boolean
@@ -91,7 +93,6 @@ export interface HistoryDetailAuthority {
   readonly revision: number
   readonly mode: HistoryWorkbenchMode
   readonly detailKey: string | null
-  readonly cellScopeKey: string | null
 }
 
 interface HistoryDetailRequestState {
@@ -219,8 +220,7 @@ export function isCurrentHistoryDetailAuthority(
     expected.revision === current.revision &&
     expected.mode === 'timeline' &&
     current.mode === 'timeline' &&
-    expected.detailKey === current.detailKey &&
-    expected.cellScopeKey === current.cellScopeKey
+    expected.detailKey === current.detailKey
   )
 }
 
@@ -237,6 +237,8 @@ export function useHistoryWorkbenchController(
   const previousMutationRevisionRef = useRef(historyMutationRevision)
   const outerGenerationRef = useRef(0)
   const detailRequestTokenRef = useRef(0)
+  const timelineNextPageRequestRef = useRef(false)
+  const cellNextPageRequestRef = useRef(false)
   const initialDetailRequest: HistoryDetailRequestState = {
     key: null,
     status: 'idle',
@@ -546,14 +548,16 @@ export function useHistoryWorkbenchController(
     (target: { conditionId: string; parameterCode: string } | null): boolean => {
       const scope = target === null ? null : parseHistoryCellScope(target)
       if (target !== null && scope === null) return false
-      detailRequestTokenRef.current += 1
-      commitDetailRequest({
-        key: null,
-        status: 'idle',
-        error: null,
-        phase: null,
-        cursor: null,
-      })
+      if (stateRef.current.mode !== 'timeline' || scope === null) {
+        detailRequestTokenRef.current += 1
+        commitDetailRequest({
+          key: null,
+          status: 'idle',
+          error: null,
+          phase: null,
+          cursor: null,
+        })
+      }
       commitState((current) => rememberHistoryCellScope(current, scope))
       return true
     },
@@ -628,11 +632,24 @@ export function useHistoryWorkbenchController(
   )
 
   const onLoadMoreTimeline = useCallback(
-    (_cursor: string | null) => {
-      if (!timelineEnabled || !timelineQuery.hasNextPage || timelineQuery.isFetchingNextPage) return
-      void timelineQuery.fetchNextPage()
+    (cursor: string | null) => {
+      if (
+        cursor === null ||
+        timeline.nextCursor !== cursor ||
+        timelineNextPageRequestRef.current ||
+        !timelineEnabled ||
+        !timelineQuery.hasNextPage ||
+        timelineQuery.isFetchingNextPage
+      ) {
+        return
+      }
+      timelineNextPageRequestRef.current = true
+      void timelineQuery.fetchNextPage().finally(() => {
+        timelineNextPageRequestRef.current = false
+      })
     },
     [
+      timeline.nextCursor,
       timelineEnabled,
       timelineQuery.fetchNextPage,
       timelineQuery.hasNextPage,
@@ -640,11 +657,24 @@ export function useHistoryWorkbenchController(
     ],
   )
   const onLoadMoreCell = useCallback(
-    (_cursor: string | null) => {
-      if (!cellEnabled || !cellHistoryQuery.hasNextPage || cellHistoryQuery.isFetchingNextPage) return
-      void cellHistoryQuery.fetchNextPage()
+    (cursor: string | null) => {
+      if (
+        cursor === null ||
+        cellHistory?.next_cursor !== cursor ||
+        cellNextPageRequestRef.current ||
+        !cellEnabled ||
+        !cellHistoryQuery.hasNextPage ||
+        cellHistoryQuery.isFetchingNextPage
+      ) {
+        return
+      }
+      cellNextPageRequestRef.current = true
+      void cellHistoryQuery.fetchNextPage().finally(() => {
+        cellNextPageRequestRef.current = false
+      })
     },
     [
+      cellHistory?.next_cursor,
       cellEnabled,
       cellHistoryQuery.fetchNextPage,
       cellHistoryQuery.hasNextPage,
@@ -692,10 +722,12 @@ export function useHistoryWorkbenchController(
     timelineStatus: timelinePresentation.status,
     timelineError: timelinePresentation.rootError,
     nextPageError: timelinePresentation.nextPageError,
+    timelineIsFetchingNextPage: timelineQuery.isFetchingNextPage,
     cellHistory,
     cellStatus: cellPresentation.status,
     cellError: cellPresentation.rootError,
     cellNextPageError: cellPresentation.nextPageError,
+    cellIsFetchingNextPage: cellHistoryQuery.isFetchingNextPage,
     batchDetailStatus,
     batchDetailError,
     batchDetailIsFetchingNextPage,
@@ -745,9 +777,5 @@ function historyDetailAuthority(
     revision: state.revision,
     mode: state.mode,
     detailKey,
-    cellScopeKey:
-      state.cellScope === null
-        ? null
-        : `${state.cellScope.conditionId}::${state.cellScope.parameterCode}`,
   }
 }

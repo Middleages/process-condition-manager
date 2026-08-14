@@ -82,8 +82,6 @@ import type {
 } from './types'
 import { GRID_COLORS } from './theme'
 
-export const GRID_SCROLL_TO_CELL_EVENT = 'pcm:grid-scroll-to-cell'
-
 const GLIDE_THEME: Partial<Theme> = {
   accentColor: GRID_COLORS.brand,
   accentFg: GRID_COLORS.surface,
@@ -1194,19 +1192,14 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
       },
       scrollToCell(conditionId, parameterCode) {
         const target = cellScrollTarget(conditionId, parameterCode, visibleColumns, rows, IDENTITY_COLUMN_COUNT)
-        if (target !== null) {
-          gridRef.current?.scrollTo(target.col, target.row, 'both', 0, 0, {
-            hAlign: 'center',
-            vAlign: 'center',
-          })
-          window.dispatchEvent(
-            new window.CustomEvent(GRID_SCROLL_TO_CELL_EVENT, {
-              detail: { conditionId, parameterCode, col: target.col, row: target.row },
-            }),
-          )
-          requestedFocusRef.current = [target.col, target.row]
-          setSelectionState({ layoutAuthority, selection: selectionForCell(target.col, target.row) })
-        }
+        if (target === null) return false
+        gridRef.current?.scrollTo(target.col, target.row, 'both', 0, 0, {
+          hAlign: 'center',
+          vAlign: 'center',
+        })
+        requestedFocusRef.current = [target.col, target.row]
+        setSelectionState({ layoutAuthority, selection: selectionForCell(target.col, target.row) })
+        return true
       },
       scrollToColumn(parameterCode) {
         const col = columnScrollIndex(parameterCode, visibleColumns, IDENTITY_COLUMN_COUNT)

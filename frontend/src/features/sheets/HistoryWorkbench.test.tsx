@@ -235,6 +235,11 @@ describe('HistoryWorkbench', () => {
       act(() => disclosure.click())
 
       expect(container.querySelector('#history-filter-panel')).not.toBeNull()
+      expect(
+        [...container.querySelectorAll<HTMLSelectElement>('select option')].map(
+          (option) => option.textContent,
+        ),
+      ).toEqual(['전체', '직접 입력', '붙여넣기', '백본', '시스템'])
       const sourceInput = container.querySelector<HTMLInputElement>('input[inputmode="numeric"]')
       if (sourceInput === null) throw new Error('Source project input is unavailable')
       act(() => {
@@ -286,6 +291,42 @@ describe('HistoryWorkbench', () => {
     expect(html).toContain('더 보기 다시 시도')
     expect(html).not.toMatch(/>더 보기<\/button>/)
     expect(html).toContain('셀 다음 페이지를 불러오지 못했습니다.')
+  })
+
+  it('disables timeline and cell pagination with truthful loading copy', () => {
+    const timelineHtml = render(buildTimelineCountState(1), {
+      timelineIsFetchingNextPage: true,
+      onLoadMoreTimeline: vi.fn(),
+    })
+    const cellState = openHistoryCellScope(createHistoryWorkbenchState(), {
+      conditionId: 11,
+      parameterCode: 'ETCH_P001',
+    })
+    const cellHtml = render(cellState, {
+      cellHistory: cellHistory(),
+      cellIsFetchingNextPage: true,
+      onLoadMoreCell: vi.fn(),
+    })
+
+    expect(timelineHtml).toMatch(/<button[^>]*disabled=""[^>]*>다음 페이지 불러오는 중<\/button>/)
+    expect(cellHtml).toMatch(/<button[^>]*disabled=""[^>]*>더 불러오는 중<\/button>/)
+
+    const timelineRetryHtml = render(buildTimelineCountState(1), {
+      nextPageError: '다음 페이지 실패',
+      timelineIsFetchingNextPage: true,
+      onLoadMoreTimeline: vi.fn(),
+    })
+    const cellRetryHtml = render(cellState, {
+      cellHistory: cellHistory(),
+      cellNextPageError: '셀 다음 페이지 실패',
+      cellIsFetchingNextPage: true,
+      onLoadMoreCell: vi.fn(),
+    })
+
+    expect(timelineRetryHtml).toMatch(
+      /<button[^>]*disabled=""[^>]*>다음 페이지 불러오는 중<\/button>/,
+    )
+    expect(cellRetryHtml).toMatch(/<button[^>]*disabled=""[^>]*>더 불러오는 중<\/button>/)
   })
 
   it('wraps long actor identifiers in timeline, cell, and batch-detail ledgers', () => {

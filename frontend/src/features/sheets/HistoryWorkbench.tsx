@@ -47,9 +47,11 @@ export interface HistoryWorkbenchProps {
   timelineStatus?: 'idle' | 'loading' | 'ready' | 'error'
   timelineError?: string | null
   nextPageError?: string | null
+  timelineIsFetchingNextPage?: boolean
   cellStatus?: 'idle' | 'loading' | 'ready' | 'error'
   cellError?: string | null
   cellNextPageError?: string | null
+  cellIsFetchingNextPage?: boolean
   batchDetailStatus?: 'idle' | 'loading' | 'ready' | 'error'
   batchDetailError?: string | null
   batchDetailIsFetchingNextPage?: boolean
@@ -146,9 +148,11 @@ export function HistoryWorkbench({
   timelineStatus = 'ready',
   timelineError = null,
   nextPageError = null,
+  timelineIsFetchingNextPage = false,
   cellStatus = 'ready',
   cellError = null,
   cellNextPageError = null,
+  cellIsFetchingNextPage = false,
   batchDetailStatus = 'idle',
   batchDetailError = null,
   batchDetailIsFetchingNextPage = false,
@@ -629,7 +633,7 @@ export function HistoryWorkbench({
                   <option value="">전체</option>
                   {HISTORY_ORIGIN_OPTIONS.map((origin) => (
                     <option key={origin} value={origin}>
-                      {origin}
+                      {describeHistoryOrigin(origin)}
                     </option>
                   ))}
                 </select>
@@ -733,11 +737,12 @@ export function HistoryWorkbench({
                 <span>{nextPageError}</span>
                 {state.nextCursor !== null && onLoadMoreTimeline !== undefined ? (
                   <button
-                    className="rounded-sm border border-warning/30 px-2 py-1 text-xs font-semibold"
+                    className="rounded-sm border border-warning/30 px-2 py-1 text-xs font-semibold disabled:cursor-wait"
+                    disabled={timelineIsFetchingNextPage}
                     onClick={handleLoadMoreTimeline}
                     type="button"
                   >
-                    다음 페이지 다시 시도
+                    {timelineIsFetchingNextPage ? '다음 페이지 불러오는 중' : '다음 페이지 다시 시도'}
                   </button>
                 ) : null}
               </div>
@@ -747,11 +752,12 @@ export function HistoryWorkbench({
           {state.nextCursor !== null && !hasNextPageError ? (
             <div className="flex justify-center">
               <button
-                className="rounded-sm border border-border-subtle px-3 py-1 text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
+                className="rounded-sm border border-border-subtle px-3 py-1 text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700 disabled:cursor-wait"
+                disabled={timelineIsFetchingNextPage}
                 onClick={handleLoadMoreTimeline}
                 type="button"
               >
-                다음 페이지 불러오기
+                {timelineIsFetchingNextPage ? '다음 페이지 불러오는 중' : '다음 페이지 불러오기'}
               </button>
             </div>
           ) : null}
@@ -836,11 +842,12 @@ export function HistoryWorkbench({
                     <span>{cellNextPageError}</span>
                     {cellHistory.next_cursor !== null && onLoadMoreCell !== undefined ? (
                       <button
-                        className="rounded-sm border border-warning/30 px-2 py-1 text-xs font-semibold"
+                        className="rounded-sm border border-warning/30 px-2 py-1 text-xs font-semibold disabled:cursor-wait"
+                        disabled={cellIsFetchingNextPage}
                         onClick={handleLoadMoreCell}
                         type="button"
                       >
-                        더 보기 다시 시도
+                        {cellIsFetchingNextPage ? '더 불러오는 중' : '더 보기 다시 시도'}
                       </button>
                     ) : null}
                   </div>
@@ -850,11 +857,12 @@ export function HistoryWorkbench({
               {cellHistory.next_cursor !== null && !hasCellNextPageError ? (
                 <div className="flex justify-center">
                   <button
-                    className="rounded-sm border border-border-subtle px-3 py-1 text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
+                    className="rounded-sm border border-border-subtle px-3 py-1 text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700 disabled:cursor-wait"
+                    disabled={cellIsFetchingNextPage}
                     onClick={handleLoadMoreCell}
                     type="button"
                   >
-                    더 보기
+                    {cellIsFetchingNextPage ? '더 불러오는 중' : '더 보기'}
                   </button>
                 </div>
               ) : null}

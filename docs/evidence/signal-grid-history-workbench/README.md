@@ -4,6 +4,16 @@ Verified on 2026-08-14 KST against the production Vite build. The browser fixtur
 deterministic in-memory `page.route` responses, so it proves frontend/browser behavior at the API
 boundary; it does not replace backend or real-IdP integration coverage.
 
+Post-review behavior-only note: the committed `71/71` result and screenshot hashes below remain
+the authoritative completed browser confirmation; the user explicitly prohibited another browser
+or screenshot run for the final fixes. The final production code removes the temporary global
+`pcm:grid-scroll-to-cell` observability event. `ConditionGridHandle.scrollToCell` now owns a
+documented boolean resolution seam, `SheetView` publishes success only for `true`, and mounted unit
+tests cover the underlying Glide call plus its owner. The reproducible fixture was updated (and
+syntax-checked only) to observe the owned UI navigation status and target Layer, with no global
+listener. `results.json` therefore records the earlier completed 71-assertion run, not a fabricated
+post-fix rerun.
+
 ## Environment and commands
 
 - Node/npm came from the existing workspace toolchain.
@@ -118,10 +128,10 @@ Stop Terminal 1 with `Ctrl-C` after the harness exits.
 - Collapsed filters, local invalid-filter rejection with five rows preserved and zero new request,
   actor filter application, and Layer switching that retains the actor filter and changes only the
   authoritative `layer_key`.
-- Continuous ruled timeline rows, no rounded history-row cards, no invented timeline diff, and
-  direct instrumentation at the imperative Glide boundary: ordinary row browsing emitted zero
-  `scrollToCell` events while explicit `셀로 이동` emitted exactly one with row 1, column 5, condition
-  202, and the expected long parameter code.
+- Continuous ruled timeline rows, no rounded history-row cards, no invented timeline diff, and—in
+  this completed historical run—direct instrumentation at the imperative Glide boundary. The
+  post-review seam replacement is described above and future fixture runs use UI status plus target
+  Layer without a global event.
 - Authoritative cell and batch diffs (`48.0 → 50.0`), lazy/cached batch detail (one fetch after
   collapse/reopen), deleted targets, legacy coverage, timeline pagination failure/retry, and batch
   detail failure/retry with existing rows preserved.
@@ -174,10 +184,11 @@ production build exited 0. Commit: `636a8ea` (`fix: harden history pagination an
 single confirmation browser run produced the original evidence set.
 
 The approved review correction added Layer authority to timeline-query enablement, preventing the
-intermediate `layer_key: null` request, and added a browser-observable event at the exact resolved
-Glide `scrollToCell` boundary. Its RED run failed the three intended assertions (55/58 passing),
-then GREEN passed 58/58; affected and full results are recorded above. Product commit: `e511b90`
-(`fix: scope initial history query authority`).
+intermediate `layer_key: null` request. Its completed historical browser confirmation used a
+temporary browser-observable event at the resolved Glide boundary; the final behavior-only fix
+replaced that event with the owned boolean handle seam described at the top. Its RED run failed the
+three intended assertions (55/58 passing), then GREEN passed 58/58; affected and full results are
+recorded above. Product commit: `e511b90` (`fix: scope initial history query authority`).
 
 The first review harness attempt aborted during primary setup because the new long-value fixture
 made an existing exact `50.0` locator ambiguous; it produced no regenerated visual captures and

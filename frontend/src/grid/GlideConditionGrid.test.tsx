@@ -180,24 +180,24 @@ describe('composite cell status rendering priority', () => {
     expect(source).toContain('onGridSelectionChange={handleGridSelectionChange}')
   })
 
-  it('announces each resolved scrollToCell at the imperative Glide scroll boundary', () => {
+  it('returns whether scrollToCell resolved through the owned imperative grid boundary', () => {
     const handle = createRef<ConditionGridHandle>()
     const grid = renderGrid({ data: gridData() }, handle)
-    const observer = vi.fn()
-    window.addEventListener('pcm:grid-scroll-to-cell', observer)
+    const dispatchEvent = vi.spyOn(window, 'dispatchEvent')
     try {
-      act(() => handle.current?.scrollToCell('1', 'pressure'))
+      let resolved: boolean | undefined
+      let missing: boolean | undefined
+      act(() => {
+        resolved = handle.current?.scrollToCell('1', 'pressure')
+        missing = handle.current?.scrollToCell('missing', 'pressure')
+      })
 
       expect(dataEditorHarness.scrollTo).toHaveBeenCalledTimes(1)
-      expect(observer).toHaveBeenCalledTimes(1)
-      expect((observer.mock.calls[0]?.[0] as CustomEvent).detail).toEqual({
-        conditionId: '1',
-        parameterCode: 'pressure',
-        col: 4,
-        row: 0,
-      })
+      expect(resolved).toBe(true)
+      expect(missing).toBe(false)
+      expect(dispatchEvent).not.toHaveBeenCalled()
     } finally {
-      window.removeEventListener('pcm:grid-scroll-to-cell', observer)
+      dispatchEvent.mockRestore()
       grid.cleanup()
     }
   })

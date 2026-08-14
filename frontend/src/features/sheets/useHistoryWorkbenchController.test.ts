@@ -126,6 +126,38 @@ describe('useHistoryWorkbenchController seams', () => {
     expect(controller.result.current.batchDetailStatus).toBe('ready')
   })
 
+  it('publishes deferred batch detail after a passive timeline cell selection', async () => {
+    const detailRequest = deferred<HistoryDetailOut>()
+    historyApi.getHistoryTimeline.mockResolvedValue(timelinePage(1, null))
+    historyApi.getHistoryBatchDetail.mockReturnValueOnce(detailRequest.promise)
+    const controller = renderController(true)
+    const item = batchTimelineItem(73)
+
+    act(() => controller.result.current.onLayerScopeChange('L1::10::ETCH'))
+    await flushHistoryRequests()
+    act(() => controller.result.current.onBatchToggle(item, true))
+    await flushHistoryRequests()
+
+    act(() => {
+      controller.result.current.onSelectedCellChange({
+        conditionId: '11',
+        parameterCode: 'ETCH_P001',
+      })
+    })
+    detailRequest.resolve(detailPage(703, null))
+    await flushHistoryRequests()
+
+    expect(controller.result.current.state).toMatchObject({
+      mode: 'timeline',
+      expandedBatchKey: 'scope-73::batch-73',
+      cellScope: { conditionId: 11, parameterCode: 'ETCH_P001' },
+      batchDetailCache: {
+        'scope-73::batch-73': { items: [{ event_id: 703 }] },
+      },
+    })
+    expect(controller.result.current.batchDetailStatus).toBe('ready')
+  })
+
   it('waits for current-Layer authority before issuing the first timeline request', async () => {
     historyApi.getHistoryTimeline.mockResolvedValue(timelinePage(1, null))
     const controller = renderController(true)
@@ -327,14 +359,75 @@ describe('useHistoryWorkbenchController seams', () => {
     expect(source).toContain('onLoadMoreBatchDetail')
   })
 
-  it('rejects late batch results after filter, key, mode, cell scope, or outer-mode changes', () => {
+  it('admits only one timeline next-page request before React can rerender', async () => {
+    const nextPageRequest = deferred<HistoryTimelineOut>()
+    historyApi.getHistoryTimeline
+      .mockResolvedValueOnce(timelinePage(1, 'timeline-next'))
+      .mockReturnValue(nextPageRequest.promise)
+    const controller = renderController(true)
+
+    act(() => controller.result.current.onLayerScopeChange('L1::10::ETCH'))
+    await waitForHistoryController(
+      () => controller.result.current.state.nextCursor === 'timeline-next',
+    )
+
+    act(() => {
+      controller.result.current.onLoadMoreTimeline('timeline-next')
+      controller.result.current.onLoadMoreTimeline('timeline-next')
+    })
+    await flushHistoryRequests()
+
+    expect(historyApi.getHistoryTimeline).toHaveBeenCalledTimes(2)
+    expect(historyApi.getHistoryTimeline).toHaveBeenLastCalledWith(
+      7,
+      expect.objectContaining({ layerKey: 'L1::10::ETCH' }),
+      { cursor: 'timeline-next' },
+    )
+
+    nextPageRequest.resolve(timelinePage(2, null))
+    await flushHistoryRequests()
+  })
+
+  it('admits only one cell next-page request before React can rerender', async () => {
+    const nextPageRequest = deferred<HistoryCellHistoryOut>()
+    historyApi.getHistoryCellHistory
+      .mockResolvedValueOnce(cellPage(31, 'cell-next', 'BASE', 'INITIAL'))
+      .mockReturnValue(nextPageRequest.promise)
+    const controller = renderController(true)
+
+    act(() => {
+      controller.result.current.onSelectedCellChange({
+        conditionId: '11',
+        parameterCode: 'ETCH_P001',
+      })
+      controller.result.current.onScopeChange('cell')
+    })
+    await waitForHistoryController(
+      () => controller.result.current.cellHistory?.next_cursor === 'cell-next',
+    )
+
+    act(() => {
+      controller.result.current.onLoadMoreCell('cell-next')
+      controller.result.current.onLoadMoreCell('cell-next')
+    })
+    await flushHistoryRequests()
+
+    expect(historyApi.getHistoryCellHistory).toHaveBeenCalledTimes(2)
+    expect(historyApi.getHistoryCellHistory).toHaveBeenLastCalledWith(7, 11, 'ETCH_P001', {
+      cursor: 'cell-next',
+    })
+
+    nextPageRequest.resolve(cellPage(32, null, 'IGNORED', 'IGNORED'))
+    await flushHistoryRequests()
+  })
+
+  it('rejects late batch results after filter, key, mode, or outer-mode changes', () => {
     const expected = {
       enabled: true,
       outerGeneration: 4,
       revision: 2,
       mode: 'timeline' as const,
       detailKey: 'scope::batch',
-      cellScopeKey: '11::ETCH_P001',
     }
     expect(isCurrentHistoryDetailAuthority(expected, expected)).toBe(true)
     expect(isCurrentHistoryDetailAuthority(expected, { ...expected, enabled: false })).toBe(false)
@@ -345,9 +438,6 @@ describe('useHistoryWorkbenchController seams', () => {
     expect(isCurrentHistoryDetailAuthority(expected, { ...expected, mode: 'cell' })).toBe(false)
     expect(
       isCurrentHistoryDetailAuthority(expected, { ...expected, detailKey: 'other::batch' }),
-    ).toBe(false)
-    expect(
-      isCurrentHistoryDetailAuthority(expected, { ...expected, cellScopeKey: '12::ETCH_P001' }),
     ).toBe(false)
   })
 })
@@ -406,6 +496,16 @@ async function flushHistoryRequests(): Promise<void> {
     await Promise.resolve()
     await Promise.resolve()
   })
+}
+
+async function waitForHistoryController(predicate: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    if (predicate()) return
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+  }
+  throw new Error('History controller did not reach the expected state')
 }
 
 function deferred<T>(): {

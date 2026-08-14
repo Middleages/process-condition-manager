@@ -557,15 +557,6 @@ function attachPageDiagnostics(page, evidence) {
   page.on('dialog', (dialog) => dialog.accept())
 }
 
-async function instrumentGridScrollToCell(context) {
-  await context.addInitScript(() => {
-    window.__historyQaGridScrollToCellCalls = []
-    window.addEventListener('pcm:grid-scroll-to-cell', (event) => {
-      window.__historyQaGridScrollToCellCalls.push(event.detail)
-    })
-  })
-}
-
 async function openHistoryWorkbench(page) {
   await page.goto(`${BASE_URL}/projects/${PROJECT_ID}/sheet`, { waitUntil: 'networkidle' })
   await page.getByTestId('sheet-workbench-toggle').waitFor()
@@ -580,8 +571,8 @@ async function activeLayerKey(page) {
   return page.locator('[data-layer-row][aria-selected="true"]').getAttribute('data-layer-row')
 }
 
-async function gridScrollToCellCalls(page) {
-  return page.evaluate(() => window.__historyQaGridScrollToCellCalls ?? [])
+async function historyNavigationStatus(page) {
+  return page.locator('[data-history-workbench] [role="status"]').first().textContent()
 }
 
 async function longTextOverflow(page) {
@@ -699,7 +690,6 @@ async function measureLongLedgerEntry(page, entry) {
 async function exercisePrimaryFlow(browser, evidence) {
   const state = createFixtureState()
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } })
-  await instrumentGridScrollToCell(context)
   const page = await context.newPage()
   attachPageDiagnostics(page, evidence)
   await installApiMock(page, state, evidence)
@@ -741,14 +731,21 @@ async function exercisePrimaryFlow(browser, evidence) {
 
     await check(evidence, 'ledger-browsing-does-not-navigate', async () => {
       const beforeLayer = await activeLayerKey(page)
-      const beforeScrollCalls = await gridScrollToCellCalls(page)
+      const beforeNavigationStatus = await historyNavigationStatus(page)
       const firstRow = page.locator('[data-history-item]').first()
       await firstRow.locator('h4').click()
       await page.waitForTimeout(50)
       const afterLayer = await activeLayerKey(page)
-      const afterScrollCalls = await gridScrollToCellCalls(page)
-      const ordinaryRowClickScrollCalls = afterScrollCalls.length - beforeScrollCalls.length
-      recordAssertion(evidence, 'ordinaryRowClickScrollCalls', ordinaryRowClickScrollCalls, 0)
+      const afterNavigationStatus = await historyNavigationStatus(page)
+      const ordinaryRowClickNavigationChanges = Number(
+        afterNavigationStatus !== beforeNavigationStatus,
+      )
+      recordAssertion(
+        evidence,
+        'ordinaryRowClickNavigationChanges',
+        ordinaryRowClickNavigationChanges,
+        0,
+      )
 
       const timelineTexts = await page.locator('[data-history-item]').allTextContents()
       const timelineInventedDiffCount = timelineTexts.filter((text) =>
@@ -761,7 +758,7 @@ async function exercisePrimaryFlow(browser, evidence) {
         beforeLayer,
         afterLayer,
         rows: timelineTexts.length,
-        grid_scroll_to_cell_calls: ordinaryRowClickScrollCalls,
+        navigation_status_changes: ordinaryRowClickNavigationChanges,
       }
     })
 
@@ -874,24 +871,22 @@ async function exercisePrimaryFlow(browser, evidence) {
 
     await check(evidence, 'explicit-navigation-only', async () => {
       const targetRow = page.locator('[data-history-item]', { hasText: 'Metrology review recorded' })
-      const beforeScrollCalls = await gridScrollToCellCalls(page)
+      const beforeNavigationStatus = await historyNavigationStatus(page)
       await targetRow.getByRole('button', { name: '셀로 이동', exact: true }).click()
       await page.locator(`[data-layer-row="${LAYER_B}"][aria-selected="true"]`).waitFor()
       await page.getByRole('status').filter({ hasText: '대상 셀로 이동했습니다.' }).waitFor()
-      await page.waitForFunction(
-        (expectedCount) =>
-          (window.__historyQaGridScrollToCellCalls?.length ?? 0) === expectedCount,
-        beforeScrollCalls.length + 1,
+      const afterNavigationStatus = await historyNavigationStatus(page)
+      const explicitMoveNavigationChanges = Number(
+        afterNavigationStatus !== beforeNavigationStatus &&
+          afterNavigationStatus?.includes('대상 셀로 이동했습니다.') === true,
       )
-      const afterScrollCalls = await gridScrollToCellCalls(page)
-      const explicitMoveScrollCalls = afterScrollCalls.length - beforeScrollCalls.length
-      recordAssertion(evidence, 'explicitMoveScrollCalls', explicitMoveScrollCalls, 1)
-      recordAssertion(evidence, 'explicitMoveScrollTarget', afterScrollCalls.at(-1), {
-        conditionId: '202',
-        parameterCode: LONG_PARAMETER,
-        col: 5,
-        row: 1,
-      })
+      recordAssertion(
+        evidence,
+        'explicitMoveNavigationChanges',
+        explicitMoveNavigationChanges,
+        1,
+      )
+      recordAssertion(evidence, 'explicitMoveLayerTarget', await activeLayerKey(page), LAYER_B)
       recordAssertion(
         evidence,
         'explicitMoveFilterRetained',
@@ -901,8 +896,7 @@ async function exercisePrimaryFlow(browser, evidence) {
       return {
         target_layer: await activeLayerKey(page),
         navigation_status: '대상 셀로 이동했습니다.',
-        grid_scroll_to_cell_calls: explicitMoveScrollCalls,
-        grid_scroll_to_cell_target: afterScrollCalls.at(-1),
+        navigation_status_changes: explicitMoveNavigationChanges,
       }
     })
 
@@ -952,7 +946,6 @@ async function captureViewport(browser, evidence, viewport) {
   const context = await browser.newContext({
     viewport: { width: viewport.width, height: viewport.height },
   })
-  await instrumentGridScrollToCell(context)
   await context.addInitScript(
     ({ inspectorWidth }) => {
       localStorage.setItem('pcm:sheet-inspector-width', String(inspectorWidth))

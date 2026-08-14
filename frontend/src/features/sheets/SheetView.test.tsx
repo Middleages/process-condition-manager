@@ -17,6 +17,7 @@ import type {
   HistoryCoverageOut,
   HistoryDetailOut,
   HistoryTimelineItemOut,
+  HistoryTimelineOut,
 } from '@/api/history'
 import type { ProjectOut, SheetOut } from '@/api/types'
 import type { ConditionGridHandle, ConditionGridProps } from '@/grid'
@@ -25,10 +26,20 @@ import type { HistoryWorkbenchProps } from './HistoryWorkbench'
 const historyWorkbenchCapture = vi.hoisted(() => ({
   props: null as HistoryWorkbenchProps | null,
 }))
+const historyApi = vi.hoisted(() => ({
+  getHistoryBatchDetail: vi.fn(),
+  getHistoryCellHistory: vi.fn(),
+  getHistoryTimeline: vi.fn(),
+}))
 
 let mockScrollToCondition = vi.fn<(conditionId: string) => void>()
-let mockScrollToCell = vi.fn<(conditionId: string, parameterCode: string) => void>()
+let mockScrollToCell = vi.fn<(conditionId: string, parameterCode: string) => boolean>(() => true)
 let mockScrollToColumn = vi.fn<(parameterCode: string) => void>()
+
+vi.mock('@/api/history', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/api/history')>()),
+  ...historyApi,
+}))
 
 vi.mock('@/api/locks', () => ({
   acquireLock: vi.fn().mockResolvedValue({
@@ -208,10 +219,12 @@ type MockHistoryController = {
   timelineStatus: 'idle' | 'loading' | 'ready' | 'error'
   timelineError: string | null
   nextPageError: string | null
+  timelineIsFetchingNextPage: boolean
   cellHistory: HistoryCellHistoryOut | null
   cellStatus: 'idle' | 'loading' | 'ready' | 'error'
   cellError: string | null
   cellNextPageError: string | null
+  cellIsFetchingNextPage: boolean
   batchDetailStatus: 'idle' | 'loading' | 'ready' | 'error'
   batchDetailError: string | null
   batchDetailIsFetchingNextPage: boolean
@@ -298,13 +311,19 @@ import sheetViewSource from './SheetView.tsx?raw'
 beforeEach(() => {
   useEditStore.getState().clearAll()
   mockScrollToCondition = vi.fn()
-  mockScrollToCell = vi.fn()
+  mockScrollToCell = vi.fn(() => true)
   mockScrollToColumn = vi.fn()
   mockSheetWorkbenchState = createMockSheetWorkbenchState()
   mockHistoryWorkbenchController = createMockHistoryController()
   mockUseRealSheetWorkbenchState = false
   mockUseRealHistoryController = false
   historyWorkbenchCapture.props = null
+  historyApi.getHistoryBatchDetail.mockReset().mockResolvedValue(createDetail())
+  historyApi.getHistoryCellHistory.mockReset().mockResolvedValue(createCellHistory())
+  historyApi.getHistoryTimeline.mockReset().mockImplementation(
+    (_projectId: number, filters: { readonly layerKey: string | null }) =>
+      Promise.resolve(createTimelineForLayer(filters.layerKey)),
+  )
   mockBackboneDiffWorkbenchController = createMockBackboneDiffWorkbenchController()
   vi.mocked(addCondition).mockReset()
   vi.mocked(deleteCondition).mockReset()
@@ -450,10 +469,12 @@ function createMockHistoryController(
     timelineStatus: 'ready',
     timelineError: null,
     nextPageError: null,
+    timelineIsFetchingNextPage: false,
     cellHistory: createCellHistory(),
     cellStatus: 'ready',
     cellError: null,
     cellNextPageError: null,
+    cellIsFetchingNextPage: false,
     batchDetailStatus: 'ready',
     batchDetailError: null,
     batchDetailIsFetchingNextPage: false,
@@ -560,6 +581,37 @@ function buildHistoryState(): HistoryWorkbenchState {
     getHistoryTimelineItemKey(createExpandedBatchItem()),
     createDetail(),
   )
+}
+
+function createTimelineForLayer(layerKey: string | null): HistoryTimelineOut {
+  const authoritativeLayer = layerKey ?? 'UNSCOPED'
+  return {
+    items: [
+      {
+        ...createDeletedEvent(),
+        cursor_id: authoritativeLayer === 'L1::30::CMP' ? 30 : 10,
+        layer_keys: layerKey === null ? [] : [layerKey],
+        summary: `row-${authoritativeLayer}`,
+      },
+    ],
+    coverage: {
+      legacy_unresolved_layer_count: 0,
+      legacy_detail_unavailable_count: 0,
+    },
+    next_cursor: null,
+  }
+}
+
+function createAvailableEvent(): HistoryTimelineItemOut {
+  return {
+    ...createDeletedEvent(),
+    cursor_id: 3,
+    summary: 'available-event',
+    jump_target: {
+      ...createDeletedEvent().jump_target!,
+      jump_status: 'available',
+    },
+  }
 }
 
 function createDeletedEvent(): HistoryTimelineItemOut {
@@ -1288,6 +1340,70 @@ describe('SheetView focus shell integration', () => {
     }
   })
 
+  it('keeps the changed Layer authoritative across close and reopen without stale requests or rows', async () => {
+    mockUseRealSheetWorkbenchState = true
+    mockUseRealHistoryController = true
+    const interactive = renderInteractiveSheet()
+
+    try {
+      click(
+        interactive,
+        interactive.container.querySelector('[data-testid="sheet-workbench-toggle"]')!,
+      )
+      click(
+        interactive,
+        interactive.container.querySelector('#sheet-workbench-tab-history')!,
+      )
+      await settleInteractiveSheet()
+
+      click(
+        interactive,
+        interactive.container.querySelector('[data-testid="sheet-workbench-toggle"]')!,
+      )
+      click(interactive, layerButton(interactive.container, 'L1::30::CMP'))
+      await settleInteractiveSheet()
+      historyApi.getHistoryTimeline.mockClear()
+
+      click(
+        interactive,
+        interactive.container.querySelector('[data-testid="sheet-workbench-toggle"]')!,
+      )
+      await settleInteractiveSheet()
+
+      const requestedLayers = historyApi.getHistoryTimeline.mock.calls.map(
+        (call) => (call[1] as { readonly layerKey: string | null }).layerKey,
+      )
+      expect(requestedLayers).toEqual(['L1::30::CMP'])
+      expect(requestedLayers).not.toContain(null)
+      expect(requestedLayers).not.toContain('L1::10::ETCH')
+      expect(interactive.container.textContent).toContain('LAYER 030 · CMP')
+      expect(interactive.container.textContent).toContain('row-L1::30::CMP')
+      expect(interactive.container.textContent).not.toContain('row-L1::10::ETCH')
+    } finally {
+      interactive.cleanup()
+    }
+  })
+
+  it('synchronizes Layer authority while the History panel is closed', () => {
+    const onLayerScopeChange = vi.fn()
+    mockHistoryWorkbenchController = {
+      ...createMockHistoryController(),
+      onLayerScopeChange,
+    }
+    const interactive = renderInteractiveSheet()
+
+    try {
+      onLayerScopeChange.mockClear()
+      click(interactive, layerButton(interactive.container, 'L1::30::CMP'))
+
+      expect(onLayerScopeChange).toHaveBeenCalledOnce()
+      expect(onLayerScopeChange).toHaveBeenCalledWith('L1::30::CMP')
+      expect(interactive.container.querySelector('[data-sheet-evidence-panel]')).toBeNull()
+    } finally {
+      interactive.cleanup()
+    }
+  })
+
   it('sends Layer changes through the scope boundary without reconstructing filters', () => {
     mockSheetWorkbenchState = createMockSheetWorkbenchState('history')
     const onLayerScopeChange = vi.fn()
@@ -1439,6 +1555,26 @@ describe('SheetView focus shell integration', () => {
       /navigation\.kind === 'reveal-category'[\s\S]*?setActiveCategory\(navigation\.categoryCode\)[\s\S]*?setPendingCoordinateJump\(navigation\.target\)[\s\S]*?return/,
     )
     expect(sheetViewSource.match(/gridRef\.current\?\.scrollToCell/g)).toHaveLength(2)
+  })
+
+  it('announces grid navigation success only when the owned grid handle resolves the target', () => {
+    mockSheetWorkbenchState = createMockSheetWorkbenchState('history')
+    mockScrollToCell.mockReturnValue(false)
+    const interactive = renderInteractiveSheet()
+    const target = createAvailableEvent().jump_target!
+
+    try {
+      act(() => historyWorkbenchCapture.props?.onActivateTarget?.(target))
+      expect(mockScrollToCell).toHaveBeenCalledWith('11', 'ETCH_P001')
+      expect(interactive.container.textContent).toContain('이동할 대상 셀을 찾지 못했습니다.')
+      expect(interactive.container.textContent).not.toContain('대상 셀로 이동했습니다.')
+
+      mockScrollToCell.mockReturnValue(true)
+      act(() => historyWorkbenchCapture.props?.onActivateTarget?.(target))
+      expect(interactive.container.textContent).toContain('대상 셀로 이동했습니다.')
+    } finally {
+      interactive.cleanup()
+    }
   })
 
   it('wires the history controller and cell-history grid request into the shared host', () => {
