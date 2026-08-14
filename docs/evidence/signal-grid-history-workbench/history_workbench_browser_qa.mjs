@@ -17,9 +17,9 @@ const CHROMIUM =
   process.env.HISTORY_QA_CHROMIUM ??
   '/home/appuser/.cache/ms-playwright/chromium-1208/chrome-linux64/chrome'
 const VIEWPORTS = [
-  { name: '1024x768', width: 1024, height: 768, inspectorWidth: 320 },
-  { name: '1440x900', width: 1440, height: 900, inspectorWidth: 520 },
-  { name: '1920x1080', width: 1920, height: 1080, inspectorWidth: 520 },
+  { name: '1024x768', width: 1024, height: 768, inspectorWidth: 320, visualState: 'current-cell-history' },
+  { name: '1440x900', width: 1440, height: 900, inspectorWidth: 520, visualState: 'expanded-batch-detail' },
+  { name: '1920x1080', width: 1920, height: 1080, inspectorWidth: 520, visualState: 'timeline-ledger' },
 ]
 
 const PROJECT_ID = 42
@@ -27,6 +27,8 @@ const LAYER_A = 'L1::HISTORY::010::ETCH'
 const LAYER_B = 'L1::HISTORY::020::CLEAN'
 const LONG_ACTOR = `operator_${'x'.repeat(88)}`
 const LONG_PARAMETER = 'gas_flow_rate_with_extended_identifier_for_history_verification'
+const LONG_OLD_CODE = `old_code_${'7'.repeat(96)}`
+const LONG_NEW_VALUE = `new_value_${'9'.repeat(96)}`
 const now = '2026-08-14T05:00:00Z'
 
 const jsonHeaders = { 'content-type': 'application/json; charset=utf-8' }
@@ -283,7 +285,14 @@ const coverage = {
   legacy_detail_unavailable_count: 1,
 }
 
-const detailEntry = ({ id, oldCode, newCode, layerKey = LAYER_A, conditionId = 101 }) => ({
+const detailEntry = ({
+  id,
+  oldCode,
+  newCode,
+  layerKey = LAYER_A,
+  conditionId = 101,
+  parameterCode = 'pressure',
+}) => ({
   event_id: id,
   old_code: oldCode,
   new_code: newCode,
@@ -293,12 +302,12 @@ const detailEntry = ({ id, oldCode, newCode, layerKey = LAYER_A, conditionId = 1
   origin: 'paste',
   created_at: `2026-08-14T02:${String(id).padStart(2, '0')}:00Z`,
   layer_key: layerKey,
-  jump_target: jump(layerKey, conditionId, 'pressure'),
+  jump_target: jump(layerKey, conditionId, parameterCode),
   domain_coordinate: {
     layer_key: layerKey,
     condition_id: conditionId,
-    parameter_code: 'pressure',
-    cell_ref: `${conditionId}:pressure`,
+    parameter_code: parameterCode,
+    cell_ref: `${conditionId}:${parameterCode}`,
   },
   capture_tuple: {
     target_layer_sort: layerKey === LAYER_A ? 1 : 2,
@@ -306,7 +315,7 @@ const detailEntry = ({ id, oldCode, newCode, layerKey = LAYER_A, conditionId = 1
     source_condition_index: 0,
     source_condition_id: conditionId,
     parameter_sort: 1,
-    parameter_code: 'pressure',
+    parameter_code: parameterCode,
     event_id: id,
   },
   metadata_status: 'complete',
@@ -314,6 +323,18 @@ const detailEntry = ({ id, oldCode, newCode, layerKey = LAYER_A, conditionId = 1
 
 const cellHistory = {
   items: [
+    {
+      event_id: 902,
+      old_code: LONG_OLD_CODE,
+      new_code: LONG_NEW_VALUE,
+      choice_label: null,
+      actor: LONG_ACTOR,
+      origin: 'manual',
+      created_at: '2026-08-14T04:10:00Z',
+      layer_key: LAYER_A,
+      jump_status: 'available',
+      metadata_status: 'complete',
+    },
     {
       event_id: 901,
       old_code: '48.0',
@@ -465,7 +486,16 @@ async function installApiMock(page, state, evidence) {
       return json(route, {
         order_kind: 'capture_asc',
         detail_status: 'available',
-        items: [detailEntry({ id: 701, oldCode: '48.0', newCode: '50.0' })],
+        items: [
+          detailEntry({
+            id: 700,
+            oldCode: LONG_OLD_CODE,
+            newCode: LONG_NEW_VALUE,
+            parameterCode: LONG_PARAMETER,
+          }),
+          detailEntry({ id: 701, oldCode: '48.0', newCode: '50.0' }),
+          detailEntry({ id: 702, oldCode: '49.0', newCode: '50.0' }),
+        ],
         reason: 'Authoritative captured batch detail',
         next_cursor: null,
       })
@@ -527,6 +557,15 @@ function attachPageDiagnostics(page, evidence) {
   page.on('dialog', (dialog) => dialog.accept())
 }
 
+async function instrumentGridScrollToCell(context) {
+  await context.addInitScript(() => {
+    window.__historyQaGridScrollToCellCalls = []
+    window.addEventListener('pcm:grid-scroll-to-cell', (event) => {
+      window.__historyQaGridScrollToCellCalls.push(event.detail)
+    })
+  })
+}
+
 async function openHistoryWorkbench(page) {
   await page.goto(`${BASE_URL}/projects/${PROJECT_ID}/sheet`, { waitUntil: 'networkidle' })
   await page.getByTestId('sheet-workbench-toggle').waitFor()
@@ -541,40 +580,56 @@ async function activeLayerKey(page) {
   return page.locator('[data-layer-row][aria-selected="true"]').getAttribute('data-layer-row')
 }
 
-async function gridScrollSignature(page) {
-  return page.locator('[data-sheet-grid-host]').evaluate((host) =>
-    Array.from(host.querySelectorAll('*'))
-      .filter(
-        (element) =>
-          element instanceof HTMLElement &&
-          (element.scrollWidth > element.clientWidth || element.scrollHeight > element.clientHeight),
-      )
-      .map((element) => ({
-        tag: element.tagName,
-        className: element.className,
-        scrollLeft: element.scrollLeft,
-        scrollTop: element.scrollTop,
-      })),
-  )
+async function gridScrollToCellCalls(page) {
+  return page.evaluate(() => window.__historyQaGridScrollToCellCalls ?? [])
 }
 
 async function longTextOverflow(page) {
-  return page.locator('[data-history-workbench]').evaluate((workbench) =>
-    Array.from(workbench.querySelectorAll('p, dd, h4, button'))
-      .filter((element) => {
-        if (!(element instanceof HTMLElement)) return false
-        const style = getComputedStyle(element)
-        if (style.display === 'none' || style.visibility === 'hidden') return false
-        return element.textContent !== null && element.textContent.trim().length > 24 &&
-          element.scrollWidth > element.clientWidth + 1
+  return page.locator('[data-history-workbench]').evaluate((workbench) => {
+    const candidates = Array.from(
+      workbench.querySelectorAll('p, dd, dt, h4, button, span, strong, li'),
+    ).filter((element) => {
+      if (!(element instanceof HTMLElement)) return false
+      const style = getComputedStyle(element)
+      const rect = element.getBoundingClientRect()
+      return (
+        style.display !== 'none' &&
+        style.visibility !== 'hidden' &&
+        rect.width > 1 &&
+        rect.height > 1 &&
+        element.textContent !== null &&
+        element.textContent.trim().length > 24
+      )
+    })
+
+    const items = candidates
+      .map((element) => {
+        const rect = element.getBoundingClientRect()
+        let clippingAncestor = element.parentElement
+        let clippedByAncestor = false
+        while (clippingAncestor !== null && clippingAncestor !== workbench.parentElement) {
+          const overflowX = getComputedStyle(clippingAncestor).overflowX
+          if (['auto', 'clip', 'hidden', 'scroll'].includes(overflowX)) {
+            const ancestorRect = clippingAncestor.getBoundingClientRect()
+            clippedByAncestor = rect.left < ancestorRect.left - 1 || rect.right > ancestorRect.right + 1
+            if (clippedByAncestor) break
+          }
+          clippingAncestor = clippingAncestor.parentElement
+        }
+        const ownOverflow = element.clientWidth > 0 && element.scrollWidth > element.clientWidth + 1
+        if (!ownOverflow && !clippedByAncestor) return null
+        return {
+          tag: element.tagName,
+          text: element.textContent?.trim().slice(0, 160) ?? '',
+          clientWidth: element.clientWidth,
+          scrollWidth: element.scrollWidth,
+          clippedByAncestor,
+        }
       })
-      .map((element) => ({
-        tag: element.tagName,
-        text: element.textContent?.trim().slice(0, 160) ?? '',
-        clientWidth: element.clientWidth,
-        scrollWidth: element.scrollWidth,
-      })),
-  )
+      .filter(Boolean)
+
+    return { scannedElementCount: candidates.length, items }
+  })
 }
 
 async function geometrySnapshot(page) {
@@ -606,9 +661,45 @@ async function largestCanvas(page) {
   return result
 }
 
+async function openCurrentCellScope(page) {
+  const canvas = await largestCanvas(page)
+  await page.mouse.click(canvas.x + Math.min(445, canvas.width - 24), canvas.y + 55)
+  const cellScope = page.getByRole('radio', { name: '현재 셀만' })
+  await page.waitForFunction(
+    () =>
+      Array.from(document.querySelectorAll('button[role="radio"]')).some(
+        (button) => button.textContent?.trim() === '현재 셀만' && !button.disabled,
+      ),
+  )
+  await cellScope.click()
+  await page.getByText('condition #101', { exact: true }).waitFor()
+  await page.getByText('parameter pressure', { exact: true }).waitFor()
+  await page.getByText(LONG_OLD_CODE, { exact: true }).waitFor()
+}
+
+async function measureLongLedgerEntry(page, entry) {
+  const text = await entry.textContent()
+  const box = await entry.boundingBox()
+  const viewport = page.viewportSize()
+  assert(box !== null && viewport !== null, 'Long ledger entry is not measurable')
+  return {
+    includesLongActor: text?.includes(LONG_ACTOR) ?? false,
+    includesLongOldCode: text?.includes(LONG_OLD_CODE) ?? false,
+    includesLongNewValue: text?.includes(LONG_NEW_VALUE) ?? false,
+    relevantDescendantCount: await entry.locator('p, dd, dt, span, strong, li').count(),
+    intersectsViewport:
+      box.x < viewport.width &&
+      box.x + box.width > 0 &&
+      box.y < viewport.height &&
+      box.y + box.height > 0,
+    box,
+  }
+}
+
 async function exercisePrimaryFlow(browser, evidence) {
   const state = createFixtureState()
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } })
+  await instrumentGridScrollToCell(context)
   const page = await context.newPage()
   attachPageDiagnostics(page, evidence)
   await installApiMock(page, state, evidence)
@@ -626,6 +717,13 @@ async function exercisePrimaryFlow(browser, evidence) {
       recordAssertion(evidence, 'filterPanelInitiallyHidden', filterPanelInitiallyHidden, true)
       const requestedLayer = state.timelineQueries.at(-1)?.layer_key
       recordAssertion(evidence, 'initialTimelineLayerAuthority', requestedLayer, LAYER_A)
+      recordAssertion(evidence, 'initialTimelineQueryCount', state.timelineQueries.length, 1)
+      recordAssertion(
+        evidence,
+        'initialUnscopedTimelineQueryCount',
+        state.timelineQueries.filter((query) => query.layer_key === null).length,
+        0,
+      )
 
       await page.keyboard.press('Tab')
       assert.equal(await layerScope.evaluate((element) => document.activeElement === element), true)
@@ -643,13 +741,13 @@ async function exercisePrimaryFlow(browser, evidence) {
 
     await check(evidence, 'ledger-browsing-does-not-navigate', async () => {
       const beforeLayer = await activeLayerKey(page)
-      const beforeScroll = await gridScrollSignature(page)
+      const beforeScrollCalls = await gridScrollToCellCalls(page)
       const firstRow = page.locator('[data-history-item]').first()
       await firstRow.locator('h4').click()
+      await page.waitForTimeout(50)
       const afterLayer = await activeLayerKey(page)
-      const afterScroll = await gridScrollSignature(page)
-      const ordinaryRowClickScrollCalls =
-        beforeLayer === afterLayer && JSON.stringify(beforeScroll) === JSON.stringify(afterScroll) ? 0 : 1
+      const afterScrollCalls = await gridScrollToCellCalls(page)
+      const ordinaryRowClickScrollCalls = afterScrollCalls.length - beforeScrollCalls.length
       recordAssertion(evidence, 'ordinaryRowClickScrollCalls', ordinaryRowClickScrollCalls, 0)
 
       const timelineTexts = await page.locator('[data-history-item]').allTextContents()
@@ -659,7 +757,12 @@ async function exercisePrimaryFlow(browser, evidence) {
       recordAssertion(evidence, 'timelineInventedDiffCount', timelineInventedDiffCount, 0)
       const roundedLedgerRows = await page.locator('[data-history-item][class*="rounded"]').count()
       recordAssertion(evidence, 'roundedLedgerRowCount', roundedLedgerRows, 0)
-      return { beforeLayer, afterLayer, rows: timelineTexts.length }
+      return {
+        beforeLayer,
+        afterLayer,
+        rows: timelineTexts.length,
+        grid_scroll_to_cell_calls: ordinaryRowClickScrollCalls,
+      }
     })
 
     await check(evidence, 'filter-validation-preserves-rows', async () => {
@@ -730,7 +833,7 @@ async function exercisePrimaryFlow(browser, evidence) {
       await row.getByRole('button', { name: /3개 변경 펼치기/ }).click()
       await row.getByText('Authoritative captured batch detail', { exact: true }).waitFor()
       recordAssertion(evidence, 'batchDetailFetchCount', state.calls.batch_cache, 1)
-      const batchDiffText = `${await row.getByText('48.0', { exact: true }).textContent()} → ${await row.getByText('50.0', { exact: true }).textContent()}`
+      const batchDiffText = `${await row.getByText('48.0', { exact: true }).textContent()} → ${await row.getByText('50.0', { exact: true }).first().textContent()}`
       recordAssertion(evidence, 'batchDiffText', batchDiffText, '48.0 → 50.0')
       await row.getByRole('button', { name: /3개 변경 접기/ }).click()
       await row.getByRole('button', { name: /3개 변경 펼치기/ }).click()
@@ -771,29 +874,42 @@ async function exercisePrimaryFlow(browser, evidence) {
 
     await check(evidence, 'explicit-navigation-only', async () => {
       const targetRow = page.locator('[data-history-item]', { hasText: 'Metrology review recorded' })
+      const beforeScrollCalls = await gridScrollToCellCalls(page)
       await targetRow.getByRole('button', { name: '셀로 이동', exact: true }).click()
       await page.locator(`[data-layer-row="${LAYER_B}"][aria-selected="true"]`).waitFor()
       await page.getByRole('status').filter({ hasText: '대상 셀로 이동했습니다.' }).waitFor()
-      const explicitMoveScrollCalls = (await activeLayerKey(page)) === LAYER_B ? 1 : 0
+      await page.waitForFunction(
+        (expectedCount) =>
+          (window.__historyQaGridScrollToCellCalls?.length ?? 0) === expectedCount,
+        beforeScrollCalls.length + 1,
+      )
+      const afterScrollCalls = await gridScrollToCellCalls(page)
+      const explicitMoveScrollCalls = afterScrollCalls.length - beforeScrollCalls.length
       recordAssertion(evidence, 'explicitMoveScrollCalls', explicitMoveScrollCalls, 1)
+      recordAssertion(evidence, 'explicitMoveScrollTarget', afterScrollCalls.at(-1), {
+        conditionId: '202',
+        parameterCode: LONG_PARAMETER,
+        col: 5,
+        row: 1,
+      })
       recordAssertion(
         evidence,
         'explicitMoveFilterRetained',
         (await page.locator('[aria-controls="history-filter-panel"]').textContent())?.includes('qa-operator'),
         true,
       )
-      return { target_layer: await activeLayerKey(page), navigation_status: '대상 셀로 이동했습니다.' }
+      return {
+        target_layer: await activeLayerKey(page),
+        navigation_status: '대상 셀로 이동했습니다.',
+        grid_scroll_to_cell_calls: explicitMoveScrollCalls,
+        grid_scroll_to_cell_target: afterScrollCalls.at(-1),
+      }
     })
 
     await check(evidence, 'current-cell-enabled-and-authoritative-diff', async () => {
-      const canvas = await largestCanvas(page)
-      await page.mouse.click(canvas.x + Math.min(445, canvas.width - 24), canvas.y + 55)
+      await openCurrentCellScope(page)
       const cellScope = page.getByRole('radio', { name: '현재 셀만' })
-      await assert.doesNotReject(() => cellScope.waitFor({ state: 'visible' }))
       recordAssertion(evidence, 'currentCellEnabledAfterGridSelection', await cellScope.isEnabled(), true)
-      await cellScope.click()
-      await page.getByText('condition #101', { exact: true }).waitFor()
-      await page.getByText('parameter pressure', { exact: true }).waitFor()
       const oldValue = await page.getByText('48.0', { exact: true }).first().textContent()
       const newValue = await page.getByText('50.0', { exact: true }).first().textContent()
       const cellDiffText = `${oldValue} → ${newValue}`
@@ -836,6 +952,7 @@ async function captureViewport(browser, evidence, viewport) {
   const context = await browser.newContext({
     viewport: { width: viewport.width, height: viewport.height },
   })
+  await instrumentGridScrollToCell(context)
   await context.addInitScript(
     ({ inspectorWidth }) => {
       localStorage.setItem('pcm:sheet-inspector-width', String(inspectorWidth))
@@ -857,9 +974,56 @@ async function captureViewport(browser, evidence, viewport) {
       viewport.inspectorWidth,
     )
 
-    if (viewport.name === '1440x900') {
+    let visualState = 'timeline-ledger'
+    let longContentMeasurement = null
+    if (viewport.name === '1024x768') {
+      visualState = 'current-cell-history'
+      await openCurrentCellScope(page)
+      const longEntry = page.locator('[data-history-workbench] article', { hasText: LONG_OLD_CODE })
+      await longEntry.scrollIntoViewIfNeeded()
+      longContentMeasurement = await measureLongLedgerEntry(page, longEntry)
+    } else if (viewport.name === '1440x900') {
+      visualState = 'expanded-batch-detail'
+      const row = page.locator('[data-history-item]', { hasText: 'Cached batch detail fixture' })
+      await row.getByRole('button', { name: /3개 변경 펼치기/ }).click()
+      await row.getByText('Authoritative captured batch detail', { exact: true }).waitFor()
+      const longEntry = row.locator('li', { hasText: LONG_OLD_CODE })
+      await longEntry.scrollIntoViewIfNeeded()
+      longContentMeasurement = await measureLongLedgerEntry(page, longEntry)
       await page.keyboard.press('Tab')
     }
+    if (longContentMeasurement !== null) {
+      recordAssertion(
+        evidence,
+        `viewport-${viewport.name}-longActorMeasured`,
+        longContentMeasurement.includesLongActor,
+        true,
+      )
+      recordAssertion(
+        evidence,
+        `viewport-${viewport.name}-longOldCodeMeasured`,
+        longContentMeasurement.includesLongOldCode,
+        true,
+      )
+      recordAssertion(
+        evidence,
+        `viewport-${viewport.name}-longNewValueMeasured`,
+        longContentMeasurement.includesLongNewValue,
+        true,
+      )
+      recordAssertion(
+        evidence,
+        `viewport-${viewport.name}-longEntryCaptured`,
+        longContentMeasurement.intersectsViewport,
+        true,
+      )
+    }
+    recordAssertion(
+      evidence,
+      `viewport-${viewport.name}-visualState`,
+      visualState,
+      viewport.visualState,
+    )
     const geometry = await geometrySnapshot(page)
     recordAssertion(evidence, `viewport-${viewport.name}-gridOverlap`, geometry.gridSeparatorOverlapPx, 0)
     recordAssertion(evidence, `viewport-${viewport.name}-contentOverlap`, geometry.separatorContentOverlapPx, 0)
@@ -870,7 +1034,12 @@ async function captureViewport(browser, evidence, viewport) {
       documentHeight: document.documentElement.clientHeight,
     }))
     const textOverflow = await longTextOverflow(page)
-    evidence.visualDiagnostics.longTextOverflow.push({ viewport: viewport.name, items: textOverflow })
+    evidence.visualDiagnostics.longTextOverflow.push({
+      viewport: viewport.name,
+      visual_state: visualState,
+      scanned_element_count: textOverflow.scannedElementCount,
+      items: textOverflow.items,
+    })
 
     const screenshotPath = path.join(OUTPUT, 'screenshots', `history-${viewport.name}.png`)
     const screenshot = await page.screenshot({ path: screenshotPath, fullPage: false })
@@ -879,9 +1048,12 @@ async function captureViewport(browser, evidence, viewport) {
       width: viewport.width,
       height: viewport.height,
       inspector_width: actualInspectorWidth,
+      visual_state: visualState,
       sha256: createHash('sha256').update(screenshot).digest('hex'),
       document_overflow_px: layout.documentOverflowPx,
-      long_text_overflow_count: textOverflow.length,
+      long_text_scanned_count: textOverflow.scannedElementCount,
+      long_text_overflow_count: textOverflow.items.length,
+      long_content_measurement: longContentMeasurement,
       geometry,
     })
     evidence.apiCallCounts[`viewport-${viewport.name}`] = state.calls
