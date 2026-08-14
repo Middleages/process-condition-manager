@@ -296,6 +296,7 @@ describe('cell-history context action boundary', () => {
   it('resolves only parameter cells to a domain coordinate', () => {
     expect(resolveCellHistoryRequest([4, 0], columns, rows)).toEqual({
       conditionId: 'condition-11',
+      layerKey: 'layer-1',
       parameterCode: 'amount',
     })
     expect(resolveCellHistoryRequest([0, 0], columns, rows)).toBeNull()
@@ -343,7 +344,11 @@ describe('cell-history context action boundary', () => {
     expect(cellHistoryMenuActionForKey('ArrowDown')).toBeNull()
 
     const open = {
-      target: { conditionId: 'condition-11', parameterCode: 'amount' },
+      target: {
+        conditionId: 'condition-11',
+        layerKey: 'layer-1',
+        parameterCode: 'amount',
+      },
       x: 10,
       y: 20,
     }

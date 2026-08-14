@@ -110,6 +110,7 @@ vi.mock('@/grid', async (importOriginal) => {
                 data-grid-cell-history={row.id}
                 onClick={() => callbacks?.onCellHistoryRequest?.({
                   conditionId: row.id,
+                  layerKey: row.layerKey,
                   parameterCode: data.columns[0]?.key ?? '',
                 })}
                 type="button"
@@ -1182,16 +1183,19 @@ describe('SheetView focus shell integration', () => {
 
   it('remembers ordinary cell activation without changing history scope or outer mode', () => {
     mockSheetWorkbenchState = createMockSheetWorkbenchState('history')
+    const onLayerScopeChange = vi.fn()
     const onSelectedCellChange = vi.fn(() => true)
     const onScopeChange = vi.fn(() => true)
     mockHistoryWorkbenchController = {
       ...createMockHistoryController(),
+      onLayerScopeChange,
       onSelectedCellChange,
       onScopeChange,
     }
     const interactive = renderInteractiveSheet()
 
     try {
+      onLayerScopeChange.mockClear()
       click(interactive, gridCallbackButton(interactive.container, 'cell', '33'))
 
       expect(onSelectedCellChange).toHaveBeenCalledWith({
@@ -1199,6 +1203,10 @@ describe('SheetView focus shell integration', () => {
         layerKey: 'L1::30::CMP',
         parameterCode: 'ETCH_P001',
       })
+      expect(onLayerScopeChange).toHaveBeenCalledWith('L1::30::CMP')
+      expect(onLayerScopeChange.mock.invocationCallOrder[0]).toBeLessThan(
+        onSelectedCellChange.mock.invocationCallOrder[0]!,
+      )
       expect(onScopeChange).not.toHaveBeenCalled()
       expect(mockSheetWorkbenchState.selectMode).not.toHaveBeenCalled()
     } finally {
@@ -1207,10 +1215,12 @@ describe('SheetView focus shell integration', () => {
   })
 
   it('opens cell history only through the explicit grid history request', () => {
+    const onLayerScopeChange = vi.fn()
     const onSelectedCellChange = vi.fn(() => true)
     const onScopeChange = vi.fn(() => true)
     mockHistoryWorkbenchController = {
       ...createMockHistoryController(),
+      onLayerScopeChange,
       onSelectedCellChange,
       onScopeChange,
     }
@@ -1221,10 +1231,15 @@ describe('SheetView focus shell integration', () => {
 
       expect(onSelectedCellChange).toHaveBeenCalledWith({
         conditionId: '33',
+        layerKey: 'L1::30::CMP',
         parameterCode: 'ETCH_P001',
       })
+      expect(onLayerScopeChange).toHaveBeenCalledWith('L1::30::CMP')
       expect(onScopeChange).toHaveBeenCalledWith('cell')
       expect(mockSheetWorkbenchState.selectMode).toHaveBeenCalledWith('history')
+      expect(onLayerScopeChange.mock.invocationCallOrder[0]).toBeLessThan(
+        onSelectedCellChange.mock.invocationCallOrder[0]!,
+      )
       expect(onSelectedCellChange.mock.invocationCallOrder[0]).toBeLessThan(
         onScopeChange.mock.invocationCallOrder[0]!,
       )
@@ -1397,7 +1412,10 @@ describe('SheetView focus shell integration', () => {
     expect(sheetViewSource).toContain('<HistoryWorkbench')
     expect(sheetViewSource).toContain('onCellHistoryRequest: (payload) => {')
     expect(sheetViewSource).toMatch(
-      /if \(!historyWorkbench\.onSelectedCellChange\(payload\)\) return\s*if \(!historyWorkbench\.onScopeChange\('cell'\)\) return\s*workbenchState\.selectMode\('history'\)/,
+      /onCellActivate: \(payload\) => \{\s*setActiveLayerKey\(payload\.layerKey\)\s*setSelectedCell\(payload\)\s*historyWorkbench\.onLayerScopeChange\(payload\.layerKey\)\s*historyWorkbench\.onSelectedCellChange\(payload\)/,
+    )
+    expect(sheetViewSource).toMatch(
+      /onCellHistoryRequest: \(payload\) => \{\s*historyWorkbench\.onLayerScopeChange\(payload\.layerKey\)\s*if \(!historyWorkbench\.onSelectedCellChange\(payload\)\) return\s*if \(!historyWorkbench\.onScopeChange\('cell'\)\) return\s*workbenchState\.selectMode\('history'\)/,
     )
     expect(sheetViewSource).toContain('activateWorkbenchCoordinate')
     expect(sheetViewSource).toContain('onRetryBatchDetail={historyWorkbench.onRetryBatchDetail}')

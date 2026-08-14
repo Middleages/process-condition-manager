@@ -76,6 +76,34 @@ describe('useHistoryWorkbenchController seams', () => {
     ).toBe(false)
   })
 
+  it('keeps a cross-Layer requested cell after ordered Layer, cell, and scope transitions', () => {
+    const controller = renderController()
+
+    act(() => {
+      controller.result.current.onLayerScopeChange('L1::10::ETCH')
+      controller.result.current.onSelectedCellChange({
+        conditionId: '11',
+        parameterCode: 'ETCH_P001',
+      })
+      controller.result.current.onScopeChange('cell')
+    })
+
+    act(() => {
+      controller.result.current.onLayerScopeChange('L1::30::CMP')
+      controller.result.current.onSelectedCellChange({
+        conditionId: '33',
+        parameterCode: 'CMP_P001',
+      })
+      controller.result.current.onScopeChange('cell')
+    })
+
+    expect(controller.result.current.state).toMatchObject({
+      mode: 'cell',
+      cellScope: { conditionId: 33, parameterCode: 'CMP_P001' },
+      filters: { layerKey: 'L1::30::CMP' },
+    })
+  })
+
   it('keeps current-Layer detail authority when the Layer boundary repeats', async () => {
     const detailRequest = deferred<HistoryDetailOut>()
     historyApi.getHistoryTimeline.mockResolvedValue(timelinePage(1, null))

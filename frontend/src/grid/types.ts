@@ -178,7 +178,11 @@ export interface ConditionGridCallbacks {
    * 파라미터 셀의 변경 이력 열기. Glide 이벤트/화면 좌표는 어댑터 안에 남기고 상위에는
    * 안정적인 도메인 좌표만 전달한다.
    */
-  onCellHistoryRequest?(payload: { conditionId: string; parameterCode: string }): void
+  onCellHistoryRequest?(payload: {
+    conditionId: string
+    layerKey: string
+    parameterCode: string
+  }): void
 }
 
 export interface ConditionGridViewState {

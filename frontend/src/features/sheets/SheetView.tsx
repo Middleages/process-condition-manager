@@ -1418,9 +1418,11 @@ function SheetEditor({
       onCellActivate: (payload) => {
         setActiveLayerKey(payload.layerKey)
         setSelectedCell(payload)
+        historyWorkbench.onLayerScopeChange(payload.layerKey)
         historyWorkbench.onSelectedCellChange(payload)
       },
       onCellHistoryRequest: (payload) => {
+        historyWorkbench.onLayerScopeChange(payload.layerKey)
         if (!historyWorkbench.onSelectedCellChange(payload)) return
         if (!historyWorkbench.onScopeChange('cell')) return
         workbenchState.selectMode('history')
@@ -1436,6 +1438,7 @@ function SheetEditor({
       projectId,
       setPaste,
       pasteCallbackGeneration,
+      historyWorkbench.onLayerScopeChange,
       historyWorkbench.onSelectedCellChange,
       historyWorkbench.onScopeChange,
       workbenchState.selectMode,
