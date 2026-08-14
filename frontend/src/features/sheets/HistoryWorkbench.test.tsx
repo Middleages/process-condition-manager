@@ -1,4 +1,8 @@
+// @vitest-environment jsdom
+
 import { renderToStaticMarkup } from 'react-dom/server'
+import { act } from 'react'
+import { createRoot, type Root } from 'react-dom/client'
 import { describe, expect, it, vi } from 'vitest'
 
 import type {
@@ -19,10 +23,14 @@ import {
 import {
   activateHistoryDetailTarget,
   applyHistoryWorkbenchFilterDraft,
+  describeHistoryFilters,
   HistoryWorkbench,
   validateHistoryWorkbenchFilterDraft,
 } from './HistoryWorkbench'
 import source from './HistoryWorkbench.tsx?raw'
+
+const testGlobals = globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
+testGlobals.IS_REACT_ACT_ENVIRONMENT = true
 
 describe('HistoryWorkbench', () => {
   it('renders timeline filters, legacy coverage, summary-only batch cards, and deletion status while preserving loaded rows', () => {
@@ -40,11 +48,8 @@ describe('HistoryWorkbench', () => {
 
     expect(html).toContain('aria-label="변경 이력 워크벤치"')
     expect(html).toContain('프로젝트 #7')
-    expect(html).toContain('기간 시작')
-    expect(html).toContain('Origin/source')
-    expect(html).toContain('Type')
-    expect(html).toContain('적용')
-    expect(html).toContain('필터 초기화')
+    expect(html).toContain('전체 변경 · dev-admin')
+    expect(html).toContain('aria-expanded="false"')
     expect(html).toContain('aria-pressed="true"')
     expect(html).not.toContain('role="tab"')
     expect(html).toContain('필터에서 위치를 확인할 수 없는 과거 항목 2개')
@@ -58,7 +63,6 @@ describe('HistoryWorkbench', () => {
     expect(html).toContain('다음 페이지 불러오기')
     expect(html).toContain('다음 페이지를 불러오지 못했습니다.')
     expect(html).toContain('서버에서 이력 목록을 불러오지 못했습니다.')
-    expect(html).toContain('2개 항목')
     expect(html).toContain('aria-live="polite"')
     expect(source).not.toContain('handleHistoryWorkbenchItemActivationKey(')
     expect(source).not.toMatch(/onClick=\{handleJumpTargetActivate\}[\s\S]{0,100}onKeyDown=/)
@@ -68,6 +72,67 @@ describe('HistoryWorkbench', () => {
     expect(source).toContain('onLoadMoreTimeline?.(state.nextCursor)')
     expect(source).toContain('onLoadMoreCell?.(cellHistory?.next_cursor ?? null)')
     expect(source).toContain('onClick={handleApplyFilters}')
+  })
+
+  it('describes applied filters without exposing the authoritative Layer as a draft filter', () => {
+    expect(describeHistoryFilters(createHistoryWorkbenchState().filters)).toBe(
+      '전체 변경 · 전체 작업자',
+    )
+    expect(
+      describeHistoryFilters(
+        createHistoryWorkbenchState({
+          actor: '김민수',
+          origin: 'manual',
+          eventTypes: ['cell_update', 'por_change'],
+        }).filters,
+      ),
+    ).toBe('직접 입력 · 변경 유형 2개 · 김민수')
+
+    const timelineOnlyState = appendHistoryWorkbenchPage(createHistoryWorkbenchState(), {
+      items: [createDeletedEvent()],
+      nextCursor: null,
+    })
+    const html = render(timelineOnlyState)
+    expect(html).toContain('aria-expanded="false"')
+    expect(html).toContain('전체 변경 · 전체 작업자')
+    expect(html).not.toContain('>Layer<')
+  })
+
+  it('keeps existing history rows when an expanded draft has an invalid source project', () => {
+    const state = appendHistoryWorkbenchPage(createHistoryWorkbenchState(), {
+      items: [createDeletedEvent()],
+      nextCursor: null,
+    })
+    const onFiltersChange = vi.fn()
+    const { container, cleanup } = renderInteractive(state, { onFiltersChange })
+
+    try {
+      const disclosure = container.querySelector<HTMLButtonElement>('[aria-controls="history-filter-panel"]')
+      if (disclosure === null) throw new Error('History filter disclosure is unavailable')
+      act(() => disclosure.click())
+
+      expect(container.querySelector('#history-filter-panel')).not.toBeNull()
+      const sourceInput = container.querySelector<HTMLInputElement>('input[inputmode="numeric"]')
+      if (sourceInput === null) throw new Error('Source project input is unavailable')
+      act(() => {
+        const setter = Object.getOwnPropertyDescriptor(
+          HTMLInputElement.prototype,
+          'value',
+        )?.set
+        if (setter === undefined) throw new Error('Input value setter is unavailable')
+        setter.call(sourceInput, 'not-a-project')
+        sourceInput.dispatchEvent(new Event('input', { bubbles: true }))
+      })
+      const apply = [...container.querySelectorAll('button')].find((button) => button.textContent === '적용')
+      if (apply === undefined) throw new Error('Filter apply button is unavailable')
+      act(() => apply.click())
+
+      expect(onFiltersChange).not.toHaveBeenCalled()
+      expect(container.textContent).toContain('event-1')
+      expect(container.textContent).toContain('Source project는 1 이상의 정수로 입력해 주세요.')
+    } finally {
+      cleanup()
+    }
   })
 
   it('renders cell-scope history with explicit scope copy and initial-state fallback text', () => {
@@ -235,6 +300,37 @@ function render(
       {...overrides}
     />,
   )
+}
+
+function renderInteractive(
+  state: HistoryWorkbenchState,
+  overrides: Partial<Parameters<typeof HistoryWorkbench>[0]> = {},
+): { readonly container: HTMLDivElement; readonly cleanup: () => void } {
+  const container = document.createElement('div')
+  document.body.append(container)
+  const root: Root = createRoot(container)
+  act(() => {
+    root.render(
+      <HistoryWorkbench
+        projectId={7}
+        state={state}
+        coverage={{
+          legacy_unresolved_layer_count: 0,
+          legacy_detail_unavailable_count: 0,
+        }}
+        timelineStatus="ready"
+        cellStatus="ready"
+        {...overrides}
+      />,
+    )
+  })
+  return {
+    container,
+    cleanup: () => {
+      act(() => root.unmount())
+      container.remove()
+    },
+  }
 }
 
 function buildTimelineState(detail: HistoryDetailOut = detailFixture()): HistoryWorkbenchState {

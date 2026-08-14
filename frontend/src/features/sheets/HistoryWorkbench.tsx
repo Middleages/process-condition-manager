@@ -65,6 +65,30 @@ export interface HistoryWorkbenchProps {
 
 const HISTORY_ORIGIN_OPTIONS = ['manual', 'paste', 'backbone', 'system'] as const
 
+function describeHistoryOrigin(origin: HistoryTimelineFilters['origin']): string {
+  switch (origin) {
+    case 'manual':
+      return '직접 입력'
+    case 'paste':
+      return '붙여넣기'
+    case 'backbone':
+      return '백본'
+    case 'system':
+      return '시스템'
+    default:
+      return '전체 변경'
+  }
+}
+
+export function describeHistoryFilters(filters: HistoryTimelineFilters): string {
+  const summary = [describeHistoryOrigin(filters.origin)]
+  if (filters.eventTypes.length > 0) {
+    summary.push(`변경 유형 ${filters.eventTypes.length}개`)
+  }
+  summary.push(filters.actor ?? '전체 작업자')
+  return summary.join(' · ')
+}
+
 export type HistoryFilterDraftValidation =
   | { readonly ok: true; readonly filters: HistoryTimelineFilters }
   | { readonly ok: false; readonly message: string }
@@ -149,6 +173,7 @@ export function HistoryWorkbench({
     state.filters.sourceProjectId === null ? '' : String(state.filters.sourceProjectId),
   )
   const [filterError, setFilterError] = useState<string | null>(null)
+  const [filtersExpanded, setFiltersExpanded] = useState(false)
 
   useEffect(() => {
     setDraft(createHistoryWorkbenchState(state.filters).filters)
@@ -163,16 +188,18 @@ export function HistoryWorkbench({
   }
 
   function handleApplyFilters(): void {
+    const layerKey = state.filters.layerKey
     setFilterError(
       applyHistoryWorkbenchFilterDraft(draft, draftSourceProjectIdText, (filters) => {
-        onFiltersChange?.(filters)
+        onFiltersChange?.({ ...filters, layerKey })
       }),
     )
   }
 
   function handleResetFilters(): void {
-    const reset = normalizeHistoryWorkbenchFilters({})
-    setDraft(createHistoryWorkbenchState().filters)
+    const layerKey = state.filters.layerKey
+    const reset = normalizeHistoryWorkbenchFilters({ layerKey })
+    setDraft(createHistoryWorkbenchState({ layerKey }).filters)
     setDraftSourceProjectIdText('')
     setFilterError(null)
     onFiltersChange?.(reset)
@@ -203,10 +230,6 @@ export function HistoryWorkbench({
 
   function handleCreatedToChange(event: ChangeEvent<HTMLInputElement>): void {
     updateDraftField('createdTo', event.currentTarget.value || null)
-  }
-
-  function handleLayerKeyChange(event: ChangeEvent<HTMLInputElement>): void {
-    updateDraftField('layerKey', event.currentTarget.value || null)
   }
 
   function handleActorChange(event: ChangeEvent<HTMLInputElement>): void {
@@ -479,10 +502,25 @@ export function HistoryWorkbench({
 
       {state.mode === 'timeline' ? (
         <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 p-3">
-          <form
-            aria-label="이력 필터"
-            className="grid gap-3 rounded-md border border-border-subtle bg-canvas p-3 text-xs"
-          >
+          <div className="rounded-md border border-border-subtle bg-canvas text-xs">
+            <button
+              aria-controls="history-filter-panel"
+              aria-expanded={filtersExpanded}
+              className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
+              onClick={() => setFiltersExpanded((open) => !open)}
+              type="button"
+            >
+              <span>{describeHistoryFilters(state.filters)}</span>
+              <span aria-hidden="true">{filtersExpanded ? '접기' : '필터'}</span>
+            </button>
+          </div>
+
+          {filtersExpanded ? (
+            <form
+              aria-label="이력 필터"
+              className="grid gap-3 rounded-md border border-border-subtle bg-canvas p-3 text-xs"
+              id="history-filter-panel"
+            >
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               <label className="flex flex-col gap-1">
                 <span>기간 시작</span>
@@ -501,15 +539,7 @@ export function HistoryWorkbench({
                 />
               </label>
               <label className="flex flex-col gap-1">
-                <span>Layer</span>
-                <input
-                  className="rounded-sm border border-border-subtle bg-surface px-2 py-1 text-sm"
-                  onChange={handleLayerKeyChange}
-                  value={draft.layerKey ?? ''}
-                />
-              </label>
-              <label className="flex flex-col gap-1">
-                <span>Actor</span>
+                <span>작업자</span>
                 <input
                   className="rounded-sm border border-border-subtle bg-surface px-2 py-1 text-sm"
                   onChange={handleActorChange}
@@ -517,7 +547,7 @@ export function HistoryWorkbench({
                 />
               </label>
               <label className="flex flex-col gap-1">
-                <span>Origin/source</span>
+                <span>입력 방식</span>
                 <select
                   className="rounded-sm border border-border-subtle bg-surface px-2 py-1 text-sm"
                   onChange={handleOriginChange}
@@ -543,7 +573,7 @@ export function HistoryWorkbench({
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <span className="shrink-0 text-muted">Type</span>
+              <span className="shrink-0 text-muted">변경 유형</span>
               {HISTORY_EVENT_TYPES.map((eventType) => (
                 <label key={eventType} className="inline-flex items-center gap-1 rounded-sm border border-border-subtle px-2 py-1 text-xs">
                   <input
@@ -569,7 +599,7 @@ export function HistoryWorkbench({
                 onClick={handleResetFilters}
                 type="button"
               >
-                필터 초기화
+                초기화
               </button>
               <span className="text-xs text-muted">
                 {timelineItems.length}개 항목 · {state.nextCursor === null ? '마지막 페이지' : '다음 페이지 있음'}
@@ -583,7 +613,8 @@ export function HistoryWorkbench({
                 {filterError}
               </p>
             ) : null}
-          </form>
+            </form>
+          ) : null}
 
           {timelineStatus === 'loading' ? (
             <div aria-live="polite" className="rounded-md border border-border-subtle bg-canvas p-3 text-sm text-muted" role="status">
