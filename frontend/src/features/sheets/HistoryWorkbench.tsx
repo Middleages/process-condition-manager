@@ -37,6 +37,8 @@ import {
 
 export interface HistoryWorkbenchProps {
   projectId: number
+  currentLayerLabel?: string
+  selectedCellAvailable?: boolean
   state: HistoryWorkbenchState
   coverage: HistoryCoverageOut
   cellHistory?: HistoryCellHistoryOut | null
@@ -53,6 +55,7 @@ export interface HistoryWorkbenchProps {
   navigationStatus?: string | null
   onFiltersChange?: (filters: HistoryTimelineFilterInput) => void
   onModeChange?: (mode: HistoryWorkbenchMode) => void
+  onScopeChange?: (mode: HistoryWorkbenchMode) => boolean
   onBatchToggle?: (item: HistoryTimelineItemOut, shouldRequestDetail: boolean) => void
   onRetryBatchDetail?: (item: HistoryTimelineItemOut) => void
   onLoadMoreBatchDetail?: (item: HistoryTimelineItemOut, cursor: string | null) => void
@@ -133,6 +136,8 @@ export function applyHistoryWorkbenchFilterDraft(
 
 export function HistoryWorkbench({
   projectId,
+  currentLayerLabel = '',
+  selectedCellAvailable = false,
   state,
   coverage,
   cellHistory = null,
@@ -149,6 +154,7 @@ export function HistoryWorkbench({
   navigationStatus = null,
   onFiltersChange,
   onModeChange,
+  onScopeChange,
   onBatchToggle,
   onRetryBatchDetail,
   onLoadMoreBatchDetail,
@@ -159,6 +165,7 @@ export function HistoryWorkbench({
   onRetryCell,
 }: HistoryWorkbenchProps) {
   const timelineItems = useMemo(() => state.pages.flatMap((page) => page.items), [state.pages])
+  const activeItemCount = state.mode === 'timeline' ? timelineItems.length : (cellHistory?.items.length ?? 0)
   const legacyCoverageMessage = describeHistoryLegacyCoverage(coverage)
   const hasTimelineRows = timelineItems.length > 0
   const hasTimelineError = timelineError !== null && timelineError.trim() !== ''
@@ -206,7 +213,13 @@ export function HistoryWorkbench({
   }
 
   function handleModeChange(mode: HistoryWorkbenchMode): void {
-    onModeChange?.(mode)
+    const changed = onScopeChange?.(mode)
+    if (changed === false) {
+      emitAnnouncement('선택한 셀 이력을 열 수 없습니다.')
+      return
+    }
+    emitAnnouncement(null)
+    if (onScopeChange === undefined) onModeChange?.(mode)
   }
 
   function handleLoadMoreTimeline(): void {
@@ -268,6 +281,11 @@ export function HistoryWorkbench({
     const shouldRequestDetail = !isExpanded && shouldRequestHistoryBatchDetailOnOpen(state, item)
     const actorLabel = resolveHistoryActorLabel(item.actors)
     const jumpTarget = item.jump_target
+    const detailId = `history-batch-detail-${itemKey}`
+    const originAndEventLabels = [
+      ...item.origins.map((origin) => describeHistoryOrigin(origin)),
+      ...item.event_types.map((eventType) => historyEventTypeLabel(eventType)),
+    ].join(' · ')
 
     function handleToggleBatch(): void {
       if (!canToggleBatch) return
@@ -275,58 +293,53 @@ export function HistoryWorkbench({
     }
 
     function handleJumpTargetActivate(): void {
-      if (jumpTarget === null) return
-      if (jumpTarget.jump_status === 'available') {
-        emitAnnouncement(null)
-        onActivateTarget?.(jumpTarget)
-        return
-      }
-      emitAnnouncement('삭제된 대상이라 위치로 이동할 수 없습니다.')
+      if (jumpTarget?.jump_status !== 'available') return
+      emitAnnouncement(null)
+      onActivateTarget?.(jumpTarget)
     }
 
     return (
       <article
         key={itemKey}
-        className="rounded-md border border-border-subtle bg-surface p-3 text-sm"
+        className="border-b border-border-subtle py-3 text-sm"
         data-history-item
         data-history-item-key={itemKey}
       >
-        <div className="flex flex-wrap items-start gap-2">
-          <div className="min-w-0 flex-1">
-            <h4 className="truncate font-semibold text-foreground">{item.summary}</h4>
-            <p className="mt-1 text-xs text-muted">
-              {item.started_at} · {actorLabel} · {item.origins.join(', ')} · {item.event_types.join(', ')}
-            </p>
-          </div>
-          <div className="flex shrink-0 flex-wrap gap-2 text-xs text-muted">
-            <span>총 {item.total_event_count}</span>
-            <span>일치 {item.matched_event_count}</span>
-            <span>{item.metadata_status === 'legacy_partial' ? '레거시 일부' : '완전'}</span>
-          </div>
-        </div>
-
-        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted">
-          {item.layer_keys.length > 0 ? <span>Layer {item.layer_keys.join(', ')}</span> : null}
-          {item.source_project_id !== null ? <span>source #{item.source_project_id}</span> : null}
-          {item.batch_id !== null ? <span>batch {item.batch_id}</span> : null}
-        </div>
+        <p className="font-mono text-[10px] text-muted">
+          {item.started_at} · {actorLabel}
+        </p>
+        <h4 className="mt-1 break-words text-sm font-semibold text-foreground">{item.summary}</h4>
+        <p className="mt-1 break-words font-mono text-xs text-muted">
+          {item.layer_keys.length > 0 ? `Layer ${item.layer_keys.join(', ')} · ` : ''}
+          {jumpTarget !== null
+            ? `condition #${jumpTarget.condition_id} · parameter ${jumpTarget.parameter_code} · `
+            : ''}
+          {originAndEventLabels}
+        </p>
+        <p className="mt-1 break-words text-xs text-muted">
+          총 {item.total_event_count} · 일치 {item.matched_event_count} ·{' '}
+          {item.metadata_status === 'legacy_partial' ? '레거시 일부' : '완전'}
+          {item.source_project_id !== null ? ` · source #${item.source_project_id}` : ''}
+          {item.batch_id !== null ? ` · batch ${item.batch_id}` : ''}
+        </p>
 
         {jumpTarget !== null ? (
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <button
               className={cn(
-                'rounded-sm border px-2 py-1 text-xs font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700',
+                'rounded-sm border px-2 py-1 text-xs font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700 disabled:cursor-not-allowed',
                 jumpTarget.jump_status === 'deleted'
                   ? 'border-border-subtle text-muted'
                   : 'border-brand-700 text-brand-700',
               )}
+              disabled={jumpTarget.jump_status === 'deleted'}
               onClick={handleJumpTargetActivate}
               type="button"
             >
-              {jumpTarget.jump_status === 'deleted' ? '삭제됨' : '위치로 이동'}
+              {jumpTarget.jump_status === 'deleted' ? '삭제됨' : '셀로 이동'}
             </button>
             {targetUnavailableCopy !== null ? (
-              <span aria-live="polite" className="text-xs text-muted" role="status">
+              <span className="text-xs text-muted">
                 {targetUnavailableCopy}
               </span>
             ) : null}
@@ -338,11 +351,13 @@ export function HistoryWorkbench({
             <div className="flex flex-wrap items-center gap-2">
               {canToggleBatch ? (
                 <button
+                  aria-controls={detailId}
+                  aria-expanded={isExpanded}
                   className="rounded-sm border border-border-subtle px-2 py-1 text-xs font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
                   onClick={handleToggleBatch}
                   type="button"
                 >
-                  {isExpanded ? '상세 접기' : '상세 보기'}
+                  {item.matched_event_count}개 변경 {isExpanded ? '접기' : '펼치기'}
                 </button>
               ) : (
                 <span className="rounded-sm border border-border-subtle px-2 py-1 text-xs text-muted">
@@ -368,6 +383,7 @@ export function HistoryWorkbench({
               detail !== undefined ? (
                 <HistoryBatchDetailList
                   detail={detail}
+                  id={detailId}
                   isFetchingNextPage={batchDetailIsFetchingNextPage}
                   item={item}
                   nextPageError={batchDetailNextPageError}
@@ -422,17 +438,28 @@ export function HistoryWorkbench({
     }
 
     return (
-      <article key={item.event_id} className="rounded-md border border-border-subtle bg-surface p-3 text-xs">
+      <article key={item.event_id} className="border-b border-border-subtle py-3 text-xs">
         <div className="flex flex-wrap items-center gap-2 text-muted">
           <strong className="text-foreground">{item.created_at}</strong>
           <span>{resolveHistoryActorLabel(item.actor === null ? [] : [item.actor])}</span>
-          <span>{item.origin}</span>
+          <span>{describeHistoryOrigin(item.origin)}</span>
           <span>{item.layer_key ?? 'layer 없음'}</span>
         </div>
-        <p className="mt-1 text-muted">
-          {item.old_code ?? '—'} → {item.new_code ?? '—'}
-          {item.choice_label !== null ? ` · ${item.choice_label}` : ''}
-        </p>
+        <dl className="mt-2 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] gap-2">
+          <div className="min-w-0">
+            <dt className="text-[10px] text-muted">이전 값</dt>
+            <dd className="break-words font-mono text-foreground">{item.old_code ?? '없음'}</dd>
+          </div>
+          <span aria-hidden="true" className="text-muted">→</span>
+          <div className="min-w-0">
+            <dt className="text-[10px] text-muted">변경 값</dt>
+            <dd className="break-words font-mono text-foreground">
+              {item.choice_label !== null
+                ? `${item.choice_label} (${item.new_code ?? '없음'})`
+                : (item.new_code ?? '없음')}
+            </dd>
+          </div>
+        </dl>
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <button
             className={cn(
@@ -441,13 +468,14 @@ export function HistoryWorkbench({
                 ? 'border-border-subtle text-muted'
                 : 'border-brand-700 text-brand-700',
             )}
+            disabled={item.jump_status === 'deleted'}
             onClick={handleActivate}
             type="button"
-            >
-              {item.jump_status === 'deleted' ? '삭제됨' : '위치로 이동'}
-            </button>
+          >
+            {item.jump_status === 'deleted' ? '삭제됨' : '셀로 이동'}
+          </button>
           {item.jump_status === 'deleted' ? (
-            <span aria-live="polite" className="text-xs text-muted" role="status">
+            <span className="text-xs text-muted">
               삭제된 대상이라 위치로 이동할 수 없습니다.
             </span>
           ) : null}
@@ -463,41 +491,53 @@ export function HistoryWorkbench({
       data-history-workbench
       data-project-id={projectId}
     >
-      <div className="flex flex-wrap items-center gap-2 border-b border-border-subtle px-3 py-2 text-sm">
-        <strong className="text-foreground">변경 이력</strong>
-        <span className="text-xs text-muted">프로젝트 #{projectId}</span>
-        <div className="ml-auto flex gap-2">
+      <header className="border-b border-border-subtle px-3 py-3">
+        <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-muted">
+          {currentLayerLabel}
+        </p>
+        <div className="mt-1 flex items-center gap-2">
+          <h3 className="text-sm font-semibold text-foreground">변경 이력</h3>
+          <span className="font-mono text-xs text-muted">{activeItemCount}건</span>
+        </div>
+        <div aria-label="이력 범위" className="mt-3 grid grid-cols-2 gap-1" role="radiogroup">
           <button
-            aria-pressed={state.mode === 'timeline'}
+            aria-checked={state.mode === 'timeline'}
             className={modeButtonClass(state.mode === 'timeline')}
             onClick={() => handleModeChange('timeline')}
+            role="radio"
             type="button"
           >
-            타임라인
+            현재 Layer
           </button>
           <button
-            aria-pressed={state.mode === 'cell'}
+            aria-checked={state.mode === 'cell'}
+            aria-describedby={!selectedCellAvailable ? 'history-cell-scope-help' : undefined}
             className={modeButtonClass(state.mode === 'cell')}
+            disabled={!selectedCellAvailable}
             onClick={() => handleModeChange('cell')}
+            role="radio"
             type="button"
           >
-            셀 이력
+            현재 셀만
           </button>
         </div>
-      </div>
+        <p className="mt-1 text-[10px] text-muted" id="history-cell-scope-help">
+          {!selectedCellAvailable ? '그리드에서 셀을 선택하면 사용할 수 있습니다.' : '\u00A0'}
+        </p>
+      </header>
 
       <p aria-live="polite" aria-atomic="true" className="sr-only" role="status">
         {announcement ?? navigationStatus ?? ''}
       </p>
 
       {legacyCoverageMessage !== null ? (
-        <div
+        <p
           aria-live="polite"
-          className="border-b border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning-700"
+          className="border-b border-border-subtle px-3 py-2 text-xs text-muted"
           role="status"
         >
           {legacyCoverageMessage}
-        </div>
+        </p>
       ) : null}
 
       {state.mode === 'timeline' ? (
@@ -518,10 +558,10 @@ export function HistoryWorkbench({
           {filtersExpanded ? (
             <form
               aria-label="이력 필터"
-              className="grid gap-3 rounded-md border border-border-subtle bg-canvas p-3 text-xs"
+              className="grid gap-3 border border-border-subtle bg-canvas p-3 text-xs"
               id="history-filter-panel"
             >
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-3">
               <label className="flex flex-col gap-1">
                 <span>기간 시작</span>
                 <input
@@ -617,15 +657,15 @@ export function HistoryWorkbench({
           ) : null}
 
           {timelineStatus === 'loading' ? (
-            <div aria-live="polite" className="rounded-md border border-border-subtle bg-canvas p-3 text-sm text-muted" role="status">
-              이력을 불러오는 중입니다.
+            <div aria-live="polite" className="border-y border-border-subtle bg-canvas p-3 text-sm text-muted" role="status">
+              현재 Layer 이력을 불러오는 중입니다.
             </div>
           ) : null}
 
           {hasTimelineError ? (
             <div className="rounded-md border border-error/40 bg-error/10 p-3 text-sm text-error-700" role="alert">
               <div className="flex flex-wrap items-center gap-2">
-                <span>{timelineError}</span>
+                <span>{timelineError} 현재 Layer 변경 이력을 표시할 수 없습니다.</span>
                 {onRetryTimeline !== undefined ? (
                   <button
                     className="rounded-sm border border-error/30 px-2 py-1 text-xs font-semibold"
@@ -640,12 +680,12 @@ export function HistoryWorkbench({
           ) : null}
 
           {hasTimelineRows ? (
-            <div className="min-h-0 min-w-0 flex-1 space-y-3 overflow-y-auto">
+            <div className="min-h-0 min-w-0 flex-1 overflow-y-auto border-t border-border-subtle">
               {timelineItems.map((item) => renderTimelineItem(item))}
             </div>
           ) : hasTimelineError || timelineStatus === 'loading' ? null : (
-            <div className="rounded-md border border-border-subtle bg-canvas p-3 text-sm text-muted">
-              표시할 변경 이력이 없습니다.
+            <div className="border-y border-border-subtle bg-canvas p-3 text-sm text-muted">
+              현재 Layer에 기록된 변경이 없습니다.
             </div>
           )}
 
@@ -681,38 +721,28 @@ export function HistoryWorkbench({
       ) : (
         <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 p-3">
           {state.cellScope === null ? (
-            <div className="rounded-md border border-border-subtle bg-canvas p-3 text-sm text-muted">
+            <div className="border-y border-border-subtle bg-canvas p-3 text-sm text-muted">
               셀 이력이 선택되지 않았습니다.
             </div>
           ) : (
-            <div className="rounded-md border border-border-subtle bg-canvas p-3 text-sm">
+            <div className="border-b border-border-subtle pb-2 text-xs text-muted">
               <div className="flex flex-wrap items-center gap-2">
-                <strong>셀 범위</strong>
                 <span>condition #{state.cellScope.conditionId}</span>
                 <span>parameter {state.cellScope.parameterCode}</span>
-                {onModeChange !== undefined ? (
-                  <button
-                    className="ml-auto rounded-sm border border-border-subtle px-2 py-1 text-xs font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
-                    onClick={() => handleModeChange('timeline')}
-                    type="button"
-                  >
-                    타임라인으로 돌아가기
-                  </button>
-                ) : null}
               </div>
             </div>
           )}
 
           {cellStatus === 'loading' ? (
             <div aria-live="polite" className="rounded-md border border-border-subtle bg-canvas p-3 text-sm text-muted" role="status">
-              셀 이력을 불러오는 중입니다.
+              선택한 셀 이력을 불러오는 중입니다.
             </div>
           ) : null}
 
           {hasCellError ? (
             <div className="rounded-md border border-error/40 bg-error/10 p-3 text-sm text-error-700" role="alert">
               <div className="flex flex-wrap items-center gap-2">
-                <span>{cellError}</span>
+                <span>{cellError} 선택한 셀의 변경 이력을 표시할 수 없습니다.</span>
                 {onRetryCell !== undefined ? (
                   <button
                     className="rounded-sm border border-error/30 px-2 py-1 text-xs font-semibold"
@@ -747,7 +777,7 @@ export function HistoryWorkbench({
                 ) : null}
               </div>
 
-              <div className="space-y-2">{cellHistory.items.map((item) => renderCellHistoryItem(item))}</div>
+              <div className="border-t border-border-subtle">{cellHistory.items.map((item) => renderCellHistoryItem(item))}</div>
 
               {hasCellNextPageError ? (
                 <div className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-warning-700" role="status">
@@ -779,8 +809,8 @@ export function HistoryWorkbench({
               ) : null}
             </div>
           ) : hasCellError || cellStatus === 'loading' ? null : (
-            <div className="rounded-md border border-border-subtle bg-canvas p-3 text-sm text-muted">
-              표시할 셀 이력이 없습니다.
+            <div className="border-y border-border-subtle bg-canvas p-3 text-sm text-muted">
+              선택한 셀에 기록된 변경이 없습니다.
             </div>
           )}
         </div>
@@ -791,6 +821,7 @@ export function HistoryWorkbench({
 
 interface HistoryBatchDetailListProps {
   readonly detail: HistoryDetailOut
+  readonly id: string
   readonly isFetchingNextPage: boolean
   readonly item: HistoryTimelineItemOut
   readonly nextPageError: string | null
@@ -810,6 +841,7 @@ export function activateHistoryDetailTarget(
 
 function HistoryBatchDetailList({
   detail,
+  id,
   isFetchingNextPage,
   item,
   nextPageError,
@@ -822,7 +854,7 @@ function HistoryBatchDetailList({
   }
 
   return (
-    <div className="rounded-md border border-border-subtle bg-canvas p-3 text-xs">
+    <div className="border-t border-border-subtle bg-canvas px-2 py-3 text-xs" id={id}>
       <div className="flex flex-wrap items-center gap-2 text-muted">
         <strong className="text-foreground">상세</strong>
         <span>{detail.order_kind}</span>
@@ -830,7 +862,7 @@ function HistoryBatchDetailList({
         {detail.reason !== null ? <span>{detail.reason}</span> : null}
       </div>
       {detail.items.length > 0 ? (
-        <ul className="mt-2 space-y-2">
+        <ul className="mt-2 border-t border-border-subtle">
           {detail.items.map((entry) => {
             const target = buildHistoryDetailActivationTarget(entry)
             const isDeleted = target?.jump_status === 'deleted'
@@ -847,15 +879,32 @@ function HistoryBatchDetailList({
             return (
               <li
                 key={getHistoryDetailItemKey(entry)}
-                className="rounded-sm border border-border-subtle bg-surface p-2"
+                className="border-b border-border-subtle py-3"
               >
                 <p className="font-semibold text-foreground">
                   {entry.created_at} · {resolveHistoryActorLabel(entry.actor === null ? [] : [entry.actor])}
                 </p>
-                <p className="mt-1 text-muted">
-                  {entry.origin} · {entry.old_code ?? '—'} → {entry.new_code ?? '—'}
-                  {entry.copied_value !== null ? ` · copied ${entry.copied_value}` : ''}
-                </p>
+                <p className="mt-1 text-muted">{describeHistoryOrigin(entry.origin)}</p>
+                <dl className="mt-2 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] gap-2">
+                  <div className="min-w-0">
+                    <dt className="text-[10px] text-muted">이전 값</dt>
+                    <dd className="break-words font-mono text-foreground">
+                      {entry.old_code ?? '없음'}
+                    </dd>
+                  </div>
+                  <span aria-hidden="true" className="text-muted">→</span>
+                  <div className="min-w-0">
+                    <dt className="text-[10px] text-muted">변경 값</dt>
+                    <dd className="break-words font-mono text-foreground">
+                      {entry.choice_label !== null
+                        ? `${entry.choice_label} (${entry.new_code ?? '없음'})`
+                        : (entry.new_code ?? '없음')}
+                    </dd>
+                  </div>
+                </dl>
+                {entry.copied_value !== null ? (
+                  <p className="mt-1 break-words font-mono text-muted">copied {entry.copied_value}</p>
+                ) : null}
                 {entry.domain_coordinate !== null ? (
                   <p className="mt-1 text-muted">
                     {entry.domain_coordinate.layer_key}
@@ -876,10 +925,10 @@ function HistoryBatchDetailList({
                       onClick={handleActivate}
                       type="button"
                     >
-                      {isDeleted ? '삭제됨' : '상세 셀로 이동'}
+                      {isDeleted ? '삭제됨' : '셀로 이동'}
                     </button>
                     {isDeleted ? (
-                      <span aria-live="polite" className="text-xs text-muted" role="status">
+                      <span className="text-xs text-muted">
                         삭제된 대상이라 위치로 이동할 수 없습니다.
                       </span>
                     ) : null}
