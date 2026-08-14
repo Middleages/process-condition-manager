@@ -326,7 +326,7 @@ export function HistoryWorkbench({
         data-history-item
         data-history-item-key={itemKey}
       >
-        <p className="font-mono text-[10px] text-muted">
+        <p className="min-w-0 break-words font-mono text-[10px] text-muted">
           {item.started_at} · {actorLabel}
         </p>
         <h4 className="mt-1 break-words text-sm font-semibold text-foreground">{item.summary}</h4>
@@ -466,7 +466,9 @@ export function HistoryWorkbench({
       <article key={item.event_id} className="border-b border-border-subtle py-3 text-xs">
         <div className="flex flex-wrap items-center gap-2 text-muted">
           <strong className="text-foreground">{item.created_at}</strong>
-          <span>{resolveHistoryActorLabel(item.actor === null ? [] : [item.actor])}</span>
+          <span className="min-w-0 break-words">
+            {resolveHistoryActorLabel(item.actor === null ? [] : [item.actor])}
+          </span>
           <span>{describeHistoryOrigin(item.origin)}</span>
           <span>{item.layer_key ?? 'layer 없음'}</span>
         </div>
@@ -742,7 +744,7 @@ export function HistoryWorkbench({
             </div>
           ) : null}
 
-          {state.nextCursor !== null ? (
+          {state.nextCursor !== null && !hasNextPageError ? (
             <div className="flex justify-center">
               <button
                 className="rounded-sm border border-border-subtle px-3 py-1 text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
@@ -845,7 +847,7 @@ export function HistoryWorkbench({
                 </div>
               ) : null}
 
-              {cellHistory.next_cursor !== null ? (
+              {cellHistory.next_cursor !== null && !hasCellNextPageError ? (
                 <div className="flex justify-center">
                   <button
                     className="rounded-sm border border-border-subtle px-3 py-1 text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-700"
@@ -928,7 +930,7 @@ function HistoryBatchDetailList({
                 key={getHistoryDetailItemKey(entry)}
                 className="border-b border-border-subtle py-3"
               >
-                <p className="font-semibold text-foreground">
+                <p className="break-words font-semibold text-foreground">
                   {entry.created_at} · {resolveHistoryActorLabel(entry.actor === null ? [] : [entry.actor])}
                 </p>
                 <p className="mt-1 text-muted">{describeHistoryOrigin(entry.origin)}</p>

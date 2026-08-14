@@ -62,7 +62,8 @@ describe('HistoryWorkbench', () => {
     expect(html).toContain('삭제된 대상이라 위치로 이동할 수 없습니다.')
     expect(html).not.toContain('이전 값')
     expect(html).not.toContain('변경 값')
-    expect(html).toContain('다음 페이지 불러오기')
+    expect(html).toContain('다음 페이지 다시 시도')
+    expect(html).not.toMatch(/>다음 페이지 불러오기<\/button>/)
     expect(html).toContain('다음 페이지를 불러오지 못했습니다.')
     expect(html).toContain('서버에서 이력 목록을 불러오지 못했습니다.')
     expect(html).toContain('기존 변경 이력은 유지됩니다.')
@@ -282,8 +283,38 @@ describe('HistoryWorkbench', () => {
     expect(html).toContain('초기 셀 상태를 확인할 수 없습니다.')
     expect(html).toContain('삭제된 대상이라 위치로 이동할 수 없습니다.')
     expect(html).toContain('2026-07-17T00:00:00Z')
-    expect(html).toContain('더 보기')
+    expect(html).toContain('더 보기 다시 시도')
+    expect(html).not.toMatch(/>더 보기<\/button>/)
     expect(html).toContain('셀 다음 페이지를 불러오지 못했습니다.')
+  })
+
+  it('wraps long actor identifiers in timeline, cell, and batch-detail ledgers', () => {
+    const longActor = `operator_${'x'.repeat(88)}`
+    const timelineItem = { ...createAvailableEvent(), actors: [longActor] }
+    const timelineHtml = render(
+      appendHistoryWorkbenchPage(createHistoryWorkbenchState(), {
+        items: [timelineItem],
+        nextCursor: null,
+      }),
+    )
+
+    const cell = cellHistory()
+    cell.items[0] = { ...cell.items[0]!, actor: longActor }
+    const cellHtml = render(
+      openHistoryCellScope(createHistoryWorkbenchState(), {
+        conditionId: 11,
+        parameterCode: 'ETCH_P001',
+      }),
+      { cellHistory: cell },
+    )
+
+    const detail = detailFixture()
+    detail.items[0] = { ...detail.items[0]!, actor: longActor }
+    const detailHtml = render(buildTimelineState(detail))
+
+    expect(classNameForText(timelineHtml, longActor)).toContain('break-words')
+    expect(classNameForText(cellHtml, longActor)).toContain('break-words')
+    expect(classNameForText(detailHtml, longActor)).toContain('break-words')
   })
 
   it('keeps initial Choice context while rendering a successful empty cell ledger', () => {
@@ -509,6 +540,16 @@ function findScopeRadio(container: HTMLElement, label: string): HTMLButtonElemen
   )
   if (radio === undefined) throw new Error(`${label} scope radio is unavailable`)
   return radio
+}
+
+function classNameForText(html: string, text: string): string {
+  const host = document.createElement('div')
+  host.innerHTML = html
+  const match = [...host.querySelectorAll<HTMLElement>('*')].find(
+    (element) => element.childElementCount === 0 && element.textContent?.includes(text),
+  )
+  if (match === undefined) throw new Error(`Element containing ${text} is unavailable`)
+  return match.className
 }
 
 function buildTimelineState(detail: HistoryDetailOut = detailFixture()): HistoryWorkbenchState {
