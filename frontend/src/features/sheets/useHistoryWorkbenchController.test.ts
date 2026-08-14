@@ -388,6 +388,65 @@ describe('useHistoryWorkbenchController seams', () => {
     await flushHistoryRequests()
   })
 
+  it('fences timeline pagination per Layer and filter authority', async () => {
+    const oldNextPageRequest = deferred<HistoryTimelineOut>()
+    const newNextPageRequest = deferred<HistoryTimelineOut>()
+    historyApi.getHistoryTimeline
+      .mockResolvedValueOnce(timelinePage(1, 'old-timeline-next'))
+      .mockReturnValueOnce(oldNextPageRequest.promise)
+      .mockResolvedValueOnce(timelinePage(101, 'new-timeline-next'))
+      .mockReturnValueOnce(newNextPageRequest.promise)
+    const controller = renderController(true)
+
+    act(() => controller.result.current.onLayerScopeChange('L1::10::ETCH'))
+    await waitForHistoryController(
+      () => controller.result.current.state.nextCursor === 'old-timeline-next',
+    )
+    act(() => controller.result.current.onLoadMoreTimeline('old-timeline-next'))
+    await flushHistoryRequests()
+
+    act(() => {
+      controller.result.current.onFiltersChange({
+        actor: 'new-owner',
+        layerKey: 'L1::30::CMP',
+      })
+    })
+    await waitForHistoryController(
+      () => controller.result.current.state.nextCursor === 'new-timeline-next',
+    )
+
+    const loadMoreForNewAuthority = controller.result.current.onLoadMoreTimeline
+    act(() => {
+      loadMoreForNewAuthority('new-timeline-next')
+      loadMoreForNewAuthority('new-timeline-next')
+    })
+    await flushHistoryRequests()
+
+    expect(historyApi.getHistoryTimeline).toHaveBeenCalledTimes(4)
+    expect(historyApi.getHistoryTimeline).toHaveBeenLastCalledWith(
+      7,
+      expect.objectContaining({ actor: 'new-owner', layerKey: 'L1::30::CMP' }),
+      { cursor: 'new-timeline-next' },
+    )
+
+    oldNextPageRequest.resolve(timelinePage(2, null))
+    await flushHistoryRequests()
+    act(() => loadMoreForNewAuthority('new-timeline-next'))
+    await flushHistoryRequests()
+
+    expect(historyApi.getHistoryTimeline).toHaveBeenCalledTimes(4)
+
+    newNextPageRequest.resolve(timelinePage(102, null))
+    await waitForHistoryController(
+      () => controller.result.current.state.pages.length === 2,
+    )
+    expect(
+      controller.result.current.state.pages.flatMap((page) =>
+        page.items.map((item) => item.cursor_id),
+      ),
+    ).toEqual([101, 102])
+  })
+
   it('admits only one cell next-page request before React can rerender', async () => {
     const nextPageRequest = deferred<HistoryCellHistoryOut>()
     historyApi.getHistoryCellHistory
@@ -419,6 +478,71 @@ describe('useHistoryWorkbenchController seams', () => {
 
     nextPageRequest.resolve(cellPage(32, null, 'IGNORED', 'IGNORED'))
     await flushHistoryRequests()
+  })
+
+  it('fences cell pagination per cell-scope and mode authority', async () => {
+    const oldNextPageRequest = deferred<HistoryCellHistoryOut>()
+    const newNextPageRequest = deferred<HistoryCellHistoryOut>()
+    historyApi.getHistoryCellHistory
+      .mockResolvedValueOnce(cellPage(31, 'old-cell-next', 'OLD_BASE', 'OLD_INITIAL'))
+      .mockReturnValueOnce(oldNextPageRequest.promise)
+      .mockResolvedValueOnce(cellPage(41, 'new-cell-next', 'NEW_BASE', 'NEW_INITIAL'))
+      .mockReturnValueOnce(newNextPageRequest.promise)
+    const controller = renderController(true)
+
+    act(() => {
+      controller.result.current.onSelectedCellChange({
+        conditionId: '11',
+        parameterCode: 'ETCH_P001',
+      })
+      controller.result.current.onScopeChange('cell')
+    })
+    await waitForHistoryController(
+      () => controller.result.current.cellHistory?.next_cursor === 'old-cell-next',
+    )
+    act(() => controller.result.current.onLoadMoreCell('old-cell-next'))
+    await flushHistoryRequests()
+
+    act(() => {
+      controller.result.current.onScopeChange('timeline')
+      controller.result.current.onSelectedCellChange({
+        conditionId: '33',
+        parameterCode: 'CMP_P001',
+      })
+      controller.result.current.onScopeChange('cell')
+    })
+    await waitForHistoryController(
+      () => controller.result.current.cellHistory?.next_cursor === 'new-cell-next',
+    )
+
+    const loadMoreForNewAuthority = controller.result.current.onLoadMoreCell
+    act(() => {
+      loadMoreForNewAuthority('new-cell-next')
+      loadMoreForNewAuthority('new-cell-next')
+    })
+    await flushHistoryRequests()
+
+    expect(historyApi.getHistoryCellHistory).toHaveBeenCalledTimes(4)
+    expect(historyApi.getHistoryCellHistory).toHaveBeenLastCalledWith(7, 33, 'CMP_P001', {
+      cursor: 'new-cell-next',
+    })
+
+    oldNextPageRequest.resolve(cellPage(32, null, 'IGNORED', 'IGNORED'))
+    await flushHistoryRequests()
+    act(() => loadMoreForNewAuthority('new-cell-next'))
+    await flushHistoryRequests()
+
+    expect(historyApi.getHistoryCellHistory).toHaveBeenCalledTimes(4)
+
+    newNextPageRequest.resolve(cellPage(42, null, 'IGNORED', 'IGNORED'))
+    await waitForHistoryController(
+      () => controller.result.current.cellHistory?.items.length === 2,
+    )
+    expect(controller.result.current.cellHistory).toMatchObject({
+      items: [{ event_id: 41 }, { event_id: 42 }],
+      baseline_entry: { code: 'NEW_BASE' },
+      initial_entry: { code: 'NEW_INITIAL' },
+    })
   })
 
   it('rejects late batch results after filter, key, mode, or outer-mode changes', () => {

@@ -237,8 +237,8 @@ export function useHistoryWorkbenchController(
   const previousMutationRevisionRef = useRef(historyMutationRevision)
   const outerGenerationRef = useRef(0)
   const detailRequestTokenRef = useRef(0)
-  const timelineNextPageRequestRef = useRef(false)
-  const cellNextPageRequestRef = useRef(false)
+  const timelineNextPageRequestAuthoritiesRef = useRef(new Set<string>())
+  const cellNextPageRequestAuthoritiesRef = useRef(new Set<string>())
   const initialDetailRequest: HistoryDetailRequestState = {
     key: null,
     status: 'idle',
@@ -308,8 +308,13 @@ export function useHistoryWorkbenchController(
     state.mode,
     state.filters.layerKey,
   )
+  const timelineQueryKey = historyWorkbenchTimelineKey(projectId, state.filters)
+  const timelineNextPageAuthorityKey = JSON.stringify([
+    timelineQueryKey,
+    state.revision,
+  ])
   const timelineQuery = useInfiniteQuery({
-    queryKey: historyWorkbenchTimelineKey(projectId, state.filters),
+    queryKey: timelineQueryKey,
     initialPageParam: null as string | null,
     queryFn: ({ pageParam }) =>
       getHistoryTimeline(projectId, state.filters, { cursor: pageParam }),
@@ -319,15 +324,18 @@ export function useHistoryWorkbenchController(
 
   const cellScope = state.cellScope
   const cellEnabled = historyCellHistoryQueryEnabled(enabled, state.mode, cellScope)
+  const cellQueryKey =
+    cellScope === null
+      ? ['history', projectId, 'cell-history', 'idle']
+      : historyWorkbenchCellHistoryKey(
+          projectId,
+          cellScope.conditionId,
+          cellScope.parameterCode,
+        )
+  const cellNextPageAuthorityKey =
+    cellScope === null ? null : JSON.stringify(cellQueryKey)
   const cellHistoryQuery = useInfiniteQuery({
-    queryKey:
-      cellScope === null
-        ? ['history', projectId, 'cell-history', 'idle']
-        : historyWorkbenchCellHistoryKey(
-            projectId,
-            cellScope.conditionId,
-            cellScope.parameterCode,
-          ),
+    queryKey: cellQueryKey,
     initialPageParam: null as string | null,
     queryFn: ({ pageParam }) => {
       if (cellScope === null) throw new TypeError('Cell history scope is unavailable')
@@ -636,21 +644,28 @@ export function useHistoryWorkbenchController(
       if (
         cursor === null ||
         timeline.nextCursor !== cursor ||
-        timelineNextPageRequestRef.current ||
+        timelineNextPageRequestAuthoritiesRef.current.has(
+          timelineNextPageAuthorityKey,
+        ) ||
         !timelineEnabled ||
         !timelineQuery.hasNextPage ||
         timelineQuery.isFetchingNextPage
       ) {
         return
       }
-      timelineNextPageRequestRef.current = true
+      timelineNextPageRequestAuthoritiesRef.current.add(
+        timelineNextPageAuthorityKey,
+      )
       void timelineQuery.fetchNextPage().finally(() => {
-        timelineNextPageRequestRef.current = false
+        timelineNextPageRequestAuthoritiesRef.current.delete(
+          timelineNextPageAuthorityKey,
+        )
       })
     },
     [
       timeline.nextCursor,
       timelineEnabled,
+      timelineNextPageAuthorityKey,
       timelineQuery.fetchNextPage,
       timelineQuery.hasNextPage,
       timelineQuery.isFetchingNextPage,
@@ -661,21 +676,23 @@ export function useHistoryWorkbenchController(
       if (
         cursor === null ||
         cellHistory?.next_cursor !== cursor ||
-        cellNextPageRequestRef.current ||
+        cellNextPageAuthorityKey === null ||
+        cellNextPageRequestAuthoritiesRef.current.has(cellNextPageAuthorityKey) ||
         !cellEnabled ||
         !cellHistoryQuery.hasNextPage ||
         cellHistoryQuery.isFetchingNextPage
       ) {
         return
       }
-      cellNextPageRequestRef.current = true
+      cellNextPageRequestAuthoritiesRef.current.add(cellNextPageAuthorityKey)
       void cellHistoryQuery.fetchNextPage().finally(() => {
-        cellNextPageRequestRef.current = false
+        cellNextPageRequestAuthoritiesRef.current.delete(cellNextPageAuthorityKey)
       })
     },
     [
       cellHistory?.next_cursor,
       cellEnabled,
+      cellNextPageAuthorityKey,
       cellHistoryQuery.fetchNextPage,
       cellHistoryQuery.hasNextPage,
       cellHistoryQuery.isFetchingNextPage,
