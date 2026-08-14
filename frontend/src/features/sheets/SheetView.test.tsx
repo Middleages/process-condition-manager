@@ -235,18 +235,32 @@ type MockHistoryController = {
 let mockSheetWorkbenchState = createMockSheetWorkbenchState()
 let mockHistoryWorkbenchController = createMockHistoryController()
 let mockBackboneDiffWorkbenchController = createMockBackboneDiffWorkbenchController()
+let mockUseRealSheetWorkbenchState = false
+let mockUseRealHistoryController = false
 
 vi.mock('./SheetWorkbench', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./SheetWorkbench')>()
   return {
     ...actual,
-    useSheetWorkbenchState: () => mockSheetWorkbenchState,
+    useSheetWorkbenchState: () =>
+      mockUseRealSheetWorkbenchState
+        ? actual.useSheetWorkbenchState()
+        : mockSheetWorkbenchState,
   }
 })
 
-vi.mock('./useHistoryWorkbenchController', () => ({
-  useHistoryWorkbenchController: () => mockHistoryWorkbenchController,
-}))
+vi.mock('./useHistoryWorkbenchController', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./useHistoryWorkbenchController')>()
+  return {
+    ...actual,
+    useHistoryWorkbenchController: (
+      ...args: Parameters<typeof actual.useHistoryWorkbenchController>
+    ) =>
+      mockUseRealHistoryController
+        ? actual.useHistoryWorkbenchController(...args)
+        : mockHistoryWorkbenchController,
+  }
+})
 vi.mock('./HistoryWorkbench', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./HistoryWorkbench')>()
   const React = await import('react')
@@ -288,6 +302,8 @@ beforeEach(() => {
   mockScrollToColumn = vi.fn()
   mockSheetWorkbenchState = createMockSheetWorkbenchState()
   mockHistoryWorkbenchController = createMockHistoryController()
+  mockUseRealSheetWorkbenchState = false
+  mockUseRealHistoryController = false
   historyWorkbenchCapture.props = null
   mockBackboneDiffWorkbenchController = createMockBackboneDiffWorkbenchController()
   vi.mocked(addCondition).mockReset()
@@ -1251,6 +1267,27 @@ describe('SheetView focus shell integration', () => {
     }
   })
 
+  it('keeps explicit cross-Layer history authoritative after the SheetView effect settles', async () => {
+    mockUseRealSheetWorkbenchState = true
+    mockUseRealHistoryController = true
+    const interactive = renderInteractiveSheet()
+
+    try {
+      click(interactive, gridHistoryButton(interactive.container, '33'))
+      await settleInteractiveSheet()
+
+      const historyProps = historyWorkbenchCapture.props as HistoryWorkbenchProps
+      expect(historyProps.currentLayerLabel).toBe('LAYER 030 · CMP')
+      expect(historyProps.state).toMatchObject({
+        mode: 'cell',
+        cellScope: { conditionId: 33, parameterCode: 'ETCH_P001' },
+        filters: { layerKey: 'L1::30::CMP' },
+      })
+    } finally {
+      interactive.cleanup()
+    }
+  })
+
   it('sends Layer changes through the scope boundary without reconstructing filters', () => {
     mockSheetWorkbenchState = createMockSheetWorkbenchState('history')
     const onLayerScopeChange = vi.fn()
@@ -1415,7 +1452,7 @@ describe('SheetView focus shell integration', () => {
       /onCellActivate: \(payload\) => \{\s*setActiveLayerKey\(payload\.layerKey\)\s*setSelectedCell\(payload\)\s*historyWorkbench\.onLayerScopeChange\(payload\.layerKey\)\s*historyWorkbench\.onSelectedCellChange\(payload\)/,
     )
     expect(sheetViewSource).toMatch(
-      /onCellHistoryRequest: \(payload\) => \{\s*historyWorkbench\.onLayerScopeChange\(payload\.layerKey\)\s*if \(!historyWorkbench\.onSelectedCellChange\(payload\)\) return\s*if \(!historyWorkbench\.onScopeChange\('cell'\)\) return\s*workbenchState\.selectMode\('history'\)/,
+      /onCellHistoryRequest: \(payload\) => \{\s*setActiveLayerKey\(payload\.layerKey\)\s*historyWorkbench\.onLayerScopeChange\(payload\.layerKey\)\s*if \(!historyWorkbench\.onSelectedCellChange\(payload\)\) return\s*if \(!historyWorkbench\.onScopeChange\('cell'\)\) return\s*workbenchState\.selectMode\('history'\)/,
     )
     expect(sheetViewSource).toContain('activateWorkbenchCoordinate')
     expect(sheetViewSource).toContain('onRetryBatchDetail={historyWorkbench.onRetryBatchDetail}')

@@ -1422,6 +1422,7 @@ function SheetEditor({
         historyWorkbench.onSelectedCellChange(payload)
       },
       onCellHistoryRequest: (payload) => {
+        setActiveLayerKey(payload.layerKey)
         historyWorkbench.onLayerScopeChange(payload.layerKey)
         if (!historyWorkbench.onSelectedCellChange(payload)) return
         if (!historyWorkbench.onScopeChange('cell')) return
