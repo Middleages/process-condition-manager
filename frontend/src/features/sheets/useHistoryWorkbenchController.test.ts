@@ -1,10 +1,27 @@
-import { describe, expect, it } from 'vitest'
+// @vitest-environment jsdom
+
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { act, createElement } from 'react'
+import { createRoot, type Root } from 'react-dom/client'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type {
   HistoryCellHistoryOut,
   HistoryDetailOut,
+  HistoryTimelineItemOut,
   HistoryTimelineOut,
 } from '@/api/history'
+
+const historyApi = vi.hoisted(() => ({
+  getHistoryBatchDetail: vi.fn(),
+  getHistoryCellHistory: vi.fn(),
+  getHistoryTimeline: vi.fn(),
+}))
+
+vi.mock('@/api/history', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/api/history')>()),
+  ...historyApi,
+}))
 
 import {
   historyCellHistoryQueryEnabled,
@@ -15,16 +32,220 @@ import {
   mergeHistoryCellHistoryPages,
   mergeHistoryTimelinePages,
   parseHistoryCellScope,
+  useHistoryWorkbenchController,
+  type HistoryWorkbenchController,
 } from './useHistoryWorkbenchController'
 import source from './useHistoryWorkbenchController.ts?raw'
 
 describe('useHistoryWorkbenchController seams', () => {
+  it('keeps a selected cell passive until cell scope is explicitly chosen', () => {
+    const controller = renderController()
+
+    expect(controller.result.current.onScopeChange('cell')).toBe(false)
+
+    act(() => {
+      controller.result.current.onFiltersChange({ actor: 'dev-admin', layerKey: 'L1::10::ETCH' })
+      expect(
+        controller.result.current.onSelectedCellChange({
+          conditionId: '11',
+          parameterCode: 'ETCH_P001',
+        }),
+      ).toBe(true)
+    })
+
+    expect(controller.result.current.state.mode).toBe('timeline')
+
+    act(() => {
+      expect(controller.result.current.onScopeChange('cell')).toBe(true)
+    })
+
+    expect(controller.result.current.state.mode).toBe('cell')
+
+    act(() => controller.result.current.onLayerScopeChange('L2::20::CLEAN'))
+
+    expect(controller.result.current.state.mode).toBe('timeline')
+    expect(controller.result.current.state.filters.actor).toBe('dev-admin')
+    expect(controller.result.current.state.filters.layerKey).toBe('L2::20::CLEAN')
+    expect(controller.result.current.state.cellScope).toBeNull()
+    expect(
+      historyCellHistoryQueryEnabled(
+        true,
+        controller.result.current.state.mode,
+        controller.result.current.state.cellScope,
+      ),
+    ).toBe(false)
+  })
+
+  it('keeps a cross-Layer requested cell after ordered Layer, cell, and scope transitions', () => {
+    const controller = renderController()
+
+    act(() => {
+      controller.result.current.onLayerScopeChange('L1::10::ETCH')
+      controller.result.current.onSelectedCellChange({
+        conditionId: '11',
+        parameterCode: 'ETCH_P001',
+      })
+      controller.result.current.onScopeChange('cell')
+    })
+
+    act(() => {
+      controller.result.current.onLayerScopeChange('L1::30::CMP')
+      controller.result.current.onSelectedCellChange({
+        conditionId: '33',
+        parameterCode: 'CMP_P001',
+      })
+      controller.result.current.onScopeChange('cell')
+    })
+
+    expect(controller.result.current.state).toMatchObject({
+      mode: 'cell',
+      cellScope: { conditionId: 33, parameterCode: 'CMP_P001' },
+      filters: { layerKey: 'L1::30::CMP' },
+    })
+  })
+
+  it('keeps current-Layer detail authority when the Layer boundary repeats', async () => {
+    const detailRequest = deferred<HistoryDetailOut>()
+    historyApi.getHistoryTimeline.mockResolvedValue(timelinePage(1, null))
+    historyApi.getHistoryBatchDetail.mockReturnValueOnce(detailRequest.promise)
+    const controller = renderController(true)
+    const item = batchTimelineItem(72)
+
+    act(() => controller.result.current.onLayerScopeChange('L1::10::ETCH'))
+    await flushHistoryRequests()
+    act(() => controller.result.current.onBatchToggle(item, true))
+    await flushHistoryRequests()
+
+    act(() => controller.result.current.onLayerScopeChange('L1::10::ETCH'))
+    detailRequest.resolve(detailPage(702, null))
+    await flushHistoryRequests()
+
+    expect(controller.result.current.state.batchDetailCache).toMatchObject({
+      'scope-72::batch-72': { items: [{ event_id: 702 }] },
+    })
+    expect(controller.result.current.batchDetailStatus).toBe('ready')
+  })
+
+  it('publishes deferred batch detail after a passive timeline cell selection', async () => {
+    const detailRequest = deferred<HistoryDetailOut>()
+    historyApi.getHistoryTimeline.mockResolvedValue(timelinePage(1, null))
+    historyApi.getHistoryBatchDetail.mockReturnValueOnce(detailRequest.promise)
+    const controller = renderController(true)
+    const item = batchTimelineItem(73)
+
+    act(() => controller.result.current.onLayerScopeChange('L1::10::ETCH'))
+    await flushHistoryRequests()
+    act(() => controller.result.current.onBatchToggle(item, true))
+    await flushHistoryRequests()
+
+    act(() => {
+      controller.result.current.onSelectedCellChange({
+        conditionId: '11',
+        parameterCode: 'ETCH_P001',
+      })
+    })
+    detailRequest.resolve(detailPage(703, null))
+    await flushHistoryRequests()
+
+    expect(controller.result.current.state).toMatchObject({
+      mode: 'timeline',
+      expandedBatchKey: 'scope-73::batch-73',
+      cellScope: { conditionId: 11, parameterCode: 'ETCH_P001' },
+      batchDetailCache: {
+        'scope-73::batch-73': { items: [{ event_id: 703 }] },
+      },
+    })
+    expect(controller.result.current.batchDetailStatus).toBe('ready')
+  })
+
+  it('waits for current-Layer authority before issuing the first timeline request', async () => {
+    historyApi.getHistoryTimeline.mockResolvedValue(timelinePage(1, null))
+    const controller = renderController(true)
+
+    await flushHistoryRequests()
+
+    expect(historyApi.getHistoryTimeline).not.toHaveBeenCalled()
+
+    act(() => controller.result.current.onLayerScopeChange('L1::10::ETCH'))
+    await flushHistoryRequests()
+
+    expect(historyApi.getHistoryTimeline).toHaveBeenCalledTimes(1)
+    expect(historyApi.getHistoryTimeline).toHaveBeenCalledWith(
+      7,
+      {
+        createdFrom: null,
+        createdTo: null,
+        layerKey: 'L1::10::ETCH',
+        eventTypes: [],
+        actor: null,
+        origin: null,
+        sourceProjectId: null,
+      },
+      { cursor: null },
+    )
+  })
+
+  it('does not publish a late cell result after Layer scope replaces its authority', async () => {
+    const cellRequest = deferred<HistoryCellHistoryOut>()
+    historyApi.getHistoryTimeline.mockResolvedValue(timelinePage(1, null))
+    historyApi.getHistoryCellHistory.mockReturnValueOnce(cellRequest.promise)
+    const controller = renderController(true)
+
+    act(() => {
+      controller.result.current.onSelectedCellChange({
+        conditionId: '11',
+        parameterCode: 'ETCH_P001',
+      })
+      controller.result.current.onScopeChange('cell')
+    })
+    await flushHistoryRequests()
+
+    expect(historyApi.getHistoryCellHistory).toHaveBeenCalledWith(7, 11, 'ETCH_P001', {
+      cursor: null,
+    })
+
+    act(() => controller.result.current.onLayerScopeChange('L2::20::CLEAN'))
+    cellRequest.resolve(cellPage(701, null, 'OLD', 'STALE'))
+    await flushHistoryRequests()
+
+    expect(controller.result.current.state).toMatchObject({
+      mode: 'timeline',
+      cellScope: null,
+      filters: { layerKey: 'L2::20::CLEAN' },
+    })
+    expect(controller.result.current.cellHistory).toBeNull()
+  })
+
+  it('does not cache a late batch detail after Layer scope replaces its authority', async () => {
+    const detailRequest = deferred<HistoryDetailOut>()
+    historyApi.getHistoryTimeline.mockResolvedValue(timelinePage(1, null))
+    historyApi.getHistoryBatchDetail.mockReturnValueOnce(detailRequest.promise)
+    const controller = renderController(true)
+    const item = batchTimelineItem(71)
+
+    act(() => controller.result.current.onBatchToggle(item, true))
+    await flushHistoryRequests()
+
+    expect(historyApi.getHistoryBatchDetail).toHaveBeenCalledWith(7, 'scope-71', 'batch-71', {
+      cursor: null,
+    })
+
+    act(() => controller.result.current.onLayerScopeChange('L2::20::CLEAN'))
+    detailRequest.resolve(detailPage(701, null))
+    await flushHistoryRequests()
+
+    expect(controller.result.current.state.expandedBatchKey).toBeNull()
+    expect(controller.result.current.state.batchDetailCache).toEqual({})
+    expect(controller.result.current.batchDetailStatus).toBe('idle')
+  })
+
   it('gates timeline and cell queries by the outer and inner modes', () => {
     const scope = { conditionId: 11, parameterCode: 'ETCH_P001' }
 
-    expect(historyTimelineQueryEnabled(false, 'timeline')).toBe(false)
-    expect(historyTimelineQueryEnabled(true, 'timeline')).toBe(true)
-    expect(historyTimelineQueryEnabled(true, 'cell')).toBe(false)
+    expect(historyTimelineQueryEnabled(false, 'timeline', 'L1::10::ETCH')).toBe(false)
+    expect(historyTimelineQueryEnabled(true, 'timeline', null)).toBe(false)
+    expect(historyTimelineQueryEnabled(true, 'timeline', 'L1::10::ETCH')).toBe(true)
+    expect(historyTimelineQueryEnabled(true, 'cell', 'L1::10::ETCH')).toBe(false)
     expect(historyCellHistoryQueryEnabled(false, 'cell', scope)).toBe(false)
     expect(historyCellHistoryQueryEnabled(true, 'timeline', scope)).toBe(false)
     expect(historyCellHistoryQueryEnabled(true, 'cell', null)).toBe(false)
@@ -138,14 +359,199 @@ describe('useHistoryWorkbenchController seams', () => {
     expect(source).toContain('onLoadMoreBatchDetail')
   })
 
-  it('rejects late detail results after filter, key, mode, scope, or outer-mode changes', () => {
+  it('admits only one timeline next-page request before React can rerender', async () => {
+    const nextPageRequest = deferred<HistoryTimelineOut>()
+    historyApi.getHistoryTimeline
+      .mockResolvedValueOnce(timelinePage(1, 'timeline-next'))
+      .mockReturnValue(nextPageRequest.promise)
+    const controller = renderController(true)
+
+    act(() => controller.result.current.onLayerScopeChange('L1::10::ETCH'))
+    await waitForHistoryController(
+      () => controller.result.current.state.nextCursor === 'timeline-next',
+    )
+
+    act(() => {
+      controller.result.current.onLoadMoreTimeline('timeline-next')
+      controller.result.current.onLoadMoreTimeline('timeline-next')
+    })
+    await flushHistoryRequests()
+
+    expect(historyApi.getHistoryTimeline).toHaveBeenCalledTimes(2)
+    expect(historyApi.getHistoryTimeline).toHaveBeenLastCalledWith(
+      7,
+      expect.objectContaining({ layerKey: 'L1::10::ETCH' }),
+      { cursor: 'timeline-next' },
+    )
+
+    nextPageRequest.resolve(timelinePage(2, null))
+    await flushHistoryRequests()
+  })
+
+  it('fences timeline pagination per Layer and filter authority', async () => {
+    const oldNextPageRequest = deferred<HistoryTimelineOut>()
+    const newNextPageRequest = deferred<HistoryTimelineOut>()
+    historyApi.getHistoryTimeline
+      .mockResolvedValueOnce(timelinePage(1, 'old-timeline-next'))
+      .mockReturnValueOnce(oldNextPageRequest.promise)
+      .mockResolvedValueOnce(timelinePage(101, 'new-timeline-next'))
+      .mockReturnValueOnce(newNextPageRequest.promise)
+    const controller = renderController(true)
+
+    act(() => controller.result.current.onLayerScopeChange('L1::10::ETCH'))
+    await waitForHistoryController(
+      () => controller.result.current.state.nextCursor === 'old-timeline-next',
+    )
+    act(() => controller.result.current.onLoadMoreTimeline('old-timeline-next'))
+    await flushHistoryRequests()
+
+    act(() => {
+      controller.result.current.onFiltersChange({
+        actor: 'new-owner',
+        layerKey: 'L1::30::CMP',
+      })
+    })
+    await waitForHistoryController(
+      () => controller.result.current.state.nextCursor === 'new-timeline-next',
+    )
+
+    const loadMoreForNewAuthority = controller.result.current.onLoadMoreTimeline
+    act(() => {
+      loadMoreForNewAuthority('new-timeline-next')
+      loadMoreForNewAuthority('new-timeline-next')
+    })
+    await flushHistoryRequests()
+
+    expect(historyApi.getHistoryTimeline).toHaveBeenCalledTimes(4)
+    expect(historyApi.getHistoryTimeline).toHaveBeenLastCalledWith(
+      7,
+      expect.objectContaining({ actor: 'new-owner', layerKey: 'L1::30::CMP' }),
+      { cursor: 'new-timeline-next' },
+    )
+
+    oldNextPageRequest.resolve(timelinePage(2, null))
+    await flushHistoryRequests()
+    act(() => loadMoreForNewAuthority('new-timeline-next'))
+    await flushHistoryRequests()
+
+    expect(historyApi.getHistoryTimeline).toHaveBeenCalledTimes(4)
+
+    newNextPageRequest.resolve(timelinePage(102, null))
+    await waitForHistoryController(
+      () => controller.result.current.state.pages.length === 2,
+    )
+    expect(
+      controller.result.current.state.pages.flatMap((page) =>
+        page.items.map((item) => item.cursor_id),
+      ),
+    ).toEqual([101, 102])
+  })
+
+  it('admits only one cell next-page request before React can rerender', async () => {
+    const nextPageRequest = deferred<HistoryCellHistoryOut>()
+    historyApi.getHistoryCellHistory
+      .mockResolvedValueOnce(cellPage(31, 'cell-next', 'BASE', 'INITIAL'))
+      .mockReturnValue(nextPageRequest.promise)
+    const controller = renderController(true)
+
+    act(() => {
+      controller.result.current.onSelectedCellChange({
+        conditionId: '11',
+        parameterCode: 'ETCH_P001',
+      })
+      controller.result.current.onScopeChange('cell')
+    })
+    await waitForHistoryController(
+      () => controller.result.current.cellHistory?.next_cursor === 'cell-next',
+    )
+
+    act(() => {
+      controller.result.current.onLoadMoreCell('cell-next')
+      controller.result.current.onLoadMoreCell('cell-next')
+    })
+    await flushHistoryRequests()
+
+    expect(historyApi.getHistoryCellHistory).toHaveBeenCalledTimes(2)
+    expect(historyApi.getHistoryCellHistory).toHaveBeenLastCalledWith(7, 11, 'ETCH_P001', {
+      cursor: 'cell-next',
+    })
+
+    nextPageRequest.resolve(cellPage(32, null, 'IGNORED', 'IGNORED'))
+    await flushHistoryRequests()
+  })
+
+  it('fences cell pagination per cell-scope and mode authority', async () => {
+    const oldNextPageRequest = deferred<HistoryCellHistoryOut>()
+    const newNextPageRequest = deferred<HistoryCellHistoryOut>()
+    historyApi.getHistoryCellHistory
+      .mockResolvedValueOnce(cellPage(31, 'old-cell-next', 'OLD_BASE', 'OLD_INITIAL'))
+      .mockReturnValueOnce(oldNextPageRequest.promise)
+      .mockResolvedValueOnce(cellPage(41, 'new-cell-next', 'NEW_BASE', 'NEW_INITIAL'))
+      .mockReturnValueOnce(newNextPageRequest.promise)
+    const controller = renderController(true)
+
+    act(() => {
+      controller.result.current.onSelectedCellChange({
+        conditionId: '11',
+        parameterCode: 'ETCH_P001',
+      })
+      controller.result.current.onScopeChange('cell')
+    })
+    await waitForHistoryController(
+      () => controller.result.current.cellHistory?.next_cursor === 'old-cell-next',
+    )
+    act(() => controller.result.current.onLoadMoreCell('old-cell-next'))
+    await flushHistoryRequests()
+
+    act(() => {
+      controller.result.current.onScopeChange('timeline')
+      controller.result.current.onSelectedCellChange({
+        conditionId: '33',
+        parameterCode: 'CMP_P001',
+      })
+      controller.result.current.onScopeChange('cell')
+    })
+    await waitForHistoryController(
+      () => controller.result.current.cellHistory?.next_cursor === 'new-cell-next',
+    )
+
+    const loadMoreForNewAuthority = controller.result.current.onLoadMoreCell
+    act(() => {
+      loadMoreForNewAuthority('new-cell-next')
+      loadMoreForNewAuthority('new-cell-next')
+    })
+    await flushHistoryRequests()
+
+    expect(historyApi.getHistoryCellHistory).toHaveBeenCalledTimes(4)
+    expect(historyApi.getHistoryCellHistory).toHaveBeenLastCalledWith(7, 33, 'CMP_P001', {
+      cursor: 'new-cell-next',
+    })
+
+    oldNextPageRequest.resolve(cellPage(32, null, 'IGNORED', 'IGNORED'))
+    await flushHistoryRequests()
+    act(() => loadMoreForNewAuthority('new-cell-next'))
+    await flushHistoryRequests()
+
+    expect(historyApi.getHistoryCellHistory).toHaveBeenCalledTimes(4)
+
+    newNextPageRequest.resolve(cellPage(42, null, 'IGNORED', 'IGNORED'))
+    await waitForHistoryController(
+      () => controller.result.current.cellHistory?.items.length === 2,
+    )
+    expect(controller.result.current.cellHistory).toMatchObject({
+      items: [{ event_id: 41 }, { event_id: 42 }],
+      baseline_entry: { code: 'NEW_BASE' },
+      initial_entry: { code: 'NEW_INITIAL' },
+    })
+  })
+
+  it('rejects late batch results after filter, key, mode, or outer-mode changes', () => {
     const expected = {
       enabled: true,
       outerGeneration: 4,
       revision: 2,
       mode: 'timeline' as const,
       detailKey: 'scope::batch',
-      cellScopeKey: '11::ETCH_P001',
     }
     expect(isCurrentHistoryDetailAuthority(expected, expected)).toBe(true)
     expect(isCurrentHistoryDetailAuthority(expected, { ...expected, enabled: false })).toBe(false)
@@ -157,11 +563,85 @@ describe('useHistoryWorkbenchController seams', () => {
     expect(
       isCurrentHistoryDetailAuthority(expected, { ...expected, detailKey: 'other::batch' }),
     ).toBe(false)
-    expect(
-      isCurrentHistoryDetailAuthority(expected, { ...expected, cellScopeKey: '12::ETCH_P001' }),
-    ).toBe(false)
   })
 })
+
+const mountedControllers: Array<{ root: Root; container: HTMLDivElement }> = []
+
+afterEach(() => {
+  for (const controller of mountedControllers.splice(0)) {
+    act(() => controller.root.unmount())
+    controller.container.remove()
+  }
+  historyApi.getHistoryBatchDetail.mockReset()
+  historyApi.getHistoryCellHistory.mockReset()
+  historyApi.getHistoryTimeline.mockReset()
+})
+
+function renderController(
+  enabled = false,
+): { readonly result: { readonly current: HistoryWorkbenchController } } {
+  const reactActEnvironment = globalThis as typeof globalThis & {
+    IS_REACT_ACT_ENVIRONMENT: boolean
+  }
+  reactActEnvironment.IS_REACT_ACT_ENVIRONMENT = true
+  const container = document.createElement('div')
+  const root = createRoot(container)
+  const result: { current: HistoryWorkbenchController | null } = { current: null }
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, retryOnMount: false, gcTime: Number.POSITIVE_INFINITY },
+    },
+  })
+
+  function Probe() {
+    result.current = useHistoryWorkbenchController(7, enabled)
+    return null
+  }
+
+  document.body.append(container)
+  act(() => {
+    root.render(
+      createElement(
+        QueryClientProvider,
+        { client: queryClient },
+        createElement(Probe),
+      ),
+    )
+  })
+  mountedControllers.push({ root, container })
+
+  if (result.current === null) throw new Error('History controller did not render')
+  return { result: result as { readonly current: HistoryWorkbenchController } }
+}
+
+async function flushHistoryRequests(): Promise<void> {
+  await act(async () => {
+    await Promise.resolve()
+    await Promise.resolve()
+  })
+}
+
+async function waitForHistoryController(predicate: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    if (predicate()) return
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+  }
+  throw new Error('History controller did not reach the expected state')
+}
+
+function deferred<T>(): {
+  readonly promise: Promise<T>
+  readonly resolve: (value: T) => void
+} {
+  let resolve: (value: T) => void = () => undefined
+  const promise = new Promise<T>((next) => {
+    resolve = next
+  })
+  return { promise, resolve }
+}
 
 function timelinePage(cursorId: number, nextCursor: string | null): HistoryTimelineOut {
   return {
@@ -191,6 +671,16 @@ function timelinePage(cursorId: number, nextCursor: string | null): HistoryTimel
       legacy_detail_unavailable_count: 0,
     },
     next_cursor: nextCursor,
+  }
+}
+
+function batchTimelineItem(cursorId: number): HistoryTimelineItemOut {
+  return {
+    ...timelinePage(cursorId, null).items[0]!,
+    kind: 'batch',
+    batch_id: `batch-${cursorId}`,
+    detail_scope: `scope-${cursorId}`,
+    detail_status: 'available',
   }
 }
 

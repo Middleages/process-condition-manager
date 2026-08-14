@@ -22,7 +22,8 @@ import {
   historyWorkbenchCellHistoryKey,
   historyWorkbenchTimelineKey,
   invalidateHistoryBatchDetailsForMutation,
-  openHistoryCellScope,
+  rememberHistoryCellScope,
+  replaceHistoryLayerScope,
   storeHistoryBatchDetail,
   toggleHistoryBatchDetail,
   updateHistoryWorkbenchFilters,
@@ -46,23 +47,26 @@ export interface HistoryWorkbenchController {
   timelineStatus: HistoryQueryStatus
   timelineError: string | null
   nextPageError: string | null
+  timelineIsFetchingNextPage: boolean
   cellHistory: HistoryCellHistoryOut | null
   cellStatus: HistoryQueryStatus
   cellError: string | null
   cellNextPageError: string | null
+  cellIsFetchingNextPage: boolean
   batchDetailStatus: HistoryDetailStatus
   batchDetailError: string | null
   batchDetailIsFetchingNextPage: boolean
   batchDetailNextPageError: string | null
   onFiltersChange: (filters: HistoryTimelineFilterInput) => void
   onModeChange: (mode: HistoryWorkbenchMode) => void
+  onLayerScopeChange: (layerKey: string) => void
+  onSelectedCellChange: (
+    target: { conditionId: string; parameterCode: string } | null,
+  ) => boolean
+  onScopeChange: (mode: HistoryWorkbenchMode) => boolean
   onBatchToggle: (item: HistoryTimelineItemOut, shouldRequestDetail: boolean) => void
   onRetryBatchDetail: (item: HistoryTimelineItemOut) => void
   onLoadMoreBatchDetail: (item: HistoryTimelineItemOut, cursor: string | null) => void
-  onCellHistoryRequest: (target: {
-    conditionId: string
-    parameterCode: string
-  }) => boolean
   onLoadMoreTimeline: (cursor: string | null) => void
   onLoadMoreCell: (cursor: string | null) => void
   onRetryTimeline: () => void
@@ -89,7 +93,6 @@ export interface HistoryDetailAuthority {
   readonly revision: number
   readonly mode: HistoryWorkbenchMode
   readonly detailKey: string | null
-  readonly cellScopeKey: string | null
 }
 
 interface HistoryDetailRequestState {
@@ -109,8 +112,9 @@ interface HistoryBatchDetailRequest {
 export function historyTimelineQueryEnabled(
   outerHistoryEnabled: boolean,
   mode: HistoryWorkbenchMode,
+  layerKey: string | null,
 ): boolean {
-  return outerHistoryEnabled && mode === 'timeline'
+  return outerHistoryEnabled && mode === 'timeline' && layerKey !== null
 }
 
 export function historyCellHistoryQueryEnabled(
@@ -216,8 +220,7 @@ export function isCurrentHistoryDetailAuthority(
     expected.revision === current.revision &&
     expected.mode === 'timeline' &&
     current.mode === 'timeline' &&
-    expected.detailKey === current.detailKey &&
-    expected.cellScopeKey === current.cellScopeKey
+    expected.detailKey === current.detailKey
   )
 }
 
@@ -234,6 +237,8 @@ export function useHistoryWorkbenchController(
   const previousMutationRevisionRef = useRef(historyMutationRevision)
   const outerGenerationRef = useRef(0)
   const detailRequestTokenRef = useRef(0)
+  const timelineNextPageRequestAuthoritiesRef = useRef(new Set<string>())
+  const cellNextPageRequestAuthoritiesRef = useRef(new Set<string>())
   const initialDetailRequest: HistoryDetailRequestState = {
     key: null,
     status: 'idle',
@@ -298,9 +303,18 @@ export function useHistoryWorkbenchController(
     enabledRef.current = enabled
   }, [commitDetailRequest, commitState, enabled, historyMutationRevision])
 
-  const timelineEnabled = historyTimelineQueryEnabled(enabled, state.mode)
+  const timelineEnabled = historyTimelineQueryEnabled(
+    enabled,
+    state.mode,
+    state.filters.layerKey,
+  )
+  const timelineQueryKey = historyWorkbenchTimelineKey(projectId, state.filters)
+  const timelineNextPageAuthorityKey = JSON.stringify([
+    timelineQueryKey,
+    state.revision,
+  ])
   const timelineQuery = useInfiniteQuery({
-    queryKey: historyWorkbenchTimelineKey(projectId, state.filters),
+    queryKey: timelineQueryKey,
     initialPageParam: null as string | null,
     queryFn: ({ pageParam }) =>
       getHistoryTimeline(projectId, state.filters, { cursor: pageParam }),
@@ -310,15 +324,18 @@ export function useHistoryWorkbenchController(
 
   const cellScope = state.cellScope
   const cellEnabled = historyCellHistoryQueryEnabled(enabled, state.mode, cellScope)
+  const cellQueryKey =
+    cellScope === null
+      ? ['history', projectId, 'cell-history', 'idle']
+      : historyWorkbenchCellHistoryKey(
+          projectId,
+          cellScope.conditionId,
+          cellScope.parameterCode,
+        )
+  const cellNextPageAuthorityKey =
+    cellScope === null ? null : JSON.stringify(cellQueryKey)
   const cellHistoryQuery = useInfiniteQuery({
-    queryKey:
-      cellScope === null
-        ? ['history', projectId, 'cell-history', 'idle']
-        : historyWorkbenchCellHistoryKey(
-            projectId,
-            cellScope.conditionId,
-            cellScope.parameterCode,
-          ),
+    queryKey: cellQueryKey,
     initialPageParam: null as string | null,
     queryFn: ({ pageParam }) => {
       if (cellScope === null) throw new TypeError('Cell history scope is unavailable')
@@ -488,10 +505,58 @@ export function useHistoryWorkbenchController(
     [commitDetailRequest, commitState],
   )
 
+  const onScopeChange = useCallback(
+    (mode: HistoryWorkbenchMode): boolean => {
+      if (mode === 'cell' && stateRef.current.cellScope === null) return false
+      if (stateRef.current.mode === mode) return true
+      detailRequestTokenRef.current += 1
+      commitDetailRequest({
+        key: null,
+        status: 'idle',
+        error: null,
+        phase: null,
+        cursor: null,
+      })
+      commitState((current) => ({
+        ...current,
+        mode,
+        expandedBatchKey: mode === 'cell' ? null : current.expandedBatchKey,
+      }))
+      return true
+    },
+    [commitDetailRequest, commitState],
+  )
+
   const onModeChange = useCallback(
     (mode: HistoryWorkbenchMode) => {
-      if (stateRef.current.mode === mode) return
-      if (mode === 'cell') {
+      onScopeChange(mode)
+    },
+    [onScopeChange],
+  )
+
+  const onLayerScopeChange = useCallback(
+    (layerKey: string) => {
+      const normalizedLayerKey = layerKey.trim()
+      if (normalizedLayerKey.length === 0) return
+      if (stateRef.current.filters.layerKey === normalizedLayerKey) return
+      detailRequestTokenRef.current += 1
+      commitDetailRequest({
+        key: null,
+        status: 'idle',
+        error: null,
+        phase: null,
+        cursor: null,
+      })
+      commitState((current) => replaceHistoryLayerScope(current, normalizedLayerKey))
+    },
+    [commitDetailRequest, commitState],
+  )
+
+  const onSelectedCellChange = useCallback(
+    (target: { conditionId: string; parameterCode: string } | null): boolean => {
+      const scope = target === null ? null : parseHistoryCellScope(target)
+      if (target !== null && scope === null) return false
+      if (stateRef.current.mode !== 'timeline' || scope === null) {
         detailRequestTokenRef.current += 1
         commitDetailRequest({
           key: null,
@@ -501,11 +566,8 @@ export function useHistoryWorkbenchController(
           cursor: null,
         })
       }
-      commitState((current) => ({
-        ...current,
-        mode,
-        expandedBatchKey: mode === 'cell' ? null : current.expandedBatchKey,
-      }))
+      commitState((current) => rememberHistoryCellScope(current, scope))
+      return true
     },
     [commitDetailRequest, commitState],
   )
@@ -577,43 +639,60 @@ export function useHistoryWorkbenchController(
     [requestBatchDetail],
   )
 
-  const onCellHistoryRequest = useCallback(
-    (target: { conditionId: string; parameterCode: string }): boolean => {
-      const scope = parseHistoryCellScope(target)
-      if (scope === null) return false
-      detailRequestTokenRef.current += 1
-      commitDetailRequest({
-        key: null,
-        status: 'idle',
-        error: null,
-        phase: null,
-        cursor: null,
-      })
-      commitState((current) => openHistoryCellScope(current, scope))
-      return true
-    },
-    [commitDetailRequest, commitState],
-  )
-
   const onLoadMoreTimeline = useCallback(
-    (_cursor: string | null) => {
-      if (!timelineEnabled || !timelineQuery.hasNextPage || timelineQuery.isFetchingNextPage) return
-      void timelineQuery.fetchNextPage()
+    (cursor: string | null) => {
+      if (
+        cursor === null ||
+        timeline.nextCursor !== cursor ||
+        timelineNextPageRequestAuthoritiesRef.current.has(
+          timelineNextPageAuthorityKey,
+        ) ||
+        !timelineEnabled ||
+        !timelineQuery.hasNextPage ||
+        timelineQuery.isFetchingNextPage
+      ) {
+        return
+      }
+      timelineNextPageRequestAuthoritiesRef.current.add(
+        timelineNextPageAuthorityKey,
+      )
+      void timelineQuery.fetchNextPage().finally(() => {
+        timelineNextPageRequestAuthoritiesRef.current.delete(
+          timelineNextPageAuthorityKey,
+        )
+      })
     },
     [
+      timeline.nextCursor,
       timelineEnabled,
+      timelineNextPageAuthorityKey,
       timelineQuery.fetchNextPage,
       timelineQuery.hasNextPage,
       timelineQuery.isFetchingNextPage,
     ],
   )
   const onLoadMoreCell = useCallback(
-    (_cursor: string | null) => {
-      if (!cellEnabled || !cellHistoryQuery.hasNextPage || cellHistoryQuery.isFetchingNextPage) return
-      void cellHistoryQuery.fetchNextPage()
+    (cursor: string | null) => {
+      if (
+        cursor === null ||
+        cellHistory?.next_cursor !== cursor ||
+        cellNextPageAuthorityKey === null ||
+        cellNextPageRequestAuthoritiesRef.current.has(cellNextPageAuthorityKey) ||
+        !cellEnabled ||
+        !cellHistoryQuery.hasNextPage ||
+        cellHistoryQuery.isFetchingNextPage
+      ) {
+        return
+      }
+      cellNextPageRequestAuthoritiesRef.current.add(cellNextPageAuthorityKey)
+      void cellHistoryQuery.fetchNextPage().finally(() => {
+        cellNextPageRequestAuthoritiesRef.current.delete(cellNextPageAuthorityKey)
+      })
     },
     [
+      cellHistory?.next_cursor,
       cellEnabled,
+      cellNextPageAuthorityKey,
       cellHistoryQuery.fetchNextPage,
       cellHistoryQuery.hasNextPage,
       cellHistoryQuery.isFetchingNextPage,
@@ -660,20 +739,24 @@ export function useHistoryWorkbenchController(
     timelineStatus: timelinePresentation.status,
     timelineError: timelinePresentation.rootError,
     nextPageError: timelinePresentation.nextPageError,
+    timelineIsFetchingNextPage: timelineQuery.isFetchingNextPage,
     cellHistory,
     cellStatus: cellPresentation.status,
     cellError: cellPresentation.rootError,
     cellNextPageError: cellPresentation.nextPageError,
+    cellIsFetchingNextPage: cellHistoryQuery.isFetchingNextPage,
     batchDetailStatus,
     batchDetailError,
     batchDetailIsFetchingNextPage,
     batchDetailNextPageError,
     onFiltersChange,
     onModeChange,
+    onLayerScopeChange,
+    onSelectedCellChange,
+    onScopeChange,
     onBatchToggle,
     onRetryBatchDetail,
     onLoadMoreBatchDetail,
-    onCellHistoryRequest,
     onLoadMoreTimeline,
     onLoadMoreCell,
     onRetryTimeline,
@@ -711,9 +794,5 @@ function historyDetailAuthority(
     revision: state.revision,
     mode: state.mode,
     detailKey,
-    cellScopeKey:
-      state.cellScope === null
-        ? null
-        : `${state.cellScope.conditionId}::${state.cellScope.parameterCode}`,
   }
 }

@@ -1,0 +1,718 @@
+{
+  "schemaVersion": 1,
+  "startedAt": "2026-08-14T07:15:16.119Z",
+  "completedAt": "2026-08-14T07:15:25.258Z",
+  "baseUrl": "http://127.0.0.1:4185",
+  "chromiumExecutable": "/home/appuser/.cache/ms-playwright/chromium-1208/chrome-linux64/chrome",
+  "chromiumVersion": "145.0.7632.6",
+  "browserPluginAvailability": "absent; regular Playwright used as required by the task brief",
+  "mockBoundary": "Browser/UI behavior only; API responses are deterministic Playwright route mocks.",
+  "detector": {
+    "invocationCount": 1,
+    "invocation": "node /home/appuser/.codex/skills/impeccable/scripts/detect.mjs --json frontend/src/features/sheets/HistoryWorkbench.tsx frontend/src/features/sheets/HistoryWorkbench.test.tsx frontend/src/features/sheets/SheetView.tsx frontend/src/features/sheets/SheetView.test.tsx",
+    "rawJson": [],
+    "findingCount": 0
+  },
+  "assertionCount": 71,
+  "assertions": {
+    "defaultScope": "현재 Layer",
+    "defaultScopeAriaChecked": "true",
+    "currentCellInitiallyDisabled": true,
+    "filterPanelInitiallyHidden": true,
+    "initialTimelineLayerAuthority": "L1::HISTORY::010::ETCH",
+    "initialTimelineQueryCount": 1,
+    "initialUnscopedTimelineQueryCount": 0,
+    "visibleKeyboardFocus": {
+      "outlineStyle": "solid",
+      "outlineWidth": "2px"
+    },
+    "ordinaryRowClickScrollCalls": 0,
+    "timelineInventedDiffCount": 0,
+    "roundedLedgerRowCount": 0,
+    "filterFailureRowsPreserved": 5,
+    "filterFailureNetworkCalls": 0,
+    "appliedActorFilter": "qa-operator",
+    "layerSwitchFilterSummaryRetained": true,
+    "timelineNextFailureRowsPreserved": 5,
+    "ordinaryNextPageControlDuringError": false,
+    "retryNextPageControlDuringError": true,
+    "timelineNextPageCalls": 3,
+    "timelineRecoveredRowCount": 6,
+    "batchDetailFetchCount": 1,
+    "batchDiffText": "48.0 → 50.0",
+    "batchDetailFetchCountAfterReopen": 1,
+    "batchFailureRowsPreserved": 6,
+    "batchDetailRetryCalls": 2,
+    "legacyDetailUnavailable": true,
+    "deletedTargetDisabled": true,
+    "deletedTargetExplained": true,
+    "explicitMoveScrollCalls": 1,
+    "explicitMoveScrollTarget": {
+      "conditionId": "202",
+      "parameterCode": "gas_flow_rate_with_extended_identifier_for_history_verification",
+      "col": 5,
+      "row": 1
+    },
+    "explicitMoveFilterRetained": true,
+    "currentCellEnabledAfterGridSelection": true,
+    "cellDiffText": "48.0 → 50.0",
+    "deletedCellHistoryTargetDisabled": true,
+    "scopeKeyboardSelectsLayer": "true",
+    "scopeKeyboardFocusesLayer": true,
+    "scopeKeyboardSelectsCell": "true",
+    "inspectorKeyboardMinimum": "320",
+    "inspectorKeyboardMaximum": "520",
+    "gridSeparatorOverlapPx": 0,
+    "separatorContentOverlapPx": 0,
+    "viewport-1024x768-inspectorWidth": 320,
+    "viewport-1024x768-longActorMeasured": true,
+    "viewport-1024x768-longOldCodeMeasured": true,
+    "viewport-1024x768-longNewValueMeasured": true,
+    "viewport-1024x768-longEntryCaptured": true,
+    "viewport-1024x768-visualState": "current-cell-history",
+    "viewport-1024x768-gridOverlap": 0,
+    "viewport-1024x768-contentOverlap": 0,
+    "viewport-1440x900-inspectorWidth": 520,
+    "viewport-1440x900-longActorMeasured": true,
+    "viewport-1440x900-longOldCodeMeasured": true,
+    "viewport-1440x900-longNewValueMeasured": true,
+    "viewport-1440x900-longEntryCaptured": true,
+    "viewport-1440x900-visualState": "expanded-batch-detail",
+    "viewport-1440x900-gridOverlap": 0,
+    "viewport-1440x900-contentOverlap": 0,
+    "viewport-1920x1080-inspectorWidth": 520,
+    "viewport-1920x1080-visualState": "timeline-ledger",
+    "viewport-1920x1080-gridOverlap": 0,
+    "viewport-1920x1080-contentOverlap": 0,
+    "documentOverflowPx": 0,
+    "longTextOverflowCount": 0,
+    "duplicateNextPageControls": 0,
+    "unexpectedConsole.length": 0,
+    "pageErrors.length": 0,
+    "unexpectedRequests.length": 0,
+    "screenshotCount": 3
+  },
+  "checks": [
+    {
+      "name": "page-and-default-scope",
+      "status": "pass",
+      "duration_ms": 1123,
+      "details": {
+        "title": "PCM - Process Condition Manager",
+        "focusStyle": {
+          "outlineStyle": "solid",
+          "outlineWidth": "2px"
+        },
+        "initial_items": 5
+      }
+    },
+    {
+      "name": "ledger-browsing-does-not-navigate",
+      "status": "pass",
+      "duration_ms": 120,
+      "details": {
+        "beforeLayer": "L1::HISTORY::010::ETCH",
+        "afterLayer": "L1::HISTORY::010::ETCH",
+        "rows": 5,
+        "grid_scroll_to_cell_calls": 0
+      }
+    },
+    {
+      "name": "filter-validation-preserves-rows",
+      "status": "pass",
+      "duration_ms": 276,
+      "details": {
+        "beforeRows": 5,
+        "applied_actor": "qa-operator"
+      }
+    },
+    {
+      "name": "layer-switch-retains-user-filters",
+      "status": "pass",
+      "duration_ms": 123,
+      "details": {
+        "layer_key": "L1::HISTORY::020::CLEAN",
+        "actor": "qa-operator"
+      }
+    },
+    {
+      "name": "timeline-next-page-failure-and-retry",
+      "status": "pass",
+      "duration_ms": 1557,
+      "details": {
+        "beforeRows": 5,
+        "afterRows": 6,
+        "duplicate_controls_during_error": 0
+      }
+    },
+    {
+      "name": "batch-detail-cache-and-authoritative-diff",
+      "status": "pass",
+      "duration_ms": 146,
+      "details": {
+        "batch_cache_calls": 1,
+        "diff": "48.0 → 50.0"
+      }
+    },
+    {
+      "name": "batch-detail-failure-and-retry",
+      "status": "pass",
+      "duration_ms": 142,
+      "details": {
+        "batch_retry_calls": 2
+      }
+    },
+    {
+      "name": "legacy-and-deleted-contracts",
+      "status": "pass",
+      "duration_ms": 14,
+      "details": {
+        "legacy_coverage": {
+          "legacy_unresolved_layer_count": 2,
+          "legacy_detail_unavailable_count": 1
+        },
+        "deleted_button_disabled": true
+      }
+    },
+    {
+      "name": "explicit-navigation-only",
+      "status": "pass",
+      "duration_ms": 78,
+      "details": {
+        "target_layer": "L1::HISTORY::020::CLEAN",
+        "navigation_status": "대상 셀로 이동했습니다.",
+        "grid_scroll_to_cell_calls": 1,
+        "grid_scroll_to_cell_target": {
+          "conditionId": "202",
+          "parameterCode": "gas_flow_rate_with_extended_identifier_for_history_verification",
+          "col": 5,
+          "row": 1
+        }
+      }
+    },
+    {
+      "name": "current-cell-enabled-and-authoritative-diff",
+      "status": "pass",
+      "duration_ms": 195,
+      "details": {
+        "cell_history_calls": 1,
+        "diff": "48.0 → 50.0"
+      }
+    },
+    {
+      "name": "inspector-keyboard-resize-bounds",
+      "status": "pass",
+      "duration_ms": 490,
+      "details": {
+        "panel": {
+          "x": 920,
+          "y": 219,
+          "width": 520,
+          "height": 681
+        },
+        "separator": {
+          "x": 921,
+          "y": 219,
+          "width": 4,
+          "height": 681
+        },
+        "grid": {
+          "x": 220,
+          "y": 219,
+          "width": 700,
+          "height": 681
+        },
+        "content": {
+          "x": 938,
+          "y": 287,
+          "width": 485,
+          "height": 843.984375
+        },
+        "gridSeparatorOverlapPx": 0,
+        "separatorContentOverlapPx": 0
+      }
+    }
+  ],
+  "apiCallCounts": {
+    "primary": {
+      "auth": 1,
+      "project": 1,
+      "sheet": 1,
+      "timeline_root": 3,
+      "timeline_next": 3,
+      "cell_history": 1,
+      "batch_cache": 1,
+      "batch_retry": 2,
+      "comments": 1,
+      "lock": 1
+    },
+    "viewport-1024x768": {
+      "auth": 1,
+      "project": 1,
+      "sheet": 1,
+      "timeline_root": 1,
+      "timeline_next": 0,
+      "cell_history": 1,
+      "batch_cache": 0,
+      "batch_retry": 0,
+      "comments": 1,
+      "lock": 1
+    },
+    "viewport-1440x900": {
+      "auth": 1,
+      "project": 1,
+      "sheet": 1,
+      "timeline_root": 1,
+      "timeline_next": 0,
+      "cell_history": 0,
+      "batch_cache": 1,
+      "batch_retry": 0,
+      "comments": 0,
+      "lock": 1
+    },
+    "viewport-1920x1080": {
+      "auth": 1,
+      "project": 1,
+      "sheet": 1,
+      "timeline_root": 1,
+      "timeline_next": 0,
+      "cell_history": 0,
+      "batch_cache": 0,
+      "batch_retry": 0,
+      "comments": 0,
+      "lock": 1
+    }
+  },
+  "primaryTimelineQueries": [
+    {
+      "layer_key": "L1::HISTORY::010::ETCH",
+      "actor": null,
+      "cursor": null,
+      "query": {
+        "layer_key": "L1::HISTORY::010::ETCH",
+        "limit": "50"
+      }
+    },
+    {
+      "layer_key": "L1::HISTORY::010::ETCH",
+      "actor": "qa-operator",
+      "cursor": null,
+      "query": {
+        "layer_key": "L1::HISTORY::010::ETCH",
+        "actor": "qa-operator",
+        "limit": "50"
+      }
+    },
+    {
+      "layer_key": "L1::HISTORY::020::CLEAN",
+      "actor": "qa-operator",
+      "cursor": null,
+      "query": {
+        "layer_key": "L1::HISTORY::020::CLEAN",
+        "actor": "qa-operator",
+        "limit": "50"
+      }
+    },
+    {
+      "layer_key": "L1::HISTORY::010::ETCH",
+      "actor": "qa-operator",
+      "cursor": "timeline-page-2",
+      "query": {
+        "layer_key": "L1::HISTORY::010::ETCH",
+        "actor": "qa-operator",
+        "cursor": "timeline-page-2",
+        "limit": "50"
+      }
+    },
+    {
+      "layer_key": "L1::HISTORY::010::ETCH",
+      "actor": "qa-operator",
+      "cursor": "timeline-page-2",
+      "query": {
+        "layer_key": "L1::HISTORY::010::ETCH",
+        "actor": "qa-operator",
+        "cursor": "timeline-page-2",
+        "limit": "50"
+      }
+    },
+    {
+      "layer_key": "L1::HISTORY::010::ETCH",
+      "actor": "qa-operator",
+      "cursor": "timeline-page-2",
+      "query": {
+        "layer_key": "L1::HISTORY::010::ETCH",
+        "actor": "qa-operator",
+        "cursor": "timeline-page-2",
+        "limit": "50"
+      }
+    }
+  ],
+  "network": [
+    {
+      "method": "GET",
+      "pathname": "/auth/me",
+      "search": ""
+    },
+    {
+      "method": "GET",
+      "pathname": "/projects/42/sheet",
+      "search": ""
+    },
+    {
+      "method": "GET",
+      "pathname": "/projects/42",
+      "search": ""
+    },
+    {
+      "method": "POST",
+      "pathname": "/projects/42/lock",
+      "search": ""
+    },
+    {
+      "method": "GET",
+      "pathname": "/projects/42/events",
+      "search": "?layer_key=L1%3A%3AHISTORY%3A%3A010%3A%3AETCH&limit=50"
+    },
+    {
+      "method": "GET",
+      "pathname": "/projects/42/events",
+      "search": "?layer_key=L1%3A%3AHISTORY%3A%3A010%3A%3AETCH&actor=qa-operator&limit=50"
+    },
+    {
+      "method": "GET",
+      "pathname": "/projects/42/events",
+      "search": "?layer_key=L1%3A%3AHISTORY%3A%3A020%3A%3ACLEAN&actor=qa-operator&limit=50"
+    },
+    {
+      "method": "GET",
+      "pathname": "/projects/42/events",
+      "search": "?layer_key=L1%3A%3AHISTORY%3A%3A010%3A%3AETCH&actor=qa-operator&cursor=timeline-page-2&limit=50"
+    },
+    {
+      "method": "GET",
+      "pathname": "/projects/42/events",
+      "search": "?layer_key=L1%3A%3AHISTORY%3A%3A010%3A%3AETCH&actor=qa-operator&cursor=timeline-page-2&limit=50"
+    },
+    {
+      "method": "GET",
+      "pathname": "/projects/42/events",
+      "search": "?layer_key=L1%3A%3AHISTORY%3A%3A010%3A%3AETCH&actor=qa-operator&cursor=timeline-page-2&limit=50"
+    },
+    {
+      "method": "GET",
+      "pathname": "/projects/42/event-batches/batch-cache",
+      "search": "?scope=scope-cache&limit=100"
+    },
+    {
+      "method": "GET",
+      "pathname": "/projects/42/event-batches/batch-retry",
+      "search": "?scope=scope-retry&limit=100"
+    },
+    {
+      "method": "GET",
+      "pathname": "/projects/42/event-batches/batch-retry",
+      "search": "?scope=scope-retry&limit=100"
+    },
+    {
+      "method": "GET",
+      "pathname": "/projects/42/comments",
+      "search": "?target=cell&layer_key=L1::HISTORY::010::ETCH&parameter_code=pressure&condition_id=101"
+    },
+    {
+      "method": "GET",
+      "pathname": "/projects/42/cell-history",
+      "search": "?condition_id=101&parameter_code=pressure&limit=50"
+    },
+    {
+      "method": "GET",
+      "pathname": "/auth/me",
+      "search": ""
+    },
+    {
+      "method": "GET",
+      "pathname": "/projects/42/sheet",
+      "search": ""
+    },
+    {
+      "method": "GET",
+      "pathname": "/projects/42",
+      "search": ""
+    },
+    {
+      "method": "POST",
+      "pathname": "/projects/42/lock",
+      "search": ""
+    },
+    {
+      "method": "GET",
+      "pathname": "/projects/42/events",
+      "search": "?layer_key=L1%3A%3AHISTORY%3A%3A010%3A%3AETCH&limit=50"
+    },
+    {
+      "method": "GET",
+      "pathname": "/projects/42/comments",
+      "search": "?target=cell&layer_key=L1::HISTORY::010::ETCH&parameter_code=pressure&condition_id=101"
+    },
+    {
+      "method": "GET",
+      "pathname": "/projects/42/cell-history",
+      "search": "?condition_id=101&parameter_code=pressure&limit=50"
+    },
+    {
+      "method": "GET",
+      "pathname": "/auth/me",
+      "search": ""
+    },
+    {
+      "method": "GET",
+      "pathname": "/projects/42/sheet",
+      "search": ""
+    },
+    {
+      "method": "GET",
+      "pathname": "/projects/42",
+      "search": ""
+    },
+    {
+      "method": "POST",
+      "pathname": "/projects/42/lock",
+      "search": ""
+    },
+    {
+      "method": "GET",
+      "pathname": "/projects/42/events",
+      "search": "?layer_key=L1%3A%3AHISTORY%3A%3A010%3A%3AETCH&limit=50"
+    },
+    {
+      "method": "GET",
+      "pathname": "/projects/42/event-batches/batch-cache",
+      "search": "?scope=scope-cache&limit=100"
+    },
+    {
+      "method": "GET",
+      "pathname": "/auth/me",
+      "search": ""
+    },
+    {
+      "method": "GET",
+      "pathname": "/projects/42/sheet",
+      "search": ""
+    },
+    {
+      "method": "GET",
+      "pathname": "/projects/42",
+      "search": ""
+    },
+    {
+      "method": "POST",
+      "pathname": "/projects/42/lock",
+      "search": ""
+    },
+    {
+      "method": "GET",
+      "pathname": "/projects/42/events",
+      "search": "?layer_key=L1%3A%3AHISTORY%3A%3A010%3A%3AETCH&limit=50"
+    }
+  ],
+  "unexpectedRequests": [],
+  "console": [
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 503 (Service Unavailable)"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 503 (Service Unavailable)"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 503 (Service Unavailable)"
+    }
+  ],
+  "expectedConsole": [
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 503 (Service Unavailable)"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 503 (Service Unavailable)"
+    },
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 503 (Service Unavailable)"
+    }
+  ],
+  "unexpectedConsole": [],
+  "pageErrors": [],
+  "screenshots": [
+    {
+      "file": "screenshots/history-1024x768.png",
+      "width": 1024,
+      "height": 768,
+      "inspector_width": 320,
+      "visual_state": "current-cell-history",
+      "sha256": "58e25b4c63662fc6eaf5f5d3eb62320981c5b409f99460b26236e6f7a1bb0b73",
+      "document_overflow_px": 0,
+      "long_text_scanned_count": 5,
+      "long_text_overflow_count": 0,
+      "long_content_measurement": {
+        "includesLongActor": true,
+        "includesLongOldCode": true,
+        "includesLongNewValue": true,
+        "relevantDescendantCount": 9,
+        "intersectsViewport": true,
+        "box": {
+          "x": 734,
+          "y": 471,
+          "width": 261,
+          "height": 288.328125
+        }
+      },
+      "geometry": {
+        "panel": {
+          "x": 704,
+          "y": 219,
+          "width": 320,
+          "height": 549
+        },
+        "separator": {
+          "x": 705,
+          "y": 219,
+          "width": 4,
+          "height": 549
+        },
+        "grid": {
+          "x": 220,
+          "y": 219,
+          "width": 484,
+          "height": 549
+        },
+        "content": {
+          "x": 722,
+          "y": 136,
+          "width": 285,
+          "height": 987.984375
+        },
+        "gridSeparatorOverlapPx": 0,
+        "separatorContentOverlapPx": 0
+      }
+    },
+    {
+      "file": "screenshots/history-1440x900.png",
+      "width": 1440,
+      "height": 900,
+      "inspector_width": 520,
+      "visual_state": "expanded-batch-detail",
+      "sha256": "34bf7c35d736b8dcfc9614ab2b588d4fca644dcec182562d18737b9a4600a255",
+      "document_overflow_px": 0,
+      "long_text_scanned_count": 33,
+      "long_text_overflow_count": 0,
+      "long_content_measurement": {
+        "includesLongActor": true,
+        "includesLongOldCode": true,
+        "includesLongNewValue": true,
+        "relevantDescendantCount": 8,
+        "intersectsViewport": true,
+        "box": {
+          "x": 958,
+          "y": 634.53125,
+          "width": 445,
+          "height": 248.328125
+        }
+      },
+      "geometry": {
+        "panel": {
+          "x": 920,
+          "y": 201,
+          "width": 520,
+          "height": 699
+        },
+        "separator": {
+          "x": 921,
+          "y": 201,
+          "width": 4,
+          "height": 699
+        },
+        "grid": {
+          "x": 220,
+          "y": 201,
+          "width": 700,
+          "height": 699
+        },
+        "content": {
+          "x": 938,
+          "y": -186,
+          "width": 485,
+          "height": 1898.203125
+        },
+        "gridSeparatorOverlapPx": 0,
+        "separatorContentOverlapPx": 0
+      }
+    },
+    {
+      "file": "screenshots/history-1920x1080.png",
+      "width": 1920,
+      "height": 1080,
+      "inspector_width": 520,
+      "visual_state": "timeline-ledger",
+      "sha256": "14b85745d149ed958525930229a560c4ee77ffa852dca4d8b65eae5b8c8a5cb5",
+      "document_overflow_px": 0,
+      "long_text_scanned_count": 21,
+      "long_text_overflow_count": 0,
+      "long_content_measurement": null,
+      "geometry": {
+        "panel": {
+          "x": 1400,
+          "y": 201,
+          "width": 520,
+          "height": 879
+        },
+        "separator": {
+          "x": 1401,
+          "y": 201,
+          "width": 4,
+          "height": 879
+        },
+        "grid": {
+          "x": 220,
+          "y": 201,
+          "width": 1180,
+          "height": 879
+        },
+        "content": {
+          "x": 1418,
+          "y": 269,
+          "width": 485,
+          "height": 1223.21875
+        },
+        "gridSeparatorOverlapPx": 0,
+        "separatorContentOverlapPx": 0
+      }
+    }
+  ],
+  "visualDiagnostics": {
+    "duplicateNextPageControls": 0,
+    "longTextOverflow": [
+      {
+        "viewport": "1024x768",
+        "visual_state": "current-cell-history",
+        "scanned_element_count": 5,
+        "items": []
+      },
+      {
+        "viewport": "1440x900",
+        "visual_state": "expanded-batch-detail",
+        "scanned_element_count": 33,
+        "items": []
+      },
+      {
+        "viewport": "1920x1080",
+        "visual_state": "timeline-ledger",
+        "scanned_element_count": 21,
+        "items": []
+      }
+    ]
+  },
+  "status": "pass"
+}

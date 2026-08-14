@@ -855,6 +855,11 @@ function SheetEditor({
   const [activeLayerKey, setActiveLayerKey] = useState(
     () => sortedProjectLayers[0]?.layer_key ?? data.rows[0]?.layerKey ?? '',
   )
+  const activeLayerPresentationLabel = useMemo(() => {
+    const layer = sortedProjectLayers.find((candidate) => candidate.layer_key === activeLayerKey)
+    if (layer === undefined) return ''
+    return `LAYER ${layer.step_seq.padStart(3, '0')} · ${layer.layer_id}`
+  }, [activeLayerKey, sortedProjectLayers])
   const [currentLayerOnly, setCurrentLayerOnly] = useState(false)
   const [pendingLayerJump, setPendingLayerJump] = useState<string | null>(null)
   const [pendingConditionFocus, setPendingConditionFocus] = useState<string | null>(null)
@@ -1039,17 +1044,9 @@ function SheetEditor({
     historyMutationRevision,
   )
   useEffect(() => {
-    if (
-      workbenchState.mode === 'history' &&
-      activeLayerKey !== '' &&
-      historyWorkbench.state.filters.layerKey !== activeLayerKey
-    ) {
-      historyWorkbench.onFiltersChange({
-        ...historyWorkbench.state.filters,
-        layerKey: activeLayerKey,
-      })
-    }
-  }, [activeLayerKey, historyWorkbench, workbenchState.mode])
+    if (activeLayerKey === '') return
+    historyWorkbench.onLayerScopeChange(activeLayerKey)
+  }, [activeLayerKey, historyWorkbench.onLayerScopeChange])
   const backboneDiffWorkbench = useBackboneDiffWorkbenchController(
     projectId,
     workbenchState.mode === 'backbone-diff',
@@ -1201,8 +1198,10 @@ function SheetEditor({
       setPendingCoordinateJump(null)
       return
     }
-    gridRef.current?.scrollToCell(conditionId, parameterCode)
-    setCoordinateNavigationStatus('대상 셀로 이동했습니다.')
+    const resolved = gridRef.current?.scrollToCell(conditionId, parameterCode) ?? false
+    setCoordinateNavigationStatus(
+      resolved ? '대상 셀로 이동했습니다.' : '이동할 대상 셀을 찾지 못했습니다.',
+    )
     setPendingCoordinateJump(null)
   }, [pendingCoordinateJump, visibleColumns, persistableDisplayRows])
 
@@ -1421,11 +1420,15 @@ function SheetEditor({
       onCellActivate: (payload) => {
         setActiveLayerKey(payload.layerKey)
         setSelectedCell(payload)
+        historyWorkbench.onLayerScopeChange(payload.layerKey)
+        historyWorkbench.onSelectedCellChange(payload)
       },
       onCellHistoryRequest: (payload) => {
-        if (historyWorkbench.onCellHistoryRequest(payload)) {
-          workbenchState.selectMode('history')
-        }
+        setActiveLayerKey(payload.layerKey)
+        historyWorkbench.onLayerScopeChange(payload.layerKey)
+        if (!historyWorkbench.onSelectedCellChange(payload)) return
+        if (!historyWorkbench.onScopeChange('cell')) return
+        workbenchState.selectMode('history')
       },
     }),
     [
@@ -1438,7 +1441,9 @@ function SheetEditor({
       projectId,
       setPaste,
       pasteCallbackGeneration,
-      historyWorkbench.onCellHistoryRequest,
+      historyWorkbench.onLayerScopeChange,
+      historyWorkbench.onSelectedCellChange,
+      historyWorkbench.onScopeChange,
       workbenchState.selectMode,
     ],
   )
@@ -1565,11 +1570,13 @@ function SheetEditor({
         setPendingCoordinateJump(navigation.target)
         return
       }
-      gridRef.current?.scrollToCell(
+      const resolved = gridRef.current?.scrollToCell(
         String(navigation.target.conditionId),
         String(navigation.target.parameterCode),
+      ) ?? false
+      setCoordinateNavigationStatus(
+        resolved ? '대상 셀로 이동했습니다.' : '이동할 대상 셀을 찾지 못했습니다.',
       )
-      setCoordinateNavigationStatus('대상 셀로 이동했습니다.')
     },
     [
       interaction.canSwitchCategory,
@@ -2101,15 +2108,19 @@ function SheetEditor({
             historyContent={
               <HistoryWorkbench
                 projectId={projectId}
+                currentLayerLabel={activeLayerPresentationLabel}
+                selectedCellAvailable={historyWorkbench.state.cellScope !== null}
                 state={historyWorkbench.state}
                 coverage={historyWorkbench.coverage}
                 cellHistory={historyWorkbench.cellHistory}
                 timelineStatus={historyWorkbench.timelineStatus}
                 timelineError={historyWorkbench.timelineError}
                 nextPageError={historyWorkbench.nextPageError}
+                timelineIsFetchingNextPage={historyWorkbench.timelineIsFetchingNextPage}
                 cellStatus={historyWorkbench.cellStatus}
                 cellError={historyWorkbench.cellError}
                 cellNextPageError={historyWorkbench.cellNextPageError}
+                cellIsFetchingNextPage={historyWorkbench.cellIsFetchingNextPage}
                 batchDetailStatus={historyWorkbench.batchDetailStatus}
                 batchDetailError={historyWorkbench.batchDetailError}
                 batchDetailIsFetchingNextPage={historyWorkbench.batchDetailIsFetchingNextPage}
@@ -2117,6 +2128,7 @@ function SheetEditor({
                 navigationStatus={coordinateNavigationStatus}
                 onFiltersChange={historyWorkbench.onFiltersChange}
                 onModeChange={historyWorkbench.onModeChange}
+                onScopeChange={historyWorkbench.onScopeChange}
                 onBatchToggle={historyWorkbench.onBatchToggle}
                 onRetryBatchDetail={historyWorkbench.onRetryBatchDetail}
                 onLoadMoreBatchDetail={historyWorkbench.onLoadMoreBatchDetail}

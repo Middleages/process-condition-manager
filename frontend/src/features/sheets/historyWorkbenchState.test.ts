@@ -24,6 +24,8 @@ import {
   historyEventTypeLabel,
   invalidateHistoryBatchDetailsForMutation,
   openHistoryCellScope,
+  rememberHistoryCellScope,
+  replaceHistoryLayerScope,
   resolveHistoryActorLabel,
   shouldRequestHistoryBatchDetailOnOpen,
   storeHistoryBatchDetail,
@@ -214,6 +216,39 @@ describe('history workbench state', () => {
       cell_ref: null,
       jump_status: 'available',
     })
+  })
+
+  it('replaces only the Layer filter and defaults to the Layer ledger', () => {
+    const state = openHistoryCellScope(
+      createHistoryWorkbenchState({
+        layerKey: 'L1::10::ETCH',
+        actor: 'engineer',
+        origin: 'manual',
+        eventTypes: ['cell_update'],
+      }),
+      { conditionId: 11, parameterCode: 'ETCH_P001' },
+    )
+
+    const next = replaceHistoryLayerScope(state, 'L2::20::CLEAN')
+
+    expect(next.mode).toBe('timeline')
+    expect(next.filters).toMatchObject({
+      layerKey: 'L2::20::CLEAN',
+      actor: 'engineer',
+      origin: 'manual',
+      eventTypes: ['cell_update'],
+    })
+    expect(next.cellScope).toBeNull()
+  })
+
+  it('remembers a selected cell without opening cell history', () => {
+    const next = rememberHistoryCellScope(createHistoryWorkbenchState(), {
+      conditionId: 22,
+      parameterCode: 'PRESSURE',
+    })
+
+    expect(next.mode).toBe('timeline')
+    expect(next.cellScope).toEqual({ conditionId: 22, parameterCode: 'PRESSURE' })
   })
 })
 

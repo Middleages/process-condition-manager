@@ -1,4 +1,4 @@
-import { act, forwardRef, useImperativeHandle } from 'react'
+import { act, createRef, forwardRef, useImperativeHandle, type Ref } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { Simulate } from 'react-dom/test-utils'
 import { JSDOM } from 'jsdom'
@@ -13,12 +13,13 @@ import {
   type Rectangle,
 } from '@glideapps/glide-data-grid'
 
-import type { ConditionGridProps, SheetChoiceResource } from './types'
+import type { ConditionGridHandle, ConditionGridProps, SheetChoiceResource } from './types'
 import { makeChoiceCell } from './choiceCell'
 import { makeDecimalCell } from './decimalCell'
 
 const dataEditorHarness = vi.hoisted(() => ({
   props: undefined as DataEditorProps | undefined,
+  scrollTo: vi.fn<DataEditorRef['scrollTo']>(),
   getBounds: vi.fn<(col?: number, row?: number) => Rectangle | undefined>(
     () => ({ x: 300, y: 120, width: 150, height: 32 }),
   ),
@@ -36,7 +37,7 @@ vi.mock('@glideapps/glide-data-grid', async (importOriginal) => {
         getBounds: dataEditorHarness.getBounds,
         focus: vi.fn(),
         emit: async () => undefined,
-        scrollTo: vi.fn(),
+        scrollTo: dataEditorHarness.scrollTo,
         remeasureColumns: vi.fn(),
       }))
       return <div data-testid="data-editor" />
@@ -179,6 +180,28 @@ describe('composite cell status rendering priority', () => {
     expect(source).toContain('onGridSelectionChange={handleGridSelectionChange}')
   })
 
+  it('returns whether scrollToCell resolved through the owned imperative grid boundary', () => {
+    const handle = createRef<ConditionGridHandle>()
+    const grid = renderGrid({ data: gridData() }, handle)
+    const dispatchEvent = vi.spyOn(window, 'dispatchEvent')
+    try {
+      let resolved: boolean | undefined
+      let missing: boolean | undefined
+      act(() => {
+        resolved = handle.current?.scrollToCell('1', 'pressure')
+        missing = handle.current?.scrollToCell('missing', 'pressure')
+      })
+
+      expect(dataEditorHarness.scrollTo).toHaveBeenCalledTimes(1)
+      expect(resolved).toBe(true)
+      expect(missing).toBe(false)
+      expect(dispatchEvent).not.toHaveBeenCalled()
+    } finally {
+      dispatchEvent.mockRestore()
+      grid.cleanup()
+    }
+  })
+
   it('makes scrollToCondition scroll vertically, select Step Seq, and request Grid focus', () => {
     const command = source.match(
       /scrollToCondition\(conditionId\)[\s\S]*?(?=\n      scrollToCell)/,
@@ -296,6 +319,7 @@ describe('cell-history context action boundary', () => {
   it('resolves only parameter cells to a domain coordinate', () => {
     expect(resolveCellHistoryRequest([4, 0], columns, rows)).toEqual({
       conditionId: 'condition-11',
+      layerKey: 'layer-1',
       parameterCode: 'amount',
     })
     expect(resolveCellHistoryRequest([0, 0], columns, rows)).toBeNull()
@@ -343,7 +367,11 @@ describe('cell-history context action boundary', () => {
     expect(cellHistoryMenuActionForKey('ArrowDown')).toBeNull()
 
     const open = {
-      target: { conditionId: 'condition-11', parameterCode: 'amount' },
+      target: {
+        conditionId: 'condition-11',
+        layerKey: 'layer-1',
+        parameterCode: 'amount',
+      },
       x: 10,
       y: 20,
     }
@@ -1064,7 +1092,7 @@ function gridData(options: {
   }
 }
 
-function renderGrid(props: ConditionGridProps) {
+function renderGrid(props: ConditionGridProps, ref?: Ref<ConditionGridHandle>) {
   const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>')
   const container = dom.window.document.querySelector<HTMLDivElement>('#root')
   if (container === null) throw new Error('Grid root is unavailable.')
@@ -1089,10 +1117,11 @@ function renderGrid(props: ConditionGridProps) {
   globals.Node = dom.window.Node as unknown as typeof Node
   globals.IS_REACT_ACT_ENVIRONMENT = true
   dataEditorHarness.props = undefined
+  dataEditorHarness.scrollTo.mockClear()
   dataEditorHarness.getBounds.mockClear()
   act(() => {
     root = createRoot(container)
-    root.render(<GlideConditionGrid {...props} />)
+    root.render(<GlideConditionGrid {...props} ref={ref} />)
   })
   return {
     container,

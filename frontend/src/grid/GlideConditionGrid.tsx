@@ -389,6 +389,7 @@ function selectionForCell(col: number, row: number): GridSelection {
 
 export interface CellHistoryRequest {
   conditionId: string
+  layerKey: string
   parameterCode: string
 }
 
@@ -440,13 +441,16 @@ export function resolveCellHistoryRequest(
   visibleColumns: readonly ConditionGridColumn[],
   rows: readonly ConditionGridRow[],
 ): CellHistoryRequest | null {
-  return resolveCellTarget(
+  const target = resolveCellTarget(
     item[0],
     item[1],
     visibleColumns,
     rows,
     IDENTITY_COLUMN_COUNT,
   )
+  const row = rows[item[1]]
+  if (target === null || row === undefined) return null
+  return { ...target, layerKey: row.layerKey }
 }
 
 export function isCellHistoryMenuInvocation(key: string, shiftKey: boolean): boolean {
@@ -1188,14 +1192,14 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
       },
       scrollToCell(conditionId, parameterCode) {
         const target = cellScrollTarget(conditionId, parameterCode, visibleColumns, rows, IDENTITY_COLUMN_COUNT)
-        if (target !== null) {
-          gridRef.current?.scrollTo(target.col, target.row, 'both', 0, 0, {
-            hAlign: 'center',
-            vAlign: 'center',
-          })
-          requestedFocusRef.current = [target.col, target.row]
-          setSelectionState({ layoutAuthority, selection: selectionForCell(target.col, target.row) })
-        }
+        if (target === null) return false
+        gridRef.current?.scrollTo(target.col, target.row, 'both', 0, 0, {
+          hAlign: 'center',
+          vAlign: 'center',
+        })
+        requestedFocusRef.current = [target.col, target.row]
+        setSelectionState({ layoutAuthority, selection: selectionForCell(target.col, target.row) })
+        return true
       },
       scrollToColumn(parameterCode) {
         const col = columnScrollIndex(parameterCode, visibleColumns, IDENTITY_COLUMN_COUNT)
