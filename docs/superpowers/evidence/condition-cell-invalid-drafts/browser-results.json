@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-14T02:57:16.454Z",
+  "generatedAt": "2026-08-14T03:20:21.549Z",
   "baseUrl": "http://127.0.0.1:4181",
   "browser": {
     "playwrightRoot": "/home/appuser/.npm/_npx/fd3bca3c548369c0/node_modules/playwright",
@@ -25,44 +25,54 @@
       "passed": true
     },
     {
-      "name": "invalid numeric raw value remains visible",
+      "name": "invalid numeric cell retains the exact raw value",
       "passed": true,
-      "firstAlertText": "POR · Chamber pressure\n1e3\n숫자로 입력하세요\n저장되지 않음",
-      "firstAccessibleText": "11"
+      "firstAlertText": "숫자로 입력하세요\n입력값은 저장되지 않았습니다\n값을 수정하면 저장됩니다",
+      "firstAccessibleText": "Layer: ETCH (010), 조건 POR, 파라미터 Chamber pressure, 입력값 \"1e3\", 오류 숫자로 입력하세요, 저장되지 않음"
     },
     {
       "name": "invalid numeric marker is painted",
       "passed": true,
-      "firstMarkerPixels": 721
+      "firstMarkerPixels": 732
     },
     {
       "name": "invalid numeric popover explains problem and repair",
       "passed": true,
-      "firstAlertText": "POR · Chamber pressure\n1e3\n숫자로 입력하세요\n저장되지 않음"
+      "firstAlertText": "숫자로 입력하세요\n입력값은 저장되지 않았습니다\n값을 수정하면 저장됩니다"
     },
     {
       "name": "invalid numeric sends zero PATCH calls",
       "passed": true
     },
     {
-      "name": "moving away closes popover but keeps raw draft and marker",
+      "name": "retained invalid number reopens the Decimal editor on exact raw input",
       "passed": true,
-      "retainedAccessibleText": "POR · Chamber pressure, 숫자로 입력하세요, 저장되지 않음",
-      "retainedMarkerPixels": 721
+      "retainedNumberEditorFacts": {
+        "value": "1e3",
+        "inputMode": "decimal"
+      }
     },
     {
-      "name": "returning to invalid cell reopens popover",
+      "name": "moving away closes popover but keeps raw draft and marker",
+      "passed": true,
+      "retainedAccessibleText": "Layer: ETCH (010), 조건 POR, 파라미터 Chamber pressure, 입력값 \"1e3\", 오류 숫자로 입력하세요, 저장되지 않음",
+      "retainedMarkerPixels": 732
+    },
+    {
+      "name": "returning to invalid cell reopens its repair popover",
       "passed": true
     },
     {
-      "name": "out-of-range draft provides repair copy",
+      "name": "out-of-range draft preserves parseable raw input and provides repair copy",
       "passed": true,
-      "rangeAlertText": "POR · Chamber pressure\n999\n허용 범위를 벗어났습니다 · 0–100 Torr 범위로 입력하세요\n저장되지 않음"
+      "rangeAlertText": "허용 범위를 벗어났습니다\n0–100 Torr 범위로 입력하세요\n입력값은 저장되지 않았습니다\n값을 수정하면 저장됩니다",
+      "rangeAccessibleText": "Layer: ETCH (010), 조건 POR, 파라미터 Chamber pressure, 입력값 \"00501.0\", 오류 허용 범위를 벗어났습니다, 0–100 Torr 범위로 입력하세요, 저장되지 않음"
     },
     {
       "name": "required draft provides repair copy",
       "passed": true,
-      "requiredAlertText": "POR · Endpoint time\n필수값을 입력하세요\n저장되지 않음"
+      "requiredAlertText": "필수값을 입력하세요\n입력값은 저장되지 않았습니다\n값을 수정하면 저장됩니다",
+      "requiredAccessibleText": "Layer: ETCH (010), 조건 POR, 파라미터 Endpoint time, 입력값 비어 있음, 오류 필수값을 입력하세요, 저장되지 않음"
     },
     {
       "name": "one valid correction sends exactly one PATCH and leaves the other draft",
@@ -85,13 +95,13 @@
           }
         }
       ],
-      "requiredRawAfterCorrection": "POR · Endpoint time, 필수값을 입력하세요, 저장되지 않음"
+      "requiredRawAfterCorrection": "Layer: ETCH (010), 조건 POR, 파라미터 Endpoint time, 입력값 비어 있음, 오류 필수값을 입력하세요, 저장되지 않음"
     },
     {
       "name": "cancelled route navigation preserves invalid draft",
       "passed": true,
       "url": "http://127.0.0.1:4181/projects/7/sheet",
-      "cancelledDraftText": "POR · Endpoint time, 필수값을 입력하세요, 저장되지 않음"
+      "cancelledDraftText": "Layer: ETCH (010), 조건 POR, 파라미터 Endpoint time, 입력값 비어 있음, 오류 필수값을 입력하세요, 저장되지 않음"
     },
     {
       "name": "confirmed departure discards draft and re-entry restores server value",
@@ -104,9 +114,9 @@
       "placement": "above"
     },
     {
-      "name": "accessible description includes coordinate reason and unsaved state",
+      "name": "accessible description includes Layer, coordinate, exact raw, reason, and unsaved state",
       "passed": true,
-      "accessibleDescription": "Trial 6 · Chamber pressure, 숫자로 입력하세요, 저장되지 않음"
+      "accessibleDescription": "Layer: CMP (030), 조건 Trial 6, 파라미터 Chamber pressure, 입력값 \"1e3\", 오류 숫자로 입력하세요, 저장되지 않음"
     },
     {
       "name": "document overflow bounded at 1024x768",
@@ -129,7 +139,7 @@
       "name": "active invalid cell remains selected and marked at 1024x768",
       "passed": true,
       "selectedCell": "glide-cell-4-17",
-      "markerPixels": 721,
+      "markerPixels": 732,
       "activeCell": {
         "x": 592,
         "y": 736,
@@ -203,7 +213,7 @@
       "name": "active invalid cell remains selected and marked at 1440x900",
       "passed": true,
       "selectedCell": "glide-cell-4-17",
-      "markerPixels": 721,
+      "markerPixels": 732,
       "activeCell": {
         "x": 592,
         "y": 797,
@@ -277,7 +287,7 @@
       "name": "active invalid cell remains selected and marked at 1920x1080",
       "passed": true,
       "selectedCell": "glide-cell-4-17",
-      "markerPixels": 721,
+      "markerPixels": 732,
       "activeCell": {
         "x": 592,
         "y": 797,
@@ -450,7 +460,7 @@
       },
       "popoverIntersectionArea": 0,
       "popoverInsideViewport": true,
-      "markerPixels": 721
+      "markerPixels": 732
     },
     "1440x900": {
       "viewport": {
@@ -501,7 +511,7 @@
       },
       "popoverIntersectionArea": 0,
       "popoverInsideViewport": true,
-      "markerPixels": 721
+      "markerPixels": 732
     },
     "1920x1080": {
       "viewport": {
@@ -552,7 +562,7 @@
       },
       "popoverIntersectionArea": 0,
       "popoverInsideViewport": true,
-      "markerPixels": 721
+      "markerPixels": 732
     }
   },
   "consoleMessages": [

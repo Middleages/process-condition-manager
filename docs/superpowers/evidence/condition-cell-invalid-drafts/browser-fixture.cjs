@@ -516,26 +516,43 @@ async function runBrowser() {
     await editCell(page, 4, 0, '1e3')
     const invalidAlert = page.getByRole('alert')
     await invalidAlert.waitFor({ state: 'visible' })
+    await page.waitForFunction(
+      () => document.querySelector('#glide-cell-4-0')?.textContent?.includes('입력값 "1e3"'),
+    )
     const firstAccessibleText = await page.locator('#glide-cell-4-0').innerText()
     const firstAlertText = await invalidAlert.innerText()
     const firstMarkerPixels = await markerPixelCount(page, 4, 0)
     record(
-      'invalid numeric raw value remains visible',
-      firstAlertText.includes('1e3'),
+      'invalid numeric cell retains the exact raw value',
+      firstAccessibleText.includes('입력값 "1e3"'),
       { firstAlertText, firstAccessibleText },
     )
     record('invalid numeric marker is painted', firstMarkerPixels > 0, { firstMarkerPixels })
     record(
       'invalid numeric popover explains problem and repair',
-      firstAlertText.includes('Chamber pressure') &&
-        firstAlertText.includes('숫자로 입력하세요') &&
-        firstAlertText.includes('저장되지 않음'),
+      firstAlertText.includes('숫자로 입력하세요') &&
+        firstAlertText.includes('입력값은 저장되지 않았습니다') &&
+        firstAlertText.includes('값을 수정하면 저장됩니다'),
       { firstAlertText },
     )
     record(
       'invalid numeric sends zero PATCH calls',
       apiCalls.filter((call) => call.method === 'PATCH').length === 0,
     )
+    await page.keyboard.press('Enter')
+    const retainedNumberEditor = page.locator('#portal input:visible').last()
+    await retainedNumberEditor.waitFor({ state: 'visible' })
+    const retainedNumberEditorFacts = {
+      value: await retainedNumberEditor.inputValue(),
+      inputMode: await retainedNumberEditor.getAttribute('inputmode'),
+    }
+    record(
+      'retained invalid number reopens the Decimal editor on exact raw input',
+      retainedNumberEditorFacts.value === '1e3' && retainedNumberEditorFacts.inputMode === 'decimal',
+      { retainedNumberEditorFacts },
+    )
+    await retainedNumberEditor.press('Escape')
+    await invalidAlert.waitFor({ state: 'visible' })
 
     phase = 'move-away'
     await clickCanvasCell(page, 5, 0)
@@ -547,7 +564,8 @@ async function runBrowser() {
     const retainedMarkerPixels = await markerPixelCount(page, 4, 0)
     record(
       'moving away closes popover but keeps raw draft and marker',
-      retainedAccessibleText.includes('숫자로 입력하세요') &&
+      retainedAccessibleText.includes('입력값 "1e3"') &&
+        retainedAccessibleText.includes('숫자로 입력하세요') &&
         retainedAccessibleText.includes('저장되지 않음') &&
         retainedMarkerPixels > 0,
       { retainedAccessibleText, retainedMarkerPixels },
@@ -556,30 +574,41 @@ async function runBrowser() {
     phase = 'return-to-invalid'
     await clickCanvasCell(page, 4, 0)
     await invalidAlert.waitFor({ state: 'visible' })
-    record('returning to invalid cell reopens popover', (await invalidAlert.innerText()).includes('1e3'))
+    record(
+      'returning to invalid cell reopens its repair popover',
+      (await invalidAlert.innerText()).includes('값을 수정하면 저장됩니다'),
+    )
 
     phase = 'range-and-required'
-    await editCell(page, 4, 0, '999')
+    await editCell(page, 4, 0, '00501.0')
     await page.waitForFunction(
       () => document.querySelector('#glide-cell-4-0')?.textContent?.includes('허용 범위를 벗어났습니다'),
     )
     await invalidAlert.waitFor({ state: 'visible' })
     const rangeAlertText = await invalidAlert.innerText()
+    const rangeAccessibleText = await page.locator('#glide-cell-4-0').innerText()
     record(
-      'out-of-range draft provides repair copy',
+      'out-of-range draft preserves parseable raw input and provides repair copy',
       rangeAlertText.includes('허용 범위를 벗어났습니다') &&
-        rangeAlertText.includes('0–100 Torr 범위로 입력하세요'),
-      { rangeAlertText },
+        rangeAlertText.includes('0–100 Torr 범위로 입력하세요') &&
+        rangeAccessibleText.includes('입력값 "00501.0"'),
+      { rangeAlertText, rangeAccessibleText },
     )
     await editCell(page, 5, 0, '')
     await invalidAlert.waitFor({ state: 'visible' })
+    await page.waitForFunction(
+      () => document.querySelector('#glide-cell-5-0')?.textContent?.includes('입력값 비어 있음'),
+    )
     const requiredAlertText = await invalidAlert.innerText()
+    const requiredAccessibleText = await page.locator('#glide-cell-5-0').innerText()
     record(
       'required draft provides repair copy',
-      requiredAlertText.includes('Endpoint time') &&
-        requiredAlertText.includes('필수값을 입력하세요') &&
-        requiredAlertText.includes('저장되지 않음'),
-      { requiredAlertText },
+      requiredAlertText.includes('필수값을 입력하세요') &&
+        requiredAlertText.includes('입력값은 저장되지 않았습니다') &&
+        requiredAlertText.includes('값을 수정하면 저장됩니다') &&
+        requiredAccessibleText.includes('Endpoint time') &&
+        requiredAccessibleText.includes('입력값 비어 있음'),
+      { requiredAlertText, requiredAccessibleText },
     )
 
     phase = 'correct-one-draft'
@@ -643,9 +672,11 @@ async function runBrowser() {
     )
     const accessibleDescription = await page.locator(`#glide-cell-4-${bottomRowIndex}`).innerText()
     record(
-      'accessible description includes coordinate reason and unsaved state',
-      accessibleDescription.includes('Trial 6') &&
+      'accessible description includes Layer, coordinate, exact raw, reason, and unsaved state',
+      accessibleDescription.includes('Layer: CMP (030)') &&
+        accessibleDescription.includes('Trial 6') &&
         accessibleDescription.includes('Chamber pressure') &&
+        accessibleDescription.includes('입력값 "1e3"') &&
         accessibleDescription.includes('숫자로 입력하세요') &&
         accessibleDescription.includes('저장되지 않음'),
       { accessibleDescription },
