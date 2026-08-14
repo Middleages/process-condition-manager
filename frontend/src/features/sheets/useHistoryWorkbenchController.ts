@@ -65,10 +65,6 @@ export interface HistoryWorkbenchController {
   onBatchToggle: (item: HistoryTimelineItemOut, shouldRequestDetail: boolean) => void
   onRetryBatchDetail: (item: HistoryTimelineItemOut) => void
   onLoadMoreBatchDetail: (item: HistoryTimelineItemOut, cursor: string | null) => void
-  onCellHistoryRequest: (target: {
-    conditionId: string
-    parameterCode: string
-  }) => boolean
   onLoadMoreTimeline: (cursor: string | null) => void
   onLoadMoreCell: (cursor: string | null) => void
   onRetryTimeline: () => void
@@ -527,6 +523,7 @@ export function useHistoryWorkbenchController(
     (layerKey: string) => {
       const normalizedLayerKey = layerKey.trim()
       if (normalizedLayerKey.length === 0) return
+      if (stateRef.current.filters.layerKey === normalizedLayerKey) return
       detailRequestTokenRef.current += 1
       commitDetailRequest({
         key: null,
@@ -625,14 +622,6 @@ export function useHistoryWorkbenchController(
     [requestBatchDetail],
   )
 
-  const onCellHistoryRequest = useCallback(
-    (target: { conditionId: string; parameterCode: string }): boolean => {
-      if (!onSelectedCellChange(target)) return false
-      return onScopeChange('cell')
-    },
-    [onScopeChange, onSelectedCellChange],
-  )
-
   const onLoadMoreTimeline = useCallback(
     (_cursor: string | null) => {
       if (!timelineEnabled || !timelineQuery.hasNextPage || timelineQuery.isFetchingNextPage) return
@@ -714,7 +703,6 @@ export function useHistoryWorkbenchController(
     onBatchToggle,
     onRetryBatchDetail,
     onLoadMoreBatchDetail,
-    onCellHistoryRequest,
     onLoadMoreTimeline,
     onLoadMoreCell,
     onRetryTimeline,

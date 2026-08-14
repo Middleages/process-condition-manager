@@ -20,6 +20,11 @@ import type {
 } from '@/api/history'
 import type { ProjectOut, SheetOut } from '@/api/types'
 import type { ConditionGridHandle, ConditionGridProps } from '@/grid'
+import type { HistoryWorkbenchProps } from './HistoryWorkbench'
+
+const historyWorkbenchCapture = vi.hoisted(() => ({
+  props: null as HistoryWorkbenchProps | null,
+}))
 
 let mockScrollToCondition = vi.fn<(conditionId: string) => void>()
 let mockScrollToCell = vi.fn<(conditionId: string, parameterCode: string) => void>()
@@ -100,6 +105,16 @@ vi.mock('@/grid', async (importOriginal) => {
                 type="button"
               >
                 cell {row.id}
+              </button>
+              <button
+                data-grid-cell-history={row.id}
+                onClick={() => callbacks?.onCellHistoryRequest?.({
+                  conditionId: row.id,
+                  parameterCode: data.columns[0]?.key ?? '',
+                })}
+                type="button"
+              >
+                history {row.id}
               </button>
               <button
                 data-grid-condition-activate={row.id}
@@ -202,10 +217,14 @@ type MockHistoryController = {
   batchDetailNextPageError: string | null
   onFiltersChange: (filters: unknown) => void
   onModeChange: (mode: 'timeline' | 'cell') => void
+  onLayerScopeChange: (layerKey: string) => void
+  onSelectedCellChange: (
+    target: { conditionId: string; parameterCode: string } | null,
+  ) => boolean
+  onScopeChange: (mode: 'timeline' | 'cell') => boolean
   onBatchToggle: (item: HistoryTimelineItemOut, shouldRequestDetail: boolean) => void
   onRetryBatchDetail: (item: HistoryTimelineItemOut) => void
   onLoadMoreBatchDetail: (item: HistoryTimelineItemOut, cursor: string | null) => void
-  onCellHistoryRequest: (target: { conditionId: string; parameterCode: string }) => boolean
   onLoadMoreTimeline: (cursor: string | null) => void
   onLoadMoreCell: (cursor: string | null) => void
   onRetryTimeline: () => void
@@ -227,6 +246,17 @@ vi.mock('./SheetWorkbench', async (importOriginal) => {
 vi.mock('./useHistoryWorkbenchController', () => ({
   useHistoryWorkbenchController: () => mockHistoryWorkbenchController,
 }))
+vi.mock('./HistoryWorkbench', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./HistoryWorkbench')>()
+  const React = await import('react')
+  return {
+    ...actual,
+    HistoryWorkbench: (props: HistoryWorkbenchProps) => {
+      historyWorkbenchCapture.props = props
+      return React.createElement(actual.HistoryWorkbench, props)
+    },
+  }
+})
 vi.mock('./useBackboneDiffWorkbenchController', () => ({
   useBackboneDiffWorkbenchController: () => mockBackboneDiffWorkbenchController,
 }))
@@ -257,6 +287,7 @@ beforeEach(() => {
   mockScrollToColumn = vi.fn()
   mockSheetWorkbenchState = createMockSheetWorkbenchState()
   mockHistoryWorkbenchController = createMockHistoryController()
+  historyWorkbenchCapture.props = null
   mockBackboneDiffWorkbenchController = createMockBackboneDiffWorkbenchController()
   vi.mocked(addCondition).mockReset()
   vi.mocked(deleteCondition).mockReset()
@@ -383,7 +414,7 @@ function createMockSheetWorkbenchState(
     open: () => undefined,
     close: () => undefined,
     toggle: () => undefined,
-    selectMode: () => undefined,
+    selectMode: vi.fn(),
     resizeBy: () => undefined,
     setHeight: () => undefined,
     panelHeight: 300,
@@ -412,10 +443,12 @@ function createMockHistoryController(
     batchDetailNextPageError: null,
     onFiltersChange: () => undefined,
     onModeChange: () => undefined,
+    onLayerScopeChange: vi.fn(),
+    onSelectedCellChange: vi.fn(() => true),
+    onScopeChange: vi.fn(() => true),
     onBatchToggle: () => undefined,
     onRetryBatchDetail: () => undefined,
     onLoadMoreBatchDetail: () => undefined,
-    onCellHistoryRequest: () => true,
     onLoadMoreTimeline: () => undefined,
     onLoadMoreCell: () => undefined,
     onRetryTimeline: () => undefined,
@@ -1129,6 +1162,104 @@ describe('SheetView focus shell integration', () => {
     expect(html).toContain('aria-expanded="true"')
   })
 
+  it('passes the active Layer presentation and selected-cell availability to history', () => {
+    mockSheetWorkbenchState = createMockSheetWorkbenchState('history')
+    mockHistoryWorkbenchController = createMockHistoryController(
+      createHistoryWorkbenchState({ actor: 'dev-admin' }),
+    )
+    const interactive = renderInteractiveSheet()
+
+    try {
+      click(interactive, layerButton(interactive.container, 'L1::30::CMP'))
+
+      const historyProps = historyWorkbenchCapture.props as HistoryWorkbenchProps
+      expect(historyProps.currentLayerLabel).toBe('LAYER 030 · CMP')
+      expect(historyProps.selectedCellAvailable).toBe(false)
+    } finally {
+      interactive.cleanup()
+    }
+  })
+
+  it('remembers ordinary cell activation without changing history scope or outer mode', () => {
+    mockSheetWorkbenchState = createMockSheetWorkbenchState('history')
+    const onSelectedCellChange = vi.fn(() => true)
+    const onScopeChange = vi.fn(() => true)
+    mockHistoryWorkbenchController = {
+      ...createMockHistoryController(),
+      onSelectedCellChange,
+      onScopeChange,
+    }
+    const interactive = renderInteractiveSheet()
+
+    try {
+      click(interactive, gridCallbackButton(interactive.container, 'cell', '33'))
+
+      expect(onSelectedCellChange).toHaveBeenCalledWith({
+        conditionId: '33',
+        layerKey: 'L1::30::CMP',
+        parameterCode: 'ETCH_P001',
+      })
+      expect(onScopeChange).not.toHaveBeenCalled()
+      expect(mockSheetWorkbenchState.selectMode).not.toHaveBeenCalled()
+    } finally {
+      interactive.cleanup()
+    }
+  })
+
+  it('opens cell history only through the explicit grid history request', () => {
+    const onSelectedCellChange = vi.fn(() => true)
+    const onScopeChange = vi.fn(() => true)
+    mockHistoryWorkbenchController = {
+      ...createMockHistoryController(),
+      onSelectedCellChange,
+      onScopeChange,
+    }
+    const interactive = renderInteractiveSheet()
+
+    try {
+      click(interactive, gridHistoryButton(interactive.container, '33'))
+
+      expect(onSelectedCellChange).toHaveBeenCalledWith({
+        conditionId: '33',
+        parameterCode: 'ETCH_P001',
+      })
+      expect(onScopeChange).toHaveBeenCalledWith('cell')
+      expect(mockSheetWorkbenchState.selectMode).toHaveBeenCalledWith('history')
+      expect(onSelectedCellChange.mock.invocationCallOrder[0]).toBeLessThan(
+        onScopeChange.mock.invocationCallOrder[0]!,
+      )
+      expect(onScopeChange.mock.invocationCallOrder[0]).toBeLessThan(
+        vi.mocked(mockSheetWorkbenchState.selectMode).mock.invocationCallOrder[0]!,
+      )
+    } finally {
+      interactive.cleanup()
+    }
+  })
+
+  it('sends Layer changes through the scope boundary without reconstructing filters', () => {
+    mockSheetWorkbenchState = createMockSheetWorkbenchState('history')
+    const onLayerScopeChange = vi.fn()
+    const onFiltersChange = vi.fn()
+    mockHistoryWorkbenchController = {
+      ...createMockHistoryController(),
+      onFiltersChange,
+      onLayerScopeChange,
+    }
+    const interactive = renderInteractiveSheet()
+
+    try {
+      onLayerScopeChange.mockClear()
+      onFiltersChange.mockClear()
+      click(interactive, layerButton(interactive.container, 'L1::20::CLEAN'))
+
+      expect(onLayerScopeChange).toHaveBeenCalledOnce()
+      expect(onLayerScopeChange).toHaveBeenCalledWith('L1::20::CLEAN')
+      expect(onFiltersChange).not.toHaveBeenCalled()
+    } finally {
+      interactive.cleanup()
+    }
+  })
+
   it('renders the backbone diff workbench in the same shared host without a second resizer', () => {
     mockSheetWorkbenchState = createMockSheetWorkbenchState('backbone-diff')
 
@@ -1266,7 +1397,7 @@ describe('SheetView focus shell integration', () => {
     expect(sheetViewSource).toContain('<HistoryWorkbench')
     expect(sheetViewSource).toContain('onCellHistoryRequest: (payload) => {')
     expect(sheetViewSource).toMatch(
-      /if \(historyWorkbench\.onCellHistoryRequest\(payload\)\) \{\s*workbenchState\.selectMode\('history'\)/,
+      /if \(!historyWorkbench\.onSelectedCellChange\(payload\)\) return\s*if \(!historyWorkbench\.onScopeChange\('cell'\)\) return\s*workbenchState\.selectMode\('history'\)/,
     )
     expect(sheetViewSource).toContain('activateWorkbenchCoordinate')
     expect(sheetViewSource).toContain('onRetryBatchDetail={historyWorkbench.onRetryBatchDetail}')
@@ -2397,6 +2528,14 @@ function gridCallbackButton(
     `[data-grid-${callback}-activate="${conditionId}"]`,
   )
   if (button === null) throw new Error(`${callback} callback for ${conditionId} is unavailable.`)
+  return button
+}
+
+function gridHistoryButton(container: HTMLElement, conditionId: string): HTMLButtonElement {
+  const button = container.querySelector<HTMLButtonElement>(
+    `[data-grid-cell-history="${conditionId}"]`,
+  )
+  if (button === null) throw new Error(`Cell history callback for ${conditionId} is unavailable.`)
   return button
 }
 

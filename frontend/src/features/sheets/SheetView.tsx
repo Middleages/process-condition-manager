@@ -855,6 +855,11 @@ function SheetEditor({
   const [activeLayerKey, setActiveLayerKey] = useState(
     () => sortedProjectLayers[0]?.layer_key ?? data.rows[0]?.layerKey ?? '',
   )
+  const activeLayerPresentationLabel = useMemo(() => {
+    const layer = sortedProjectLayers.find((candidate) => candidate.layer_key === activeLayerKey)
+    if (layer === undefined) return ''
+    return `LAYER ${layer.step_seq.padStart(3, '0')} · ${layer.layer_id}`
+  }, [activeLayerKey, sortedProjectLayers])
   const [currentLayerOnly, setCurrentLayerOnly] = useState(false)
   const [pendingLayerJump, setPendingLayerJump] = useState<string | null>(null)
   const [pendingConditionFocus, setPendingConditionFocus] = useState<string | null>(null)
@@ -1039,17 +1044,9 @@ function SheetEditor({
     historyMutationRevision,
   )
   useEffect(() => {
-    if (
-      workbenchState.mode === 'history' &&
-      activeLayerKey !== '' &&
-      historyWorkbench.state.filters.layerKey !== activeLayerKey
-    ) {
-      historyWorkbench.onFiltersChange({
-        ...historyWorkbench.state.filters,
-        layerKey: activeLayerKey,
-      })
-    }
-  }, [activeLayerKey, historyWorkbench, workbenchState.mode])
+    if (workbenchState.mode !== 'history' || activeLayerKey === '') return
+    historyWorkbench.onLayerScopeChange(activeLayerKey)
+  }, [activeLayerKey, historyWorkbench.onLayerScopeChange, workbenchState.mode])
   const backboneDiffWorkbench = useBackboneDiffWorkbenchController(
     projectId,
     workbenchState.mode === 'backbone-diff',
@@ -1421,11 +1418,12 @@ function SheetEditor({
       onCellActivate: (payload) => {
         setActiveLayerKey(payload.layerKey)
         setSelectedCell(payload)
+        historyWorkbench.onSelectedCellChange(payload)
       },
       onCellHistoryRequest: (payload) => {
-        if (historyWorkbench.onCellHistoryRequest(payload)) {
-          workbenchState.selectMode('history')
-        }
+        if (!historyWorkbench.onSelectedCellChange(payload)) return
+        if (!historyWorkbench.onScopeChange('cell')) return
+        workbenchState.selectMode('history')
       },
     }),
     [
@@ -1438,7 +1436,8 @@ function SheetEditor({
       projectId,
       setPaste,
       pasteCallbackGeneration,
-      historyWorkbench.onCellHistoryRequest,
+      historyWorkbench.onSelectedCellChange,
+      historyWorkbench.onScopeChange,
       workbenchState.selectMode,
     ],
   )
@@ -2101,6 +2100,8 @@ function SheetEditor({
             historyContent={
               <HistoryWorkbench
                 projectId={projectId}
+                currentLayerLabel={activeLayerPresentationLabel}
+                selectedCellAvailable={historyWorkbench.state.cellScope !== null}
                 state={historyWorkbench.state}
                 coverage={historyWorkbench.coverage}
                 cellHistory={historyWorkbench.cellHistory}
@@ -2117,6 +2118,7 @@ function SheetEditor({
                 navigationStatus={coordinateNavigationStatus}
                 onFiltersChange={historyWorkbench.onFiltersChange}
                 onModeChange={historyWorkbench.onModeChange}
+                onScopeChange={historyWorkbench.onScopeChange}
                 onBatchToggle={historyWorkbench.onBatchToggle}
                 onRetryBatchDetail={historyWorkbench.onRetryBatchDetail}
                 onLoadMoreBatchDetail={historyWorkbench.onLoadMoreBatchDetail}

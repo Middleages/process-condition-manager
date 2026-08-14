@@ -39,8 +39,8 @@ import {
 
 export interface HistoryWorkbenchProps {
   projectId: number
-  currentLayerLabel?: string
-  selectedCellAvailable?: boolean
+  currentLayerLabel: string
+  selectedCellAvailable: boolean
   state: HistoryWorkbenchState
   coverage: HistoryCoverageOut
   cellHistory?: HistoryCellHistoryOut | null
@@ -138,8 +138,8 @@ export function applyHistoryWorkbenchFilterDraft(
 
 export function HistoryWorkbench({
   projectId,
-  currentLayerLabel = '',
-  selectedCellAvailable = false,
+  currentLayerLabel,
+  selectedCellAvailable,
   state,
   coverage,
   cellHistory = null,

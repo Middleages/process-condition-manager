@@ -76,6 +76,28 @@ describe('useHistoryWorkbenchController seams', () => {
     ).toBe(false)
   })
 
+  it('keeps current-Layer detail authority when the Layer boundary repeats', async () => {
+    const detailRequest = deferred<HistoryDetailOut>()
+    historyApi.getHistoryTimeline.mockResolvedValue(timelinePage(1, null))
+    historyApi.getHistoryBatchDetail.mockReturnValueOnce(detailRequest.promise)
+    const controller = renderController(true)
+    const item = batchTimelineItem(72)
+
+    act(() => controller.result.current.onLayerScopeChange('L1::10::ETCH'))
+    await flushHistoryRequests()
+    act(() => controller.result.current.onBatchToggle(item, true))
+    await flushHistoryRequests()
+
+    act(() => controller.result.current.onLayerScopeChange('L1::10::ETCH'))
+    detailRequest.resolve(detailPage(702, null))
+    await flushHistoryRequests()
+
+    expect(controller.result.current.state.batchDetailCache).toMatchObject({
+      'scope-72::batch-72': { items: [{ event_id: 702 }] },
+    })
+    expect(controller.result.current.batchDetailStatus).toBe('ready')
+  })
+
   it('does not publish a late cell result after Layer scope replaces its authority', async () => {
     const cellRequest = deferred<HistoryCellHistoryOut>()
     historyApi.getHistoryTimeline.mockResolvedValue(timelinePage(1, null))
