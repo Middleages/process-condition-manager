@@ -469,6 +469,55 @@ describe('invalid draft Glide boundary', () => {
     }
   })
 
+  it('opens a retained invalid cell editor with the raw draft instead of its accessible description', () => {
+    const grid = renderGrid({ data: gridData({ invalid: true }) })
+    let editorRoot: Root | null = null
+    try {
+      const cell = dataEditorProps().getCellContent([4, 0])
+      const provided = dataEditorProps().provideEditor?.(cell)
+      expect(provided).toBeDefined()
+      expect(typeof provided).toBe('object')
+      if (provided === undefined || typeof provided !== 'object') return
+
+      const editorHost = grid.container.ownerDocument.createElement('div')
+      grid.container.ownerDocument.body.append(editorHost)
+      const elementPrototype = grid.container.ownerDocument.defaultView?.HTMLElement.prototype
+      if (elementPrototype !== undefined) {
+        Object.defineProperties(elementPrototype, {
+          attachEvent: { configurable: true, value: vi.fn() },
+          detachEvent: { configurable: true, value: vi.fn() },
+        })
+      }
+      const Editor = provided.editor
+      const onChange = vi.fn()
+      editorRoot = createRoot(editorHost)
+      act(() => {
+        editorRoot?.render(
+          <Editor
+            forceEditMode
+            isHighlighted={false}
+            onChange={onChange}
+            onFinishedEditing={vi.fn()}
+            target={{ x: 300, y: 120, width: 150, height: 32 }}
+            theme={{} as never}
+            value={cell as EditableGridCell}
+          />,
+        )
+      })
+
+      expect(editorHost.querySelector<HTMLInputElement>('input')?.value).toBe('abc')
+      expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
+        kind: GridCellKind.Text,
+        data: 'abc',
+        displayData: 'abc',
+        copyData: 'abc',
+      }))
+    } finally {
+      act(() => editorRoot?.unmount())
+      grid.cleanup()
+    }
+  })
+
   it('draws an inset invalid boundary and non-color marker without changing row geometry', () => {
     const grid = renderGrid({ data: gridData({ invalid: true }) })
     try {

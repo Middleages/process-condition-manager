@@ -38,7 +38,9 @@ import {
   type GridMouseEventArgs,
   type GridSelection,
   type Item,
+  type ProvideEditorComponent,
   type Rectangle,
+  type TextCell,
   type Theme,
 } from '@glideapps/glide-data-grid'
 import '@glideapps/glide-data-grid/dist/index.css'
@@ -123,6 +125,74 @@ interface InvalidDraftPopoverPosition {
 
 const INVALID_DRAFT_POPOVER_SIZE = { width: 280, height: 104 }
 const INVALID_DRAFT_POPOVER_MARGIN = 8
+
+interface InvalidDraftTextCell extends TextCell {
+  readonly invalidDraftRawValue: string
+}
+
+function isInvalidDraftTextCell(cell: GridCell): cell is InvalidDraftTextCell {
+  return cell.kind === GridCellKind.Text && 'invalidDraftRawValue' in cell
+}
+
+function invalidDraftEditingCell(
+  cell: InvalidDraftTextCell,
+  rawValue: string,
+): InvalidDraftTextCell {
+  return {
+    ...cell,
+    data: rawValue,
+    displayData: rawValue,
+    copyData: rawValue,
+    invalidDraftRawValue: rawValue,
+  }
+}
+
+const InvalidDraftEditor: ProvideEditorComponent<GridCell> = ({
+  value,
+  onChange,
+  onFinishedEditing,
+}) => {
+  const invalidCell = isInvalidDraftTextCell(value) ? value : null
+
+  useEffect(() => {
+    if (invalidCell === null || invalidCell.data === invalidCell.invalidDraftRawValue) return
+    onChange(invalidDraftEditingCell(invalidCell, invalidCell.invalidDraftRawValue))
+  }, [invalidCell, onChange])
+
+  if (invalidCell === null) return null
+
+  const finish = (): void => {
+    onFinishedEditing(invalidDraftEditingCell(invalidCell, invalidCell.invalidDraftRawValue))
+  }
+
+  return (
+    <div className="grid min-w-0 gap-1 bg-surface p-2">
+      <input
+        autoFocus
+        className="input w-full font-mono"
+        value={invalidCell.invalidDraftRawValue}
+        onChange={(event) => onChange(invalidDraftEditingCell(invalidCell, event.currentTarget.value))}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') {
+            event.preventDefault()
+            event.stopPropagation()
+            finish()
+          } else if (event.key === 'Escape') {
+            event.preventDefault()
+            event.stopPropagation()
+            onFinishedEditing(undefined)
+          }
+        }}
+      />
+    </div>
+  )
+}
+
+function provideInvalidDraftEditor(cell: GridCell) {
+  return isInvalidDraftTextCell(cell)
+    ? { editor: InvalidDraftEditor, disablePadding: true }
+    : undefined
+}
 
 /** Prefer below the cell, flip above at the bottom edge, and clamp inside the viewport. */
 export function invalidDraftPopoverPlacement(
@@ -672,15 +742,17 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
         const reason = invalidDraft.constraint === null
           ? invalidDraft.message
           : `${invalidDraft.message}, ${invalidDraft.constraint}`
-        return {
+        const invalidCell: InvalidDraftTextCell = {
           kind: GridCellKind.Text,
           data: `${rowData.conditionLabel} · ${column.headerName}, ${reason}, 저장되지 않음`,
           displayData: invalidDraft.rawValue,
           copyData: invalidDraft.rawValue,
+          invalidDraftRawValue: invalidDraft.rawValue,
           allowOverlay: !readOnly,
           readonly: readOnly,
           themeOverride,
         }
+        return invalidCell
       }
 
       if (column.valueType === 'number') {
@@ -1042,6 +1114,7 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
         onGridSelectionChange={handleGridSelectionChange}
         onVisibleRegionChanged={refreshInvalidDraftPopover}
         onColumnResizeEnd={refreshInvalidDraftPopover}
+        provideEditor={provideInvalidDraftEditor}
         onCellEdited={readOnly ? undefined : handleCellEdited}
         onCellClicked={handleCellClicked}
         onCellContextMenu={handleCellContextMenu}
