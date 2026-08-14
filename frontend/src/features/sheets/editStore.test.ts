@@ -9,6 +9,8 @@ import {
   fromCellUpdateOut,
   removeSavedCells,
   pruneInvalidDraftMap,
+  selectInvalidDraftCount,
+  selectInvalidDrafts,
   setDirtyCell,
   setDirtyCells,
   toCellUpdateIn,
@@ -192,7 +194,17 @@ describe('useEditStore monotonic allocator', () => {
     useEditStore.getState().clearInvalidDraft('1', 'spin')
     expect(useEditStore.getState().invalidDrafts.has(dirtyKey('1', 'spin'))).toBe(false)
     expect(useEditStore.getState().invalidDrafts.has(dirtyKey('1', 'mode'))).toBe(true)
+    expect(selectInvalidDrafts(useEditStore.getState())).toBe(useEditStore.getState().invalidDrafts)
+    expect(selectInvalidDraftCount(useEditStore.getState())).toBe(1)
+    const revisionBefore = useEditStore.getState().revision
+    const displayBefore = useEditStore.getState().displayGeneration
+    const persistedBefore = useEditStore.getState().persistedGeneration
     useEditStore.getState().clearAll()
     expect(useEditStore.getState().invalidDrafts.size).toBe(0)
+    expect(selectInvalidDrafts(useEditStore.getState()).size).toBe(0)
+    expect(selectInvalidDraftCount(useEditStore.getState())).toBe(0)
+    expect(useEditStore.getState().revision).toBe(revisionBefore)
+    expect(useEditStore.getState().displayGeneration).toBe(displayBefore)
+    expect(useEditStore.getState().persistedGeneration).toBe(persistedBefore)
   })
 })
