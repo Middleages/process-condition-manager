@@ -17,6 +17,9 @@ const baseColumn = {
   description: null,
   choiceSetCode: null,
   choiceSetVersion: null,
+  required: false,
+  minValue: null,
+  maxValue: null,
 } as const
 
 const textColumn: ConditionGridColumn = { ...baseColumn, key: 'memo', valueType: 'text' }
@@ -27,6 +30,14 @@ const choiceColumn: ConditionGridColumn = {
   valueType: 'choice',
   choiceSetCode: 'equipment_mode',
   choiceSetVersion: 7,
+}
+
+const boundedNumber: ConditionGridColumn = {
+  ...numberColumn,
+  required: true,
+  minValue: '0',
+  maxValue: '500',
+  unit: 'kPa',
 }
 
 const aggregate: ChoiceOptionAggregate = {
@@ -85,6 +96,33 @@ describe('validateCellCandidate', () => {
     expect(validateCellCandidate(numberColumn, null, raw)).toEqual(
       expect.objectContaining({ ok: false, code: 'invalid_decimal' }),
     )
+  })
+
+  it('requires a value for required columns', () => {
+    expect(validateSingleCellEdit(boundedNumber, '100', '')).toEqual({
+      ok: false,
+      code: 'required_value',
+      message: '필수값을 입력하세요',
+      constraint: null,
+      rawValue: '',
+    })
+  })
+
+  it('rejects normalized decimals outside configured bounds without number conversion', () => {
+    expect(validateSingleCellEdit(boundedNumber, '100', '501')).toEqual({
+      ok: false,
+      code: 'number_out_of_range',
+      message: '허용 범위를 벗어났습니다',
+      constraint: '0–500 kPa 범위로 입력하세요',
+      rawValue: '501',
+    })
+    expect(
+      validateSingleCellEdit(
+        { ...boundedNumber, minValue: '9007199254740993', maxValue: null },
+        null,
+        '9007199254740992.9999',
+      ),
+    ).toMatchObject({ ok: false, code: 'number_out_of_range' })
   })
 
   it('accepts a changed active known choice', () => {

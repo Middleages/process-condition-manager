@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { ProjectLayerOut, SheetColumnOut, SheetOut } from '@/api/types'
-import type { SheetChoiceResource } from '@/grid/types'
+import type { ConditionGridColumn, SheetChoiceResource } from '@/grid/types'
 
 import type { PersistedCell } from './editStore'
 import {
@@ -100,7 +100,13 @@ const emptyProjectLayer: ProjectLayerOut = {
 describe('toConditionGridData', () => {
   it('orders columns by sort_order and maps to the grid contract', () => {
     const data = toConditionGridData(sheet)
+    const spinSpeedColumn: ConditionGridColumn = data.columns[1]
     expect(data.columns.map((c) => c.key)).toEqual(['pr_type', 'spin_speed'])
+    expect(spinSpeedColumn).toMatchObject({
+      required: true,
+      minValue: '100',
+      maxValue: '2000',
+    })
     expect(data.columns[0]).toEqual({
       key: 'pr_type',
       headerName: 'PR Type',

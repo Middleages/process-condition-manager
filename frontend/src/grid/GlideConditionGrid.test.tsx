@@ -231,7 +231,7 @@ describe('cell-history context action boundary', () => {
       valueType: 'number' as const,
       categoryCode: null,
       choiceSetCode: null,
-      choiceSetVersion: null,
+      choiceSetVersion: null, required: false, minValue: null, maxValue: null,
     },
   ]
   const rows = [

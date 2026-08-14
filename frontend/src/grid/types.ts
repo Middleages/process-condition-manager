@@ -48,6 +48,8 @@ export interface SheetChoiceResource {
 
 export type CellValidationErrorCode =
   | 'invalid_decimal'
+  | 'required_value'
+  | 'number_out_of_range'
   | 'choice_resource_unavailable'
   | 'choice_set_inactive'
   | 'choice_option_inactive'
@@ -75,6 +77,9 @@ export interface ConditionGridColumn {
   description?: string | null // 헤더 툴팁(축약 컬럼명 전체 의미)
   choiceSetCode: string | null
   choiceSetVersion: number | null
+  required: boolean
+  minValue: string | null
+  maxValue: string | null
   pinned?: boolean // 좌측 고정(식별 컬럼)
 }
 

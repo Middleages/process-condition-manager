@@ -26,7 +26,7 @@ const columns = [
     valueType: 'number' as const,
     categoryCode: 'process',
     choiceSetCode: null,
-    choiceSetVersion: null,
+    choiceSetVersion: null, required: false, minValue: null, maxValue: null,
   },
   {
     key: 'equipment',
@@ -34,7 +34,7 @@ const columns = [
     valueType: 'text' as const,
     categoryCode: 'equipment',
     choiceSetCode: null,
-    choiceSetVersion: null,
+    choiceSetVersion: null, required: false, minValue: null, maxValue: null,
   },
 ]
 const rows = [
