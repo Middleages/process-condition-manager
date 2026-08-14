@@ -62,8 +62,8 @@ edits rather than a viewport row or column index.
 
 ## 4. Grid presentation and accessibility
 
-The Grid continues to use fixed 36px rows. An invalid cell displays its raw draft rather than the
-saved value and adds:
+The Grid continues to use its pre-existing fixed 32px rows. An invalid cell displays its raw draft
+rather than the saved value and adds:
 
 - a 2px red inset boundary;
 - a non-color error marker;

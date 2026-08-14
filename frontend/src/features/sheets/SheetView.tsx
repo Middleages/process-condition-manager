@@ -60,7 +60,6 @@ import { useUnsavedChanges } from '@/shared/navigation/useUnsavedChanges'
 
 import {
   applyDirtyToRows,
-  applyInvalidDraftsToRows,
   selectDirtyCells,
   selectInvalidDrafts,
   useEditStore,
@@ -898,10 +897,6 @@ function SheetEditor({
     () => applyDirtyToRows(data.rows, dirtyCells),
     [data.rows, dirtyCells],
   )
-  const displayRows = useMemo(
-    () => applyInvalidDraftsToRows(persistableDisplayRows, invalidDrafts),
-    [persistableDisplayRows, invalidDrafts],
-  )
   const choiceAuthorizationEpoch = useMemo(
     () => sheetChoiceAuthorizationEpoch(choiceResources),
     [choiceResources],
@@ -958,7 +953,7 @@ function SheetEditor({
   const gridData = useMemo(
     () => ({
       ...data,
-      rows: rowsForLayerViewport(displayRows, activeLayerKey, currentLayerOnly),
+      rows: rowsForLayerViewport(persistableDisplayRows, activeLayerKey, currentLayerOnly),
       statuses: validation.statuses,
       invalidDrafts: [...invalidDrafts.values()],
       choiceResources,
@@ -967,7 +962,7 @@ function SheetEditor({
       activeLayerKey,
       currentLayerOnly,
       data,
-      displayRows,
+      persistableDisplayRows,
       invalidDrafts,
       validation.statuses,
       choiceResources,
@@ -1003,12 +998,12 @@ function SheetEditor({
   )
   const activeLayerValidationIssues = useMemo(() => {
     const activeConditionIds = new Set(
-      displayRows
+      persistableDisplayRows
         .filter((row) => row.layerKey === activeLayerKey)
         .map((row) => row.id),
     )
     return validationIssues.filter((issue) => activeConditionIds.has(issue.conditionId))
-  }, [activeLayerKey, displayRows, validationIssues])
+  }, [activeLayerKey, persistableDisplayRows, validationIssues])
   const activeLayerValidationSummary = useMemo(
     () => summarizeIssues(activeLayerValidationIssues),
     [activeLayerValidationIssues],
@@ -1115,17 +1110,17 @@ function SheetEditor({
       setCoordinateNavigationStatus('붙여넣기를 적용 또는 취소한 뒤 이동해 주세요.')
       return
     }
-    const conditionId = firstConditionIdForLayer(displayRows, layerKey)
+    const conditionId = firstConditionIdForLayer(persistableDisplayRows, layerKey)
     setPendingLayerJump(conditionId)
     setActiveLayerKey(layerKey)
     setRecentLayerKeys((current) => updateRecentLayerKeys(current, layerKey))
     setCoordinateNavigationStatus(null)
-  }, [displayRows])
+  }, [persistableDisplayRows])
   const changeCurrentLayerOnly = useCallback((currentOnly: boolean) => {
-    const conditionId = firstConditionIdForLayer(displayRows, activeLayerKey)
+    const conditionId = firstConditionIdForLayer(persistableDisplayRows, activeLayerKey)
     setPendingLayerJump(conditionId)
     setCurrentLayerOnly(currentOnly)
-  }, [activeLayerKey, displayRows])
+  }, [activeLayerKey, persistableDisplayRows])
 
   const {
     readOnly,
@@ -1201,7 +1196,7 @@ function SheetEditor({
     if (!visibleColumns.some((column) => column.key === pendingCoordinateJump.parameterCode)) return
     const conditionId = String(pendingCoordinateJump.conditionId)
     const parameterCode = String(pendingCoordinateJump.parameterCode)
-    if (!displayRows.some((row) => row.id === conditionId)) {
+    if (!persistableDisplayRows.some((row) => row.id === conditionId)) {
       setCoordinateNavigationStatus('이동할 대상 셀을 찾지 못했습니다.')
       setPendingCoordinateJump(null)
       return
@@ -1209,7 +1204,7 @@ function SheetEditor({
     gridRef.current?.scrollToCell(conditionId, parameterCode)
     setCoordinateNavigationStatus('대상 셀로 이동했습니다.')
     setPendingCoordinateJump(null)
-  }, [pendingCoordinateJump, visibleColumns, displayRows])
+  }, [pendingCoordinateJump, visibleColumns, persistableDisplayRows])
 
   // 조건 행 관리(T7): 추가/복제/삭제 대상은 좌측 식별 컬럼 클릭으로 활성화한 행 하나다.
   // POR 이양은 활성 행과 무관하게 POR 컬럼 클릭으로 바로 실행한다. 구조 변경은 더티 셀 버퍼와
@@ -1543,7 +1538,7 @@ function SheetEditor({
       const navigation = resolveWorkbenchCoordinateNavigation(
         coordinate,
         data.columns,
-        displayRows,
+        persistableDisplayRows,
         activeCategory,
       )
       setPendingColumnJump(null)
@@ -1552,7 +1547,7 @@ function SheetEditor({
         setCoordinateNavigationStatus('이동할 대상 셀을 찾지 못했습니다.')
         return
       }
-      const targetRow = displayRows.find(
+      const targetRow = persistableDisplayRows.find(
         (row) => row.id === String(navigation.target.conditionId),
       )
       if (targetRow === undefined) {
@@ -1579,7 +1574,7 @@ function SheetEditor({
     [
       interaction.canSwitchCategory,
       data.columns,
-      displayRows,
+      persistableDisplayRows,
       activeCategory,
       activeLayerKey,
       currentLayerOnly,

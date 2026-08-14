@@ -77,12 +77,10 @@ export const DecimalEditor: ProvideEditorComponent<DecimalCell> = ({
   const [draft, setDraft] = useState(initialValue ?? cell.data.value ?? '')
 
   const finish = (): void => {
-    const result = validateDecimalDraft(draft)
-    const candidate = result.ok ? result.value : draft
     onFinishedEditing({
       ...cell,
-      copyData: candidate ?? '',
-      data: { ...cell.data, value: candidate },
+      copyData: draft,
+      data: { ...cell.data, value: draft },
     })
   }
 

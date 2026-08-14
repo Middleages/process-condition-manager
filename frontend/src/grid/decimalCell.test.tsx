@@ -92,6 +92,27 @@ describe('decimalCell', () => {
       escapeEditor.cleanup()
     }
   })
+
+  it('sends an exact parseable raw candidate to the authoritative Grid validator', () => {
+    const finished = vi.fn()
+    const editor = renderDecimalEditor('00501.0', finished)
+    try {
+      const input = editor.container.querySelector('input')
+      act(() => {
+        input?.dispatchEvent(new editor.window.KeyboardEvent('keydown', {
+          key: 'Enter',
+          bubbles: true,
+        }))
+      })
+
+      expect(finished).toHaveBeenCalledWith(expect.objectContaining({
+        copyData: '00501.0',
+        data: expect.objectContaining({ kind: 'decimal-cell', value: '00501.0' }),
+      }))
+    } finally {
+      editor.cleanup()
+    }
+  })
 })
 
 function renderDecimalEditor(

@@ -1916,7 +1916,7 @@ describe('SheetView focus shell integration', () => {
       expect(useEditStore.getState().invalidDrafts.get(dirtyKey('11', 'ETCH_P001')))
         .toMatchObject({ rawValue: 'not-a-number', code: 'invalid_decimal' })
       expect(useEditStore.getState().dirtyCells.size).toBe(0)
-      expect(renderedValues(interactive.container)[0]?.ETCH_P001).toBe('not-a-number')
+      expect(renderedValues(interactive.container)[0]?.ETCH_P001).toBe('1')
       expect(renderedInvalidDrafts(interactive.container)).toHaveLength(1)
       expect(
         interactive.container.querySelector('[data-validation-statuses]')
@@ -1945,7 +1945,7 @@ describe('SheetView focus shell integration', () => {
     }
   }, 8_000)
 
-  it('keeps validation workbench values persistable while the Grid displays rejected raw input', async () => {
+  it('passes persistable rows to the Grid while invalid drafts carry rejected display input', async () => {
     mockSheetWorkbenchState = createMockSheetWorkbenchState('validation')
     const interactive = renderInteractiveSheet({ minimumValue: '10' })
 
@@ -1953,7 +1953,10 @@ describe('SheetView focus shell integration', () => {
       await settleInteractiveSheet()
       click(interactive, gridDraftButton(interactive.container, 'invalid', '11'))
 
-      expect(renderedValues(interactive.container)[0]?.ETCH_P001).toBe('not-a-number')
+      expect(renderedValues(interactive.container)[0]?.ETCH_P001).toBe('1')
+      expect(renderedInvalidDrafts(interactive.container)).toEqual([
+        expect.objectContaining({ rawValue: 'not-a-number' }),
+      ])
       const issue = interactive.container.querySelector<HTMLButtonElement>(
         '[data-validation-workbench] button[aria-label]',
       )
