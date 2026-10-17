@@ -7,6 +7,7 @@ import {
 export function getProcessProjectHref(process: ProcessDetailOut): string {
   if (process.has_project) {
     return toProjectListHref({
+      lineId: process.line_id,
       query: process.process_id,
       status: 'all',
       deviceTypeCode: null,

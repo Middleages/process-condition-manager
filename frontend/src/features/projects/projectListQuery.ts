@@ -5,19 +5,14 @@ export function projectListQueryKey(routeState: ProjectListRouteState) {
     'projects',
     'list',
     {
+      lineId: routeState.lineId ?? null,
+      cursor: routeState.cursor ?? null,
       query: routeState.query,
       status: routeState.status,
       deviceTypeCode: routeState.deviceTypeCode,
       projectCategoryCode: routeState.projectCategoryCode,
     },
   ] as const
-}
-
-export function mergeDebouncedQuery(
-  latestRouteState: ProjectListRouteState,
-  debouncedQuery: string,
-): ProjectListRouteState {
-  return { ...latestRouteState, query: debouncedQuery }
 }
 
 export function deriveHistoricalChoiceFilterState(resource: {

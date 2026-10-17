@@ -21,6 +21,7 @@ import {
   patchProjectComment,
   transitionProject,
   listProjects,
+  listProjectLines,
   patchProjectProfile,
   createRevision,
 } from './projects'
@@ -405,5 +406,18 @@ describe('projects api client', () => {
     expect(PROJECT_PROFILE_PATCH_FIELDS).not.toContain('project_category')
     expect(PROJECT_PROFILE_PATCH_FIELDS).not.toContain('created_at')
     expect(PROJECT_PROFILE_PATCH_FIELDS).not.toContain('updated_at')
+  })
+})
+
+describe('LINE-scoped product list', () => {
+  it('passes the explicit LINE and cursor with a 25-row page', async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce(response({ items: [], next_cursor: null }))
+    await listProjects({ lineId: 'L1', query: 'coat', cursor: 42, limit: 25 })
+    expect(apiClient.get).toHaveBeenLastCalledWith('/projects', { params: { line_id: 'L1', query: 'coat', cursor: 42, limit: 25 } })
+  })
+  it('loads LINE choices without totals', async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce(response(['L1', 'L2']))
+    expect(await listProjectLines()).toEqual(['L1', 'L2'])
+    expect(apiClient.get).toHaveBeenLastCalledWith('/projects/lines')
   })
 })

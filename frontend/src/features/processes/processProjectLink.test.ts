@@ -28,7 +28,7 @@ describe('getProcessProjectHref', () => {
 
   it('routes an existing Process to a searchable list', () => {
     expect(getProcessProjectHref(makeProcess({ has_project: true, process_id: 'PHOTO-1' }))).toBe(
-      '/projects?query=PHOTO-1',
+      '/projects?line=L1&query=PHOTO-1',
     )
   })
 })

@@ -736,6 +736,7 @@ function ProcessStep({
 }) {
   const duplicateHref = selectedProcess?.has_project
     ? toProjectListHref({
+        lineId: selectedProcess.line_id,
         query: selectedProcess.process_id,
         status: 'all',
         deviceTypeCode: null,
@@ -1109,6 +1110,7 @@ function PreviewStep({
       ? existingProjectId !== null
         ? `/projects/${existingProjectId}`
         : toProjectListHref({
+            lineId: selectedProcess?.line_id,
             query: selectedProcessId,
             status: 'all',
             deviceTypeCode: null,
