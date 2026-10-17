@@ -1,0 +1,2234 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PCM 데이터 모델 · 현재 구현 검토</title>
+<style>
+:root{--paper:#f3f1ea;--surface:#fffefa;--ink:#171916;--muted:#5c6259;--rule:#d0d3c9;--blue:#2456c6;--amber:#865100;--font:"Noto Sans KR","Apple SD Gothic Neo","Malgun Gothic","WenQuanYi Zen Hei",sans-serif}*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.55 var(--font)}button,input,select{font:inherit}button{cursor:pointer}button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:3px solid #d55422;outline-offset:3px}a{color:var(--blue);text-underline-offset:3px}header{padding:22px 36px;border-bottom:1px solid var(--rule);display:flex;justify-content:space-between;gap:20px;background:var(--surface)}header b{font-size:21px}header span{font-size:13px;color:var(--muted)}main{max-width:1500px;margin:auto;padding:30px 36px 60px}h1{font-size:30px;line-height:1.3;margin:5px 0 12px;letter-spacing:-.8px}h2{font-size:21px;margin:0 0 14px}h3{font-size:16px;margin:0 0 10px}p{margin:0 0 12px}code,.mono{font-family:Consolas,"Liberation Mono",monospace;font-size:.93em}.lede{max-width:1000px;color:var(--muted)}.meta{font-size:12px;color:var(--muted);margin:16px 0 24px}.strip{display:grid;grid-template-columns:repeat(3,1fr);border-block:1px solid var(--rule);margin-bottom:28px}.strip>div{padding:17px 22px 17px 0}.strip strong{display:block;margin-bottom:4px}.strip p{font-size:13px;margin:0;color:var(--muted)}.toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:15px}.tabs{display:flex;gap:3px;flex-wrap:wrap;margin-right:auto}.tab,.control{border:1px solid var(--rule);background:var(--surface);border-radius:4px;padding:9px 14px;min-height:40px}.tab[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:white}.control:disabled{opacity:.4;cursor:default}.viewintro{font-size:14px;color:var(--muted);margin-bottom:13px}.legend{display:flex;gap:22px;flex-wrap:wrap;font-size:12px;margin-bottom:12px;color:var(--muted)}.legend i{display:inline-block;width:26px;border-top:2px solid #6d7f77;vertical-align:middle;margin-right:7px}.legend i.dash{border-top:2px dashed #9c722f}.graph-wrap{border:1px solid var(--rule);background:#fafbf7;overflow:auto;max-height:710px;min-height:300px}.graph-size{position:relative}.graph{position:relative;transform-origin:0 0;width:1100px;height:640px}.graph svg{position:absolute;inset:0;overflow:visible}.edge{fill:none;stroke:#73877b;stroke-width:2}.edge.logic{stroke:#9c722f;stroke-dasharray:7 5}.edge.selected{stroke:var(--blue);stroke-width:3}.edge-label{font:12px var(--font);fill:#394b41;paint-order:stroke;stroke:#fafbf7;stroke-width:5px;stroke-linejoin:round}.node{display:flex;flex-direction:column;justify-content:flex-start;position:absolute;width:270px;height:250px;border:1px solid #aeb8ad;border-radius:5px;background:var(--surface);text-align:left;padding:0;overflow:hidden;box-shadow:0 2px 0 #17191608}.node:hover{border-color:var(--blue)}.node.selected{outline:2px solid var(--blue);outline-offset:2px}.nodehead{display:block;flex-shrink:0;background:#e9eee5;border-bottom:1px solid var(--rule);padding:12px 16px}.nodehead strong{display:block;font:700 16px Consolas,"Liberation Mono",monospace}.nodehead small{display:block;font-size:12px;color:var(--muted);margin-top:2px}.node.core .nodehead{background:#e8eefb}.fields{display:block;flex-shrink:0;padding:10px 16px}.field{display:flex;align-items:baseline;gap:9px;white-space:nowrap;font:12px/1.65 Consolas,"Liberation Mono",monospace}.key{width:25px;font-size:10px;color:var(--blue);font-weight:700;flex-shrink:0}.nodefoot{position:absolute;bottom:0;left:0;right:0;padding:6px 16px;background:#f5f5ef;color:var(--muted);font-size:11px;border-top:1px solid #e9eae2}.relations{margin:18px 0 35px}.relations summary,.all-fields summary{cursor:pointer;padding:12px 0;font-weight:600}.table-scroll{overflow:auto}table{width:100%;border-collapse:collapse;background:var(--surface);font-size:13px}th{text-align:left;color:var(--muted);font-size:12px;font-weight:600;background:#eaece5}th,td{padding:10px 13px;border-bottom:1px solid var(--rule);vertical-align:top}td code{overflow-wrap:anywhere}td.nowrap{white-space:nowrap}.kind{font-size:11px;font-weight:700;padding:3px 7px;border-radius:20px;white-space:nowrap;background:#e8eefb;color:#24458c}.kind.logical{background:#fff0d0;color:#77500c}.section{margin-top:36px;padding-top:25px;border-top:1px solid var(--rule)}.two{display:grid;grid-template-columns:1fr 1fr;gap:30px}.plain-list{padding-left:21px;margin:0}.plain-list li{margin:8px 0}.small{font-size:13px;color:var(--muted)}.warning{background:#fff5df;border:1px solid #dbc69e;padding:17px 20px;border-radius:4px}.warning h3{color:#75501c}.warning p:last-child{margin-bottom:0}.revision-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:42px;margin:32px 0}.rev{position:relative;border:1px solid var(--rule);padding:18px;background:var(--surface)}.rev:not(:last-child):after{content:"→";position:absolute;right:-31px;top:40%;font-size:25px;color:var(--muted)}.rev strong{display:block;font-size:19px;margin-bottom:10px}.rev dl{margin:0;font-size:13px}.rev dt{color:var(--muted)}.rev dd{margin:0 0 7px}.rev.current{border:2px solid var(--blue)}.rev .status{display:inline-block;border-radius:30px;background:#e8eefb;padding:3px 10px;font-size:12px;font-weight:700;margin-bottom:14px}.all-fields>details{border-bottom:1px solid var(--rule)}.constraint{font-size:12px;line-height:1.7;overflow-wrap:anywhere}.constraint code{white-space:normal}.source{font-size:12px;color:var(--muted);overflow-wrap:anywhere}.chips{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.chip{border:1px solid var(--rule);background:var(--surface);padding:7px 11px;border-radius:4px;font-size:13px}.filter{width:260px;max-width:100%;height:40px;border:1px solid #8b9487;background:var(--surface);padding:0 12px;border-radius:4px}.count{color:var(--muted);font-size:13px}dialog{width:min(1000px,calc(100vw - 30px));max-height:88vh;border:1px solid var(--rule);border-radius:6px;padding:0;background:var(--surface);color:var(--ink)}dialog::backdrop{background:#17201880}.dialoghead{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;padding:22px 26px;background:var(--paper);border-bottom:1px solid var(--rule);position:sticky;top:0;z-index:2}.dialoghead h2{margin:0}.dialogbody{padding:22px 26px}.close{border:1px solid var(--rule);padding:8px 13px;background:var(--surface);border-radius:4px}.dialogbody h3{margin-top:24px}.nullable{color:#77500c}.hidden{display:none!important}.boundary{border:1px dashed #8f9889;padding:20px;background:#fafbf7}.printnote{font-size:12px;color:var(--muted);margin-top:30px}@media(max-width:800px){header{padding:16px 20px;flex-wrap:wrap}main{padding:24px 20px}.strip,.two{grid-template-columns:1fr}.strip>div{padding:12px 0}.toolbar{gap:8px}.graph-wrap{max-height:580px}.revision-cards{grid-template-columns:1fr;gap:24px}.rev:not(:last-child):after{content:"↓";right:50%;top:auto;bottom:-29px}.tabs{width:100%}h1{font-size:25px}.dialogbody{padding:16px}.dialoghead{padding:16px}th,td{padding:8px}}@media print{header,.toolbar,.legend,.relations,dialog{display:none}.graph-wrap{max-height:none;overflow:visible;border:0}.graph{transform:scale(.7)!important}.graph-size{height:450px!important;width:100%!important}main{padding:0}.section{break-inside:avoid}.all-fields{display:none}.printnote{display:block}}
+</style></head><body>
+<header><b>PCM <span>데이터 모델 검토</span></b><span>저장소 기준 · 2026-10-17 · HEAD 52b64c6</span></header>
+<main><h1>제품 공정조건은 어떻게 저장되는가</h1><p class="lede">현재 구현의 물리 테이블과 논리 참조를 함께 살펴보는 ERD입니다. 화면에서는 ‘제품’으로 부르되 내부 모델은 <code>Project</code>를 유지합니다. 표를 누르면 전체 컬럼·NULL 허용·키·제약을 확인할 수 있습니다.</p>
+<p class="meta">앱 DB 13개 테이블 · ORM 151개 컬럼 · 마이그레이션 0001–0008 대조 · 실행 중인 DB의 스키마를 직접 조회한 결과는 아닙니다.</p>
+<div class="strip"><div><strong>식별: LINE · Process · Part ID</strong><p>별도 product 테이블은 없습니다. 이 조합과 상태·버전을 project가 보관합니다.</p></div><div><strong>조건표: Layer → 조건 행 → 셀</strong><p>셀은 parameter_code와 텍스트 값으로 저장하며 정의와는 논리적으로 연결됩니다.</p></div><div><strong>리비전: project 행을 새로 생성</strong><p>동일 조합의 과거 버전은 archived로 남고 새 초안에 조건표를 복사합니다.</p></div></div>
+<section id="diagram" aria-labelledby="diagram-heading"><h2 id="diagram-heading">관계 다이어그램</h2>
+<div class="toolbar"><div class="tabs" aria-label="모델 영역"><button class="tab" data-view="core" aria-pressed="true">조건표 본체</button><button class="tab" data-view="catalog" aria-pressed="false">파라미터·선택지</button><button class="tab" data-view="audit" aria-pressed="false">이력·잠금·검증</button><button class="tab" data-view="revision" aria-pressed="false">리비전 구조</button></div><button class="control" id="zoom-out" aria-label="다이어그램 축소">−</button><span class="count" id="zoom-value">100%</span><button class="control" id="zoom-in" aria-label="다이어그램 확대">＋</button><button class="control" id="zoom-reset">100%</button></div>
+<p class="viewintro" id="viewintro"></p><div class="legend" id="legend"><span><i></i>실선: DB 외래키</span><span><i class="dash"></i>점선: 코드·JSON·실행 시 관계 (FK 없음)</span><span>화살표: 참조하는 행 → 참조 대상</span><span>카드 클릭: 전체 필드</span></div>
+<div class="graph-wrap" id="graph-wrap" tabindex="0" aria-label="관계 다이어그램. 가로 스크롤 가능"><div class="graph-size" id="graph-size"><div class="graph" id="graph"></div></div></div>
+<div id="revision-view" class="hidden"><p class="small">아래 v1–v3는 구조를 설명하기 위한 예시입니다. 실제 데이터 레코드가 아닙니다. 세 카드 모두 같은 <code>project</code> 테이블의 행입니다.</p><div class="revision-cards"><div class="rev"><strong>v1 · 최초 버전</strong><span class="status">archived</span><dl><dt>id / revision_root_id</dt><dd>101 / 101</dd><dt>revision_of_id</dt><dd>NULL</dd></dl></div><div class="rev"><strong>v2 · 이전 버전</strong><span class="status">archived</span><dl><dt>id / revision_root_id</dt><dd>102 / 101</dd><dt>revision_of_id</dt><dd>101</dd></dl></div><div class="rev current"><strong>v3 · 최신 버전</strong><span class="status">draft</span><dl><dt>id / revision_root_id</dt><dd>103 / 101</dd><dt>revision_of_id</dt><dd>102</dd></dl></div></div><div class="two"><div><h3>현재 저장 규칙</h3><ul class="plain-list"><li>승인된 원본에서 리비전을 만들면 원본은 archived, 복사본은 draft가 됩니다.</li><li>Profile·Layer·조건 행·셀을 새 버전으로 복사합니다. 이력·댓글을 그대로 복제한다는 뜻은 아닙니다.</li><li><code>revision_of_id</code>는 직전 버전, <code>revision_root_id</code>는 최초 버전을 가리킵니다.</li><li>같은 root 안에서 version은 유일하고, 직전 버전 하나에 직접 후속 버전은 최대 하나입니다.</li></ul></div><div class="warning"><h3>합의된 UI 규칙 ≠ 현재 목록 API</h3><p>‘조합별 최신 버전만 표시, LINE별 25건’은 합의된 개선안입니다. 현재 목록 API에는 최신 리비전만 선택하는 필터가 없습니다.</p><p class="small">실제 구현 시 서버에서 최신 선택·LINE·검색 조건을 적용한 뒤 페이지를 나눠야 합니다. 최신은 ‘최신 승인본’과 다릅니다.</p></div></div></div>
+<details class="relations" id="relations"><summary>이 영역의 관계를 표로 읽기</summary><div class="table-scroll" id="relation-table"></div></details></section>
+<section class="section two"><div><h2>외부 적재 DB는 별도 경계</h2><div class="boundary"><h3>Ingest · 읽기 전용</h3><p><code>line_id / process_id / step_seq / layer_id</code><br><code>eqp_type / eqp_type_desc / area_name</code></p><p class="small">기본 리더 모드는 fixture입니다. PostgreSQL 리더를 선택하면 설정된 외부 테이블(기본 public.f_stpes)을 읽습니다. ProcessInfo·LayerInfo는 DTO이며 앱 DB의 테이블이 아닙니다. 생성 시 프로젝트와 Layer에 구조를 복사하며 DB 간 외래키는 없습니다.</p><p class="source">근거: backend/app/ingest/pg_reader.py · backend/app/core/db.py<br>외부 테이블의 실제 타입·PK·제약은 앱 모델이 소유하지 않으며 이번 검토에서는 확인하지 않았습니다.</p></div></div><div><h2>별도 테이블로 오해하지 않기</h2><ul class="plain-list"><li><b>Backbone:</b> <code>sheet_layer.backbone_snapshot</code> JSONB와 출처 식별자에 보관합니다.</li><li><b>사용자:</b> actor·author·locked_by 문자열입니다. User 테이블은 없습니다.</li><li><b>검증 결과:</b> 계산 결과이며 ValidationResult 테이블은 없습니다. 규칙은 validation_rule에 저장합니다.</li><li><b>승인 근거:</b> project의 snapshot·review_basis_hash·review_rule_versions에 보관합니다.</li><li><b>제품명:</b> 사용자 화면에서는 사용하지 않기로 했지만 <code>project.name</code>은 현재 필수 컬럼으로 남아 있습니다.</li></ul></div></section>
+<section class="section"><h2>모델과 마이그레이션의 차이</h2><p class="small">현재 ORM 선언과 0008까지의 마이그레이션을 비교했습니다. 아래 차이가 실제 운영 DB에도 존재하는지는 별도 스키마 확인이 필요합니다. 이번 산출물은 스키마를 수정하지 않습니다.</p><div class="table-scroll"><table><thead><tr><th>항목</th><th>ORM 선언</th><th>마이그레이션 근거</th></tr></thead><tbody><tr><td>기본 소유 FK의 NULL</td><td>sheet_layer.project_id, layer_condition.layer_id, cell_value.condition_id, change_event.project_id는 NOT NULL</td><td>0002에는 nullable=False가 없어 NULL 허용. 이후 강화 마이그레이션 없음</td></tr><tr><td>생성·수정 시각</td><td>project.created_at/updated_at, change_event.created_at은 NOT NULL</td><td>0002에서는 NULL 허용</td></tr><tr><td>validation_rule.code</td><td>비어 있지 않은 소문자</td><td>0005는 정규식 <code>^[a-z][a-z0-9_]*$</code>로 더 엄격</td></tr><tr><td>규칙 JSON</td><td>scope/spec의 object 타입 체크 없음</td><td>0005에 두 필드 모두 JSON object 타입 체크 있음</td></tr><tr><td>파라미터 숫자 메타데이터</td><td>일반 CHECK</td><td>0005는 PostgreSQL NOT VALID로 추가: 기존 위반 행 검증을 미루고 새 쓰기는 검사</td></tr><tr><td>ChangeEventType 저장 문자열</td><td>ORM enum은 대문자 멤버 이름을 저장하도록 선언</td><td>일부 마이그레이션/백필은 소문자 리터럴 사용. API 값·DB 문자열을 같은 것으로 취급하면 안 됨</td></tr></tbody></table></div></section>
+<section class="section" id="all-fields"><h2>전체 테이블·필드 찾아보기</h2><p class="small">컬럼 타입·NULL·enum은 ORM 선언 기준입니다. DB에 적용된 제약의 차이는 위 표를 함께 확인하세요. 관계선을 따라가지 않아도 모든 정보를 읽을 수 있습니다.</p><div class="toolbar"><label for="table-search">테이블 / 필드 검색</label><input class="filter" id="table-search" type="search" placeholder="project, parameter_code…"><span class="count" id="table-count"></span></div><div class="all-fields" id="catalog"></div></section>
+<section class="section"><h2>검토할 핵심 제약</h2><div class="two"><ul class="plain-list"><li><code>LINE + Process + Part ID</code>는 <b>status ≠ archived</b>인 행에만 유일합니다. 과거 버전은 공존합니다.</li><li>Project Profile은 앱에서는 1:1을 기대하지만, DB PK/FK는 프로젝트당 <b>최대 1개</b>만 보장합니다.</li><li>Layer마다 POR 조건은 부분 유일 인덱스로 <b>최대 1개</b>이며, 항상 1개 존재함을 DB가 보장하지는 않습니다.</li></ul><ul class="plain-list"><li>셀은 <code>(condition_id, parameter_code)</code>가 유일합니다. parameter_code에는 FK가 없습니다.</li><li>댓글의 condition/layer/parameter는 모두 NULL이거나 모두 존재해야 합니다. 셀 대상 좌표에는 FK가 없습니다.</li><li>리비전 self-FK는 ON DELETE SET NULL이지만 v&gt;1 계보 CHECK와 충돌할 수 있으므로 과거 버전을 자유롭게 삭제할 수 있다는 뜻이 아닙니다.</li></ul></div></section>
+<p class="printnote">근거: backend/app/models/{project,parameter,choice,validation}.py · backend/alembic/versions/0001–0008 · features/approval/service.py · features/projects/repository.py. parameter_option은 0004에서 제거됨. alembic_version은 인프라 테이블이므로 제외했습니다. 이 HTML은 외부 CDN 없이 단독으로 열 수 있습니다.</p>
+</main><dialog id="table-dialog" aria-labelledby="dialog-title"><div class="dialoghead"><div><h2 id="dialog-title"></h2><p class="small" id="dialog-subtitle"></p></div><button class="close" id="dialog-close">닫기</button></div><div class="dialogbody" id="dialog-body"></div></dialog>
+<script id="schema-data" type="application/json">[
+  {
+    "name": "choice_set",
+    "source": "backend/app/models/choice.py",
+    "line": 15,
+    "columns": [
+      {
+        "name": "id",
+        "type": "INTEGER",
+        "nullable": false,
+        "pk": true,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "code",
+        "type": "VARCHAR(64)",
+        "nullable": false,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "display_name",
+        "type": "VARCHAR(128)",
+        "nullable": false,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "description",
+        "type": "VARCHAR(512)",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "is_active",
+        "type": "BOOLEAN",
+        "nullable": false,
+        "pk": false,
+        "default": "true",
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "version",
+        "type": "INTEGER",
+        "nullable": false,
+        "pk": false,
+        "default": "1",
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "created_at",
+        "type": "TIMESTAMP WITH TIME ZONE",
+        "nullable": false,
+        "pk": false,
+        "default": "now()",
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "updated_at",
+        "type": "TIMESTAMP WITH TIME ZONE",
+        "nullable": false,
+        "pk": false,
+        "default": "now()",
+        "enum": null,
+        "fks": []
+      }
+    ],
+    "constraints": [
+      {
+        "name": null,
+        "type": "PrimaryKeyConstraint",
+        "columns": [
+          "id"
+        ],
+        "sql": null
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_choice_set_code",
+        "unique": true,
+        "columns": [
+          "choice_set.code"
+        ],
+        "where": "None"
+      }
+    ]
+  },
+  {
+    "name": "parameter_category",
+    "source": "backend/app/models/parameter.py",
+    "line": 31,
+    "columns": [
+      {
+        "name": "id",
+        "type": "INTEGER",
+        "nullable": false,
+        "pk": true,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "code",
+        "type": "VARCHAR(64)",
+        "nullable": false,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "display_name",
+        "type": "VARCHAR(128)",
+        "nullable": false,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "sort_order",
+        "type": "INTEGER",
+        "nullable": false,
+        "pk": false,
+        "default": "0",
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "is_active",
+        "type": "BOOLEAN",
+        "nullable": false,
+        "pk": false,
+        "default": "true",
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "created_at",
+        "type": "TIMESTAMP WITH TIME ZONE",
+        "nullable": false,
+        "pk": false,
+        "default": "now()",
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "updated_at",
+        "type": "TIMESTAMP WITH TIME ZONE",
+        "nullable": false,
+        "pk": false,
+        "default": "now()",
+        "enum": null,
+        "fks": []
+      }
+    ],
+    "constraints": [
+      {
+        "name": null,
+        "type": "PrimaryKeyConstraint",
+        "columns": [
+          "id"
+        ],
+        "sql": null
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_parameter_category_code",
+        "unique": true,
+        "columns": [
+          "parameter_category.code"
+        ],
+        "where": "None"
+      }
+    ]
+  },
+  {
+    "name": "project",
+    "source": "backend/app/models/project.py",
+    "line": 53,
+    "columns": [
+      {
+        "name": "id",
+        "type": "INTEGER",
+        "nullable": false,
+        "pk": true,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "line_id",
+        "type": "VARCHAR(64)",
+        "nullable": false,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "process_id",
+        "type": "VARCHAR(128)",
+        "nullable": false,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "part_id",
+        "type": "VARCHAR(128)",
+        "nullable": false,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "name",
+        "type": "VARCHAR(256)",
+        "nullable": false,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "status",
+        "type": "VARCHAR(32)",
+        "nullable": false,
+        "pk": false,
+        "default": "draft",
+        "enum": [
+          "draft",
+          "review",
+          "approved",
+          "rejected",
+          "archived"
+        ],
+        "fks": []
+      },
+      {
+        "name": "version",
+        "type": "INTEGER",
+        "nullable": false,
+        "pk": false,
+        "default": "1",
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "revision_root_id",
+        "type": "INTEGER",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": [
+          {
+            "target": "project.id",
+            "ondelete": "SET NULL"
+          }
+        ]
+      },
+      {
+        "name": "revision_of_id",
+        "type": "INTEGER",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": [
+          {
+            "target": "project.id",
+            "ondelete": "SET NULL"
+          }
+        ]
+      },
+      {
+        "name": "parameter_snapshot",
+        "type": "JSONB",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "review_basis_hash",
+        "type": "VARCHAR(71)",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "review_rule_versions",
+        "type": "JSONB",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "created_at",
+        "type": "TIMESTAMP WITH TIME ZONE",
+        "nullable": false,
+        "pk": false,
+        "default": "now()",
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "updated_at",
+        "type": "TIMESTAMP WITH TIME ZONE",
+        "nullable": false,
+        "pk": false,
+        "default": "now()",
+        "enum": null,
+        "fks": []
+      }
+    ],
+    "constraints": [
+      {
+        "name": "ck_project_version",
+        "type": "CheckConstraint",
+        "columns": [],
+        "sql": "version >= 1"
+      },
+      {
+        "name": null,
+        "type": "ForeignKeyConstraint",
+        "columns": [
+          "revision_of_id"
+        ],
+        "sql": null
+      },
+      {
+        "name": null,
+        "type": "ForeignKeyConstraint",
+        "columns": [
+          "revision_root_id"
+        ],
+        "sql": null
+      },
+      {
+        "name": "uq_project_direct_successor",
+        "type": "UniqueConstraint",
+        "columns": [
+          "revision_of_id"
+        ],
+        "sql": null
+      },
+      {
+        "name": null,
+        "type": "PrimaryKeyConstraint",
+        "columns": [
+          "id"
+        ],
+        "sql": null
+      },
+      {
+        "name": "ck_project_revision_lineage_shape",
+        "type": "CheckConstraint",
+        "columns": [],
+        "sql": "(version = 1 AND revision_of_id IS NULL) OR (version > 1 AND revision_root_id IS NOT NULL AND revision_root_id <> id AND revision_of_id IS NOT NULL AND revision_of_id <> id)"
+      },
+      {
+        "name": "uq_project_revision_root_version",
+        "type": "UniqueConstraint",
+        "columns": [
+          "revision_root_id",
+          "version"
+        ],
+        "sql": null
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_project_process_id",
+        "unique": false,
+        "columns": [
+          "project.process_id"
+        ],
+        "where": "None"
+      },
+      {
+        "name": "ix_project_active_line_process_part",
+        "unique": true,
+        "columns": [
+          "project.line_id",
+          "project.process_id",
+          "project.part_id"
+        ],
+        "where": "status != 'archived'"
+      },
+      {
+        "name": "ix_project_line_id",
+        "unique": false,
+        "columns": [
+          "project.line_id"
+        ],
+        "where": "None"
+      },
+      {
+        "name": "ix_project_revision_root_id",
+        "unique": false,
+        "columns": [
+          "project.revision_root_id"
+        ],
+        "where": "None"
+      },
+      {
+        "name": "ix_project_part_id",
+        "unique": false,
+        "columns": [
+          "project.part_id"
+        ],
+        "where": "None"
+      }
+    ]
+  },
+  {
+    "name": "validation_rule",
+    "source": "backend/app/models/validation.py",
+    "line": 26,
+    "columns": [
+      {
+        "name": "id",
+        "type": "INTEGER",
+        "nullable": false,
+        "pk": true,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "code",
+        "type": "VARCHAR(64)",
+        "nullable": false,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "name",
+        "type": "VARCHAR(128)",
+        "nullable": false,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "description",
+        "type": "VARCHAR(512)",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "severity",
+        "type": "VARCHAR(16)",
+        "nullable": false,
+        "pk": false,
+        "default": null,
+        "enum": [
+          "error",
+          "warning"
+        ],
+        "fks": []
+      },
+      {
+        "name": "scope",
+        "type": "JSONB",
+        "nullable": false,
+        "pk": false,
+        "default": "{}",
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "spec",
+        "type": "JSONB",
+        "nullable": false,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "version",
+        "type": "INTEGER",
+        "nullable": false,
+        "pk": false,
+        "default": "1",
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "is_active",
+        "type": "BOOLEAN",
+        "nullable": false,
+        "pk": false,
+        "default": "true",
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "created_at",
+        "type": "TIMESTAMP WITH TIME ZONE",
+        "nullable": false,
+        "pk": false,
+        "default": "now()",
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "updated_at",
+        "type": "TIMESTAMP WITH TIME ZONE",
+        "nullable": false,
+        "pk": false,
+        "default": "now()",
+        "enum": null,
+        "fks": []
+      }
+    ],
+    "constraints": [
+      {
+        "name": "ck_validation_rule_description_nonblank",
+        "type": "CheckConstraint",
+        "columns": [],
+        "sql": "description IS NULL OR length(trim(description)) > 0"
+      },
+      {
+        "name": null,
+        "type": "PrimaryKeyConstraint",
+        "columns": [
+          "id"
+        ],
+        "sql": null
+      },
+      {
+        "name": "ck_validation_rule_code_format",
+        "type": "CheckConstraint",
+        "columns": [],
+        "sql": "length(code) > 0 AND code = lower(code)"
+      },
+      {
+        "name": "ck_validation_rule_severity",
+        "type": "CheckConstraint",
+        "columns": [],
+        "sql": "severity IN ('error', 'warning')"
+      },
+      {
+        "name": "ck_validation_rule_name_nonblank",
+        "type": "CheckConstraint",
+        "columns": [],
+        "sql": "length(trim(name)) > 0"
+      },
+      {
+        "name": "ck_validation_rule_version",
+        "type": "CheckConstraint",
+        "columns": [],
+        "sql": "version >= 1"
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_validation_rule_active_code",
+        "unique": false,
+        "columns": [
+          "validation_rule.is_active",
+          "validation_rule.code"
+        ],
+        "where": "None"
+      },
+      {
+        "name": "ix_validation_rule_code",
+        "unique": true,
+        "columns": [
+          "validation_rule.code"
+        ],
+        "where": "None"
+      }
+    ]
+  },
+  {
+    "name": "change_event",
+    "source": "backend/app/models/project.py",
+    "line": 267,
+    "columns": [
+      {
+        "name": "id",
+        "type": "INTEGER",
+        "nullable": false,
+        "pk": true,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "project_id",
+        "type": "INTEGER",
+        "nullable": false,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": [
+          {
+            "target": "project.id",
+            "ondelete": "CASCADE"
+          }
+        ]
+      },
+      {
+        "name": "event_type",
+        "type": "VARCHAR(64)",
+        "nullable": false,
+        "pk": false,
+        "default": null,
+        "enum": [
+          "PROJECT_CREATE",
+          "PROJECT_PROFILE_UPDATE",
+          "BACKBONE_COPY",
+          "BACKBONE_LAYER_REPLACE",
+          "STATUS_CHANGE",
+          "REVISION_CREATE",
+          "COMMENT",
+          "CELL_UPDATE",
+          "CONDITION_ADD",
+          "CONDITION_REMOVE",
+          "POR_CHANGE"
+        ],
+        "fks": []
+      },
+      {
+        "name": "actor",
+        "type": "VARCHAR(128)",
+        "nullable": false,
+        "pk": false,
+        "default": "system",
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "payload",
+        "type": "JSONB",
+        "nullable": false,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "condition_id",
+        "type": "INTEGER",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "parameter_code",
+        "type": "VARCHAR(64)",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "old_value",
+        "type": "TEXT",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "new_value",
+        "type": "TEXT",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "layer_key",
+        "type": "VARCHAR(256)",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "batch_id",
+        "type": "VARCHAR(64)",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "origin",
+        "type": "VARCHAR(32)",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "source_project_id",
+        "type": "INTEGER",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "source_layer_key",
+        "type": "VARCHAR(256)",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "created_at",
+        "type": "TIMESTAMP WITH TIME ZONE",
+        "nullable": false,
+        "pk": false,
+        "default": "now()",
+        "enum": null,
+        "fks": []
+      }
+    ],
+    "constraints": [
+      {
+        "name": null,
+        "type": "PrimaryKeyConstraint",
+        "columns": [
+          "id"
+        ],
+        "sql": null
+      },
+      {
+        "name": null,
+        "type": "ForeignKeyConstraint",
+        "columns": [
+          "project_id"
+        ],
+        "sql": null
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_change_event_project_origin_id_desc",
+        "unique": false,
+        "columns": [
+          "change_event.project_id",
+          "change_event.origin",
+          "id DESC"
+        ],
+        "where": "origin IS NOT NULL"
+      },
+      {
+        "name": "ix_change_event_project_source_id_desc",
+        "unique": false,
+        "columns": [
+          "change_event.project_id",
+          "change_event.source_project_id",
+          "id DESC"
+        ],
+        "where": "source_project_id IS NOT NULL"
+      },
+      {
+        "name": "ix_change_event_project_cell_id_desc",
+        "unique": false,
+        "columns": [
+          "change_event.project_id",
+          "change_event.condition_id",
+          "change_event.parameter_code",
+          "id DESC"
+        ],
+        "where": "condition_id IS NOT NULL AND parameter_code IS NOT NULL"
+      },
+      {
+        "name": "ix_change_event_project_actor_id_desc",
+        "unique": false,
+        "columns": [
+          "change_event.project_id",
+          "change_event.actor",
+          "id DESC"
+        ],
+        "where": "None"
+      },
+      {
+        "name": "ix_change_event_project_batch_id_desc",
+        "unique": false,
+        "columns": [
+          "change_event.project_id",
+          "change_event.batch_id",
+          "id DESC"
+        ],
+        "where": "batch_id IS NOT NULL"
+      },
+      {
+        "name": "ix_change_event_project_id_id_desc",
+        "unique": false,
+        "columns": [
+          "change_event.project_id",
+          "id DESC"
+        ],
+        "where": "None"
+      },
+      {
+        "name": "ix_change_event_project_condition_id_desc",
+        "unique": false,
+        "columns": [
+          "change_event.project_id",
+          "change_event.condition_id",
+          "id DESC"
+        ],
+        "where": "condition_id IS NOT NULL"
+      },
+      {
+        "name": "ix_change_event_project_created_id_desc",
+        "unique": false,
+        "columns": [
+          "change_event.project_id",
+          "created_at DESC",
+          "id DESC"
+        ],
+        "where": "None"
+      },
+      {
+        "name": "ix_change_event_project_type_id_desc",
+        "unique": false,
+        "columns": [
+          "change_event.project_id",
+          "change_event.event_type",
+          "id DESC"
+        ],
+        "where": "None"
+      },
+      {
+        "name": "ix_change_event_project_layer_id_desc",
+        "unique": false,
+        "columns": [
+          "change_event.project_id",
+          "change_event.layer_key",
+          "id DESC"
+        ],
+        "where": "layer_key IS NOT NULL"
+      }
+    ]
+  },
+  {
+    "name": "choice_option",
+    "source": "backend/app/models/choice.py",
+    "line": 36,
+    "columns": [
+      {
+        "name": "id",
+        "type": "INTEGER",
+        "nullable": false,
+        "pk": true,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "choice_set_id",
+        "type": "INTEGER",
+        "nullable": false,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": [
+          {
+            "target": "choice_set.id",
+            "ondelete": "CASCADE"
+          }
+        ]
+      },
+      {
+        "name": "code",
+        "type": "VARCHAR(128)",
+        "nullable": false,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "label",
+        "type": "VARCHAR(128)",
+        "nullable": false,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "sort_order",
+        "type": "INTEGER",
+        "nullable": false,
+        "pk": false,
+        "default": "0",
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "is_active",
+        "type": "BOOLEAN",
+        "nullable": false,
+        "pk": false,
+        "default": "true",
+        "enum": null,
+        "fks": []
+      }
+    ],
+    "constraints": [
+      {
+        "name": null,
+        "type": "PrimaryKeyConstraint",
+        "columns": [
+          "id"
+        ],
+        "sql": null
+      },
+      {
+        "name": "uq_choice_option_set_code",
+        "type": "UniqueConstraint",
+        "columns": [
+          "choice_set_id",
+          "code"
+        ],
+        "sql": null
+      },
+      {
+        "name": null,
+        "type": "ForeignKeyConstraint",
+        "columns": [
+          "choice_set_id"
+        ],
+        "sql": null
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_choice_option_choice_set_id",
+        "unique": false,
+        "columns": [
+          "choice_option.choice_set_id"
+        ],
+        "where": "None"
+      }
+    ]
+  },
+  {
+    "name": "edit_lock",
+    "source": "backend/app/models/project.py",
+    "line": 364,
+    "columns": [
+      {
+        "name": "project_id",
+        "type": "INTEGER",
+        "nullable": false,
+        "pk": true,
+        "default": null,
+        "enum": null,
+        "fks": [
+          {
+            "target": "project.id",
+            "ondelete": "CASCADE"
+          }
+        ]
+      },
+      {
+        "name": "locked_by",
+        "type": "VARCHAR(128)",
+        "nullable": false,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "lock_token",
+        "type": "VARCHAR(64)",
+        "nullable": false,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "locked_at",
+        "type": "TIMESTAMP WITH TIME ZONE",
+        "nullable": false,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "expires_at",
+        "type": "TIMESTAMP WITH TIME ZONE",
+        "nullable": false,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      }
+    ],
+    "constraints": [
+      {
+        "name": null,
+        "type": "PrimaryKeyConstraint",
+        "columns": [
+          "project_id"
+        ],
+        "sql": null
+      },
+      {
+        "name": null,
+        "type": "ForeignKeyConstraint",
+        "columns": [
+          "project_id"
+        ],
+        "sql": null
+      }
+    ],
+    "indexes": []
+  },
+  {
+    "name": "parameter",
+    "source": "backend/app/models/parameter.py",
+    "line": 49,
+    "columns": [
+      {
+        "name": "id",
+        "type": "INTEGER",
+        "nullable": false,
+        "pk": true,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "code",
+        "type": "VARCHAR(64)",
+        "nullable": false,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "display_name",
+        "type": "VARCHAR(128)",
+        "nullable": false,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "description",
+        "type": "VARCHAR(512)",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "value_type",
+        "type": "VARCHAR(16)",
+        "nullable": false,
+        "pk": false,
+        "default": null,
+        "enum": [
+          "number",
+          "text",
+          "choice"
+        ],
+        "fks": []
+      },
+      {
+        "name": "category_id",
+        "type": "INTEGER",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": [
+          {
+            "target": "parameter_category.id",
+            "ondelete": null
+          }
+        ]
+      },
+      {
+        "name": "choice_set_id",
+        "type": "INTEGER",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": [
+          {
+            "target": "choice_set.id",
+            "ondelete": null
+          }
+        ]
+      },
+      {
+        "name": "unit",
+        "type": "VARCHAR(32)",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "min_value",
+        "type": "NUMERIC",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "max_value",
+        "type": "NUMERIC",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "required",
+        "type": "BOOLEAN",
+        "nullable": false,
+        "pk": false,
+        "default": "false",
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "pattern",
+        "type": "VARCHAR(256)",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "pattern_hint",
+        "type": "VARCHAR(256)",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "sort_order",
+        "type": "INTEGER",
+        "nullable": false,
+        "pk": false,
+        "default": "0",
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "is_active",
+        "type": "BOOLEAN",
+        "nullable": false,
+        "pk": false,
+        "default": "true",
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "created_at",
+        "type": "TIMESTAMP WITH TIME ZONE",
+        "nullable": false,
+        "pk": false,
+        "default": "now()",
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "updated_at",
+        "type": "TIMESTAMP WITH TIME ZONE",
+        "nullable": false,
+        "pk": false,
+        "default": "now()",
+        "enum": null,
+        "fks": []
+      }
+    ],
+    "constraints": [
+      {
+        "name": "ck_parameter_choice_set_binding",
+        "type": "CheckConstraint",
+        "columns": [],
+        "sql": "(value_type = 'choice' AND choice_set_id IS NOT NULL) OR (value_type <> 'choice' AND choice_set_id IS NULL)"
+      },
+      {
+        "name": "ck_parameter_pattern_pair",
+        "type": "CheckConstraint",
+        "columns": [],
+        "sql": "(pattern IS NULL AND pattern_hint IS NULL) OR (value_type = 'text' AND pattern IS NOT NULL AND pattern_hint IS NOT NULL AND length(pattern) > 0 AND length(trim(pattern_hint)) > 0)"
+      },
+      {
+        "name": null,
+        "type": "ForeignKeyConstraint",
+        "columns": [
+          "category_id"
+        ],
+        "sql": null
+      },
+      {
+        "name": null,
+        "type": "PrimaryKeyConstraint",
+        "columns": [
+          "id"
+        ],
+        "sql": null
+      },
+      {
+        "name": null,
+        "type": "ForeignKeyConstraint",
+        "columns": [
+          "choice_set_id"
+        ],
+        "sql": null
+      },
+      {
+        "name": "ck_parameter_number_metadata",
+        "type": "CheckConstraint",
+        "columns": [],
+        "sql": "value_type = 'number' OR (unit IS NULL AND min_value IS NULL AND max_value IS NULL)"
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_parameter_code",
+        "unique": true,
+        "columns": [
+          "parameter.code"
+        ],
+        "where": "None"
+      },
+      {
+        "name": "ix_parameter_category_id",
+        "unique": false,
+        "columns": [
+          "parameter.category_id"
+        ],
+        "where": "None"
+      },
+      {
+        "name": "ix_parameter_choice_set_id",
+        "unique": false,
+        "columns": [
+          "parameter.choice_set_id"
+        ],
+        "where": "None"
+      }
+    ]
+  },
+  {
+    "name": "project_profile",
+    "source": "backend/app/models/project.py",
+    "line": 141,
+    "columns": [
+      {
+        "name": "project_id",
+        "type": "INTEGER",
+        "nullable": false,
+        "pk": true,
+        "default": null,
+        "enum": null,
+        "fks": [
+          {
+            "target": "project.id",
+            "ondelete": "CASCADE"
+          }
+        ]
+      },
+      {
+        "name": "process_name",
+        "type": "TEXT",
+        "nullable": false,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "device_type_code",
+        "type": "VARCHAR(128)",
+        "nullable": false,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "project_category_code",
+        "type": "VARCHAR(128)",
+        "nullable": false,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "comment",
+        "type": "TEXT",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "active_direction_code",
+        "type": "VARCHAR(128)",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "gate_direction_code",
+        "type": "VARCHAR(128)",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "gross_die",
+        "type": "TEXT",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "pitch_x",
+        "type": "TEXT",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "pitch_y",
+        "type": "TEXT",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "shot_x",
+        "type": "TEXT",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "shot_y",
+        "type": "TEXT",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "slit_occupancy",
+        "type": "TEXT",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "lens_occupancy",
+        "type": "TEXT",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "map_offset_x",
+        "type": "TEXT",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "map_offset_y",
+        "type": "TEXT",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "scribe_lane_x",
+        "type": "TEXT",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "scribe_lane_y",
+        "type": "TEXT",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "shot_count",
+        "type": "TEXT",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "full_shot",
+        "type": "TEXT",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "layer_total",
+        "type": "TEXT",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "euv",
+        "type": "TEXT",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "imm",
+        "type": "TEXT",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "arf",
+        "type": "TEXT",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "krf",
+        "type": "TEXT",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "iline",
+        "type": "TEXT",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "soh",
+        "type": "TEXT",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "pspi",
+        "type": "TEXT",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "metal_layer_count",
+        "type": "TEXT",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "created_at",
+        "type": "TIMESTAMP WITH TIME ZONE",
+        "nullable": false,
+        "pk": false,
+        "default": "now()",
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "updated_at",
+        "type": "TIMESTAMP WITH TIME ZONE",
+        "nullable": false,
+        "pk": false,
+        "default": "now()",
+        "enum": null,
+        "fks": []
+      }
+    ],
+    "constraints": [
+      {
+        "name": null,
+        "type": "ForeignKeyConstraint",
+        "columns": [
+          "project_id"
+        ],
+        "sql": null
+      },
+      {
+        "name": null,
+        "type": "PrimaryKeyConstraint",
+        "columns": [
+          "project_id"
+        ],
+        "sql": null
+      }
+    ],
+    "indexes": []
+  },
+  {
+    "name": "review_comment",
+    "source": "backend/app/models/project.py",
+    "line": 385,
+    "columns": [
+      {
+        "name": "id",
+        "type": "INTEGER",
+        "nullable": false,
+        "pk": true,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "project_id",
+        "type": "INTEGER",
+        "nullable": false,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": [
+          {
+            "target": "project.id",
+            "ondelete": "CASCADE"
+          }
+        ]
+      },
+      {
+        "name": "condition_id",
+        "type": "INTEGER",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "layer_key",
+        "type": "VARCHAR(256)",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "parameter_code",
+        "type": "VARCHAR(64)",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "body",
+        "type": "TEXT",
+        "nullable": false,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "author",
+        "type": "VARCHAR(128)",
+        "nullable": false,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "resolved",
+        "type": "BOOLEAN",
+        "nullable": false,
+        "pk": false,
+        "default": "false",
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "resolved_by",
+        "type": "VARCHAR(128)",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "resolved_at",
+        "type": "TIMESTAMP WITH TIME ZONE",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "deleted",
+        "type": "BOOLEAN",
+        "nullable": false,
+        "pk": false,
+        "default": "false",
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "deleted_by",
+        "type": "VARCHAR(128)",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "deleted_at",
+        "type": "TIMESTAMP WITH TIME ZONE",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "created_at",
+        "type": "TIMESTAMP WITH TIME ZONE",
+        "nullable": false,
+        "pk": false,
+        "default": "now()",
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "updated_at",
+        "type": "TIMESTAMP WITH TIME ZONE",
+        "nullable": false,
+        "pk": false,
+        "default": "now()",
+        "enum": null,
+        "fks": []
+      }
+    ],
+    "constraints": [
+      {
+        "name": "ck_review_comment_target_xor",
+        "type": "CheckConstraint",
+        "columns": [],
+        "sql": "(condition_id IS NULL AND layer_key IS NULL AND parameter_code IS NULL) OR (condition_id IS NOT NULL AND layer_key IS NOT NULL AND parameter_code IS NOT NULL)"
+      },
+      {
+        "name": null,
+        "type": "ForeignKeyConstraint",
+        "columns": [
+          "project_id"
+        ],
+        "sql": null
+      },
+      {
+        "name": null,
+        "type": "PrimaryKeyConstraint",
+        "columns": [
+          "id"
+        ],
+        "sql": null
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_review_comment_project_condition_id_desc",
+        "unique": false,
+        "columns": [
+          "review_comment.project_id",
+          "review_comment.condition_id",
+          "id DESC"
+        ],
+        "where": "None"
+      },
+      {
+        "name": "ix_review_comment_project_id_id_desc",
+        "unique": false,
+        "columns": [
+          "review_comment.project_id",
+          "id DESC"
+        ],
+        "where": "None"
+      }
+    ]
+  },
+  {
+    "name": "sheet_layer",
+    "source": "backend/app/models/project.py",
+    "line": 185,
+    "columns": [
+      {
+        "name": "id",
+        "type": "INTEGER",
+        "nullable": false,
+        "pk": true,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "project_id",
+        "type": "INTEGER",
+        "nullable": false,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": [
+          {
+            "target": "project.id",
+            "ondelete": "CASCADE"
+          }
+        ]
+      },
+      {
+        "name": "layer_key",
+        "type": "VARCHAR(256)",
+        "nullable": false,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "step_seq",
+        "type": "VARCHAR(64)",
+        "nullable": false,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "layer_id",
+        "type": "VARCHAR(64)",
+        "nullable": false,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "eqp_type",
+        "type": "VARCHAR(128)",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "eqp_type_desc",
+        "type": "VARCHAR(256)",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "area_name",
+        "type": "VARCHAR(128)",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "sort_order",
+        "type": "INTEGER",
+        "nullable": false,
+        "pk": false,
+        "default": "0",
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "source_project_id",
+        "type": "INTEGER",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "source_layer_key",
+        "type": "VARCHAR(256)",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "backbone_snapshot",
+        "type": "JSONB",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      }
+    ],
+    "constraints": [
+      {
+        "name": null,
+        "type": "PrimaryKeyConstraint",
+        "columns": [
+          "id"
+        ],
+        "sql": null
+      },
+      {
+        "name": "uq_sheet_layer_key",
+        "type": "UniqueConstraint",
+        "columns": [
+          "project_id",
+          "layer_key"
+        ],
+        "sql": null
+      },
+      {
+        "name": null,
+        "type": "ForeignKeyConstraint",
+        "columns": [
+          "project_id"
+        ],
+        "sql": null
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_sheet_layer_layer_id",
+        "unique": false,
+        "columns": [
+          "sheet_layer.layer_id"
+        ],
+        "where": "None"
+      },
+      {
+        "name": "ix_sheet_layer_step_seq",
+        "unique": false,
+        "columns": [
+          "sheet_layer.step_seq"
+        ],
+        "where": "None"
+      },
+      {
+        "name": "ix_sheet_layer_project_id",
+        "unique": false,
+        "columns": [
+          "sheet_layer.project_id"
+        ],
+        "where": "None"
+      }
+    ]
+  },
+  {
+    "name": "layer_condition",
+    "source": "backend/app/models/project.py",
+    "line": 217,
+    "columns": [
+      {
+        "name": "id",
+        "type": "INTEGER",
+        "nullable": false,
+        "pk": true,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "layer_id",
+        "type": "INTEGER",
+        "nullable": false,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": [
+          {
+            "target": "sheet_layer.id",
+            "ondelete": "CASCADE"
+          }
+        ]
+      },
+      {
+        "name": "label",
+        "type": "VARCHAR(128)",
+        "nullable": false,
+        "pk": false,
+        "default": "base",
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "condition_index",
+        "type": "INTEGER",
+        "nullable": false,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "is_por",
+        "type": "BOOLEAN",
+        "nullable": false,
+        "pk": false,
+        "default": "false",
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "source_condition_id",
+        "type": "INTEGER",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      }
+    ],
+    "constraints": [
+      {
+        "name": null,
+        "type": "ForeignKeyConstraint",
+        "columns": [
+          "layer_id"
+        ],
+        "sql": null
+      },
+      {
+        "name": null,
+        "type": "PrimaryKeyConstraint",
+        "columns": [
+          "id"
+        ],
+        "sql": null
+      },
+      {
+        "name": "uq_condition_index",
+        "type": "UniqueConstraint",
+        "columns": [
+          "layer_id",
+          "condition_index"
+        ],
+        "sql": null
+      }
+    ],
+    "indexes": [
+      {
+        "name": "uq_layer_condition_por",
+        "unique": true,
+        "columns": [
+          "layer_condition.layer_id"
+        ],
+        "where": "is_por"
+      },
+      {
+        "name": "ix_layer_condition_layer_id",
+        "unique": false,
+        "columns": [
+          "layer_condition.layer_id"
+        ],
+        "where": "None"
+      }
+    ]
+  },
+  {
+    "name": "cell_value",
+    "source": "backend/app/models/project.py",
+    "line": 249,
+    "columns": [
+      {
+        "name": "id",
+        "type": "INTEGER",
+        "nullable": false,
+        "pk": true,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "condition_id",
+        "type": "INTEGER",
+        "nullable": false,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": [
+          {
+            "target": "layer_condition.id",
+            "ondelete": "CASCADE"
+          }
+        ]
+      },
+      {
+        "name": "parameter_code",
+        "type": "VARCHAR(64)",
+        "nullable": false,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      },
+      {
+        "name": "value_text",
+        "type": "TEXT",
+        "nullable": true,
+        "pk": false,
+        "default": null,
+        "enum": null,
+        "fks": []
+      }
+    ],
+    "constraints": [
+      {
+        "name": null,
+        "type": "PrimaryKeyConstraint",
+        "columns": [
+          "id"
+        ],
+        "sql": null
+      },
+      {
+        "name": "uq_cell_condition_param",
+        "type": "UniqueConstraint",
+        "columns": [
+          "condition_id",
+          "parameter_code"
+        ],
+        "sql": null
+      },
+      {
+        "name": null,
+        "type": "ForeignKeyConstraint",
+        "columns": [
+          "condition_id"
+        ],
+        "sql": null
+      }
+    ],
+    "indexes": [
+      {
+        "name": "ix_cell_value_parameter_code",
+        "unique": false,
+        "columns": [
+          "cell_value.parameter_code"
+        ],
+        "where": "None"
+      },
+      {
+        "name": "ix_cell_value_condition_id",
+        "unique": false,
+        "columns": [
+          "cell_value.condition_id"
+        ],
+        "where": "None"
+      }
+    ]
+  }
+]</script>
+<script>
+const SCHEMA=JSON.parse(document.getElementById('schema-data').textContent),byName=Object.fromEntries(SCHEMA.map(t=>[t.name,t]));
+const names={project:'제품 공정조건 · 한 리비전',project_profile:'제품 프로필',sheet_layer:'공정 Layer',layer_condition:'Layer 안의 조건 행',cell_value:'조건 × 파라미터 셀 값',parameter:'파라미터 정의',parameter_category:'파라미터 분류',choice_set:'재사용 선택지 집합',choice_option:'선택지 항목',change_event:'변경·승인 이벤트',edit_lock:'편집 잠금',review_comment:'검토 댓글',validation_rule:'검증 규칙'};
+const highlights={project:['id','line_id','process_id','part_id','version'],sheet_layer:['id','project_id','layer_key','backbone_snapshot'],layer_condition:['id','layer_id','condition_index','is_por'],cell_value:['id','condition_id','parameter_code','value_text'],project_profile:['project_id','device_type_code','project_category_code','process_name'],parameter:['id','code','value_type','choice_set_id'],parameter_category:['id','code','display_name'],choice_set:['id','code','version'],choice_option:['id','choice_set_id','code','label'],change_event:['id','project_id','event_type','payload'],edit_lock:['project_id','locked_by','lock_token','expires_at'],review_comment:['id','project_id','condition_id','body'],validation_rule:['id','code','scope','spec']};
+const nodeNotes={project:'name 필수 · 계보 self-FK는 리비전 탭 참조',project_profile:'PK=FK · DB 0..1 / 앱 1:1',sheet_layer:'project_id + layer_key 유일',layer_condition:'Layer당 POR 최대 1개',cell_value:'condition_id + parameter_code 유일',parameter:'code 유일 · 타입별 CHECK',choice_option:'choice_set_id + code 유일',choice_set:'code 유일',parameter_category:'code 유일',edit_lock:'project_id PK · 프로젝트당 최대 1개',change_event:'좌표·출처는 FK 없이 보존',review_comment:'프로젝트 또는 셀 대상',validation_rule:'scope/spec JSON · 별도 결과 테이블 없음'};
+const logical=[{child:'cell_value',field:'parameter_code',parent:'parameter',target:'code',label:'코드 해석',note:'FK 없음. 파라미터 정의 또는 승인 시점 snapshot으로 해석',kind:'logical'},{child:'project_profile',field:'*_code',parent:'choice_option',target:'code (choice_set.code 범위)',label:'집합별 code',note:'device_type / project_category / active_direction / gate_direction 집합 안에서 option code를 해석. option code는 전역 유일 아님',kind:'logical'},{child:'validation_rule',field:'spec / scope',parent:'project',target:'검증 대상 및 스냅샷',label:'실행 시 적용',note:'DB FK 관계가 아님. 규칙을 조건표에 적용하고 승인 근거는 project JSON/hash에 기록',kind:'logical'}];
+const fk=SCHEMA.flatMap(t=>t.columns.flatMap(c=>c.fks.map(f=>({child:t.name,field:c.name,parent:f.target.split('.')[0],target:f.target.split('.')[1],kind:'fk',nullable:c.nullable,delete:f.ondelete||'기본 NO ACTION',label:c.pk?'0..1 → 1':c.name==='revision_of_id'?'0..1 → 0..1':c.nullable?'N → 0..1':'N → 1',note:c.pk?'부모에 자식 존재를 강제하지 않음':(['sheet_layer','layer_condition','cell_value','change_event'].includes(t.name)&&c.name.endsWith('_id')?'NULL 허용은 마이그레이션 차이 참조':'')}))));
+const views={core:{intro:'실제 FK는 소유 구조를 연결합니다. 셀 → 파라미터는 코드 기반 논리 참조입니다. 실선 라벨의 필수 여부는 ORM 기준이며 마이그레이션 차이는 아래에서 확인하세요.',nodes:{project:[40,50],sheet_layer:[400,50],layer_condition:[760,50],project_profile:[40,370],parameter:[400,370],cell_value:[760,370]}},catalog:{intro:'Parameter는 Category·ChoiceSet을 FK로 참조합니다. Profile의 선택 값은 고정된 집합 안에서 option code를 해석하며 직접 FK는 없습니다.',nodes:{parameter_category:[40,50],parameter:[400,50],choice_set:[760,50],project_profile:[400,370],choice_option:[760,370]}},audit:{intro:'변경 이력·댓글·잠금은 project를 소유 FK로 참조합니다. 이력의 셀 좌표·출처 ID는 FK가 아니며, 검증 규칙은 실행 시 조건표에 적용합니다.',nodes:{change_event:[40,50],project:[400,50],edit_lock:[760,50],review_comment:[40,370],validation_rule:[760,370]}}};
+let current='core',zoom=1,selected='';const $=id=>document.getElementById(id);const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function columnTable(t){return `<div class="table-scroll"><table><thead><tr><th>컬럼</th><th>타입</th><th>키</th><th>NULL</th><th>참조 / 기본값</th></tr></thead><tbody>${t.columns.map(c=>`<tr><td><code>${esc(c.name)}</code></td><td><code>${esc(c.type)}</code>${c.enum?`<br><small>${c.enum.map(esc).join(' · ')}</small>`:''}</td><td>${c.pk?'PK ':''}${c.fks.length?'FK':''}</td><td class="${c.nullable?'nullable':''}">${c.nullable?'허용':'불가'}</td><td>${c.fks.map(f=>`<code>${esc(f.target)}</code><br><small>ON DELETE ${esc(f.ondelete||'NO ACTION')}</small>`).join('<br>')}${c.default!==null?`<br><small>default: <code>${esc(c.default)}</code></small>`:''}</td></tr>`).join('')}</tbody></table></div>`}
+function constraints(t){return `<h3>유일성·CHECK·인덱스</h3><ul class="constraint">${t.constraints.filter(c=>!['PrimaryKeyConstraint','ForeignKeyConstraint'].includes(c.type)).map(c=>`<li><b>${esc(c.type)}</b> <code>${esc(c.name||'')}</code><br><code>${esc(c.sql||c.columns.join(', '))}</code></li>`).join('')}${t.indexes.map(i=>`<li><b>${i.unique?'UNIQUE INDEX':'INDEX'}</b> <code>${esc(i.name)}</code><br><code>${esc(i.columns.join(', '))}${i.where&&i.where!=='None'?' WHERE '+esc(i.where):''}</code></li>`).join('')}</ul>`}
+function openTable(name){const t=byName[name];selected=name;$('dialog-title').textContent=name;$('dialog-subtitle').textContent=names[name];$('dialog-body').innerHTML=`<p class="source">근거: ${esc(t.source)}:${t.line} · ORM 기준</p><p class="small">${esc(nodeNotes[name])}. 마이그레이션과의 차이는 본문 하단 표를 함께 확인하세요.</p>${columnTable(t)}${constraints(t)}`;document.querySelectorAll('.node').forEach(n=>n.classList.toggle('selected',n.dataset.table===name));$('table-dialog').showModal()}
+function pathFor(a,b,e){let [x1,y1]=a,[x2,y2]=b;const w=270,h=250;let points,label;
+ if(y1===y2){const right=x1<x2;points=[[x1+(right?w:0),y1+125],[x2+(right?0:w),y2+125]];label=[(points[0][0]+points[1][0])/2,y1+111]}
+ else if(x1===x2){const down=y1<y2;points=[[x1+135,y1+(down?h:0)],[x2+135,y2+(down?0:h)]];label=[x1+151,(points[0][1]+points[1][1])/2]}
+ else{const mid=335;points=[[x1+135,y1],[x1+135,mid],[x2+135,mid],[x2+135,y2+h]];label=[(x1+x2)/2+135,mid-12]}
+ return {d:points.map((p,i)=>(i?'L':'M')+p.join(',')).join(' '),label}}
+function renderGraph(){const revision=current==='revision';$('graph-wrap').classList.toggle('hidden',revision);$('revision-view').classList.toggle('hidden',!revision);$('legend').classList.toggle('hidden',revision);['zoom-in','zoom-out','zoom-reset'].forEach(id=>$(id).disabled=revision);$('viewintro').textContent=revision?'リビ전은 별도 테이블이 아니라 project의 자기 참조 관계입니다. 아래 화살표는 버전 생성 순서이며 FK 방향은 후속 → 이전입니다.'.replace('リ비전','리비전'):views[current].intro;document.querySelectorAll('.tab').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.view===current)));
+ const nodes=revision?{project:[40,50]}:views[current].nodes;const edges=[...fk,...logical].filter(e=>nodes[e.child]&&nodes[e.parent]&&(revision?e.child===e.parent:e.child!==e.parent));$('relation-table').innerHTML=`<table><thead><tr><th>종류</th><th>참조하는 컬럼 → 대상</th><th>관계 / 삭제</th><th>설명</th></tr></thead><tbody>${edges.map(e=>`<tr><td><span class="kind ${e.kind==='logical'?'logical':''}">${e.kind==='logical'?'논리 참조':'FK'}</span></td><td><code>${e.child}.${e.field} → ${e.parent}.${e.target}</code></td><td>${esc(e.label)}<br>${e.delete?esc(e.delete):'DB 제약 없음'}</td><td>${esc(e.note)}</td></tr>`).join('')}</tbody></table>`;
+ if(revision)return;let svg=`<svg width="1100" height="640" role="img" aria-label="${esc($('viewintro').textContent)}"><defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#73877b"/></marker><marker id="arrow-logic" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#9c722f"/></marker></defs>`;edges.forEach(e=>{const p=pathFor(nodes[e.child],nodes[e.parent],e);svg+=`<path class="edge ${e.kind==='logical'?'logic':''}" d="${p.d}" marker-end="url(#arrow${e.kind==='logical'?'-logic':''})"/><text class="edge-label" x="${p.label[0]}" y="${p.label[1]}" text-anchor="${nodes[e.child][0]===nodes[e.parent][0]?'start':'middle'}">${esc(e.label)}</text>`});svg+='</svg>';
+ $('graph').innerHTML=svg+Object.entries(nodes).map(([name,pos])=>`<button class="node ${name==='project'?'core':''} ${name===selected?'selected':''}" style="left:${pos[0]}px;top:${pos[1]}px" data-table="${name}" aria-label="${name} ${names[name]} 전체 필드 보기"><span class="nodehead"><strong>${name}</strong><small>${names[name]}</small></span><span class="fields">${highlights[name].map(field=>{const c=byName[name].columns.find(c=>c.name===field);return `<span class="field"><span class="key">${c.pk?'PK':c.fks.length?'FK':''}</span><span>${field}</span></span>`}).join('')}</span><span class="nodefoot">${nodeNotes[name]} · ${byName[name].columns.length}필드</span></button>`).join('');$('graph').querySelectorAll('.node').forEach(b=>b.onclick=()=>openTable(b.dataset.table));setZoom(zoom)}
+function setZoom(z){zoom=Math.max(.65,Math.min(1.5,z));$('graph').style.transform=`scale(${zoom})`;$('graph-size').style.width=`${1100*zoom}px`;$('graph-size').style.height=`${640*zoom}px`;$('zoom-value').textContent=Math.round(zoom*100)+'%'}
+document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{current=b.dataset.view;history.replaceState(null,'','#'+current);renderGraph()});$('zoom-in').onclick=()=>setZoom(zoom+.1);$('zoom-out').onclick=()=>setZoom(zoom-.1);$('zoom-reset').onclick=()=>setZoom(1);$('dialog-close').onclick=()=>$('table-dialog').close();
+function renderCatalog(){const q=$('table-search').value.trim().toLowerCase();const matches=SCHEMA.filter(t=>(t.name+' '+names[t.name]+' '+t.columns.map(c=>c.name).join(' ')).toLowerCase().includes(q));$('table-count').textContent=`${matches.length} / ${SCHEMA.length} 테이블`;$('catalog').innerHTML=matches.length?matches.map(t=>`<details><summary><code>${t.name}</code> · ${names[t.name]} <span class="count">${t.columns.length}필드</span></summary><p class="source">${esc(t.source)}:${t.line}</p>${columnTable(t)}${constraints(t)}</details>`).join(''):'<p>일치하는 테이블이나 필드가 없습니다.</p>'}$('table-search').oninput=renderCatalog;const hash=location.hash.slice(1);if(views[hash]||hash==='revision')current=hash;renderGraph();renderCatalog();
+</script></body></html>
