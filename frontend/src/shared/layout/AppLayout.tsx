@@ -1,7 +1,7 @@
 import { Link, NavLink, Outlet } from 'react-router-dom'
 
 const primaryNavigation = [
-  { to: '/projects', code: 'PRJ', label: '프로젝트' },
+  { to: '/projects', code: 'PRJ', label: '제품 목록' },
   { to: '/processes', code: 'PCS', label: '공정 카탈로그' },
   { to: '/parameters', code: 'PAR', label: '파라미터 관리' },
 ]
@@ -24,7 +24,7 @@ export function AppLayout() {
           <Link
             className="mb-5 inline-flex h-10 items-center justify-center rounded-[3px] font-bold tracking-[0.12em] text-ink-950"
             to="/projects"
-            aria-label="PCM 프로젝트"
+            aria-label="PCM 제품 목록"
           >
             PCM
           </Link>

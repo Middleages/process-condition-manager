@@ -514,7 +514,7 @@ async def test_project_list_filters_exact_profile_choices(
 
 
 @pytest.mark.parametrize("query", ["secret note", "SPECIAL", "customer", "logic"])
-async def test_project_list_searches_profile_comment_and_resolved_choice(
+async def test_project_list_does_not_search_profile_comment_and_resolved_choice(
     profile_client: AsyncClient,
     query: str,
 ) -> None:
@@ -529,7 +529,7 @@ async def test_project_list_searches_profile_comment_and_resolved_choice(
 
     response = await profile_client.get("/api/projects", params={"query": query})
 
-    assert [item["id"] for item in response.json()["items"]] == [created.json()["id"]]
+    assert [item["id"] for item in response.json()["items"]] == []
 
 
 async def test_project_list_resolves_page_with_one_batched_option_select(

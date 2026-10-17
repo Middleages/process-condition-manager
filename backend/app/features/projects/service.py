@@ -1,5 +1,6 @@
 """프로젝트 생성/백본 서비스."""
 
+import logging
 from dataclasses import asdict, dataclass, replace
 from datetime import datetime
 from typing import Any
@@ -8,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.core.auth import Permission
-from app.core.errors import ConflictError, DomainValidationError, NotFoundError
+from app.core.errors import AppError, ConflictError, DomainValidationError, NotFoundError
 from app.core.locks import utcnow
 from app.domain.backbone import (
     BackboneSnapshot,
@@ -145,17 +146,33 @@ class ProjectService:
         self.metadata_provider = metadata_provider
         self.choice_repo = ChoiceSetRepository(repo.session)
 
+    async def list_lines(self) -> list[str]:
+        try:
+            processes = await self.reader.list_processes()
+            project_lines = await self.repo.list_lines()
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Failed to discover project LINEs")
+            raise AppError(
+                "LINE 목록을 불러오지 못했습니다. 다시 시도해 주세요.",
+                code="line_discovery_unavailable",
+                status_code=503,
+                details={"retryable": True},
+            ) from exc
+        return sorted({process.line_id for process in processes} | set(project_lines))
+
     async def list_projects(
         self,
         *,
+        line_id: str | None = None,
         query: str | None = None,
         status: str | None = None,
         device_type_code: str | None = None,
         project_category_code: str | None = None,
         cursor: int | None = None,
-        limit: int = 50,
+        limit: int = 25,
     ) -> tuple[list[ProjectSummary], int | None]:
         summaries, next_cursor = await self.repo.list_summaries(
+            line_id=line_id,
             query=query,
             status=status,
             device_type_code=device_type_code,

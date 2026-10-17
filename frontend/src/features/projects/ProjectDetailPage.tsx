@@ -56,10 +56,10 @@ export function ProjectDetailPage() {
               </Badge>
             </span>
           ) : (
-            '프로젝트'
+            '제품 공정조건'
           )
         }
-        title={projectQuery.data?.name ?? '프로젝트 상세'}
+        title="제품 공정조건"
         description={
           projectQuery.data
             ? `${projectQuery.data.line_id} / ${projectQuery.data.process_id} / ${projectQuery.data.part_id}`
@@ -91,7 +91,7 @@ export function ProjectDetailPage() {
         {projectId === null ? (
           <InlineAlert tone="error">올바른 프로젝트 ID가 아닙니다. 목록에서 다시 선택하세요.</InlineAlert>
         ) : projectQuery.isPending ? (
-          <InlineAlert tone="info">프로젝트 상세를 불러오는 중입니다.</InlineAlert>
+          <InlineAlert tone="info">제품 공정조건을 불러오는 중입니다.</InlineAlert>
         ) : projectQuery.isError ? (
           <InlineAlert className="flex flex-wrap items-center justify-between gap-3" tone="error">
             <span>{getApiErrorMessage(projectQuery.error)}</span>

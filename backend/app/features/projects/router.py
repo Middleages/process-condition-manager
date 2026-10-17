@@ -63,6 +63,15 @@ UserDep = Annotated[UserContext, Depends(get_current_user)]
 
 
 @router.get(
+    "/lines",
+    response_model=list[str],
+    dependencies=[Depends(require_business_read)],
+)
+async def list_lines(service: ServiceDep) -> list[str]:
+    return await service.list_lines()
+
+
+@router.get(
     "/backbone-candidates",
     response_model=list[BackboneCandidateOut],
     dependencies=[Depends(require_business_read)],
@@ -154,15 +163,17 @@ async def replace_layer_backbone(
 async def list_projects(
     service: ServiceDep,
     user: UserDep,
+    line_id: str | None = None,
     query: str | None = None,
     status: str | None = None,
     device_type_code: str | None = None,
     project_category_code: str | None = None,
     cursor: int | None = None,
-    limit: int = 50,
+    limit: int = 25,
 ) -> ProjectListOut:
     limit = max(1, min(limit, 200))
     summaries, next_cursor = await service.list_projects(
+        line_id=line_id,
         query=query,
         status=status,
         device_type_code=device_type_code,

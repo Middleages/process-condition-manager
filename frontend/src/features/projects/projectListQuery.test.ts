@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest'
 import type { ProjectListRouteState } from './urlState'
 import {
   deriveHistoricalChoiceFilterState,
-  mergeDebouncedQuery,
   projectListQueryKey,
 } from './projectListQuery'
 
@@ -20,6 +19,8 @@ describe('project list query state', () => {
       'projects',
       'list',
       {
+        lineId: null,
+        cursor: null,
         query: 'foundry',
         status: 'draft',
         deviceTypeCode: 'FOUNDRY',
@@ -37,20 +38,9 @@ describe('project list query state', () => {
     expect(categoryOnly.status).toBe('draft')
   })
 
-  it('merges a pending debounce into the latest route filters instead of a stale snapshot', () => {
-    const latestRouteState: ProjectListRouteState = {
-      query: '',
-      status: 'all',
-      deviceTypeCode: 'MEMORY',
-      projectCategoryCode: 'PRODUCT',
-    }
-
-    expect(mergeDebouncedQuery(latestRouteState, 'new search')).toEqual({
-      query: 'new search',
-      status: 'all',
-      deviceTypeCode: 'MEMORY',
-      projectCategoryCode: 'PRODUCT',
-    })
+  it('separates LINEs and pages in the cache', () => {
+    expect(projectListQueryKey({ ...filtered, lineId: 'L1', cursor: 90 })).not.toEqual(projectListQueryKey({ ...filtered, lineId: 'L2', cursor: 90 }))
+    expect(projectListQueryKey({ ...filtered, lineId: 'L1', cursor: 90 })).not.toEqual(projectListQueryKey({ ...filtered, lineId: 'L1', cursor: 80 }))
   })
 
   it('allows historical inactive options from a positively inactive set in list filters', () => {

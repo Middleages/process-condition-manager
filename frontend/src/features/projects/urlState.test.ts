@@ -9,7 +9,7 @@ import {
 } from './urlState'
 
 describe('project list URL state', () => {
-  it('omits defaults and never serializes a cursor', () => {
+  it('omits defaults', () => {
     const params = serializeProjectListSearch({
       query: '',
       status: 'all',
@@ -21,6 +21,18 @@ describe('project list URL state', () => {
     expect(params.has('cursor')).toBe(false)
   })
 
+  it('round-trips LINE and cursor history for detail/back navigation', () => {
+    const state = parseProjectListSearch(new URLSearchParams('line=L1&query=coat&cursor=50&trail=0,100'))
+    expect(state).toMatchObject({ lineId: 'L1', cursor: 50, cursorTrail: [null, 100] })
+    expect(parseProjectListSearch(serializeProjectListSearch(state))).toEqual(state)
+  })
+
+  it.each(['oops', '100,0', '0,20', '0,100,100', '0,-1'])('ignores malformed cursor trail %s', (trail) => {
+    expect(parseProjectListSearch(new URLSearchParams(`line=L1&cursor=50&trail=${trail}`))).toMatchObject({
+      cursor: 50, cursorTrail: [],
+    })
+  })
+
   it('round-trips query, draft status, and exact managed-choice codes', () => {
     const state = {
       query: 'L1 & coat',
@@ -29,7 +41,7 @@ describe('project list URL state', () => {
       projectCategoryCode: 'LOGIC',
     } as const
 
-    expect(parseProjectListSearch(serializeProjectListSearch(state))).toEqual(state)
+    expect(parseProjectListSearch(serializeProjectListSearch(state))).toEqual({ ...state, lineId: null, cursor: null, cursorTrail: [] })
     expect(serializeProjectListSearch(state).toString()).toBe(
       'query=L1+%26+coat&status=draft&device_type=FOUNDRY&project_category=LOGIC',
     )

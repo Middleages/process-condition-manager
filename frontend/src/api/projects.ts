@@ -21,6 +21,7 @@ import type {
 } from './types'
 
 export interface ListProjectsParams {
+  lineId?: string
   query?: string
   status?: ProjectStatus | 'all'
   deviceTypeCode?: string
@@ -41,6 +42,7 @@ export interface ProjectCommentListParams {
 
 export async function listProjects(params: ListProjectsParams = {}): Promise<ProjectListOut> {
   const apiParams: Record<string, string | number> = {}
+  if (params.lineId !== undefined) apiParams.line_id = params.lineId
   if (params.query !== undefined) apiParams.query = params.query
   if (params.status !== undefined) apiParams.status = params.status
   if (params.deviceTypeCode !== undefined) {
@@ -53,6 +55,11 @@ export async function listProjects(params: ListProjectsParams = {}): Promise<Pro
   if (params.limit !== undefined) apiParams.limit = params.limit
 
   const response = await apiClient.get<ProjectListOut>('/projects', { params: apiParams })
+  return response.data
+}
+
+export async function listProjectLines(): Promise<string[]> {
+  const response = await apiClient.get<string[]>('/projects/lines')
   return response.data
 }
 

@@ -6,14 +6,14 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { listProjects } from '@/api/projects'
+import { listProjectLines, listProjects } from '@/api/projects'
 import type { ProjectListOut } from '@/api/types'
 
 import { ProjectListPage } from './ProjectListPage'
 import { projectListQueryKey } from './projectListQuery'
 import { parseProjectListSearch } from './urlState'
 
-vi.mock('@/api/projects', () => ({ listProjects: vi.fn() }))
+vi.mock('@/api/projects', () => ({ listProjects: vi.fn(), listProjectLines: vi.fn() }))
 
 const listProjectsMock = vi.mocked(listProjects)
 
@@ -61,6 +61,8 @@ function seedProjectListQuery(queryClient: QueryClient, location: string, state:
   const routeState = parseProjectListSearch(new URL(location, 'https://pcm.test').searchParams)
   const queryKey = projectListQueryKey(routeState)
 
+  queryClient.setQueryData(['projects', 'lines'], ['L1', 'L2'])
+
   if (state !== 'loading') {
     const result = state === 'empty'
       ? { items: [], next_cursor: null }
@@ -68,10 +70,7 @@ function seedProjectListQuery(queryClient: QueryClient, location: string, state:
         ? { ...projects, next_cursor: 100 }
         : projects
 
-    queryClient.setQueryData(queryKey, {
-      pages: [result],
-      pageParams: [null],
-    })
+    queryClient.setQueryData(queryKey, result)
   }
 
   if (state === 'error') {
@@ -89,7 +88,7 @@ function renderList(location: string, state: PageState = 'loaded'): string {
   seedProjectListQuery(queryClient, location, state)
 
   const router = createMemoryRouter(
-    [{ path: '/projects', element: <ProjectListPage /> }],
+    [{ path: '/projects', element: <ProjectListPage /> }, { path: '/projects/:id', element: <div>Detail</div> }],
     { initialEntries: [location] },
   )
   const originalConsoleError = console.error
@@ -113,163 +112,141 @@ describe('ProjectListPage', () => {
   beforeEach(() => {
     listProjectsMock.mockReset()
     listProjectsMock.mockImplementation(() => new Promise(() => {}))
+    vi.mocked(listProjectLines).mockResolvedValue(['L1', 'L2'])
   })
 
-  it('renders the project command index with search, creation, and status-only filtering', () => {
-    const html = renderList(
-      '/projects?query=coat&status=draft&device_type=FOUNDRY&project_category=LEGACY',
-    )
-    const document = new JSDOM(html).window.document
-    const statusGroup = document.querySelector('[role="group"][aria-label="프로젝트 상태 필터"]')
-    const statusButtons = [...(statusGroup?.querySelectorAll('button') ?? [])]
-
-    expect(document.querySelector('h1')?.textContent).toBe('프로젝트')
-    expect(document.querySelector('input[type="search"]')?.getAttribute('placeholder')).toBe(
-      'LINE, Process 또는 Part ID',
-    )
-    expect(document.querySelector('a[href="/projects/new"]')?.textContent).toContain('새 프로젝트')
-    expect(statusButtons.map((button) => button.textContent?.trim())).toEqual([
-      '전체',
-      '초안',
-      '검토중',
-      '승인',
-      '반려',
-    ])
-    expect(statusButtons.map((button) => button.getAttribute('aria-pressed'))).toEqual([
-      'false',
-      'true',
-      'false',
-      'false',
-      'false',
-    ])
-    expect(html).not.toContain('Device Type')
-    expect(html).not.toContain('Project Category')
-    expect(html).not.toContain('Coat baseline')
-    expect(html).toContain('>L1</a>')
+  it('requires LINE selection, then exposes explicit search and two synchronized pagers', () => {
+    expect(renderList('/projects')).toContain('LINE을 선택해 주세요.')
+    const document = new JSDOM(renderList('/projects?line=L1', 'paginated')).window.document
+    expect(document.querySelector('h1')?.textContent).toBe('제품 목록')
+    expect(document.querySelector('form')).not.toBeNull()
+    expect(document.querySelector('input')?.placeholder).toBe('Process 또는 Part ID')
+    expect(document.querySelector('a[href="/projects/new"]')?.textContent).toContain('공정조건 등록')
+    expect(document.querySelectorAll('nav[aria-label*="페이지"]')).toHaveLength(2)
+    expect(document.querySelectorAll('button[aria-pressed="true"]')).toHaveLength(1)
+    expect(document.body.textContent).not.toContain('Coat baseline')
   })
 
-  it('announces the loaded project count in Korean', () => {
-    const document = new JSDOM(renderList('/projects')).window.document
-    const announcement = document.querySelector('[role="status"][aria-live="polite"]')
-
-    expect(announcement?.textContent).toContain('프로젝트 1개')
-    expect(announcement?.textContent).toContain('불러왔습니다')
+  it('renders scoped loading, retry and distinct empty states', () => {
+    expect(renderList('/projects?line=L1', 'loading')).toContain('제품 목록을 불러오는 중입니다.')
+    expect(renderList('/projects?line=L1', 'error')).toContain('다시 시도')
+    expect(renderList('/projects?line=L1', 'empty')).toContain('이 LINE에 등록된 공정조건이 없습니다.')
+    expect(renderList('/projects?line=L1&query=coat', 'empty')).toContain('검색 결과가 없습니다.')
   })
 
-  it('renders loading, error with retry, empty, and pagination states', () => {
-    const loadingHtml = renderList('/projects', 'loading')
-    expect(loadingHtml).toContain('프로젝트 목록을 불러오는 중입니다.')
-    expect(loadingHtml).not.toContain('개를 불러왔습니다.')
-
-    const errorHtml = renderList('/projects?query=coat', 'error')
-    expect(errorHtml).toContain('프로젝트 목록 조회에 실패했습니다.')
-    expect(errorHtml).toContain('다시 시도')
-    expect(errorHtml).toContain('value="coat"')
-    expect(errorHtml).not.toContain('개를 불러왔습니다.')
-
-    expect(renderList('/projects', 'empty')).toContain('조건에 맞는 프로젝트가 없습니다.')
-    expect(renderList('/projects', 'paginated')).toContain('더 보기')
-  })
-
-  it('keeps legacy managed-choice URL filters server-side without exposing controls', () => {
-    const html = renderList(
-      '/projects?device_type=UNKNOWN_DEVICE&project_category=UNKNOWN_CATEGORY',
-    )
-
-    expect(html).not.toContain('UNKNOWN_DEVICE')
-    expect(html).not.toContain('UNKNOWN_CATEGORY')
-    expect(html).not.toContain('Device Type')
-    expect(html).not.toContain('Project Category')
-  })
-
-  it('retries with the current query and forwards hidden legacy URL filters', async () => {
-    const location =
-      '/projects?query=coat&status=review&device_type=FOUNDRY&project_category=LEGACY'
-    listProjectsMock
-      .mockRejectedValueOnce(new Error('프로젝트 목록 조회에 실패했습니다.'))
-      .mockResolvedValueOnce(projects)
-    const interactive = renderInteractiveList(location)
-
+  it('does not fetch any products until a LINE is selected', async () => {
+    const view = renderInteractiveList('/projects')
     try {
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)) })
+      expect(listProjectsMock).not.toHaveBeenCalled()
+      const line = [...view.container.querySelectorAll('button')].find(button => button.textContent === 'L2')!
+      await act(async () => line.click())
+      expect(listProjectsMock).toHaveBeenCalledWith(expect.objectContaining({ lineId: 'L2', limit: 25 }))
+    } finally { view.cleanup() }
+  })
+
+  it('pages using server cursors, restores prior page on back, and resets on LINE change', async () => {
+    listProjectsMock.mockResolvedValue({ ...projects, next_cursor: 40 })
+    const view = renderInteractiveList('/projects?line=L1&query=coat')
+    const settle = async () => { await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) }) }
+    try {
+      await settle()
+      const next = [...view.container.querySelectorAll('button')].filter(button => button.textContent === '다음')
+      expect(next).toHaveLength(2)
+      await act(async () => next[1].click())
+      await settle()
+      expect(listProjectsMock).toHaveBeenLastCalledWith(expect.objectContaining({ lineId: 'L1', query: 'coat', cursor: 40, limit: 25 }))
+      expect(view.router.state.location.search).toContain('trail=0')
+      expect(view.container.querySelector('h2[tabindex]')).toBe(view.window.document.activeElement)
+      await act(async () => view.router.navigate(-1))
+      await settle()
+      expect(view.router.state.location.search).not.toContain('cursor')
+      const line = [...view.container.querySelectorAll('button')].find(button => button.textContent === 'L2')!
+      await act(async () => line.click())
+      expect(listProjectsMock).toHaveBeenLastCalledWith(expect.objectContaining({ lineId: 'L2', query: 'coat', cursor: undefined }))
+    } finally { view.cleanup() }
+  })
+
+  it('restores a later-page open link after detail/back navigation', async () => {
+    listProjectsMock.mockResolvedValue(projects)
+    const view = renderInteractiveList('/projects?line=L1&cursor=50&trail=0')
+    try {
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)) })
+      const link = view.container.querySelector<HTMLAnchorElement>('[data-project-id="42"]')!
+      await act(async () => link.click())
+      expect(view.router.state.location.pathname).toBe('/projects/42')
+      expect(view.router.state.location.state.from).toBe('/projects?line=L1&cursor=50&trail=0')
+      await act(async () => view.router.navigate(-1))
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 60)) })
+      expect(view.window.document.activeElement?.getAttribute('data-project-id')).toBe('42')
+      expect(view.router.state.location.search).toContain('cursor=50')
+    } finally { view.cleanup() }
+  })
+
+  it('labels a direct cursor without history as first-page recovery and resets submitted search', async () => {
+    listProjectsMock.mockResolvedValue(projects)
+    const view = renderInteractiveList('/projects?line=L1&query=coat&cursor=50&trail=bad')
+    try {
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+      expect(view.container.textContent).toContain('현재 1개 표시')
+      const first = [...view.container.querySelectorAll('button')].filter(button => button.textContent === '처음')
+      expect(first).toHaveLength(2)
+      await act(async () => first[1].click())
+      expect(view.router.state.location.search).toBe('?line=L1&query=coat')
+      await act(async () => view.router.navigate('/projects?line=L1&query=coat&cursor=50&trail=0'))
+      await act(async () => view.container.querySelector('form')!.dispatchEvent(new view.window.Event('submit', { bubbles: true, cancelable: true })))
+      expect(view.router.state.location.search).toBe('?line=L1&query=coat')
+    } finally { view.cleanup() }
+  })
+
+  it('keeps no stale rows under the new LINE heading while loading and supports retry', async () => {
+    listProjectsMock.mockResolvedValueOnce(projects).mockRejectedValueOnce(new Error('LINE request failed')).mockResolvedValueOnce({ items: [], next_cursor: null })
+    const view = renderInteractiveList('/projects?line=L1')
+    try {
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+      expect(view.container.querySelector('table')).not.toBeNull()
+      const line = [...view.container.querySelectorAll('button')].find(button => button.textContent === 'L2')!
+      await act(async () => line.click())
+      expect(view.container.querySelector('table')).toBeNull()
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+      const retry = [...view.container.querySelectorAll('button')].find(button => button.textContent === '다시 시도')!
+      await act(async () => retry.click())
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+      expect(view.container.textContent).toContain('이 LINE에 등록된 공정조건이 없습니다.')
+      expect(listProjectsMock).toHaveBeenLastCalledWith(expect.objectContaining({ lineId: 'L2', limit: 25 }))
+    } finally { view.cleanup() }
+  })
+
+  it('keeps draft typing local and restores applied query when switching LINE', async () => {
+    listProjectsMock.mockResolvedValue(projects)
+    const view = renderInteractiveList('/projects?line=L1&query=coat')
+    try {
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+      // React DOM is imported before JSDOM in this test harness; simulate its tracked change event.
+      const input = view.container.querySelector('input')!
+      const props = Object.keys(input).find(key => key.startsWith('__reactProps'))!
       await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 25))
+        (input as unknown as Record<string, { onChange: (event: { target: { value: string } }) => void }>)[props].onChange({ target: { value: 'unsubmitted' } })
       })
-
-      const retryButton = [...interactive.container.querySelectorAll('button')].find(
-        (button) => button.textContent?.trim() === '다시 시도',
-      )
-      const searchInput = interactive.container.querySelector<HTMLInputElement>(
-        'input[type="search"]',
-      )
-
-      expect(retryButton).toBeDefined()
-      expect(searchInput?.value).toBe('coat')
+      expect(input.value).toBe('unsubmitted')
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 300)) })
       expect(listProjectsMock).toHaveBeenCalledTimes(1)
-      expect(listProjectsMock).toHaveBeenNthCalledWith(1, {
-        query: 'coat',
-        status: 'review',
-        deviceTypeCode: 'FOUNDRY',
-        projectCategoryCode: 'LEGACY',
-        cursor: undefined,
-        limit: 50,
-      })
-
+      const line = [...view.container.querySelectorAll('button')].find(button => button.textContent === 'L2')!
+      await act(async () => line.click())
+      expect(input.value).toBe('coat')
       await act(async () => {
-        retryButton?.dispatchEvent(
-          new interactive.window.MouseEvent('click', { bubbles: true }),
-        )
-        await new Promise((resolve) => setTimeout(resolve, 0))
+        (input as unknown as Record<string, { onChange: (event: { target: { value: string } }) => void }>)[props].onChange({ target: { value: 'P-42' } })
       })
-
-      expect(listProjectsMock).toHaveBeenCalledTimes(2)
-      expect(listProjectsMock).toHaveBeenLastCalledWith({
-        query: 'coat',
-        status: 'review',
-        deviceTypeCode: 'FOUNDRY',
-        projectCategoryCode: 'LEGACY',
-        cursor: undefined,
-        limit: 50,
-      })
-      expect(searchInput?.value).toBe('coat')
-      expect(interactive.container.textContent).not.toContain('Device Type')
-      expect(interactive.container.textContent).not.toContain('Project Category')
-    } finally {
-      interactive.cleanup()
-    }
-  })
-
-  it('does not add a history entry when the active status is clicked', async () => {
-    const interactive = renderInteractiveList(
-      '/projects?status=review',
-      '/projects?status=draft',
-    )
-
-    try {
-      const activeStatusButton = [...interactive.container.querySelectorAll('button')].find(
-        (button) => button.textContent?.trim() === '검토중',
-      )
-
-      expect(activeStatusButton?.getAttribute('aria-pressed')).toBe('true')
-
-      await act(async () => {
-        activeStatusButton?.dispatchEvent(
-          new interactive.window.MouseEvent('click', { bubbles: true }),
-        )
-      })
-      await act(async () => {
-        await interactive.router.navigate(-1)
-      })
-
-      expect(interactive.router.state.location.search).toBe('?status=draft')
-    } finally {
-      interactive.cleanup()
-    }
+      await act(async () => view.container.querySelector('form')!.dispatchEvent(new view.window.Event('submit', { bubbles: true, cancelable: true })))
+      expect(listProjectsMock).toHaveBeenLastCalledWith(expect.objectContaining({ lineId: 'L2', query: 'P-42', cursor: undefined }))
+    } finally { view.cleanup() }
   })
 })
 
 function renderInteractiveList(location: string, previousLocation?: string) {
   const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', {
     url: `https://pcm.test${location}`,
+    pretendToBeVisual: true,
   })
   const container = dom.window.document.querySelector<HTMLDivElement>('#root')
   if (!container) throw new Error('Interactive test root is unavailable.')
@@ -277,7 +254,7 @@ function renderInteractiveList(location: string, previousLocation?: string) {
   const queryClient = createProjectListQueryClient()
   seedProjectListQuery(queryClient, location, 'loading')
   const router = createMemoryRouter(
-    [{ path: '/projects', element: <ProjectListPage /> }],
+    [{ path: '/projects', element: <ProjectListPage /> }, { path: '/projects/:id', element: <div>Detail</div> }],
     {
       initialEntries: previousLocation ? [previousLocation, location] : [location],
       initialIndex: previousLocation ? 1 : 0,

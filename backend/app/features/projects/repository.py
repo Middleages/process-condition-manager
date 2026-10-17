@@ -3,7 +3,7 @@
 from collections.abc import Collection
 from dataclasses import dataclass
 
-from sqlalchemy import Text, and_, cast, func, or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased, selectinload
@@ -11,7 +11,6 @@ from sqlalchemy.orm import aliased, selectinload
 from app.core.errors import ConflictError
 from app.domain.choices.rules import ResolvedChoice
 from app.domain.parameters.types import ValueType
-from app.models.choice import ChoiceOption, ChoiceSet
 from app.models.parameter import Parameter
 from app.models.project import (
     CellValue,
@@ -165,6 +164,10 @@ class ProjectRepository:
         )
         return list(result.scalars().all())
 
+    async def list_lines(self) -> list[str]:
+        rows = await self.session.scalars(select(Project.line_id).distinct())
+        return list(rows)
+
     async def processes_with_projects(self) -> set[tuple[str, str]]:
         """조건표(프로젝트)가 하나라도 있는 (line_id, process_id) 집합."""
         rows = await self.session.execute(select(Project.line_id, Project.process_id).distinct())
@@ -189,12 +192,13 @@ class ProjectRepository:
     async def list_summaries(
         self,
         *,
+        line_id: str | None = None,
         query: str | None = None,
         status: str | None = None,
         device_type_code: str | None = None,
         project_category_code: str | None = None,
         cursor: int | None = None,
-        limit: int = 50,
+        limit: int = 25,
     ) -> tuple[list[ProjectSummary], int | None]:
         """Load a page without coupling frozen rows to live ChoiceSet joins."""
         layer_count = (
@@ -228,59 +232,24 @@ class ProjectRepository:
             cell_count.label("cell_count"),
             successor_id.label("successor_id"),
         ).join(ProjectProfile, ProjectProfile.project_id == Project.id)
+        # Rank the complete identity history before mutable filters or the cursor.
+        # LINE and search are identity fields, so they can safely narrow this input.
+        ranked = select(
+            Project.id,
+            func.row_number().over(
+                partition_by=(Project.line_id, Project.process_id, Project.part_id),
+                order_by=(Project.version.desc(), Project.id.desc()),
+            ).label("revision_rank"),
+        )
+        if line_id is not None:
+            ranked = ranked.where(Project.line_id == line_id)
         if query is not None and (search := query.strip()):
             like = f"%{search}%"
-            frozen_statuses = ("approved", "archived")
-            label_predicates = []
-            if status not in frozen_statuses:
-                device_set = aliased(ChoiceSet, name="search_device_set")
-                device_option = aliased(ChoiceOption, name="search_device_option")
-                category_set = aliased(ChoiceSet, name="search_category_set")
-                category_option = aliased(ChoiceOption, name="search_category_option")
-                live_label_match = or_(
-                    select(1)
-                    .select_from(device_option)
-                    .join(device_set, device_option.choice_set_id == device_set.id)
-                    .where(
-                        device_set.code == "device_type",
-                        device_option.code == ProjectProfile.device_type_code,
-                        device_option.label.ilike(like),
-                    )
-                    .exists(),
-                    select(1)
-                    .select_from(category_option)
-                    .join(category_set, category_option.choice_set_id == category_set.id)
-                    .where(
-                        category_set.code == "project_category",
-                        category_option.code == ProjectProfile.project_category_code,
-                        category_option.label.ilike(like),
-                    )
-                    .exists(),
-                )
-                label_predicates.append(
-                    live_label_match
-                    if status is not None
-                    else and_(Project.status.not_in(frozen_statuses), live_label_match)
-                )
-            if status is None or status in frozen_statuses:
-                frozen_label_match = cast(Project.parameter_snapshot, Text).ilike(like)
-                label_predicates.append(
-                    frozen_label_match
-                    if status is not None
-                    else and_(Project.status.in_(frozen_statuses), frozen_label_match)
-                )
-            stmt = stmt.where(
-                or_(
-                    Project.name.ilike(like),
-                    Project.line_id.ilike(like),
-                    Project.process_id.ilike(like),
-                    Project.part_id.ilike(like),
-                    ProjectProfile.comment.ilike(like),
-                    ProjectProfile.device_type_code.ilike(like),
-                    ProjectProfile.project_category_code.ilike(like),
-                    *label_predicates,
-                )
+            ranked = ranked.where(
+                or_(Project.process_id.ilike(like), Project.part_id.ilike(like))
             )
+        latest = ranked.subquery("ranked_revisions")
+        stmt = stmt.join(latest, latest.c.id == Project.id).where(latest.c.revision_rank == 1)
         if status:
             stmt = stmt.where(Project.status == status)
         if device_type_code is not None:

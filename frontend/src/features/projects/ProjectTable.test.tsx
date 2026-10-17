@@ -42,18 +42,18 @@ function renderTable(projects: ProjectSummaryOut[]): string {
 }
 
 describe('ProjectTable', () => {
-  it('uses LINE, PROCESS, and PART ID as the primary project identity', () => {
+  it('uses Process and Part ID as primary identity within the selected LINE', () => {
     const html = renderTable([project])
     const headers = [...html.matchAll(/<th[^>]*>(.*?)<\/th>/g)].map((match) =>
       match[1]?.replace(/<[^>]+>/g, '').trim(),
     )
 
     expect(html).toContain('<table')
-    expect(headers).toEqual(['LINE', 'PROCESS', 'PART ID', '상태', 'UPDATED', ''])
-    expect(html).toContain('>L1</a>')
+    expect(headers).toEqual(['Process', 'Part ID', '상태', '수정일', '공정조건 열기'])
+    expect(html).toContain('aria-label="L1 coat P-42 공정조건 열기"')
     expect(html).toContain('>coat</span>')
     expect(html).toContain('>P-42</span>')
-    expect(html).toContain('>초안<')
+    expect(html).toContain('>작성 중<')
     expect(html).not.toContain('프로젝트명')
     expect(html).not.toContain('Device Type')
     expect(html).not.toContain('Category')
@@ -62,54 +62,35 @@ describe('ProjectTable', () => {
     expect(html).not.toContain(project.project_category.label)
   })
 
-  it('keeps the LINE link route and return-focus data', () => {
+  it('retains long identifiers and truthful archived status without truncation', () => {
+    const identifier = 'LONG_PROCESS_IDENTIFIER_'.repeat(8)
+    const document = new JSDOM(renderTable([{ ...project, process_id: identifier, status: 'archived' }])).window.document
+    expect(document.querySelector('tbody td')?.textContent).toContain(identifier)
+    expect(document.querySelector('tbody')?.textContent).toContain('보존')
+    expect(document.querySelector('.truncate')).toBeNull()
+  })
+
+  it('keeps the open link route and return-focus data', () => {
     const html = renderTable([project])
 
     expect(html).toContain('href="/projects/42"')
     expect(html).toContain('data-project-id="42"')
   })
 
-  it('opens and closes the disclosure row and invokes the real LINE link callback', () => {
-    const openedProjectIds: number[] = []
-    const interactive = renderInteractiveTable((projectId) => openedProjectIds.push(projectId))
-
+  it('uses a real open link, a noninteractive status badge and no lineage disclosure', () => {
+    const opened: number[] = []
+    const view = renderInteractiveTable(id => opened.push(id))
     try {
-      const disclosure = interactive.container.querySelector('button')
-      const details = interactive.container.querySelector('#project-details-42')
-      const lineLink = interactive.container.querySelector<HTMLAnchorElement>('[data-project-id="42"]')
-
-      expect(disclosure).not.toBeNull()
-      expect(details).not.toBeNull()
-      expect(lineLink).not.toBeNull()
-      expect(disclosure?.getAttribute('aria-expanded')).toBe('false')
-      expect(disclosure?.getAttribute('aria-controls')).toBe('project-details-42')
-      expect(disclosure?.getAttribute('aria-label')).toBe('L1 세부 정보 열기')
-      expect(disclosure?.textContent).toBe('세부')
-      expect(details?.hasAttribute('hidden')).toBe(true)
-
-      act(() => disclosure?.dispatchEvent(new interactive.window.MouseEvent('click', { bubbles: true })))
-
-      expect(disclosure?.getAttribute('aria-expanded')).toBe('true')
-      expect(disclosure?.getAttribute('aria-label')).toBe('L1 세부 정보 닫기')
-      expect(disclosure?.textContent).toBe('닫기')
-      expect(details?.hasAttribute('hidden')).toBe(false)
-      expect(details?.textContent).toContain('리비전 루트')
-      expect(details?.textContent).toContain('허용 액션')
-      expect(details?.textContent).toContain('요청')
-      expect(details?.textContent).toContain('승인')
-
-      act(() => disclosure?.dispatchEvent(new interactive.window.MouseEvent('click', { bubbles: true })))
-
-      expect(disclosure?.getAttribute('aria-expanded')).toBe('false')
-      expect(details?.hasAttribute('hidden')).toBe(true)
-
-      act(() => lineLink?.dispatchEvent(new interactive.window.MouseEvent('click', { bubbles: true })))
-
-      expect(openedProjectIds).toEqual([42])
-    } finally {
-      interactive.cleanup()
-    }
+      const link = view.container.querySelector<HTMLAnchorElement>('[data-project-id="42"]')!
+      expect(link.textContent).toBe('열기')
+      expect(view.container.textContent).not.toContain('리비전 루트')
+      expect(view.container.textContent).not.toContain('허용 액션')
+      expect(view.container.querySelector('button')).toBeNull()
+      act(() => link.dispatchEvent(new view.window.MouseEvent('click', { bubbles: true })))
+      expect(opened).toEqual([42])
+    } finally { view.cleanup() }
   })
+
 })
 
 function renderInteractiveTable(onProjectOpen: (projectId: number) => void) {

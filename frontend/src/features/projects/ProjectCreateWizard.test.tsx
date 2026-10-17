@@ -368,9 +368,9 @@ describe('ProjectCreateWizard route restoration', () => {
   it('frames the full creation route with a clear title and project-list return action', () => {
     const html = renderWizard('/projects/new', false, <ProjectCreatePage />)
 
-    expect(html).toContain('새 프로젝트 만들기')
+    expect(html).toContain('공정조건 등록')
     expect(html).toContain('href="/projects"')
-    expect(html).toContain('프로젝트 목록')
+    expect(html).toContain('제품 목록')
     expect(html).toContain('max-w-[1440px]')
     expect(html).toContain('class="btn-secondary gap-2"')
   })

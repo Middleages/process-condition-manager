@@ -86,12 +86,12 @@ describe('ProcessExplorerPage', () => {
     expect(html).toContain('scope="col"')
   })
 
-  it('links an existing Process to the searchable project list without inventing an ID', () => {
+  it('links an existing Process to its LINE-scoped searchable product list without inventing an ID', () => {
     const html = renderCatalog(
       makeProcess({ has_project: true, process_id: 'PHOTO-1', project_count: 2 }),
     )
 
-    expect(html).toContain('href="/projects?query=PHOTO-1"')
+    expect(html).toContain('href="/projects?line=L1&amp;query=PHOTO-1"')
     expect(html).not.toMatch(/href="\/projects\/\d+/)
   })
 

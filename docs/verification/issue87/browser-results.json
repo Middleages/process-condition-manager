@@ -1,0 +1,103 @@
+{
+  "sha": "f4b28c81f7c002f8e57de7507a6e7539e918f458",
+  "title": "PCM - Process Condition Manager",
+  "checks": [
+    {
+      "width": 1440,
+      "metrics": {
+        "width": 1440,
+        "scroll": 1440,
+        "badges": [
+          {
+            "text": "작성 중",
+            "size": "14px",
+            "weight": "700",
+            "cursor": "auto",
+            "overflow": false
+          },
+          {
+            "text": "반려",
+            "size": "14px",
+            "weight": "700",
+            "cursor": "auto",
+            "overflow": false
+          },
+          {
+            "text": "검토 중",
+            "size": "14px",
+            "weight": "700",
+            "cursor": "auto",
+            "overflow": false
+          },
+          {
+            "text": "승인됨",
+            "size": "14px",
+            "weight": "700",
+            "cursor": "auto",
+            "overflow": false
+          }
+        ]
+      }
+    },
+    {
+      "width": 1024,
+      "metrics": {
+        "width": 1024,
+        "scroll": 1024,
+        "badges": [
+          {
+            "text": "작성 중",
+            "size": "14px",
+            "weight": "700",
+            "cursor": "auto",
+            "overflow": false
+          },
+          {
+            "text": "반려",
+            "size": "14px",
+            "weight": "700",
+            "cursor": "auto",
+            "overflow": false
+          },
+          {
+            "text": "검토 중",
+            "size": "14px",
+            "weight": "700",
+            "cursor": "auto",
+            "overflow": false
+          },
+          {
+            "text": "승인됨",
+            "size": "14px",
+            "weight": "700",
+            "cursor": "auto",
+            "overflow": false
+          }
+        ]
+      }
+    },
+    "keyboard detail -> browser back restores exact later-page URL and row focus",
+    "top and bottom previous/next each work; page heading focus and scroll",
+    "typing makes no request; button Process search and Enter Part search work; LINE preserves applied query/discards draft/resets cursor",
+    "name-only query empty; first/last boundaries disabled",
+    "delayed live L3 response shows loading without stale L2 rows",
+    "injected list503 -> retry real API restores25 L4 rows",
+    "injected LINE discovery503 -> retry real catalog restores six choices"
+  ],
+  "errors": [],
+  "requests": [
+    "http://127.0.0.1:15187/api/projects?line_id=L1&limit=25",
+    "http://127.0.0.1:15187/api/projects?line_id=L1&cursor=5937&limit=25",
+    "http://127.0.0.1:15187/api/projects?line_id=L1&cursor=5862&limit=25",
+    "http://127.0.0.1:15187/api/projects?line_id=L1&query=PROC-0042&limit=25",
+    "http://127.0.0.1:15187/api/projects?line_id=L2&query=PROC-0042&limit=25",
+    "http://127.0.0.1:15187/api/projects?line_id=L2&query=PART-0043&limit=25",
+    "http://127.0.0.1:15187/api/projects?line_id=L2&query=browser+fixture&limit=25",
+    "http://127.0.0.1:15187/api/projects?line_id=L2&limit=25",
+    "http://127.0.0.1:15187/api/projects?line_id=L3&limit=25",
+    "http://127.0.0.1:15187/api/projects?line_id=L4&limit=25",
+    "http://127.0.0.1:15187/api/projects?line_id=L4&limit=25",
+    "http://127.0.0.1:15187/api/projects?line_id=L4&limit=25",
+    "http://127.0.0.1:15187/api/projects?line_id=L4&limit=25"
+  ]
+}
