@@ -109,7 +109,6 @@ describe('project create guard', () => {
     processKey: 'A::P',
     processIsPending: false,
     processIsError: false,
-    processHasProject: false,
     backboneId: null,
     backboneIsPending: false,
     backboneIsError: false,
@@ -140,7 +139,6 @@ describe('project create guard', () => {
     ['a missing Process', { processKey: null }, 'process-missing'],
     ['a loading Process', { processIsPending: true }, 'process-loading'],
     ['a missing or 404 Process detail', { processIsError: true }, 'process-invalid'],
-    ['a Process with an existing project', { processHasProject: true }, 'duplicate-process'],
     ['a loading selected backbone', { backboneId: 7, backboneIsPending: true }, 'backbone-loading'],
     ['a deleted selected backbone', { backboneId: 7, backboneIsError: true }, 'backbone-invalid'],
     ['a pending preview', { previewIsPending: true, previewFingerprint: null }, 'preview-loading'],
@@ -292,7 +290,6 @@ describe('project create payload', () => {
       lineId: ' L1 ',
       processId: ' coat ',
       partId: ' P-42 ',
-      name: ' Coat baseline ',
       deviceTypeCode: ' FOUNDRY ',
       projectCategoryCode: ' LOGIC ',
       comment: '',
@@ -310,7 +307,7 @@ describe('project create payload', () => {
       line_id: 'L1',
       process_id: 'coat',
       part_id: 'P-42',
-      name: 'Coat baseline',
+      name: 'P-42',
       device_type_code: 'FOUNDRY',
       project_category_code: 'LOGIC',
       backbone_project_id: 7,
@@ -322,6 +319,19 @@ describe('project create payload', () => {
     expect(payload).not.toHaveProperty('comment')
     expect(payload).not.toHaveProperty('description')
     expect(payload).not.toHaveProperty('process_name')
+  })
+
+  it('derives the compatibility name from normalized Part ID at all identity limits', () => {
+    const payload = toProjectCreatePayload(baseDraft({
+      lineId: ` ${'L'.repeat(64)} `,
+      processId: ` ${'P'.repeat(128)} `,
+      partId: ` \t${'부'.repeat(128)}\n `,
+    }))
+    expect(payload.name).toBe('부'.repeat(128))
+    expect(payload.part_id).toBe(payload.name)
+    expect(payload.name.length).toBeLessThanOrEqual(256)
+    expect(payload.line_id).toHaveLength(64)
+    expect(payload.process_id).toHaveLength(128)
   })
 
   it('sends touched blank Comment as explicit null', () => {
@@ -343,7 +353,6 @@ describe('project create payload', () => {
   ] as const)('treats a local %s draft as dirty', (_label, patch) => {
     const empty = baseDraft({
       partId: '',
-      name: '',
       deviceTypeCode: '',
       projectCategoryCode: '',
       comment: '',
@@ -360,7 +369,6 @@ describe('project create payload', () => {
       isProjectCreateDraftDirty(
         baseDraft({
           partId: '',
-          name: '',
           deviceTypeCode: '',
           projectCategoryCode: '',
           comment: '',
@@ -377,7 +385,6 @@ describe('project create route reconciliation', () => {
     const reconciliation = getProjectCreateRouteReconciliation({
       routeState: { step: 3, processKey: 'A::P', backboneId: 999 },
       processNotFound: false,
-      processHasProject: false,
       backboneNotFound: true,
     })
 
@@ -395,7 +402,6 @@ describe('project create route reconciliation', () => {
       getProjectCreateRouteReconciliation({
         routeState: { step: 3, processKey: 'A::P', backboneId: 999 },
         processNotFound: true,
-        processHasProject: false,
         backboneNotFound: true,
       }),
     ).toEqual({
@@ -405,33 +411,33 @@ describe('project create route reconciliation', () => {
     })
   })
 
-  it.each([
-    ['missing', true, false, 'process:A::P:not-found'],
-    ['duplicate', false, true, 'process:A::P:duplicate'],
-  ] as const)(
-    'keeps a %s Process at step one when a cached backbone error also exists',
-    (_label, processNotFound, processHasProject, key) => {
-      expect(
-        getProjectCreateRouteReconciliation({
-          routeState: { step: 1, processKey: 'A::P', backboneId: 999 },
-          processNotFound,
-          processHasProject,
-          backboneNotFound: true,
-        }),
-      ).toEqual({
-        key,
-        kind: 'process',
-        routeState: { step: 1, processKey: 'A::P', backboneId: null },
-      })
-    },
-  )
+  it('keeps a missing Process at step one when a cached backbone error also exists', () => {
+    expect(
+      getProjectCreateRouteReconciliation({
+        routeState: { step: 1, processKey: 'A::P', backboneId: 999 },
+        processNotFound: true,
+        backboneNotFound: true,
+      }),
+    ).toEqual({
+      key: 'process:A::P:not-found',
+      kind: 'process',
+      routeState: { step: 1, processKey: 'A::P', backboneId: null },
+    })
+  })
+
+  it('retains step three and its backbone for a valid Process', () => {
+    expect(getProjectCreateRouteReconciliation({
+      routeState: { step: 3, processKey: 'A::P', backboneId: 7 },
+      processNotFound: false,
+      backboneNotFound: false,
+    })).toBeNull()
+  })
 
   it('clears an orphaned backbone instead of advancing a missing Process', () => {
     expect(
       getProjectCreateRouteReconciliation({
         routeState: { step: 1, processKey: null, backboneId: 999 },
         processNotFound: false,
-        processHasProject: false,
         backboneNotFound: true,
       }),
     ).toEqual({
@@ -447,7 +453,6 @@ describe('project create route reconciliation', () => {
     const first = getProjectCreateRouteReconciliation({
       routeState: invalidRoute,
       processNotFound: true,
-      processHasProject: false,
       backboneNotFound: false,
     })
 
@@ -458,7 +463,6 @@ describe('project create route reconciliation', () => {
     const normalized = getProjectCreateRouteReconciliation({
       routeState: first!.routeState,
       processNotFound: true,
-      processHasProject: false,
       backboneNotFound: false,
     })
     expect(normalized).toBeNull()
@@ -467,7 +471,6 @@ describe('project create route reconciliation', () => {
     const revisited = getProjectCreateRouteReconciliation({
       routeState: invalidRoute,
       processNotFound: true,
-      processHasProject: false,
       backboneNotFound: false,
     })
     expect(shouldApplyRouteReconciliation(appliedKey, revisited!.key)).toBe(true)
@@ -478,7 +481,6 @@ describe('project create route reconciliation', () => {
       getProjectCreateRouteReconciliation({
         routeState: { step: 3, processKey: 'A::P', backboneId: 999 },
         processNotFound: false,
-        processHasProject: false,
         backboneNotFound: false,
       }),
     ).toBeNull()

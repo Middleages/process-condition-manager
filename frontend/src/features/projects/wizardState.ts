@@ -87,7 +87,6 @@ export type CreateDisabledReason =
   | 'process-missing'
   | 'process-loading'
   | 'process-invalid'
-  | 'duplicate-process'
   | 'backbone-loading'
   | 'backbone-invalid'
   | 'preview-loading'
@@ -109,7 +108,6 @@ export interface CreateGuardState {
   processKey: string | null
   processIsPending: boolean
   processIsError: boolean
-  processHasProject: boolean
   backboneId: number | null
   backboneIsPending: boolean
   backboneIsError: boolean
@@ -187,7 +185,6 @@ export function getCreateDisabledReason(state: CreateGuardState): CreateDisabled
   if (state.processKey === null) return 'process-missing'
   if (state.processIsPending) return 'process-loading'
   if (state.processIsError) return 'process-invalid'
-  if (state.processHasProject) return 'duplicate-process'
   if (state.backboneId !== null && state.backboneIsPending) return 'backbone-loading'
   if (state.backboneId !== null && state.backboneIsError) return 'backbone-invalid'
   if (state.previewIsPending || state.previewIsFetching) {
@@ -228,7 +225,6 @@ export interface ProjectCreateDraft {
   lineId: string
   processId: string
   partId: string
-  name: string
   deviceTypeCode: string
   projectCategoryCode: string
   comment: string
@@ -242,7 +238,8 @@ export function toProjectCreatePayload(draft: ProjectCreateDraft): ProjectCreate
     line_id: draft.lineId.trim(),
     process_id: draft.processId.trim(),
     part_id: draft.partId.trim(),
-    name: draft.name.trim(),
+    // Compatibility name = trimmed Part ID (max 128), within the API name limit of 256.
+    name: draft.partId.trim(),
     device_type_code: draft.deviceTypeCode.trim(),
     project_category_code: draft.projectCategoryCode.trim(),
     backbone_project_id: draft.backboneId,
@@ -261,7 +258,6 @@ export function isProjectCreateDraftDirty(
   draft: Pick<
     ProjectCreateDraft,
     | 'partId'
-    | 'name'
     | 'deviceTypeCode'
     | 'projectCategoryCode'
     | 'comment'
@@ -271,7 +267,6 @@ export function isProjectCreateDraftDirty(
 ): boolean {
   return (
     draft.partId !== '' ||
-    draft.name !== '' ||
     draft.deviceTypeCode !== '' ||
     draft.projectCategoryCode !== '' ||
     draft.comment !== '' ||
@@ -289,12 +284,10 @@ export interface ProjectCreateRouteReconciliation {
 export function getProjectCreateRouteReconciliation({
   routeState,
   processNotFound,
-  processHasProject,
   backboneNotFound,
 }: {
   routeState: ProjectCreateRouteState
   processNotFound: boolean
-  processHasProject: boolean
   backboneNotFound: boolean
 }): ProjectCreateRouteReconciliation | null {
   if (
@@ -307,11 +300,11 @@ export function getProjectCreateRouteReconciliation({
       routeState: { step: 1, processKey: null, backboneId: null },
     }
   }
-  if (routeState.processKey !== null && (processNotFound || processHasProject)) {
+  if (routeState.processKey !== null && processNotFound) {
     if (routeState.step === 1 && routeState.backboneId === null) return null
 
     return {
-      key: `process:${routeState.processKey}:${processNotFound ? 'not-found' : 'duplicate'}`,
+      key: `process:${routeState.processKey}:not-found`,
       kind: 'process',
       routeState: {
         step: 1,
