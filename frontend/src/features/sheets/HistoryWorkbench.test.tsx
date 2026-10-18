@@ -183,7 +183,7 @@ describe('HistoryWorkbench', () => {
       expect(onActivateTarget).not.toHaveBeenCalled()
 
       const move = [...rows[0]!.querySelectorAll('button')].find(
-        (button) => button.textContent === '셀로 이동',
+        (button) => button.textContent === '조건표에서 보기',
       )
       if (move === undefined) throw new Error('Cell navigation button is unavailable')
       act(() => move.click())
@@ -456,7 +456,7 @@ describe('HistoryWorkbench', () => {
       onActivateTarget,
     })
 
-    expect(html).toContain('셀로 이동')
+    expect(html).toContain('조건표에서 보기')
     expect(html).toContain('상세 다음 페이지 실패')
     expect(html).toContain('상세 다음 페이지 다시 시도')
     expect(html).toMatch(/disabled=""[^>]*>삭제됨</)

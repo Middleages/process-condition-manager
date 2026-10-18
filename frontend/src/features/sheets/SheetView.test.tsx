@@ -292,7 +292,7 @@ vi.mock('./useBackboneDiffWorkbenchController', () => ({
 import { shouldFocusLiveSheetTitle, SheetView, SheetViewPage } from './SheetView'
 import { patchCells } from '@/api/cells'
 import { addCondition, deleteCondition, setConditionPor } from '@/api/conditions'
-import { acquireLock, heartbeatLock, releaseLockOnUnload } from '@/api/locks'
+import { acquireLock, releaseLock, heartbeatLock, releaseLockOnUnload } from '@/api/locks'
 import { getProject } from '@/api/projects'
 import { getSheet } from '@/api/sheets'
 import {
@@ -342,6 +342,7 @@ beforeEach(() => {
     locked_at: '2026-08-14T00:00:00Z',
     expires_at: '2026-08-14T00:01:00Z',
   })
+  vi.mocked(releaseLock).mockReset().mockResolvedValue(undefined)
   vi.mocked(releaseLockOnUnload).mockReset().mockReturnValue(true)
   vi.mocked(patchCells).mockReset().mockImplementation(async (_projectId, cells) => ({
     cells,
@@ -912,7 +913,7 @@ describe('SheetView focus shell integration', () => {
     const html = renderSheet(queryClient)
 
     expect(html).toContain('Etch qualification')
-    expect(html).toContain('초안')
+    expect(html).toContain('작성 중')
     expect(html).toContain('최신 시트 조회에 실패')
     expect(html).toContain('data-sheet-editor="true"')
     expect(html).toContain('h-full min-h-0 min-w-0')
@@ -1554,7 +1555,7 @@ describe('SheetView focus shell integration', () => {
     expect(navigationBody).toMatch(
       /navigation\.kind === 'reveal-category'[\s\S]*?setActiveCategory\(navigation\.categoryCode\)[\s\S]*?setPendingCoordinateJump\(navigation\.target\)[\s\S]*?return/,
     )
-    expect(sheetViewSource.match(/gridRef\.current\?\.scrollToCell/g)).toHaveLength(2)
+    expect(sheetViewSource.match(/gridRef\.current\?\.scrollToCell/g)).toHaveLength(3)
   })
 
   it('announces grid navigation success only when the owned grid handle resolves the target', () => {
@@ -1579,7 +1580,7 @@ describe('SheetView focus shell integration', () => {
 
   it('wires the history controller and cell-history grid request into the shared host', () => {
     expect(sheetViewSource).toMatch(
-      /useHistoryWorkbenchController\(\s*projectId,\s*workbenchState\.mode === 'history',\s*historyMutationRevision,\s*\)/,
+      /useHistoryWorkbenchController\(\s*projectId,\s*workbenchState\.mode === 'history' \|\| workspace\?\.tab === 'history',\s*historyMutationRevision,\s*\)/,
     )
     expect(sheetViewSource).toContain('historyContent={')
     expect(sheetViewSource).toContain('<HistoryWorkbench')
@@ -2491,8 +2492,8 @@ describe('SheetView focus shell integration', () => {
       click(interactive, detailLink(interactive.container))
       await settleInteractiveSheet()
       expect(confirm).toHaveBeenCalledTimes(2)
-      expect(interactive.router.state.location.pathname).toBe('/projects/7')
-      expect(interactive.container.textContent).toContain('project detail')
+      expect(interactive.router.state.location.pathname).toBe('/projects')
+      expect(interactive.container.textContent).toContain('project list')
       expect(useEditStore.getState().invalidDrafts.size).toBe(0)
     } finally {
       interactive.cleanup()
@@ -2528,6 +2529,60 @@ describe('SheetView focus shell integration', () => {
     } finally {
       interactive.cleanup()
     }
+  })
+})
+
+describe('product workspace navigation preservation', () => {
+  it('reuses history for read-only sheets and reveals the grid before a coordinate jump', async () => {
+    const view = renderInteractiveSheet()
+    try {
+      await settleInteractiveSheet()
+      act(() => view.queryClient.setQueryData(['project', 7], { ...view.project, status: 'approved' }))
+      await settleInteractiveSheet()
+      click(view, view.container.querySelector<HTMLButtonElement>('#workspace-tab-history')!)
+      expect(historyWorkbenchCapture.props?.projectId).toBe(7)
+      act(() => historyWorkbenchCapture.props?.onActivateTarget?.(createAvailableEvent().jump_target!))
+      expect(view.container.querySelector('#workspace-panel-sheet')?.hasAttribute('hidden')).toBe(false)
+      expect(mockScrollToCell).toHaveBeenCalledWith('11', 'ETCH_P001')
+      expect(acquireLock).toHaveBeenCalledTimes(1)
+    } finally { view.cleanup() }
+  })
+
+  it('keeps history available on a sheet without rows and truthfully disables coordinate navigation', async () => {
+    const view = renderInteractiveSheet()
+    try {
+      await settleInteractiveSheet()
+      act(() => view.queryClient.setQueryData(['sheet', 7], { ...view.sheet, rows: [] }))
+      await settleInteractiveSheet()
+      click(view, view.container.querySelector<HTMLButtonElement>('#workspace-tab-history')!)
+      expect(historyWorkbenchCapture.props?.projectId).toBe(7)
+      expect(historyWorkbenchCapture.props?.onActivateTarget).toBeUndefined()
+      expect(historyWorkbenchCapture.props?.navigationStatus).toContain('표시할 수 없습니다')
+    } finally { view.cleanup() }
+  })
+
+  it('keeps actual dirty values, selected cell and paste preview through basic/history tabs without reacquiring', async () => {
+    const view = renderInteractiveSheet()
+    try {
+      await settleInteractiveSheet()
+      click(view, gridDraftButton(view.container, 'valid', '11'))
+      const activate = view.container.querySelector<HTMLButtonElement>('[data-grid-cell-activate="11"]')!
+      click(view, activate)
+      click(view, view.container.querySelector<HTMLButtonElement>('[data-grid-stage-paste]')!)
+      const grid = view.container.querySelector('[data-testid="rendered-condition-grid"]')
+      expect(grid?.getAttribute('data-condition-values')).toContain('21')
+      expect(view.container.querySelector('[data-testid="paste-staging-panel"]')).not.toBeNull()
+      click(view, view.container.querySelector<HTMLButtonElement>('#workspace-tab-profile')!)
+      expect(view.container.querySelector('#workspace-panel-sheet')?.hasAttribute('hidden')).toBe(true)
+      click(view, view.container.querySelector<HTMLButtonElement>('#workspace-tab-history')!)
+      click(view, view.container.querySelector<HTMLButtonElement>('#workspace-tab-sheet')!)
+      expect(view.container.querySelector('[data-testid="rendered-condition-grid"]')).toBe(grid)
+      expect(grid?.getAttribute('data-condition-values')).toContain('21')
+      expect(view.container.querySelector('[data-testid="paste-staging-panel"]')).not.toBeNull()
+      expect(view.container.querySelector('[data-testid="cell-comments-panel"]')?.textContent).toContain('#11')
+      expect(acquireLock).toHaveBeenCalledTimes(1)
+      expect(releaseLock).not.toHaveBeenCalled()
+    } finally { view.cleanup() }
   })
 })
 
@@ -2630,7 +2685,7 @@ function renderInteractiveSheet({
   const router = createMemoryRouter(
     [
       { path: '/projects/:projectId/sheet', element: <SheetViewPage /> },
-      { path: '/projects/:projectId', element: <div>project detail</div> },
+      { path: '/projects', element: <div>project list</div> },
     ],
     { initialEntries: ['/projects/7/sheet'] },
   )
@@ -2768,7 +2823,7 @@ function renderedInvalidDrafts(container: HTMLElement): unknown[] {
 }
 
 function detailLink(container: HTMLElement): HTMLAnchorElement {
-  const link = container.querySelector<HTMLAnchorElement>('a[aria-label="프로젝트 상세로 돌아가기"]')
+  const link = container.querySelector<HTMLAnchorElement>('a[aria-label="제품 목록으로 돌아가기"]')
   if (link === null) throw new Error('Project detail link is unavailable.')
   return link
 }

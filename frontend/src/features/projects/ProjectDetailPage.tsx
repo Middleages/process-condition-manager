@@ -28,7 +28,9 @@ import { parsePositiveInt } from '@/shared/navigation/routeState'
 
 import { LayerReplaceModal } from './LayerReplaceModal'
 import { ProjectProfileDrawer } from './ProjectProfileDrawer'
-import { useAuth } from '@/app/AuthContext'
+import { useOptionalAuth } from '@/app/AuthContext'
+import { useProductWorkspace } from './ProductWorkspace'
+import { defaultAuthState } from '@/api/auth'
 import { invalidateProjectBackboneDiffAfterMutation } from '@/api/backboneDiffCache'
 import { invalidateProjectHistoryAfterMutation } from '@/api/historyCache'
 
@@ -107,7 +109,8 @@ export function ProjectDetailPage() {
   )
 }
 
-function ProjectDetail({ project }: { project: ProjectOut }) {
+export function ProjectDetail({ project }: { project: ProjectOut }) {
+  const workspace = useProductWorkspace()
   const queryClient = useQueryClient()
   const {
     user,
@@ -120,22 +123,12 @@ function ProjectDetail({ project }: { project: ProjectOut }) {
       canRequestReview,
       canReturnToDraft,
     },
-  } = useAuth()
+  } = useOptionalAuth() ?? { user: null, permissions: defaultAuthState.permissions }
   const [replaceTarget, setReplaceTarget] = useState<ProjectLayerOut | null>(null)
   const [profileEditorOpen, setProfileEditorOpen] = useState(false)
   const [newComment, setNewComment] = useState('')
   const profileEditTriggerRef = useRef<HTMLButtonElement>(null)
   const isDraft = project.status === 'draft'
-  const summary = {
-    layerCount: project.layers.length,
-    conditionCount: project.layers.reduce((sum, layer) => sum + layer.condition_count, 0),
-    cellCount: project.layers.reduce((sum, layer) => sum + layer.cell_count, 0),
-  }
-
-  const lineageText = `v${project.version} / root ${project.revision_root_id ?? '-'} / pred ${
-    project.predecessor_project_id ?? '-'
-  } / succ ${project.successor_project_id ?? '-'} / actions ${project.allowed_actions.length}`
-
   const commentsQuery = useInfiniteQuery({
     queryKey: ['project-comments', project.id, 'target', 'project'],
     initialPageParam: null as number | null,
@@ -156,10 +149,10 @@ function ProjectDetail({ project }: { project: ProjectOut }) {
       const payload: ProjectTransitionIn = { action, expected_status: project.status }
       return transitionProject(project.id, payload)
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['project', project.id] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['project', project.id] })
       void queryClient.invalidateQueries({ queryKey: ['projects'] })
-      void queryClient.invalidateQueries({ queryKey: ['sheet', project.id] })
+      await queryClient.invalidateQueries({ queryKey: ['sheet', project.id] })
       void invalidateProjectHistoryAfterMutation(queryClient, project.id)
       void invalidateProjectBackboneDiffAfterMutation(queryClient, project.id)
     },
@@ -207,67 +200,22 @@ function ProjectDetail({ project }: { project: ProjectOut }) {
   const canUseDraftMutations = canEditDraft && isDraft
   const canUseCommentMutations = canComment
 
-  function requestTransition(action: ProjectTransitionAction) {
+  async function requestTransition(action: ProjectTransitionAction) {
     if (action === 'approve' || action === 'create_revision') {
       const confirmed = window.confirm(`${actionLabel(action)}를 진행하시겠습니까?`)
       if (!confirmed) return
     }
-    executeTransitionMutation.mutate(action)
+    if (workspace && !await workspace.beginMutation('transition')) return
+    try { await executeTransitionMutation.mutateAsync(action) } catch { /* Mutation error is rendered below. */ } finally { workspace?.endMutation() }
   }
 
   return (
     <div className="space-y-5">
-      <dl className="grid overflow-hidden rounded-xl border border-border-subtle bg-surface sm:grid-cols-4">
-        <SummaryItem label="Layer" value={summary.layerCount} />
-        <SummaryItem label="조건 행" value={summary.conditionCount} />
-        <SummaryItem label="Cell" value={summary.cellCount} />
-        <SummaryItem label="백본" value={backboneSummary(project)} />
-      </dl>
-
-      <section aria-labelledby="project-workflow-title" className="space-y-3">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h2 id="project-workflow-title" className="text-lg font-bold text-ink-950">
-              워크플로우
-            </h2>
-            <p className="mt-0.5 text-sm text-muted">현재 상태와 Lineage, 허용 작업을 확인합니다.</p>
-          </div>
-          <div className="text-sm text-muted">{lineageText}</div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border-subtle bg-surface p-4">
-          <Badge tone={projectStatusBadgeTone(project.status)} className="h-7 px-3 py-0.5">
-            {projectStatusLabel(project.status)}
-          </Badge>
-          <span className="text-sm text-muted">/</span>
-          <span className="text-sm text-ink-950">허용 액션:</span>
-          <div className="ml-auto flex flex-wrap gap-2">
-            {allowedTransitionActions.length === 0 ? (
-              <span className="text-sm text-muted">가능한 액션이 없습니다.</span>
-            ) : null}
-            {allowedTransitionActions.map((action) => (
-              <Button
-                size="compact"
-                key={action}
-                variant="secondary"
-                disabled={executeTransitionMutation.isPending}
-                onClick={() => requestTransition(action)}
-              >
-                {actionLabel(action)}
-              </Button>
-            ))}
-            {executeTransitionMutation.isError ? (
-              <ReviewGateError projectId={project.id} error={executeTransitionMutation.error} />
-            ) : null}
-          </div>
-        </div>
-      </section>
-
       <section aria-labelledby="project-profile-title" className="space-y-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 id="project-profile-title" className="text-lg font-bold text-ink-950">
-              프로젝트 정보
+              기본정보
             </h2>
             <p className="mt-0.5 text-sm text-muted">
               업무에 필요한 식별·분류·방향을 먼저 확인합니다.
@@ -279,7 +227,7 @@ function ProjectDetail({ project }: { project: ProjectOut }) {
               type="button"
               aria-haspopup="dialog"
               className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border-control bg-surface px-3 text-sm font-semibold text-ink-950 transition-colors hover:bg-canvas"
-              onClick={() => setProfileEditorOpen(true)}
+              onClick={async () => { if (!workspace || await workspace.beginMutation('profile')) setProfileEditorOpen(true) }}
             >
               <Pencil aria-hidden="true" size={16} strokeWidth={2} />
               기본정보 편집
@@ -291,8 +239,8 @@ function ProjectDetail({ project }: { project: ProjectOut }) {
           <div className="grid divide-y divide-border-subtle xl:grid-cols-3 xl:divide-x xl:divide-y-0">
             <ProfileGroup group="identity" title="Identity">
               <DefinitionItem label="LINE" value={project.line_id} mono />
-              <DefinitionItem label="Process ID" value={project.process_id} mono />
-              <DefinitionItem label="PARTID" value={project.part_id} mono />
+              <DefinitionItem label="Process" value={project.process_id} mono />
+              <DefinitionItem label="Part ID" value={project.part_id} mono />
             </ProfileGroup>
             <ProfileGroup group="product" title="Product">
               <DefinitionItem label="Process Name" value={project.profile.process_name} />
@@ -439,7 +387,7 @@ function ProjectDetail({ project }: { project: ProjectOut }) {
                           className="h-9"
                           size="compact"
                           variant="secondary"
-                          onClick={() => setReplaceTarget(layer)}
+                          onClick={async () => { if (!workspace || await workspace.beginMutation('layer')) setReplaceTarget(layer) }}
                         >
                           교체
                         </Button>
@@ -457,6 +405,44 @@ function ProjectDetail({ project }: { project: ProjectOut }) {
               ) : null}
             </tbody>
           </table>
+        </div>
+      </section>
+
+      <section aria-labelledby="project-workflow-title" className="space-y-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 id="project-workflow-title" className="text-lg font-bold text-ink-950">
+              검토·승인
+            </h2>
+            <p className="mt-0.5 text-sm text-muted">현재 상태에서 가능한 검토·승인 작업입니다.</p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border-subtle bg-surface p-4">
+          <Badge tone={projectStatusBadgeTone(project.status)} className="h-7 px-3 py-0.5">
+            {projectStatusLabel(project.status)}
+          </Badge>
+          <span className="text-sm text-muted">/</span>
+          <span className="text-sm text-ink-950">가능한 작업:</span>
+          <div className="ml-auto flex flex-wrap gap-2">
+            {allowedTransitionActions.length === 0 ? (
+              <span className="text-sm text-muted">가능한 액션이 없습니다.</span>
+            ) : null}
+            {allowedTransitionActions.map((action) => (
+              <Button
+                size="compact"
+                key={action}
+                variant="secondary"
+                disabled={executeTransitionMutation.isPending || (workspace !== null && workspace.mutation !== 'none')}
+                onClick={() => requestTransition(action)}
+              >
+                {actionLabel(action)}
+              </Button>
+            ))}
+            {executeTransitionMutation.isError ? (
+              <ReviewGateError projectId={project.id} error={executeTransitionMutation.error} />
+            ) : null}
+          </div>
         </div>
       </section>
 
@@ -566,7 +552,7 @@ function ProjectDetail({ project }: { project: ProjectOut }) {
         <LayerReplaceModal
           project={project}
           targetLayer={replaceTarget}
-          onClose={() => setReplaceTarget(null)}
+          onClose={() => { setReplaceTarget(null); workspace?.endMutation() }}
         />
       ) : null}
 
@@ -574,7 +560,7 @@ function ProjectDetail({ project }: { project: ProjectOut }) {
         <ProjectProfileDrawer
           projectId={project.id}
           fallbackFocusRef={profileEditTriggerRef}
-          onClose={() => setProfileEditorOpen(false)}
+          onClose={() => { setProfileEditorOpen(false); workspace?.endMutation() }}
         />
       ) : null}
     </div>
@@ -698,16 +684,7 @@ function ChoiceDefinitionItem({
   )
 }
 
-function SummaryItem({ label, value }: { label: string; value: ReactNode }) {
-  return (
-    <div className="border-b border-border-subtle px-4 py-3 last:border-b-0 sm:border-b-0 sm:border-r sm:last:border-r-0">
-      <dt className="text-xs font-semibold uppercase tracking-wide text-muted">{label}</dt>
-      <dd className="mt-1 font-mono text-xl font-bold tabular-nums text-ink-950">{value}</dd>
-    </div>
-  )
-}
-
-function getProjectListReturnPath(state: unknown): string {
+export function getProjectListReturnPath(state: unknown): string {
   if (
     typeof state === 'object' &&
     state !== null &&
@@ -751,15 +728,4 @@ function actionLabel(action: ProjectTransitionAction) {
     default:
       return action
   }
-}
-
-function backboneSummary(project: ProjectOut) {
-  if (project.layers.length === 0) {
-    return '없음'
-  }
-  const sourceProjectIds = new Set(
-    project.layers.flatMap((layer) => (layer.source_project_id === null ? [] : [layer.source_project_id])),
-  )
-  if (sourceProjectIds.size === 0) return '없음'
-  return sourceProjectIds.size === 1 ? `#${[...sourceProjectIds][0]}` : `${sourceProjectIds.size}개 프로젝트`
 }

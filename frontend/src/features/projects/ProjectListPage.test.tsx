@@ -88,7 +88,7 @@ function renderList(location: string, state: PageState = 'loaded'): string {
   seedProjectListQuery(queryClient, location, state)
 
   const router = createMemoryRouter(
-    [{ path: '/projects', element: <ProjectListPage /> }, { path: '/projects/:id', element: <div>Detail</div> }],
+    [{ path: '/projects', element: <ProjectListPage /> }, { path: '/projects/:id/sheet', element: <div>Detail</div> }],
     { initialEntries: [location] },
   )
   const originalConsoleError = console.error
@@ -174,7 +174,7 @@ describe('ProjectListPage', () => {
       await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)) })
       const link = view.container.querySelector<HTMLAnchorElement>('[data-project-id="42"]')!
       await act(async () => link.click())
-      expect(view.router.state.location.pathname).toBe('/projects/42')
+      expect(view.router.state.location.pathname).toBe('/projects/42/sheet')
       expect(view.router.state.location.state.from).toBe('/projects?line=L1&cursor=50&trail=0')
       await act(async () => view.router.navigate(-1))
       await act(async () => { await new Promise(resolve => setTimeout(resolve, 60)) })
@@ -254,7 +254,7 @@ function renderInteractiveList(location: string, previousLocation?: string) {
   const queryClient = createProjectListQueryClient()
   seedProjectListQuery(queryClient, location, 'loading')
   const router = createMemoryRouter(
-    [{ path: '/projects', element: <ProjectListPage /> }, { path: '/projects/:id', element: <div>Detail</div> }],
+    [{ path: '/projects', element: <ProjectListPage /> }, { path: '/projects/:id/sheet', element: <div>Detail</div> }],
     {
       initialEntries: previousLocation ? [previousLocation, location] : [location],
       initialIndex: previousLocation ? 1 : 0,

@@ -6,7 +6,7 @@ import { ChoiceSetDetailPage } from '@/features/choiceSets/ChoiceSetDetailPage'
 import { ChoiceSetListPage } from '@/features/choiceSets/ChoiceSetListPage'
 import { ProcessExplorerPage } from '@/features/processes/ProcessExplorerPage'
 import { ProjectCreatePage } from '@/features/projects/ProjectCreatePage'
-import { ProjectDetailPage } from '@/features/projects/ProjectDetailPage'
+import { LegacyProjectRedirect } from '@/features/projects/ProductWorkspace'
 import { ProjectListPage } from '@/features/projects/ProjectListPage'
 import { SheetViewPage } from '@/features/sheets/SheetView'
 import { AppLayout } from '@/shared/layout/AppLayout'
@@ -45,7 +45,7 @@ export const appRoutes: RouteObject[] = [
           { index: true, element: <Navigate to="/projects" replace /> },
           { path: 'projects', element: <ProjectListPage /> },
           { path: 'projects/new', element: <ProjectCreatePage /> },
-          { path: 'projects/:projectId', element: <ProjectDetailPage /> },
+          { path: 'projects/:projectId', element: <LegacyProjectRedirect /> },
           { path: 'processes', element: <ProcessExplorerPage /> },
           { path: 'parameters', element: <ParameterAdminPage /> },
           { path: 'parameters/choice-sets', element: <ChoiceSetListPage /> },

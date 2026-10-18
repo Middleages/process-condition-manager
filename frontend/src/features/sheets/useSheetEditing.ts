@@ -181,6 +181,8 @@ class LockRequiredError extends Error {
 }
 
 export interface UseSheetEditingOptions {
+  /** A workspace mutation may mount a new draft editor before its refresh completes. */
+  initiallySuspended?: boolean
   /** 저장 성공분을 서버 스냅샷(react-query 캐시)에 반영하는 콜백. markSaved 전에 호출된다. */
   onPersisted?: (
     response: CellsPatchOut,
@@ -242,6 +244,8 @@ export interface SheetEditing {
   getPersistenceSnapshot(): SheetEditingPersistenceSnapshot
   /** 잠금 재획득(상실 상태에서). */
   reacquire(): void
+  suspend(): Promise<void>
+  resume(): void
 }
 
 export function useSheetEditing(
@@ -261,6 +265,9 @@ export function useSheetEditing(
   )
   const heartbeatMs = options.heartbeatMs ?? DEFAULT_HEARTBEAT_MS
 
+  const suspendedRef = useRef(options.initiallySuspended ?? false)
+  const acquireTaskRef = useRef<Promise<void>>(Promise.resolve())
+  const heartbeatTaskRef = useRef<Promise<void>>(Promise.resolve())
   const lockTokenRef = useRef<string | null>(null)
   const lockStatusRef = useRef<LockStatus>('acquiring') // 비동기 콜백 내부 로직용 미러
   const projectIdRef = useRef(projectId)
@@ -317,12 +324,12 @@ export function useSheetEditing(
   const startHeartbeat = useCallback((generation: number) => {
     stopHeartbeat()
     heartbeatRef.current = setInterval(() => {
-      if (!isCurrentSession(generation)) {
+      if (!isCurrentSession(generation) || suspendedRef.current) {
         return
       }
       const token = lockTokenRef.current
       if (token === null) return
-      heartbeatLock(projectIdRef.current, token)
+      heartbeatTaskRef.current = heartbeatLock(projectIdRef.current, token)
         .then((lock) => {
           if (!isCurrentSession(generation)) return
           lockTokenRef.current = lock.lock_token
@@ -397,7 +404,7 @@ export function useSheetEditing(
   const setCell = useCallback(
     (conditionId: string, parameterCode: string, value: string | null) => {
       // 구조 변경/붙여넣기가 실행 중일 때 새 autosave가 별도 HTTP 요청으로 추월하지 않게 한다.
-      if (lockStatusRef.current !== 'held' || immediatePendingRef.current > 0) return
+      if (suspendedRef.current || lockStatusRef.current !== 'held' || immediatePendingRef.current > 0) return
       useEditStore.getState().setCell({ conditionId, parameterCode, value })
       engineRef.current?.schedule()
     },
@@ -569,20 +576,21 @@ export function useSheetEditing(
   }, [getPersistenceSnapshot, isCurrentSession])
 
   const reacquire = useCallback(() => {
-    if (acquireInFlightRef.current) return
+    if (suspendedRef.current || acquireInFlightRef.current) return
     const generation = sessionGenerationRef.current
     const sessionProjectId = projectIdRef.current
     const fallbackStatus: LockStatus =
       lockStatusRef.current === 'readonly' ? 'readonly' : 'lost'
     acquireInFlightRef.current = true
     updateLockStatus('acquiring')
-    acquireLock(sessionProjectId)
+    acquireTaskRef.current = acquireLock(sessionProjectId)
       .then((lock) => {
         if (!isCurrentSession(generation)) {
           void releaseLock(sessionProjectId, lock.lock_token)
           return
         }
         lockTokenRef.current = lock.lock_token
+        if (suspendedRef.current) return
         setEditingBy(null)
         updateLockStatus('held')
         startHeartbeat(generation)
@@ -606,6 +614,30 @@ export function useSheetEditing(
       })
   }, [updateLockStatus, startHeartbeat, isCurrentSession])
 
+  const suspend = useCallback(async () => {
+    const store = useEditStore.getState()
+    if (store.dirtyCells.size || store.invalidDrafts.size || immediatePendingRef.current || engineRef.current?.getState() === 'saving') {
+      throw new Error('조건표 입력을 먼저 저장하세요.')
+    }
+    suspendedRef.current = true
+    stopHeartbeat()
+    engineRef.current?.cancel()
+    updateLockStatus('readonly')
+    await acquireTaskRef.current
+    await heartbeatTaskRef.current
+    const token = lockTokenRef.current
+    if (token !== null) {
+      await releaseLock(projectIdRef.current, token)
+      if (lockTokenRef.current === token) lockTokenRef.current = null
+    }
+    acquireInFlightRef.current = false
+  }, [stopHeartbeat, updateLockStatus])
+
+  const resume = useCallback(() => {
+    suspendedRef.current = false
+    reacquire()
+  }, [reacquire])
+
   // 마운트/프로젝트 전환: 세션 버퍼 리셋 → 잠금 획득 → 하트비트 시작.
   // 언마운트: 세션 버퍼를 폐기하고 이미 실행 중인 쓰기만 기다린 뒤 잠금을 해제한다.
   useEffect(() => {
@@ -620,7 +652,7 @@ export function useSheetEditing(
     pasteSnapshotRef.current = null
     saveOriginRef.current = 'manual'
     engine?.cancel()
-    updateLockStatus('acquiring')
+    updateLockStatus(suspendedRef.current ? 'readonly' : 'acquiring')
     setEditingBy(options.initialEditingBy ?? null)
     setWriteBusy(false)
     setSaveStatus('idle')
@@ -628,19 +660,20 @@ export function useSheetEditing(
     persistedGenerationRef.current = persistenceBaseline
     setPersistedGeneration(persistenceBaseline)
 
-    acquireInFlightRef.current = true
+    acquireInFlightRef.current = !suspendedRef.current
     // React StrictMode는 개발 중 effect를 한 번 마운트한 직후 폐기한다. 기존 profile-lock
     // 경계와 같이 microtask까지 미루면 그 폐기된 effect는 POST /lock을 보내지 않는다.
     deferSheetLockAcquire(
-      () => !cancelled && isCurrentSession(generation),
+      () => !cancelled && !suspendedRef.current && isCurrentSession(generation),
       () => {
-        acquireLock(projectId)
+        acquireTaskRef.current = acquireLock(projectId)
           .then((lock) => {
             if (cancelled || !isCurrentSession(generation)) {
               void releaseLock(projectId, lock.lock_token) // 이미 이탈 → 즉시 해제
               return
             }
             lockTokenRef.current = lock.lock_token
+          if (suspendedRef.current) return
             setEditingBy(null)
             updateLockStatus('held')
             startHeartbeat(generation)
@@ -701,6 +734,7 @@ export function useSheetEditing(
     const generation = sessionGenerationRef.current
     const readonlyRetry = setInterval(() => {
       if (
+        suspendedRef.current ||
         !sessionActiveRef.current ||
         !isCurrentSession(generation) ||
         acquireInFlightRef.current ||
@@ -710,13 +744,14 @@ export function useSheetEditing(
       }
       const sessionProjectId = projectIdRef.current
       acquireInFlightRef.current = true
-      acquireLock(sessionProjectId)
+      acquireTaskRef.current = acquireLock(sessionProjectId)
         .then((lock) => {
           if (!sessionActiveRef.current || !isCurrentSession(generation)) {
             void releaseLock(sessionProjectId, lock.lock_token)
             return
           }
           lockTokenRef.current = lock.lock_token
+          if (suspendedRef.current) return
           setEditingBy(null)
           updateLockStatus('held')
           startHeartbeat(generation)
@@ -775,5 +810,7 @@ export function useSheetEditing(
     waitForPersistence,
     getPersistenceSnapshot,
     reacquire,
+    suspend,
+    resume,
   }
 }

@@ -29,11 +29,11 @@ describe('SheetFocusFrame', () => {
     )
 
     expect(html).toContain('h-full min-h-0 min-w-0')
-    expect(html).toContain('grid-rows-[40px_auto_minmax(0,1fr)]')
+    expect(html).toContain('h-10 shrink-0')
     expect(html).toContain('data-sheet-work-row="true"')
     expect(html).toContain('data-sheet-layer-navigator="true"')
     expect(html).toContain('data-sheet-grid-host="true"')
-    expect(html).toContain('min-h-0 min-w-0 overflow-hidden')
+    expect(html).toContain('min-h-0 min-w-0 flex-1 overflow-hidden')
     expect(html).toContain('data-sheet-evidence-inspector="true"')
     expect(html).not.toContain('data-sheet-workbench')
     expect(html).toContain('layer navigator')
