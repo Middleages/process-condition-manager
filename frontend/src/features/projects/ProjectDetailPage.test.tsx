@@ -229,6 +229,8 @@ describe('ProjectDetailPage', () => {
     expect(html.indexOf('id="project-profile-title"')).toBeLessThan(html.indexOf('id="project-layers-title"'))
     expect(html.indexOf('id="project-layers-title"')).toBeLessThan(html.indexOf('id="project-workflow-title"'))
     expect(html).not.toContain('sm:grid-cols-4')
+    expect(html).toContain('작성 중')
+    expect(html).not.toContain('>초안<')
   })
 
   it('renders secondary review, status badge and allowed actions for project transitions', () => {

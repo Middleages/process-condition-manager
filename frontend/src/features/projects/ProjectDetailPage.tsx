@@ -26,6 +26,7 @@ import { InlineAlert } from '@/shared/components/InlineAlert'
 import { PageHeader } from '@/shared/components/PageHeader'
 import { parsePositiveInt } from '@/shared/navigation/routeState'
 
+import { ProjectStatusBadge } from './ProjectTable'
 import { LayerReplaceModal } from './LayerReplaceModal'
 import { ProjectProfileDrawer } from './ProjectProfileDrawer'
 import { useOptionalAuth } from '@/app/AuthContext'
@@ -53,9 +54,7 @@ export function ProjectDetailPage() {
           projectQuery.data ? (
             <span className="inline-flex items-center gap-2">
               Project #{projectQuery.data.id}
-              <Badge tone={projectStatusBadgeTone(projectQuery.data.status)}>
-                {projectStatusLabel(projectQuery.data.status)}
-              </Badge>
+              <ProjectStatusBadge status={projectQuery.data.status} />
             </span>
           ) : (
             '제품 공정조건'
@@ -419,9 +418,7 @@ export function ProjectDetail({ project }: { project: ProjectOut }) {
         </div>
 
         <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border-subtle bg-surface p-4">
-          <Badge tone={projectStatusBadgeTone(project.status)} className="h-7 px-3 py-0.5">
-            {projectStatusLabel(project.status)}
-          </Badge>
+          <ProjectStatusBadge status={project.status} />
           <span className="text-sm text-muted">/</span>
           <span className="text-sm text-ink-950">가능한 작업:</span>
           <div className="ml-auto flex flex-wrap gap-2">
@@ -696,21 +693,6 @@ export function getProjectListReturnPath(state: unknown): string {
   }
 
   return '/projects'
-}
-
-function projectStatusBadgeTone(status: ProjectOut['status']) {
-  if (status === 'draft') return 'draft'
-  if (status === 'approved') return 'neutral'
-  if (status === 'rejected') return 'error'
-  return 'read-only'
-}
-
-function projectStatusLabel(status: ProjectOut['status']) {
-  if (status === 'draft') return '초안'
-  if (status === 'review') return '검토중'
-  if (status === 'approved') return '승인'
-  if (status === 'rejected') return '반려'
-  return '보존'
 }
 
 function actionLabel(action: ProjectTransitionAction) {
