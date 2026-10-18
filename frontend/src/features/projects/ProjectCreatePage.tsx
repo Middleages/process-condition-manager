@@ -19,10 +19,10 @@ export function ProjectCreatePage() {
         }
         eyebrow="제품 공정조건"
         title="공정조건 등록"
-        description="Process와 백본을 차례로 확인하고 새 조건표를 만듭니다."
+        description="LINE·Process를 선택하고 Part ID별 공정조건을 등록합니다."
       />
       <ProjectCreateWizard
-        onCreated={(projectId) => navigate(`/projects/${projectId}`, { replace: true })}
+        onCreated={(projectId) => navigate(`/projects/${projectId}/sheet`, { replace: true })}
       />
     </section>
   )

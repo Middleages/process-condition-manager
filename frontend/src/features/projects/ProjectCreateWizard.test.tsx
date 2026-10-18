@@ -271,9 +271,10 @@ describe('ProjectCreateWizard route restoration', () => {
     const params = new URLSearchParams({ step: '3', process: directProcess.key })
     const html = renderWizard(`/projects/new?${params}`, true)
 
-    expect(html).toContain('LINE Z / outside first page')
+    expect(html).toContain('LINE Z')
+    expect(html).toContain('outside first page')
     expect(html).not.toContain('LINE A / first')
-    expect(html).toContain('매칭 검토 및 프로젝트 정보</h2>')
+    expect(html).toContain('매칭 검토 및 등록 정보</h2>')
     expect(html).toContain('현재 3/3')
     expect(html).toContain('완료')
   })
@@ -282,14 +283,12 @@ describe('ProjectCreateWizard route restoration', () => {
     const params = new URLSearchParams({ step: '3', process: directProcess.key })
     const html = renderWizard(`/projects/new?${params}`, false)
 
-    expect(html).toContain('매칭 검토 및 프로젝트 정보</h2>')
+    expect(html).toContain('매칭 검토 및 등록 정보</h2>')
     expect(html).toContain('URL에서 선택한 Process를 복원하는 중입니다.')
     expect(html).toMatch(
       /<input(?=[^>]*id="project-part-id")(?=[^>]*disabled="")[^>]*>/,
     )
-    expect(html).toMatch(
-      /<input(?=[^>]*id="project-name")(?=[^>]*disabled="")[^>]*>/,
-    )
+    expect(html).not.toContain('id="project-name"')
   })
 
   it('uses the approved tokenized focus ring on a programmatically focused step heading', () => {
@@ -313,8 +312,8 @@ describe('ProjectCreateWizard route restoration', () => {
     const params = new URLSearchParams({ step: '3', process: directProcess.key })
     const html = renderWizard(`/projects/new?${params}`, true)
 
-    expect(html).toContain('>매칭 검토 및 프로젝트 정보</span>')
-    expect(html).toContain('매칭 검토 및 프로젝트 정보</h2>')
+    expect(html).toContain('>매칭 검토 및 등록 정보</span>')
+    expect(html).toContain('매칭 검토 및 등록 정보</h2>')
     expect(html).not.toContain('매칭 확인 · 프로젝트 정보')
   })
 
@@ -322,7 +321,7 @@ describe('ProjectCreateWizard route restoration', () => {
     const params = new URLSearchParams({ step: '3', process: directProcess.key })
     const html = renderWizard(`/projects/new?${params}`, true)
 
-    expect(html).toContain('aria-label="프로젝트 생성 진행"')
+    expect(html).toContain('aria-label="공정조건 등록 진행"')
     expect(html).toContain('aria-current="step"')
     expect(html).toContain('현재 3/3')
     expect(html).not.toContain('>3단계<')
@@ -409,7 +408,7 @@ describe('ProjectCreateWizard route restoration', () => {
     const gridStart = html.indexOf(
       'xl:grid-cols-[minmax(0,1fr)_minmax(22.5rem,26.25rem)]',
     )
-    const heading = html.indexOf('매칭 검토 및 프로젝트 정보</h2>')
+    const heading = html.indexOf('매칭 검토 및 등록 정보</h2>')
     const requiredAside = html.indexOf('aria-labelledby="project-required-info-title"')
 
     expect(gridStart).toBeGreaterThan(-1)
@@ -441,7 +440,7 @@ describe('ProjectCreateWizard route restoration', () => {
     const params = new URLSearchParams({ step: '3', process: directProcess.key })
     const html = renderWizard(`/projects/new?${params}`, true)
 
-    expect(html).toContain('매칭 검토 및 프로젝트 정보</h2>')
+    expect(html).toContain('매칭 검토 및 등록 정보</h2>')
     expect(html).toContain('LINE')
     expect(html).toContain('LINE Z')
     expect(html).toContain('Device Type')

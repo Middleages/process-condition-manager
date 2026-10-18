@@ -69,14 +69,13 @@ import {
 const STEPS = [
   { index: 1, title: 'Process 선택' },
   { index: 2, title: '백본 선택' },
-  { index: 3, title: '매칭 검토 및 프로젝트 정보' },
+  { index: 3, title: '매칭 검토 및 등록 정보' },
 ] as const
 
 const CREATE_DISABLED_MESSAGE: Record<CreateDisabledReason, string> = {
   'process-missing': '먼저 Process를 선택해 주세요.',
   'process-loading': '선택한 Process를 확인하는 중입니다.',
   'process-invalid': '선택한 Process를 확인할 수 없습니다. 다시 선택하거나 재시도해 주세요.',
-  'duplicate-process': '이 Process에는 이미 프로젝트가 있어 새로 만들 수 없습니다.',
   'backbone-loading': '선택한 백본을 확인하는 중입니다.',
   'backbone-invalid': '선택한 백본을 사용할 수 없습니다. 다시 선택해 주세요.',
   'preview-loading': '현재 선택으로 매칭 결과를 계산하는 중입니다.',
@@ -91,8 +90,8 @@ const CREATE_DISABLED_MESSAGE: Record<CreateDisabledReason, string> = {
   'categories-empty': '활성 Project Category 선택지가 필요합니다.',
   'categories-inactive': '사용 가능한 Project Category를 다시 선택해 주세요.',
   'profile-required-fields': 'Device Type과 Project Category를 모두 선택해 주세요.',
-  'required-fields': 'Part ID와 프로젝트명을 모두 입력해 주세요.',
-  submitting: '프로젝트를 생성하는 중입니다.',
+  'required-fields': 'Part ID를 입력해 주세요.',
+  submitting: '공정조건을 등록하는 중입니다.',
 }
 
 interface PreviewResult {
@@ -112,7 +111,6 @@ export function ProjectCreateWizard({ onCreated }: { onCreated: (projectId: numb
   const [processQuery, setProcessQuery] = useState('')
   const [overrides, setOverrides] = useState<Record<string, string>>({})
   const [partId, setPartId] = useState('')
-  const [name, setName] = useState('')
   const [deviceTypeCode, setDeviceTypeCode] = useState('')
   const [projectCategoryCode, setProjectCategoryCode] = useState('')
   const [comment, setComment] = useState('')
@@ -144,7 +142,6 @@ export function ProjectCreateWizard({ onCreated }: { onCreated: (projectId: numb
     createdProjectId === null &&
     isProjectCreateDraftDirty({
       partId,
-      name,
       deviceTypeCode,
       projectCategoryCode,
       comment,
@@ -154,7 +151,7 @@ export function ProjectCreateWizard({ onCreated }: { onCreated: (projectId: numb
 
   useUnsavedChanges({
     when: isDirty,
-    message: '작성 중인 프로젝트 정보가 있습니다. 이 페이지를 떠날까요?',
+    message: '작성 중인 등록 정보가 있습니다. 이 페이지를 떠날까요?',
     allowPath: '/projects/new',
   })
 
@@ -178,7 +175,7 @@ export function ProjectCreateWizard({ onCreated }: { onCreated: (projectId: numb
   })
   const selectedProcess = selectedProcessQuery.data ?? null
   const processReady =
-    selectedProcess !== null && !selectedProcessQuery.isError && !selectedProcess.has_project
+    selectedProcess !== null && !selectedProcessQuery.isError
 
   const candidatesQuery = useQuery({
     queryKey: ['backbone-candidates', selectedProcess?.line_id, selectedProcess?.process_id],
@@ -266,7 +263,6 @@ export function ProjectCreateWizard({ onCreated }: { onCreated: (projectId: numb
           processNotFound:
             selectedProcessQuery.isError &&
             getApiErrorStatus(selectedProcessQuery.error) === 404,
-          processHasProject: selectedProcess?.has_project === true,
           backboneNotFound:
             processReady &&
             backboneDetailQuery.isError &&
@@ -333,7 +329,7 @@ export function ProjectCreateWizard({ onCreated }: { onCreated: (projectId: numb
     if (routeState.backboneId !== null) void refetchBackbone()
   }, [downstream404Error, refetchBackbone, refetchSelectedProcess, routeState.backboneId])
 
-  const renderedStep = getRenderedStep(routeState, selectedProcessQuery, selectedProcess)
+  const renderedStep = getRenderedStep(routeState, selectedProcessQuery)
   const stepHeadingRef = useRef<HTMLHeadingElement>(null)
   const previousStepRef = useRef(renderedStep)
 
@@ -349,7 +345,6 @@ export function ProjectCreateWizard({ onCreated }: { onCreated: (projectId: numb
     processKey: routeState.processKey,
     processIsPending: routeState.processKey !== null && selectedProcessQuery.isPending,
     processIsError: selectedProcessQuery.isError,
-    processHasProject: selectedProcess?.has_project ?? false,
     backboneId: routeState.backboneId,
     backboneIsPending: routeState.backboneId !== null && backboneDetailQuery.isPending,
     backboneIsError: backboneDetailQuery.isError,
@@ -358,7 +353,7 @@ export function ProjectCreateWizard({ onCreated }: { onCreated: (projectId: numb
     previewIsError: previewQuery.isError,
     previewFingerprint: previewQuery.data?.fingerprint ?? null,
     currentFingerprint,
-    requiredFieldsComplete: partId.trim() !== '' && name.trim() !== '',
+    requiredFieldsComplete: partId.trim() !== '',
     deviceTypeCode,
     deviceTypesLoading: deviceTypeState.loading,
     deviceTypesError: deviceTypeState.error,
@@ -459,12 +454,6 @@ export function ProjectCreateWizard({ onCreated }: { onCreated: (projectId: numb
     createMutation.reset()
   }
 
-  function updateName(value: string) {
-    if (submitLockRef.current || interactionLocked) return
-    setName(value)
-    createMutation.reset()
-  }
-
   function updateDeviceType(code: string | null) {
     if (submitLockRef.current || interactionLocked) return
     setDeviceTypeCode(code ?? '')
@@ -499,7 +488,6 @@ export function ProjectCreateWizard({ onCreated }: { onCreated: (projectId: numb
         lineId: selectedProcess.line_id,
         processId: selectedProcess.process_id,
         partId,
-        name,
         deviceTypeCode,
         projectCategoryCode,
         comment,
@@ -602,7 +590,6 @@ export function ProjectCreateWizard({ onCreated }: { onCreated: (projectId: numb
             overrides={overrides}
             baselineAutomaticSources={baselineAutomaticSourcesRef.current}
             partId={partId}
-            name={name}
             deviceTypeCode={deviceTypeCode}
             projectCategoryCode={projectCategoryCode}
             comment={comment}
@@ -613,7 +600,6 @@ export function ProjectCreateWizard({ onCreated }: { onCreated: (projectId: numb
             selectedProcessId={selectedProcess?.process_id ?? null}
             onOverrideChange={updateOverride}
             onPartIdChange={updatePartId}
-            onNameChange={updateName}
             onDeviceTypeChange={updateDeviceType}
             onProjectCategoryChange={updateProjectCategory}
             onCommentChange={updateComment}
@@ -627,7 +613,7 @@ export function ProjectCreateWizard({ onCreated }: { onCreated: (projectId: numb
       </section>
 
       <p className="text-xs text-muted">
-        URL에는 현재 단계와 Process, 백본 선택만 저장됩니다. 새로고침하면 프로젝트 정보,
+        URL에는 현재 단계와 Process, 백본 선택만 저장됩니다. 새로고침하면 등록 정보,
         Profile 입력과 수동 매칭 입력은 초기화됩니다.
       </p>
     </div>
@@ -649,7 +635,7 @@ function WizardStepper({
 }) {
   return (
     <nav
-      aria-label="프로젝트 생성 진행"
+      aria-label="공정조건 등록 진행"
       className="border-y border-border-subtle bg-canvas px-2 py-1.5"
     >
       <ol className="grid gap-1 sm:grid-cols-3">
@@ -749,7 +735,7 @@ function ProcessStep({
       <StepHeading
         ref={headingRef}
         title="Process 선택"
-        description="구조를 검색하고 단계 수, 영역, 기존 프로젝트 여부를 확인하세요."
+        description="구조를 검색하고 단계 수, 영역, 기존 등록 여부를 확인하세요."
       />
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(20rem,0.65fr)]">
@@ -818,7 +804,7 @@ function ProcessStep({
                             선택됨
                           </span>
                         ) : null}
-                        {process.has_project ? <Badge tone="warning">프로젝트 있음</Badge> : null}
+                        {process.has_project ? <Badge tone="warning">등록 이력 있음</Badge> : null}
                       </span>
                     </button>
                   </li>
@@ -887,13 +873,13 @@ function ProcessStep({
               </dl>
               {selectedProcess.has_project ? (
                 <InlineAlert tone="warning">
-                  <p>이 Process에는 프로젝트가 이미 {selectedProcess.project_count}개 있습니다.</p>
+                  <p>이 Process의 등록 이력은 {selectedProcess.project_count}개입니다. 다른 Part ID로 추가 등록할 수 있습니다.</p>
                   <Link className="mt-2 inline-flex font-bold underline underline-offset-2" to={duplicateHref!}>
-                    기존 프로젝트 목록에서 선택
+                    기존 제품 목록에서 선택
                   </Link>
                 </InlineAlert>
               ) : selectedProcessReady ? (
-                <InlineAlert tone="success">새 프로젝트를 만들 수 있습니다.</InlineAlert>
+                <InlineAlert tone="success">새 Part ID의 공정조건을 등록할 수 있습니다.</InlineAlert>
               ) : null}
             </div>
           ) : null}
@@ -1004,7 +990,7 @@ function BackboneStep({
 
       {!candidatesIsPending && !candidatesError && candidates.length === 0 ? (
         <InlineAlert tone="info">
-          추천 백본이 없습니다. 백본 없이 시작해도 유효한 프로젝트를 만들 수 있습니다.
+          추천 백본이 없습니다. 백본 없이 시작해도 공정조건을 등록할 수 있습니다.
         </InlineAlert>
       ) : null}
 
@@ -1043,7 +1029,6 @@ function PreviewStep({
   overrides,
   baselineAutomaticSources,
   partId,
-  name,
   deviceTypeCode,
   projectCategoryCode,
   comment,
@@ -1054,7 +1039,6 @@ function PreviewStep({
   selectedProcessId,
   onOverrideChange,
   onPartIdChange,
-  onNameChange,
   onDeviceTypeChange,
   onProjectCategoryChange,
   onCommentChange,
@@ -1081,7 +1065,6 @@ function PreviewStep({
   overrides: Record<string, string>
   baselineAutomaticSources: Record<string, string>
   partId: string
-  name: string
   deviceTypeCode: string
   projectCategoryCode: string
   comment: string
@@ -1092,7 +1075,6 @@ function PreviewStep({
   selectedProcessId: string | null
   onOverrideChange: (targetLayerKey: string, sourceLayerKey: string) => void
   onPartIdChange: (value: string) => void
-  onNameChange: (value: string) => void
   onDeviceTypeChange: (code: string | null) => void
   onProjectCategoryChange: (code: string | null) => void
   onCommentChange: (value: string) => void
@@ -1124,8 +1106,8 @@ function PreviewStep({
         <div className="order-1 min-w-0 space-y-5 xl:col-start-1 xl:row-start-1">
           <StepHeading
             ref={headingRef}
-            title="매칭 검토 및 프로젝트 정보"
-            description="현재 구조와 정확히 일치하는 미리보기를 확인한 뒤 프로젝트 정보를 입력하세요."
+            title="매칭 검토 및 등록 정보"
+            description="현재 구조와 정확히 일치하는 미리보기를 확인한 뒤 Part ID와 등록 정보를 입력하세요."
           />
 
           <section
@@ -1137,7 +1119,7 @@ function PreviewStep({
             </h3>
 
             {selectedProcess ? (
-              <dl className="grid gap-px overflow-hidden rounded-lg border border-border-subtle bg-border-subtle sm:grid-cols-3">
+              <dl className="grid gap-px overflow-hidden rounded-lg border border-border-subtle bg-border-subtle sm:grid-cols-2 xl:grid-cols-4">
                 <div className="min-w-0 bg-canvas px-3 py-2">
                   <dt className="text-xs font-semibold text-muted">LINE</dt>
                   <dd
@@ -1151,18 +1133,24 @@ function PreviewStep({
                   <dt className="text-xs font-semibold text-muted">Process</dt>
                   <dd
                     className="mt-0.5 truncate text-sm font-bold text-ink-950"
-                    title={selectedProcess.display_name}
+                    title={selectedProcess.process_id}
                   >
-                    {selectedProcess.display_name}
+                    {selectedProcess.process_id}
+                  </dd>
+                </div>
+                <div className="min-w-0 bg-canvas px-3 py-2">
+                  <dt className="text-xs font-semibold text-muted">Part ID</dt>
+                  <dd className="mt-0.5 truncate text-sm font-bold text-ink-950" title={partId.trim()}>
+                    {partId.trim() || '아래에서 입력'}
                   </dd>
                 </div>
                 <div className="min-w-0 bg-canvas px-3 py-2">
                   <dt className="text-xs font-semibold text-muted">백본</dt>
                   <dd
                     className="mt-0.5 truncate text-sm font-bold text-ink-950"
-                    title={backboneId === null ? '없이 시작' : `프로젝트 #${backboneId}`}
+                    title={backboneId === null ? '없이 시작' : `조건표 #${backboneId}`}
                   >
-                    {backboneId === null ? '없이 시작' : `프로젝트 #${backboneId}`}
+                    {backboneId === null ? '없이 시작' : `조건표 #${backboneId}`}
                   </dd>
                 </div>
               </dl>
@@ -1226,7 +1214,7 @@ function PreviewStep({
           className="order-2 rounded-lg border border-border-subtle bg-canvas p-4 xl:sticky xl:top-5 xl:col-start-2 xl:row-span-2 xl:row-start-1"
         >
           <h3 className="text-sm font-bold text-ink-950" id="project-required-info-title">
-            프로젝트 필수 정보
+            공정조건 등록 정보
           </h3>
 
           <div className="mt-3 grid gap-3">
@@ -1237,15 +1225,6 @@ function PreviewStep({
                 required
                 value={partId}
                 onChange={(event) => onPartIdChange(event.target.value)}
-              />
-            </Field>
-            <Field inputId="project-name" label="프로젝트명">
-              <input
-                className="input"
-                disabled={controlsDisabled}
-                required
-                value={name}
-                onChange={(event) => onNameChange(event.target.value)}
               />
             </Field>
             <RequiredProfileChoiceField
@@ -1285,8 +1264,11 @@ function PreviewStep({
               <InlineAlert tone={duplicateHref ? 'warning' : 'error'}>
                 <p>{getApiErrorMessage(createError)}</p>
                 {duplicateHref ? (
+                  <p className="mt-1 text-xs">LINE·Process·Part ID 조합을 확인해 주세요. Part ID를 바꿔 추가 등록하거나 기존 조건표를 열 수 있습니다.</p>
+                ) : null}
+                {duplicateHref ? (
                   <Link className="mt-2 inline-flex font-bold underline underline-offset-2" to={duplicateHref}>
-                    {existingProjectId !== null ? '기존 프로젝트 열기' : '기존 프로젝트 목록에서 선택'}
+                    {existingProjectId !== null ? '기존 조건표 열기' : '기존 제품 목록에서 선택'}
                   </Link>
                 ) : (
                   <p className="mt-1 text-xs">입력 내용은 유지되었습니다. 확인 후 다시 시도해 주세요.</p>
@@ -1310,7 +1292,7 @@ function PreviewStep({
               loading={createDisabledReason === 'submitting'}
               type="submit"
             >
-              프로젝트 생성
+              공정조건 등록
             </Button>
           </div>
         </aside>
@@ -1414,7 +1396,7 @@ export function RequiredProfileChoiceField({
         <InlineAlert tone="warning">
           <p>
             {label} 선택지 집합이 사용 중지되었습니다. 관리자가 집합을 다시 활성화해야
-            프로젝트를 만들 수 있습니다.
+            공정조건을 등록할 수 있습니다.
           </p>
           <ChoiceAdminLink href={adminHref} />
         </InlineAlert>
@@ -1424,7 +1406,7 @@ export function RequiredProfileChoiceField({
         <InlineAlert tone="warning">
           <p>
             활성 {label} 선택지가 없습니다. 관리자가 활성 선택지를 추가하거나 다시
-            활성화해야 프로젝트를 만들 수 있습니다.
+            활성화해야 공정조건을 등록할 수 있습니다.
           </p>
           <ChoiceAdminLink href={adminHref} />
         </InlineAlert>
@@ -1434,7 +1416,7 @@ export function RequiredProfileChoiceField({
         <InlineAlert tone="warning">
           <p>
             선택한 {label} code가 최신 활성 선택지에 없습니다. 초안 code는 보존되지만 다른
-            활성 값을 선택해야 프로젝트를 만들 수 있습니다.
+            활성 값을 선택해야 공정조건을 등록할 수 있습니다.
           </p>
           <ChoiceAdminLink href={adminHref} />
         </InlineAlert>
@@ -1601,10 +1583,8 @@ function canVisitStep(
 function getRenderedStep(
   routeState: ProjectCreateRouteState,
   selectedProcessQuery: { isPending: boolean; isError: boolean },
-  selectedProcess: ProcessDetailOut | null,
 ): 1 | 2 | 3 {
   if (routeState.processKey === null) return 1
   if (!selectedProcessQuery.isPending && selectedProcessQuery.isError) return 1
-  if (selectedProcess?.has_project) return 1
   return routeState.step
 }
