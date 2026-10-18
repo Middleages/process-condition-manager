@@ -32,9 +32,7 @@ export function ProjectTable({ projects, from, onProjectOpen }: ProjectTableProp
                 <span className="block break-words font-mono text-base font-semibold leading-snug [overflow-wrap:anywhere]">{project.part_id}</span>
               </td>
               <td className="px-3 py-3 align-middle">
-                <span className={`inline-flex whitespace-nowrap rounded-full border px-2.5 py-1 text-sm font-bold ${STATUS_STYLES[project.status]}`}>
-                  {STATUS_LABELS[project.status]}
-                </span>
+                <ProjectStatusBadge status={project.status} />
               </td>
               <td className="px-3 py-3 text-xs tabular-nums text-muted">
                 <time dateTime={project.updated_at}>{formatUpdatedAt(project.updated_at)}</time>
@@ -45,7 +43,7 @@ export function ProjectTable({ projects, from, onProjectOpen }: ProjectTableProp
                   className="inline-flex min-h-9 items-center justify-center rounded-[3px] border border-brand-700 bg-surface px-3 text-sm font-bold text-brand-700 hover:bg-brand-700 hover:text-white"
                   data-project-id={project.id}
                   state={{ from }}
-                  to={`/projects/${project.id}`}
+                  to={`/projects/${project.id}/sheet`}
                   onClick={() => onProjectOpen(project.id)}
                 >열기</Link>
               </td>
@@ -71,4 +69,8 @@ const STATUS_LABELS: Record<ProjectSummaryOut['status'], string> = {
 function formatUpdatedAt(value: string): string {
   const instant = new Date(value)
   return Number.isNaN(instant.getTime()) ? value : new Intl.DateTimeFormat('ko-KR', { dateStyle: 'short' }).format(instant)
+}
+
+export function ProjectStatusBadge({ status }: { status: ProjectSummaryOut['status'] }) {
+  return <span className={`inline-flex shrink-0 whitespace-nowrap rounded-full border px-2.5 py-1 text-sm font-bold ${STATUS_STYLES[status]}`}>{STATUS_LABELS[status]}</span>
 }

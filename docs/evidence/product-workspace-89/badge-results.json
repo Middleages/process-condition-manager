@@ -1,0 +1,55 @@
+{
+  "candidate": "27aa42777d4a1dedf3154ada58f293c6a358bfe0",
+  "boundary": "Actual frontend mocked backend; status badge-only followup",
+  "checks": [
+    {
+      "width": 1440,
+      "console": [],
+      "pageerrors": [],
+      "badges": [
+        {
+          "text": "작성 중",
+          "color": "oklch(0.372 0.044 257.287)",
+          "background": "oklch(0.968 0.007 247.896)",
+          "border": "oklch(0.869 0.022 252.894)",
+          "fontSize": "14px",
+          "fontWeight": "700"
+        },
+        {
+          "text": "작성 중",
+          "color": "oklch(0.372 0.044 257.287)",
+          "background": "oklch(0.968 0.007 247.896)",
+          "border": "oklch(0.869 0.022 252.894)",
+          "fontSize": "14px",
+          "fontWeight": "700"
+        }
+      ],
+      "pass": true
+    },
+    {
+      "width": 1024,
+      "console": [],
+      "pageerrors": [],
+      "badges": [
+        {
+          "text": "작성 중",
+          "color": "oklch(0.372 0.044 257.287)",
+          "background": "oklch(0.968 0.007 247.896)",
+          "border": "oklch(0.869 0.022 252.894)",
+          "fontSize": "14px",
+          "fontWeight": "700"
+        },
+        {
+          "text": "작성 중",
+          "color": "oklch(0.372 0.044 257.287)",
+          "background": "oklch(0.968 0.007 247.896)",
+          "border": "oklch(0.869 0.022 252.894)",
+          "fontSize": "14px",
+          "fontWeight": "700"
+        }
+      ],
+      "pass": true
+    }
+  ],
+  "status": "pass"
+}

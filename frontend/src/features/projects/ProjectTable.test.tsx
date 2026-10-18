@@ -73,7 +73,7 @@ describe('ProjectTable', () => {
   it('keeps the open link route and return-focus data', () => {
     const html = renderTable([project])
 
-    expect(html).toContain('href="/projects/42"')
+    expect(html).toContain('href="/projects/42/sheet"')
     expect(html).toContain('data-project-id="42"')
   })
 

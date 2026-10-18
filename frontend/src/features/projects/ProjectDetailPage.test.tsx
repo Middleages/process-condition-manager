@@ -171,8 +171,8 @@ describe('ProjectDetailPage', () => {
 
     for (const label of [
       'LINE',
-      'Process ID',
-      'PARTID',
+      'Process',
+      'Part ID',
       'Process Name',
       'Device Type',
       'Category',
@@ -223,28 +223,17 @@ describe('ProjectDetailPage', () => {
     expect(html).not.toContain('Device Ref')
   })
 
-  it('centers the detail frame and derives a four-item backbone summary from layers', () => {
-    const single = renderDetail()
-    const multiple = renderDetail({
-      ...project,
-      layers: [
-        project.layers[0]!,
-        { ...project.layers[0]!, id: 8, source_project_id: 44 },
-        { ...project.layers[0]!, id: 9, source_project_id: 44 },
-      ],
-    })
-    const none = renderDetail({
-      ...project,
-      layers: [{ ...project.layers[0]!, source_project_id: null, source_layer_key: null }],
-    })
-
-    expect(single).toContain('max-w-[1600px]')
-    expect(single).toMatch(/>백본<[^]*?>#41</)
-    expect(multiple).toMatch(/>백본<[^]*?>2개 프로젝트</)
-    expect(none).toMatch(/>백본<[^]*?>없음</)
+  it('keeps profile first and moves review after layer details without summary cards', () => {
+    const html = renderDetail()
+    expect(html).toContain('max-w-[1600px]')
+    expect(html.indexOf('id="project-profile-title"')).toBeLessThan(html.indexOf('id="project-layers-title"'))
+    expect(html.indexOf('id="project-layers-title"')).toBeLessThan(html.indexOf('id="project-workflow-title"'))
+    expect(html).not.toContain('sm:grid-cols-4')
+    expect(html).toContain('작성 중')
+    expect(html).not.toContain('>초안<')
   })
 
-  it('renders workflow lineage, status badge and allowed actions for project transitions', () => {
+  it('renders secondary review, status badge and allowed actions for project transitions', () => {
     const html = renderDetail({
       ...project,
       status: 'review',
@@ -256,9 +245,9 @@ describe('ProjectDetailPage', () => {
     })
 
     expect(html).toContain('id="project-workflow-title"')
-    expect(html).toContain('워크플로우')
-    expect(html).toContain('v7 / root 100 / pred 90 / succ - / actions 4')
-    expect(html).toContain('허용 액션')
+    expect(html).toContain('검토·승인')
+    expect(html).not.toContain('root 100 / pred 90')
+    expect(html).toContain('가능한 작업')
     expect(html).toContain('검토요청')
     expect(html).toContain('승인')
     expect(html).toContain('반려')
@@ -281,7 +270,7 @@ describe('ProjectDetailPage', () => {
     const layersIndex = html.indexOf('id="project-layers-title"')
     const detailsTag = html.match(/<details[^>]*data-profile-details=""[^>]*>/)?.[0]
 
-    expect(html).toContain('>프로젝트 정보<')
+    expect(html).toContain('>기본정보<')
     expect(coreIndex).toBeGreaterThan(-1)
     expect(detailsIndex).toBeGreaterThan(coreIndex)
     expect(layersIndex).toBeGreaterThan(detailsIndex)
@@ -357,7 +346,7 @@ describe('ProjectDetailPage', () => {
 
     expect(noApprove).toContain('검토요청')
     expect(noApprove).toContain('초안복귀')
-    expect(noApprove).not.toContain('승인')
+    expect(noApprove).not.toMatch(/<span[^>]*>승인<\/span>/)
     expect(noApprove).not.toContain('반려')
   })
 

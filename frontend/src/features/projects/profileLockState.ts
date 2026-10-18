@@ -126,14 +126,17 @@ export function createProjectProfileLockController(
   const releaseTokenOnce = async (
     sessionGeneration: number,
     token: string,
+    required = false,
   ): Promise<void> => {
     const key = `${sessionGeneration}\u0000${token}`
     if (releasedSessions.has(key)) return
     releasedSessions.add(key)
     try {
       await dependencies.release(projectId, token)
-    } catch {
-      // Release is best-effort. The server TTL remains the final cleanup boundary.
+    } catch (error) {
+      releasedSessions.delete(key)
+      if (required) throw error
+      // Unmount cleanup remains best effort; an interactive handoff must await success.
     }
   }
 
@@ -332,7 +335,10 @@ export function createProjectProfileLockController(
     const sessionGeneration = tokenSession?.token === token
       ? tokenSession.generation
       : generation
-    await releaseTokenOnce(sessionGeneration, token)
+    try { await releaseTokenOnce(sessionGeneration, token, true) } catch (error) {
+      if (owns(generation, token)) update({ phase: 'editable', error: `잠금 해제 실패: ${getApiErrorMessage(error)}. 닫기로 다시 시도하세요.` })
+      return
+    }
     if (!owns(generation, token) || !isPhase('releasing')) return
     tokenSession = null
     emit({ ...state, phase: 'closed', token: null, holder: null, error: null })
@@ -392,7 +398,10 @@ export function createProjectProfileLockController(
       update({ phase: 'cancelling' })
     }
     emit({ ...state, phase: 'releasing', generation: closedGeneration })
-    await releaseTokenOnce(session.generation, token)
+    try { await releaseTokenOnce(session.generation, token, true) } catch (error) {
+      if (!disposed) update({ phase: state.draft ? 'editable' : 'load-error', error: `잠금 해제 실패: ${getApiErrorMessage(error)}. 닫기로 다시 시도하세요.` })
+      return
+    }
     if (
       disposed ||
       !isPhase('releasing') ||
@@ -541,5 +550,5 @@ export function createProjectProfileUnloadEventHandlers(
 }
 
 export function isProjectProfileCloseDisabled(state: ProjectProfileLockState): boolean {
-  return state.phase === 'saving' || state.phase === 'releasing'
+  return state.phase === 'acquiring' || state.phase === 'saving' || state.phase === 'releasing'
 }

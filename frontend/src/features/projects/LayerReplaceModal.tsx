@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 
 import { getApiErrorMessage } from '@/api/client'
 import { invalidateProjectBackboneDiffAfterMutation } from '@/api/backboneDiffCache'
@@ -21,6 +21,23 @@ export function LayerReplaceModal({
   onClose: () => void
 }) {
   const queryClient = useQueryClient()
+  const tokenRef = useRef<string | null>(null)
+  const [closing, setClosing] = useState(false)
+  const [releaseError, setReleaseError] = useState<string | null>(null)
+  async function releaseOwnedLock() {
+    if (tokenRef.current === null) return
+    await releaseLock(project.id, tokenRef.current)
+    tokenRef.current = null
+  }
+  async function requestClose() {
+    if (replaceMutation.isPending || closing) return
+    setClosing(true)
+    try {
+      await releaseOwnedLock()
+      await Promise.all([invalidateProjectHistoryAfterMutation(queryClient, project.id), invalidateProjectBackboneDiffAfterMutation(queryClient, project.id)])
+      onClose()
+    } catch (error) { setReleaseError(getApiErrorMessage(error)) } finally { setClosing(false) }
+  }
   const [sourceProjectId, setSourceProjectId] = useState<number | null>(null)
   const [sourceLayerKey, setSourceLayerKey] = useState('')
 
@@ -45,7 +62,9 @@ export function LayerReplaceModal({
     // 편집 중이면 acquireLock이 409로 실패하고 그대로 에러가 표시된다. 지속 보유 +
     // 하트비트가 필요한 시트 편집 화면(T3/T4)과는 별개의 용도다.
     mutationFn: async () => {
+      await releaseOwnedLock()
       const lock = await acquireLock(project.id)
+      tokenRef.current = lock.lock_token
       try {
         return await replaceLayerBackbone(
           project.id,
@@ -54,9 +73,7 @@ export function LayerReplaceModal({
           lock.lock_token,
         )
       } finally {
-        await releaseLock(project.id, lock.lock_token).catch(() => {
-          // 해제 실패는 무해하다 — TTL 만료가 최종 보험(P2-D4).
-        })
+        await releaseOwnedLock()
       }
     },
     onSuccess: async () => {
@@ -65,6 +82,7 @@ export function LayerReplaceModal({
         invalidateProjectHistoryAfterMutation(queryClient, project.id),
         queryClient.invalidateQueries({ queryKey: ['project', project.id] }),
         queryClient.invalidateQueries({ queryKey: ['projects'] }),
+        queryClient.invalidateQueries({ queryKey: ['sheet', project.id] }),
       ])
       onClose()
     },
@@ -77,17 +95,15 @@ export function LayerReplaceModal({
     <Dialog
       open
       title="레이어 백본 교체"
-      onRequestClose={(reason) => {
-        if (reason !== 'escape' || !replaceMutation.isPending) onClose()
-      }}
+      onRequestClose={() => void requestClose()}
       footer={
         <>
-          <Button type="button" variant="secondary" onClick={onClose}>
+          <Button type="button" variant="secondary" disabled={replaceMutation.isPending || closing} onClick={() => void requestClose()}>
             취소
           </Button>
           <Button
             type="button"
-            disabled={!canApply}
+            disabled={!canApply || closing || tokenRef.current !== null}
             loading={replaceMutation.isPending}
             onClick={() => replaceMutation.mutate()}
           >
@@ -113,7 +129,7 @@ export function LayerReplaceModal({
           <option value="">선택</option>
           {candidates.map((candidate) => (
             <option key={candidate.id} value={candidate.id}>
-              {candidate.name} · {candidate.part_id}
+              {candidate.line_id} · {candidate.process_id} · {candidate.part_id}
             </option>
           ))}
         </select>
@@ -141,6 +157,7 @@ export function LayerReplaceModal({
         <DiffCard title="교체 후 (소스)" layer={sourceLayer} />
       </div>
 
+      {releaseError ? <InlineAlert tone="error">잠금 해제 실패: {releaseError}. 닫기로 다시 시도하세요.</InlineAlert> : null}
       {replaceMutation.isError ? (
         <InlineAlert className="mt-3" tone="error">
           {getApiErrorMessage(replaceMutation.error)}

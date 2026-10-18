@@ -357,11 +357,11 @@ export function HistoryWorkbench({
                   ? 'border-border-subtle text-muted'
                   : 'border-brand-700 text-brand-700',
               )}
-              disabled={jumpTarget.jump_status === 'deleted'}
+              disabled={jumpTarget.jump_status === 'deleted' || onActivateTarget === undefined}
               onClick={handleJumpTargetActivate}
               type="button"
             >
-              {jumpTarget.jump_status === 'deleted' ? '삭제됨' : '셀로 이동'}
+              {jumpTarget.jump_status === 'deleted' ? '삭제됨' : '조건표에서 보기'}
             </button>
             {targetUnavailableCopy !== null ? (
               <span className="text-xs text-muted">
@@ -499,11 +499,11 @@ export function HistoryWorkbench({
                 ? 'border-border-subtle text-muted'
                 : 'border-brand-700 text-brand-700',
             )}
-            disabled={item.jump_status === 'deleted'}
+            disabled={item.jump_status === 'deleted' || onActivateTarget === undefined}
             onClick={handleActivate}
             type="button"
           >
-            {item.jump_status === 'deleted' ? '삭제됨' : '셀로 이동'}
+            {item.jump_status === 'deleted' ? '삭제됨' : '조건표에서 보기'}
           </button>
           {item.jump_status === 'deleted' ? (
             <span className="text-xs text-muted">
@@ -978,11 +978,11 @@ function HistoryBatchDetailList({
                           ? 'border-border-subtle text-muted'
                           : 'border-brand-700 text-brand-700',
                       )}
-                      disabled={isDeleted}
+                      disabled={isDeleted || onActivateTarget === undefined}
                       onClick={handleActivate}
                       type="button"
                     >
-                      {isDeleted ? '삭제됨' : '셀로 이동'}
+                      {isDeleted ? '삭제됨' : '조건표에서 보기'}
                     </button>
                     {isDeleted ? (
                       <span className="text-xs text-muted">

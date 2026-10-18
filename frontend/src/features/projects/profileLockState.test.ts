@@ -664,3 +664,33 @@ describe('unload release fence', () => {
     controller.dispose()
   })
 })
+
+describe('workspace reverse handoff release', () => {
+  it('keeps the profile open after failed close release and retries the same token', async () => {
+    const deps = dependencies()
+    const controller = createProjectProfileLockController(42, deps)
+    await controller.open()
+    vi.mocked(deps.release).mockRejectedValueOnce(new Error('offline'))
+    await controller.close()
+    expect(controller.getState().phase).toBe('editable')
+    expect(controller.getState().error).toContain('잠금 해제 실패')
+    expect(controller.getState().token).toBe('token-1')
+    await controller.close()
+    expect(deps.release).toHaveBeenCalledTimes(2)
+    expect(controller.getState().phase).toBe('closed')
+    controller.dispose()
+  })
+  it('does not close or reacquire before a delayed release settles', async () => {
+    const release = deferred<void>()
+    const deps = dependencies({ release: vi.fn(() => release.promise) })
+    const controller = createProjectProfileLockController(42, deps)
+    await controller.open()
+    const closing = controller.close()
+    expect(controller.getState().phase).toBe('releasing')
+    expect(deps.acquire).toHaveBeenCalledTimes(1)
+    release.resolve()
+    await closing
+    expect(controller.getState().phase).toBe('closed')
+    controller.dispose()
+  })
+})

@@ -38,6 +38,8 @@ const EMPTY_HISTORY_COVERAGE: HistoryCoverageOut = {
   legacy_detail_unavailable_count: 0,
 }
 
+type HistoryTimelineScope = 'layer' | 'project'
+
 type HistoryQueryStatus = 'idle' | 'loading' | 'ready' | 'error'
 type HistoryDetailStatus = 'idle' | 'loading' | 'ready' | 'error'
 
@@ -113,8 +115,9 @@ export function historyTimelineQueryEnabled(
   outerHistoryEnabled: boolean,
   mode: HistoryWorkbenchMode,
   layerKey: string | null,
+  scope: HistoryTimelineScope = 'layer',
 ): boolean {
-  return outerHistoryEnabled && mode === 'timeline' && layerKey !== null
+  return outerHistoryEnabled && mode === 'timeline' && (scope === 'project' || layerKey !== null)
 }
 
 export function historyCellHistoryQueryEnabled(
@@ -228,6 +231,8 @@ export function useHistoryWorkbenchController(
   projectId: number,
   enabled: boolean,
   historyMutationRevision = 0,
+  // Only callers without a usable sheet opt into the existing project-wide API scope.
+  timelineScope: HistoryTimelineScope = 'layer',
 ): HistoryWorkbenchController {
   const queryClient = useQueryClient()
   const [state, setState] = useState(() => createHistoryWorkbenchState())
@@ -307,6 +312,7 @@ export function useHistoryWorkbenchController(
     enabled,
     state.mode,
     state.filters.layerKey,
+    timelineScope,
   )
   const timelineQueryKey = historyWorkbenchTimelineKey(projectId, state.filters)
   const timelineNextPageAuthorityKey = JSON.stringify([

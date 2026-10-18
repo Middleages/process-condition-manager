@@ -91,7 +91,7 @@ export function ProjectProfileDrawer({
 
   useUnsavedChanges({
     when: plan.dirty,
-    freezeWhen: pending,
+    freezeWhen: pending || session.state.phase === 'loading-profile',
     message: PROFILE_DIRTY_CONFIRM_MESSAGE,
   })
 

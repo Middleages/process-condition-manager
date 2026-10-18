@@ -1,0 +1,25 @@
+{
+  "candidate": "7c1ea916c3fee6306f9aa7208184702cbdca9a69",
+  "boundary": "Actual frontend with mocked API responses; narrow supplementary console check, no failure injection",
+  "scenarios": [
+    {
+      "name": "normal",
+      "console": [],
+      "pageerrors": [],
+      "historyRows": 1
+    },
+    {
+      "name": "readonly",
+      "console": [],
+      "pageerrors": [],
+      "historyRows": 1
+    },
+    {
+      "name": "empty",
+      "console": [],
+      "pageerrors": [],
+      "historyRows": 2
+    }
+  ],
+  "status": "pass"
+}

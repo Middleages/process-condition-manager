@@ -2,6 +2,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { JSDOM } from 'jsdom'
 import { act, forwardRef, useImperativeHandle } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
+import { Simulate } from 'react-dom/test-utils'
+import { AuthProvider } from '@/app/AuthContext'
+import { defaultAuthState } from '@/api/auth'
 import { renderToStaticMarkup } from 'react-dom/server'
 import {
   createMemoryRouter,
@@ -20,7 +23,7 @@ import type {
   HistoryTimelineOut,
 } from '@/api/history'
 import type { ProjectOut, SheetOut } from '@/api/types'
-import type { ConditionGridHandle, ConditionGridProps } from '@/grid'
+import type { ConditionGridHandle, ConditionGridProps, ConditionGridCallbacks } from '@/grid'
 import type { HistoryWorkbenchProps } from './HistoryWorkbench'
 
 const historyWorkbenchCapture = vi.hoisted(() => ({
@@ -32,6 +35,7 @@ const historyApi = vi.hoisted(() => ({
   getHistoryTimeline: vi.fn(),
 }))
 
+let latestGridCallbacks: ConditionGridCallbacks | undefined
 let mockScrollToCondition = vi.fn<(conditionId: string) => void>()
 let mockScrollToCell = vi.fn<(conditionId: string, parameterCode: string) => boolean>(() => true)
 let mockScrollToColumn = vi.fn<(parameterCode: string) => void>()
@@ -76,7 +80,7 @@ vi.mock('@/api/sheets', async (importOriginal) => {
 
 vi.mock('@/api/projects', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/api/projects')>()
-  return { ...actual, getProject: vi.fn() }
+  return { ...actual, getProject: vi.fn(), getProjectProfile: vi.fn(), patchProjectProfile: vi.fn() }
 })
 
 vi.mock('@/grid', async (importOriginal) => {
@@ -87,6 +91,7 @@ vi.mock('@/grid', async (importOriginal) => {
       { data, callbacks }: ConditionGridProps,
       ref,
     ) {
+      latestGridCallbacks = callbacks
       useImperativeHandle(
         ref,
         (): ConditionGridHandle => ({
@@ -292,8 +297,8 @@ vi.mock('./useBackboneDiffWorkbenchController', () => ({
 import { shouldFocusLiveSheetTitle, SheetView, SheetViewPage } from './SheetView'
 import { patchCells } from '@/api/cells'
 import { addCondition, deleteCondition, setConditionPor } from '@/api/conditions'
-import { acquireLock, heartbeatLock, releaseLockOnUnload } from '@/api/locks'
-import { getProject } from '@/api/projects'
+import { acquireLock, releaseLock, heartbeatLock, releaseLockOnUnload } from '@/api/locks'
+import { getProject, getProjectProfile, patchProjectProfile } from '@/api/projects'
 import { getSheet } from '@/api/sheets'
 import {
   appendHistoryWorkbenchPage,
@@ -328,6 +333,8 @@ beforeEach(() => {
   vi.mocked(addCondition).mockReset()
   vi.mocked(deleteCondition).mockReset()
   vi.mocked(setConditionPor).mockReset()
+  vi.mocked(getProjectProfile).mockReset()
+  vi.mocked(patchProjectProfile).mockReset()
   vi.mocked(getProject).mockReset()
   vi.mocked(getSheet).mockReset()
   vi.mocked(acquireLock).mockReset().mockResolvedValue({
@@ -342,6 +349,7 @@ beforeEach(() => {
     locked_at: '2026-08-14T00:00:00Z',
     expires_at: '2026-08-14T00:01:00Z',
   })
+  vi.mocked(releaseLock).mockReset().mockResolvedValue(undefined)
   vi.mocked(releaseLockOnUnload).mockReset().mockReturnValue(true)
   vi.mocked(patchCells).mockReset().mockImplementation(async (_projectId, cells) => ({
     cells,
@@ -841,7 +849,7 @@ describe('SheetView focus shell integration', () => {
     const html = renderSheet(queryClient)
 
     expect(html).toContain('프로젝트 #7')
-    expect(html).toContain('프로젝트 정보 조회에 실패')
+    expect(html).toContain('기본정보를 새로 불러오지 못했습니다')
     expect(html).toContain('metadata unavailable')
     expect(html).toContain('data-sheet-read-only="true"')
     expect(html).not.toContain('data-sheet-editor="true"')
@@ -912,7 +920,7 @@ describe('SheetView focus shell integration', () => {
     const html = renderSheet(queryClient)
 
     expect(html).toContain('Etch qualification')
-    expect(html).toContain('초안')
+    expect(html).toContain('작성 중')
     expect(html).toContain('최신 시트 조회에 실패')
     expect(html).toContain('data-sheet-editor="true"')
     expect(html).toContain('h-full min-h-0 min-w-0')
@@ -1554,7 +1562,7 @@ describe('SheetView focus shell integration', () => {
     expect(navigationBody).toMatch(
       /navigation\.kind === 'reveal-category'[\s\S]*?setActiveCategory\(navigation\.categoryCode\)[\s\S]*?setPendingCoordinateJump\(navigation\.target\)[\s\S]*?return/,
     )
-    expect(sheetViewSource.match(/gridRef\.current\?\.scrollToCell/g)).toHaveLength(2)
+    expect(sheetViewSource.match(/gridRef\.current\?\.scrollToCell/g)).toHaveLength(3)
   })
 
   it('announces grid navigation success only when the owned grid handle resolves the target', () => {
@@ -1579,7 +1587,7 @@ describe('SheetView focus shell integration', () => {
 
   it('wires the history controller and cell-history grid request into the shared host', () => {
     expect(sheetViewSource).toMatch(
-      /useHistoryWorkbenchController\(\s*projectId,\s*workbenchState\.mode === 'history',\s*historyMutationRevision,\s*\)/,
+      /useHistoryWorkbenchController\(\s*projectId,\s*workbenchState\.mode === 'history' \|\| workspace\?\.tab === 'history',\s*historyMutationRevision,\s*\)/,
     )
     expect(sheetViewSource).toContain('historyContent={')
     expect(sheetViewSource).toContain('<HistoryWorkbench')
@@ -1696,9 +1704,9 @@ describe('SheetView focus shell integration', () => {
 
   it('gates every sheet mutation through one policy and delays hidden-column scrolling', () => {
     expect(sheetViewSource.match(/resolveSheetInteraction\s*\(/g)).toHaveLength(1)
-    expect(sheetViewSource).toContain('if (!interaction.canEditCells) return')
+    expect(sheetViewSource).toContain('if (!isCurrentGridInput()) return')
     expect(sheetViewSource).toContain('if (!interaction.canStagePaste')
-    expect(sheetViewSource).toContain('if (!interaction.canTransferPor) return')
+    expect(sheetViewSource).toContain('if (!isCurrentGridInput() || !interaction.canTransferPor) return')
     expect(sheetViewSource.match(/if \(!interaction\.canManageConditions\) return/g)).toHaveLength(3)
     expect(sheetViewSource).toContain('if (!interaction.canApplyPaste')
     expect(sheetViewSource).toContain('if (!interaction.canCancelPaste')
@@ -2491,8 +2499,8 @@ describe('SheetView focus shell integration', () => {
       click(interactive, detailLink(interactive.container))
       await settleInteractiveSheet()
       expect(confirm).toHaveBeenCalledTimes(2)
-      expect(interactive.router.state.location.pathname).toBe('/projects/7')
-      expect(interactive.container.textContent).toContain('project detail')
+      expect(interactive.router.state.location.pathname).toBe('/projects')
+      expect(interactive.container.textContent).toContain('project list')
       expect(useEditStore.getState().invalidDrafts.size).toBe(0)
     } finally {
       interactive.cleanup()
@@ -2531,16 +2539,223 @@ describe('SheetView focus shell integration', () => {
   })
 })
 
+describe('product workspace navigation preservation', () => {
+  it.each([['profile', false], ['history', false], ['profile', true], ['history', true]] as const)('rejects delayed clipboard across %s with return=%s', async (tab, returnBeforeClipboard) => {
+    const view = renderInteractiveSheet()
+    try {
+      await settleInteractiveSheet()
+      const captured = latestGridCallbacks!
+      const clipboard = deferred<string>()
+      const completion = clipboard.promise.then((text) => captured.onPaste?.({ conditionId: '11', parameterCode: 'ETCH_P001' }, text))
+      click(view, view.container.querySelector<HTMLButtonElement>(`#workspace-tab-${tab}`)!)
+      if (returnBeforeClipboard) click(view, view.container.querySelector<HTMLButtonElement>('#workspace-tab-sheet')!)
+      await act(async () => { clipboard.resolve('99'); await completion })
+      expect(view.container.querySelector('[data-testid="paste-staging-panel"]')).toBeNull()
+      expect(useEditStore.getState().dirtyCells.size).toBe(0)
+      expect(acquireLock).toHaveBeenCalledTimes(1)
+    } finally { view.cleanup() }
+  })
+
+  it('fences stale input while hidden and resumes correction of the retained invalid draft on return', async () => {
+    const view = renderInteractiveSheet()
+    try {
+      await settleInteractiveSheet()
+      click(view, gridDraftButton(view.container, 'invalid', '11'))
+      const captured = latestGridCallbacks!
+      click(view, view.container.querySelector<HTMLButtonElement>('#workspace-tab-profile')!)
+      act(() => {
+        captured.onInvalidDraftClear?.('11', 'ETCH_P001')
+        captured.onCellEdit?.({ conditionId: '11', parameterCode: 'ETCH_P001', value: '77' })
+      })
+      expect(useEditStore.getState().invalidDrafts.size).toBe(1)
+      expect(useEditStore.getState().dirtyCells.size).toBe(0)
+      click(view, view.container.querySelector<HTMLButtonElement>('#workspace-tab-history')!)
+      click(view, view.container.querySelector<HTMLButtonElement>('#workspace-tab-sheet')!)
+      expect(useEditStore.getState().invalidDrafts.size).toBe(1)
+      click(view, gridDraftButton(view.container, 'valid', '11'))
+      expect(useEditStore.getState().invalidDrafts.size).toBe(0)
+      expect([...useEditStore.getState().dirtyCells.values()][0].value).toBe('21')
+    } finally { view.cleanup() }
+  })
+
+  it('retains sheet drafts and blocks new sheet/profile mutations until metadata retry succeeds', async () => {
+    const view = renderInteractiveSheet({ withProfileEditing: true })
+    try {
+      await settleInteractiveSheet()
+      click(view, gridDraftButton(view.container, 'valid', '11'))
+      const grid = view.container.querySelector('[data-testid="rendered-condition-grid"]')
+      vi.mocked(getProject).mockRejectedValue(new Error('metadata offline'))
+      await act(async () => { await view.queryClient.invalidateQueries({ queryKey: ['project', 7] }) })
+      await settleInteractiveSheet()
+      click(view, gridDraftButton(view.container, 'valid', '22'))
+      expect(view.container.querySelector('[data-testid="rendered-condition-grid"]')).toBe(grid)
+      expect([...useEditStore.getState().dirtyCells.values()].map((cell) => [cell.conditionId, cell.value])).toEqual([['11', '21']])
+      click(view, view.container.querySelector<HTMLButtonElement>('#workspace-tab-profile')!)
+      click(view, buttonByText(view.container, '기본정보 편집'))
+      await settleInteractiveSheet()
+      expect(view.container.querySelector('dialog')).toBeNull()
+      expect(view.container.textContent).toContain('최신 기본정보를 불러온 후')
+      vi.mocked(getProject).mockResolvedValue(view.project)
+      click(view, buttonByText(view.container, '기본정보 다시 조회'))
+      await settleInteractiveSheet()
+      click(view, view.container.querySelector<HTMLButtonElement>('#workspace-tab-sheet')!)
+      click(view, gridDraftButton(view.container, 'valid', '22'))
+      expect(useEditStore.getState().dirtyCells.size).toBe(2)
+      expect(acquireLock).toHaveBeenCalledTimes(1)
+    } finally { view.cleanup() }
+  })
+
+  it('preserves an actual dirty Profile drawer and sheet session on background project refetch failure', async () => {
+    const view = renderInteractiveSheet({ withProfileEditing: true })
+    try {
+      await settleInteractiveSheet()
+      click(view, view.container.querySelector<HTMLButtonElement>('#workspace-tab-profile')!)
+      click(view, buttonByText(view.container, '기본정보 편집'))
+      await settleInteractiveSheet()
+      const input = view.container.querySelector<HTMLInputElement>('#profile-process-name')!
+      expect(input).not.toBeNull()
+      act(() => Simulate.change(input, { target: { value: 'Unsaved process' } } as never))
+      const dialog = view.container.querySelector('dialog')
+      const grid = view.container.querySelector('[data-testid="rendered-condition-grid"]')
+      vi.mocked(getProject).mockRejectedValue(new Error('metadata offline'))
+      await act(async () => { await view.queryClient.invalidateQueries({ queryKey: ['project', 7] }) })
+      await settleInteractiveSheet()
+      expect(view.container.querySelector('dialog')).toBe(dialog)
+      expect(view.container.querySelector<HTMLInputElement>('#profile-process-name')?.value).toBe('Unsaved process')
+      expect(view.container.querySelector('[data-testid="rendered-condition-grid"]')).toBe(grid)
+      expect(view.container.textContent).toContain('metadata offline')
+    } finally { view.cleanup() }
+  })
+
+  it('finishes Profile save/release after project refresh failure and retries authoritative refresh before sheet reacquisition', async () => {
+    const view = renderInteractiveSheet({ withProfileEditing: true })
+    try {
+      await settleInteractiveSheet()
+      click(view, view.container.querySelector<HTMLButtonElement>('#workspace-tab-profile')!)
+      click(view, buttonByText(view.container, '기본정보 편집'))
+      await settleInteractiveSheet()
+      const input = view.container.querySelector<HTMLInputElement>('#profile-process-name')!
+      act(() => Simulate.change(input, { target: { value: 'Saved process' } } as never))
+      vi.mocked(getProject).mockRejectedValue(new Error('metadata offline'))
+      act(() => Simulate.submit(view.container.querySelector<HTMLFormElement>('#profile-editor-form')!))
+      await settleInteractiveSheet()
+      await settleInteractiveSheet()
+      expect(patchProjectProfile).toHaveBeenCalledWith(7, { process_name: 'Saved process' }, 'test-lock-token')
+      expect(view.container.querySelector('dialog')).toBeNull()
+      expect(view.container.textContent).toContain('편집을 중지')
+      expect(acquireLock).toHaveBeenCalledTimes(2)
+      vi.mocked(getProject).mockResolvedValue({ ...view.project, profile: { ...view.project.profile, process_name: 'Saved process' } })
+      click(view, buttonByText(view.container, '다시 불러오기'))
+      await settleInteractiveSheet()
+      expect(acquireLock).toHaveBeenCalledTimes(3)
+      expect(view.container.textContent).not.toContain('편집을 중지')
+      expect(view.container.textContent).toContain('Saved process')
+    } finally { view.cleanup() }
+  })
+
+  it('queries actual read-only timeline authority without unscoped prefetch', async () => {
+    mockUseRealHistoryController = true
+    const view = renderInteractiveSheet()
+    try {
+      await settleInteractiveSheet()
+      act(() => view.queryClient.setQueryData(['project', 7], { ...view.project, status: 'approved' }))
+      await settleInteractiveSheet()
+      expect(historyApi.getHistoryTimeline).not.toHaveBeenCalled()
+      click(view, view.container.querySelector<HTMLButtonElement>('#workspace-tab-history')!)
+      await settleInteractiveSheet()
+      expect(historyApi.getHistoryTimeline).toHaveBeenCalledWith(7, expect.objectContaining({ layerKey: 'L1::10::ETCH' }), { cursor: null })
+      expect(historyApi.getHistoryTimeline.mock.calls.every((call) => call[1].layerKey !== null)).toBe(true)
+      expect(view.container.querySelector('#workspace-panel-history')?.textContent).toContain('row-L1::10::ETCH')
+      expect(historyWorkbenchCapture.props?.timelineStatus).toBe('ready')
+    } finally { view.cleanup() }
+  })
+
+  it.each(['empty', 'sheet-error', 'metadata-error'])('queries project-wide history with no authoritative layer: %s', async (state) => {
+    mockUseRealHistoryController = true
+    const view = renderInteractiveSheet()
+    try {
+      await settleInteractiveSheet()
+      act(() => {
+        if (state === 'empty') view.queryClient.setQueryData(['sheet', 7], { ...view.sheet, rows: [] })
+        else setQueryError(view.queryClient, ['sheet', 7], new Error('sheet unavailable'))
+        if (state === 'metadata-error') setQueryError(view.queryClient, ['project', 7], new Error('metadata unavailable'))
+      })
+      await settleInteractiveSheet()
+      expect(historyApi.getHistoryTimeline).not.toHaveBeenCalled()
+      click(view, view.container.querySelector<HTMLButtonElement>('#workspace-tab-history')!)
+      await settleInteractiveSheet()
+      expect(historyApi.getHistoryTimeline).toHaveBeenCalledWith(7, expect.objectContaining({ layerKey: null }), { cursor: null })
+      expect(view.container.querySelector('#workspace-panel-history')?.textContent).toContain('row-UNSCOPED')
+      expect(historyWorkbenchCapture.props?.timelineStatus).toBe('ready')
+      expect(historyWorkbenchCapture.props?.onActivateTarget).toBeUndefined()
+    } finally { view.cleanup() }
+  })
+
+  it('reuses history for read-only sheets and reveals the grid before a coordinate jump', async () => {
+    const view = renderInteractiveSheet()
+    try {
+      await settleInteractiveSheet()
+      act(() => view.queryClient.setQueryData(['project', 7], { ...view.project, status: 'approved' }))
+      await settleInteractiveSheet()
+      click(view, view.container.querySelector<HTMLButtonElement>('#workspace-tab-history')!)
+      expect(historyWorkbenchCapture.props?.projectId).toBe(7)
+      act(() => historyWorkbenchCapture.props?.onActivateTarget?.(createAvailableEvent().jump_target!))
+      expect(view.container.querySelector('#workspace-panel-sheet')?.hasAttribute('hidden')).toBe(false)
+      expect(mockScrollToCell).toHaveBeenCalledWith('11', 'ETCH_P001')
+      expect(acquireLock).toHaveBeenCalledTimes(1)
+    } finally { view.cleanup() }
+  })
+
+  it('keeps history available on a sheet without rows and truthfully disables coordinate navigation', async () => {
+    const view = renderInteractiveSheet()
+    try {
+      await settleInteractiveSheet()
+      act(() => view.queryClient.setQueryData(['sheet', 7], { ...view.sheet, rows: [] }))
+      await settleInteractiveSheet()
+      click(view, view.container.querySelector<HTMLButtonElement>('#workspace-tab-history')!)
+      expect(historyWorkbenchCapture.props?.projectId).toBe(7)
+      expect(historyWorkbenchCapture.props?.onActivateTarget).toBeUndefined()
+      expect(historyWorkbenchCapture.props?.navigationStatus).toContain('표시할 수 없습니다')
+    } finally { view.cleanup() }
+  })
+
+  it('keeps actual dirty values, selected cell and paste preview through basic/history tabs without reacquiring', async () => {
+    const view = renderInteractiveSheet()
+    try {
+      await settleInteractiveSheet()
+      click(view, gridDraftButton(view.container, 'valid', '11'))
+      const activate = view.container.querySelector<HTMLButtonElement>('[data-grid-cell-activate="11"]')!
+      click(view, activate)
+      click(view, view.container.querySelector<HTMLButtonElement>('[data-grid-stage-paste]')!)
+      const grid = view.container.querySelector('[data-testid="rendered-condition-grid"]')
+      expect(grid?.getAttribute('data-condition-values')).toContain('21')
+      expect(view.container.querySelector('[data-testid="paste-staging-panel"]')).not.toBeNull()
+      click(view, view.container.querySelector<HTMLButtonElement>('#workspace-tab-profile')!)
+      expect(view.container.querySelector('#workspace-panel-sheet')?.hasAttribute('hidden')).toBe(true)
+      click(view, view.container.querySelector<HTMLButtonElement>('#workspace-tab-history')!)
+      click(view, view.container.querySelector<HTMLButtonElement>('#workspace-tab-sheet')!)
+      expect(view.container.querySelector('[data-testid="rendered-condition-grid"]')).toBe(grid)
+      expect(grid?.getAttribute('data-condition-values')).toContain('21')
+      expect(view.container.querySelector('[data-testid="paste-staging-panel"]')).not.toBeNull()
+      expect(view.container.querySelector('[data-testid="cell-comments-panel"]')?.textContent).toContain('#11')
+      expect(acquireLock).toHaveBeenCalledTimes(1)
+      expect(releaseLock).not.toHaveBeenCalled()
+    } finally { view.cleanup() }
+  })
+})
+
 function renderInteractiveSheet({
   requiredConditionIds = [],
   firstLayerConditionIds = [11],
   heartbeatSeconds = 45,
   minimumValue = null,
+  withProfileEditing = false,
 }: {
   requiredConditionIds?: readonly number[]
   firstLayerConditionIds?: readonly number[]
   heartbeatSeconds?: number
   minimumValue?: string | null
+  withProfileEditing?: boolean
 } = {}) {
   const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', {
     url: 'https://pcm.test/projects/7/sheet',
@@ -2605,6 +2820,8 @@ function renderInteractiveSheet({
   queryClient.setQueryData(['sheet', 7], interactiveSheet)
   vi.mocked(getProject).mockResolvedValue(interactiveProject)
   vi.mocked(getSheet).mockResolvedValue(interactiveSheet)
+  vi.mocked(getProjectProfile).mockResolvedValue(interactiveProject.profile)
+  vi.mocked(patchProjectProfile).mockImplementation(async (_id, patch) => ({ ...interactiveProject.profile, ...patch }))
   const globals = globalThis as unknown as {
     document?: Document
     HTMLElement?: typeof HTMLElement
@@ -2627,10 +2844,12 @@ function renderInteractiveSheet({
   globals.Node = dom.window.Node as unknown as typeof Node
   globals.IS_REACT_ACT_ENVIRONMENT = true
   dom.window.confirm = vi.fn(() => true)
+  dom.window.HTMLDialogElement.prototype.showModal = function () { this.open = true }
+  dom.window.HTMLDialogElement.prototype.close = function () { this.open = false }
   const router = createMemoryRouter(
     [
       { path: '/projects/:projectId/sheet', element: <SheetViewPage /> },
-      { path: '/projects/:projectId', element: <div>project detail</div> },
+      { path: '/projects', element: <div>project list</div> },
     ],
     { initialEntries: ['/projects/7/sheet'] },
   )
@@ -2639,7 +2858,9 @@ function renderInteractiveSheet({
     root = createRoot(container)
     root.render(
       <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
+        <AuthProvider initialState={{ ready: true, permissions: { ...defaultAuthState.permissions, canEditDraft: withProfileEditing } }}>
+          <RouterProvider router={router} />
+        </AuthProvider>
       </QueryClientProvider>,
     )
   })
@@ -2768,7 +2989,7 @@ function renderedInvalidDrafts(container: HTMLElement): unknown[] {
 }
 
 function detailLink(container: HTMLElement): HTMLAnchorElement {
-  const link = container.querySelector<HTMLAnchorElement>('a[aria-label="프로젝트 상세로 돌아가기"]')
+  const link = container.querySelector<HTMLAnchorElement>('a[aria-label="제품 목록으로 돌아가기"]')
   if (link === null) throw new Error('Project detail link is unavailable.')
   return link
 }

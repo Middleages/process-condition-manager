@@ -1,0 +1,471 @@
+{
+  "candidate": "7c1ea916c3fee6306f9aa7208184702cbdca9a69",
+  "boundary": "Actual Vite frontend; ALL backend APIs mocked by Playwright. URL automation-only.",
+  "checks": [
+    {
+      "name": "empty",
+      "pass": true
+    },
+    {
+      "name": "error",
+      "pass": true
+    }
+  ],
+  "screenshots": [
+    "empty-1024.png",
+    "empty-profile-1024.png",
+    "error-1024.png",
+    "error-profile-1024.png"
+  ],
+  "errors": [],
+  "states": [
+    {
+      "project": {
+        "id": 42,
+        "line_id": "L1",
+        "process_id": "HISTORY",
+        "part_id": "PART-HISTORY-QA",
+        "name": "Internal fixture name",
+        "status": "draft",
+        "version": 3,
+        "revision_root_id": 42,
+        "predecessor_project_id": null,
+        "successor_project_id": null,
+        "allowed_actions": [
+          "request_review"
+        ],
+        "profile": {
+          "project_id": 42,
+          "process_name": "History verification process",
+          "device_type": {
+            "code": "LOGIC",
+            "label": "Logic",
+            "is_active": true
+          },
+          "project_category": {
+            "code": "QA",
+            "label": "Browser QA",
+            "is_active": true
+          },
+          "comment": "Deterministic history workbench fixture",
+          "active_direction": null,
+          "gate_direction": null,
+          "gross_die": null,
+          "pitch_x": null,
+          "pitch_y": null,
+          "shot_x": null,
+          "shot_y": null,
+          "slit_occupancy": null,
+          "lens_occupancy": null,
+          "map_offset_x": null,
+          "map_offset_y": null,
+          "scribe_lane_x": null,
+          "scribe_lane_y": null,
+          "shot_count": null,
+          "full_shot": null,
+          "layer_total": "2",
+          "euv": null,
+          "imm": null,
+          "arf": null,
+          "krf": null,
+          "iline": null,
+          "soh": null,
+          "pspi": null,
+          "metal_layer_count": null,
+          "created_at": "2026-08-14T05:00:00Z",
+          "updated_at": "2026-08-14T05:00:00Z"
+        },
+        "layers": [],
+        "created_at": "2026-08-14T05:00:00Z",
+        "updated_at": "2026-08-14T05:00:00Z"
+      },
+      "sheet": {
+        "columns": [
+          {
+            "parameter_code": "pressure",
+            "display_name": "Pressure",
+            "value_type": "number",
+            "category_code": "process",
+            "unit": "mTorr",
+            "min_value": "0",
+            "max_value": "1000",
+            "required": false,
+            "pattern": null,
+            "pattern_hint": null,
+            "description": "Browser fixture Pressure",
+            "choice_set_code": null,
+            "choice_set_version": null,
+            "sort_order": 1
+          },
+          {
+            "parameter_code": "gas_flow_rate_with_extended_identifier_for_history_verification",
+            "display_name": "Gas flow",
+            "value_type": "number",
+            "category_code": "process",
+            "unit": "sccm",
+            "min_value": "0",
+            "max_value": "1000",
+            "required": false,
+            "pattern": null,
+            "pattern_hint": null,
+            "description": "Browser fixture Gas flow rate with extended identifier",
+            "choice_set_code": null,
+            "choice_set_version": null,
+            "sort_order": 2
+          },
+          {
+            "parameter_code": "temperature",
+            "display_name": "Temperature",
+            "value_type": "number",
+            "category_code": "process",
+            "unit": "C",
+            "min_value": "0",
+            "max_value": "1000",
+            "required": false,
+            "pattern": null,
+            "pattern_hint": null,
+            "description": "Browser fixture Temperature",
+            "choice_set_code": null,
+            "choice_set_version": null,
+            "sort_order": 3
+          },
+          {
+            "parameter_code": "duration",
+            "display_name": "Duration",
+            "value_type": "number",
+            "category_code": "process",
+            "unit": "s",
+            "min_value": "0",
+            "max_value": "1000",
+            "required": false,
+            "pattern": null,
+            "pattern_hint": null,
+            "description": "Browser fixture Duration",
+            "choice_set_code": null,
+            "choice_set_version": null,
+            "sort_order": 4
+          }
+        ],
+        "rows": [],
+        "lock": {
+          "locked_by": null,
+          "locked_at": null,
+          "expires_at": null,
+          "is_mine": false,
+          "heartbeat_seconds": 45
+        },
+        "validation_rules": [],
+        "validation_basis_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "frozen_choice_sets": []
+      },
+      "readonly": false,
+      "sheetErrors": -1,
+      "projectErrors": -1,
+      "held": null,
+      "generation": 0,
+      "releaseDelayMs": 0,
+      "releaseFailures": 0,
+      "network": [
+        {
+          "method": "GET",
+          "pathname": "/auth/me",
+          "search": "",
+          "body": null
+        },
+        {
+          "method": "GET",
+          "pathname": "/auth/me",
+          "search": "",
+          "body": null
+        },
+        {
+          "method": "GET",
+          "pathname": "/projects/42/sheet",
+          "search": "",
+          "body": null
+        },
+        {
+          "method": "GET",
+          "pathname": "/projects/42",
+          "search": "",
+          "body": null
+        },
+        {
+          "method": "GET",
+          "pathname": "/projects/42/comments",
+          "search": "?target=project",
+          "body": null
+        },
+        {
+          "method": "GET",
+          "pathname": "/projects/42/events",
+          "search": "?limit=50",
+          "body": null
+        }
+      ],
+      "unexpected": [],
+      "lockEvents": [],
+      "cellSaves": [],
+      "profileSaves": []
+    },
+    {
+      "project": {
+        "id": 42,
+        "line_id": "L1",
+        "process_id": "HISTORY",
+        "part_id": "PART-HISTORY-QA",
+        "name": "Internal fixture name",
+        "status": "draft",
+        "version": 3,
+        "revision_root_id": 42,
+        "predecessor_project_id": null,
+        "successor_project_id": null,
+        "allowed_actions": [
+          "request_review"
+        ],
+        "profile": {
+          "project_id": 42,
+          "process_name": "History verification process",
+          "device_type": {
+            "code": "LOGIC",
+            "label": "Logic",
+            "is_active": true
+          },
+          "project_category": {
+            "code": "QA",
+            "label": "Browser QA",
+            "is_active": true
+          },
+          "comment": "Deterministic history workbench fixture",
+          "active_direction": null,
+          "gate_direction": null,
+          "gross_die": null,
+          "pitch_x": null,
+          "pitch_y": null,
+          "shot_x": null,
+          "shot_y": null,
+          "slit_occupancy": null,
+          "lens_occupancy": null,
+          "map_offset_x": null,
+          "map_offset_y": null,
+          "scribe_lane_x": null,
+          "scribe_lane_y": null,
+          "shot_count": null,
+          "full_shot": null,
+          "layer_total": "2",
+          "euv": null,
+          "imm": null,
+          "arf": null,
+          "krf": null,
+          "iline": null,
+          "soh": null,
+          "pspi": null,
+          "metal_layer_count": null,
+          "created_at": "2026-08-14T05:00:00Z",
+          "updated_at": "2026-08-14T05:00:00Z"
+        },
+        "layers": [
+          {
+            "id": 4201,
+            "layer_key": "L1::HISTORY::010::ETCH",
+            "step_seq": "010",
+            "layer_id": "ETCH",
+            "eqp_type": "ETCHER",
+            "eqp_type_desc": "Etcher",
+            "area_name": "FAB-A",
+            "sort_order": 1,
+            "condition_count": 1,
+            "cell_count": 4,
+            "source_project_id": null,
+            "source_layer_key": null
+          },
+          {
+            "id": 4202,
+            "layer_key": "L1::HISTORY::020::CLEAN",
+            "step_seq": "020",
+            "layer_id": "CLEAN",
+            "eqp_type": "WET",
+            "eqp_type_desc": "Wet clean",
+            "area_name": "FAB-B",
+            "sort_order": 2,
+            "condition_count": 1,
+            "cell_count": 4,
+            "source_project_id": null,
+            "source_layer_key": null
+          }
+        ],
+        "created_at": "2026-08-14T05:00:00Z",
+        "updated_at": "2026-08-14T05:00:00Z"
+      },
+      "sheet": {
+        "columns": [
+          {
+            "parameter_code": "pressure",
+            "display_name": "Pressure",
+            "value_type": "number",
+            "category_code": "process",
+            "unit": "mTorr",
+            "min_value": "0",
+            "max_value": "1000",
+            "required": false,
+            "pattern": null,
+            "pattern_hint": null,
+            "description": "Browser fixture Pressure",
+            "choice_set_code": null,
+            "choice_set_version": null,
+            "sort_order": 1
+          },
+          {
+            "parameter_code": "gas_flow_rate_with_extended_identifier_for_history_verification",
+            "display_name": "Gas flow",
+            "value_type": "number",
+            "category_code": "process",
+            "unit": "sccm",
+            "min_value": "0",
+            "max_value": "1000",
+            "required": false,
+            "pattern": null,
+            "pattern_hint": null,
+            "description": "Browser fixture Gas flow rate with extended identifier",
+            "choice_set_code": null,
+            "choice_set_version": null,
+            "sort_order": 2
+          },
+          {
+            "parameter_code": "temperature",
+            "display_name": "Temperature",
+            "value_type": "number",
+            "category_code": "process",
+            "unit": "C",
+            "min_value": "0",
+            "max_value": "1000",
+            "required": false,
+            "pattern": null,
+            "pattern_hint": null,
+            "description": "Browser fixture Temperature",
+            "choice_set_code": null,
+            "choice_set_version": null,
+            "sort_order": 3
+          },
+          {
+            "parameter_code": "duration",
+            "display_name": "Duration",
+            "value_type": "number",
+            "category_code": "process",
+            "unit": "s",
+            "min_value": "0",
+            "max_value": "1000",
+            "required": false,
+            "pattern": null,
+            "pattern_hint": null,
+            "description": "Browser fixture Duration",
+            "choice_set_code": null,
+            "choice_set_version": null,
+            "sort_order": 4
+          }
+        ],
+        "rows": [
+          {
+            "condition_id": 101,
+            "layer_key": "L1::HISTORY::010::ETCH",
+            "step_seq": "010",
+            "layer_id": "ETCH",
+            "layer_label": "ETCH (010)",
+            "condition_label": "POR",
+            "is_por": true,
+            "layer_sort_order": 1,
+            "condition_index": 0,
+            "cells": {
+              "pressure": "50.0",
+              "gas_flow_rate_with_extended_identifier_for_history_verification": "125",
+              "temperature": "240",
+              "duration": "60"
+            }
+          },
+          {
+            "condition_id": 202,
+            "layer_key": "L1::HISTORY::020::CLEAN",
+            "step_seq": "020",
+            "layer_id": "CLEAN",
+            "layer_label": "CLEAN (020)",
+            "condition_label": "POR",
+            "is_por": true,
+            "layer_sort_order": 2,
+            "condition_index": 0,
+            "cells": {
+              "pressure": "25.0",
+              "gas_flow_rate_with_extended_identifier_for_history_verification": "250",
+              "temperature": "80",
+              "duration": "90"
+            }
+          }
+        ],
+        "lock": {
+          "locked_by": null,
+          "locked_at": null,
+          "expires_at": null,
+          "is_mine": false,
+          "heartbeat_seconds": 45
+        },
+        "validation_rules": [],
+        "validation_basis_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "frozen_choice_sets": []
+      },
+      "readonly": false,
+      "sheetErrors": 8,
+      "projectErrors": -1,
+      "held": null,
+      "generation": 0,
+      "releaseDelayMs": 0,
+      "releaseFailures": 0,
+      "network": [
+        {
+          "method": "GET",
+          "pathname": "/auth/me",
+          "search": "",
+          "body": null
+        },
+        {
+          "method": "GET",
+          "pathname": "/auth/me",
+          "search": "",
+          "body": null
+        },
+        {
+          "method": "GET",
+          "pathname": "/projects/42/sheet",
+          "search": "",
+          "body": null
+        },
+        {
+          "method": "GET",
+          "pathname": "/projects/42",
+          "search": "",
+          "body": null
+        },
+        {
+          "method": "GET",
+          "pathname": "/projects/42/comments",
+          "search": "?target=project",
+          "body": null
+        },
+        {
+          "method": "GET",
+          "pathname": "/projects/42/sheet",
+          "search": "",
+          "body": null
+        },
+        {
+          "method": "GET",
+          "pathname": "/projects/42/events",
+          "search": "?limit=50",
+          "body": null
+        }
+      ],
+      "unexpected": [],
+      "lockEvents": [],
+      "cellSaves": [],
+      "profileSaves": []
+    }
+  ]
+}

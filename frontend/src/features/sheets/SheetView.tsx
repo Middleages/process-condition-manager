@@ -8,8 +8,11 @@ import {
   type RefObject,
 } from 'react'
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useLocation } from 'react-router-dom'
 
+import { ProjectStatusBadge } from '@/features/projects/ProjectTable'
+import { ProductWorkspace, useProductWorkspace } from '@/features/projects/ProductWorkspace'
+import { getProjectListReturnPath } from '@/features/projects/ProjectDetailPage'
 import { getApiErrorMessage } from '@/api/client'
 import { addCondition, deleteCondition, setConditionPor } from '@/api/conditions'
 import { invalidateProjectBackboneDiffAfterMutation } from '@/api/backboneDiffCache'
@@ -423,7 +426,7 @@ export function SheetView({ projectId }: { projectId: number }) {
     queryFn: () => getProject(projectId),
   })
 
-  const project = projectQuery.isError ? undefined : projectQuery.data
+  const project = projectQuery.data
   const projectError = projectQuery.isError ? projectQuery.error : null
 
   if (sheetQuery.isLoading) {
@@ -516,6 +519,10 @@ function ReadOnlySheet({
   data: AdaptedConditionGridData
   sheetRefetchError: unknown
 }) {
+  const workspace = useProductWorkspace()
+  const history = useHistoryWorkbenchController(projectId, workspace?.tab === 'history', 0)
+  const [historyStatus, setHistoryStatus] = useState<string | null>(null)
+  const [historyTarget, setHistoryTarget] = useState<HistoryJumpTargetOut | null>(null)
   const categories = useMemo(() => distinctCategories(data.columns), [data.columns])
   const choiceResources = useMemo(
     () => buildReadOnlySheetChoiceResources(sheet.frozen_choice_sets),
@@ -529,6 +536,10 @@ function ReadOnlySheet({
   const [columnSearchStatus, setColumnSearchStatus] = useState('')
   const [pendingColumnJump, setPendingColumnJump] = useState<string | null>(null)
   const [selectedCell, setSelectedCell] = useState<CellCommentTarget | null>(null)
+  const historyLayerKey = selectedCell?.layerKey ?? data.rows[0]?.layerKey ?? null
+  useEffect(() => {
+    if (historyLayerKey !== null) history.onLayerScopeChange(historyLayerKey)
+  }, [historyLayerKey, history.onLayerScopeChange])
   const cellCommentFacts = useMemo(() => sheetCommentFacts(sheet), [sheet])
 
   const porGaps = useMemo(() => layersMissingPor(data.rows), [data.rows])
@@ -556,10 +567,19 @@ function ReadOnlySheet({
       onPaste: () => undefined,
       onPorChange: () => undefined,
       onConditionActivate: () => undefined,
-      onCellActivate: setSelectedCell,
-      onCellHistoryRequest: () => undefined,
+      onCellActivate: (target) => {
+        setSelectedCell(target)
+        history.onLayerScopeChange(target.layerKey)
+        history.onSelectedCellChange(target)
+      },
+      onCellHistoryRequest: (target) => {
+        history.onLayerScopeChange(target.layerKey)
+        history.onSelectedCellChange(target)
+        history.onScopeChange('cell')
+        workspace?.setTab('history')
+      },
     }),
-    [],
+    [history, workspace],
   )
 
   const jumpToColumn = useCallback(() => {
@@ -597,8 +617,26 @@ function ReadOnlySheet({
     setPendingColumnJump(null)
   }, [pendingColumnJump, visibleColumns])
 
+  useEffect(() => {
+    if (!historyTarget || workspace?.tab !== 'sheet') return
+    if (historyTarget.condition_id !== null && historyTarget.parameter_code !== null) {
+      gridRef.current?.scrollToCell(String(historyTarget.condition_id), historyTarget.parameter_code)
+    } else if (historyTarget.condition_id !== null) {
+      gridRef.current?.scrollToCondition(String(historyTarget.condition_id))
+    }
+    setHistoryTarget(null)
+  }, [historyTarget, workspace?.tab, activeCategory])
+
   return (
-    <SheetFocusFrame
+    <SheetFocusFrame history={<HistoryWorkbench {...history} projectId={projectId} currentLayerLabel={data.rows.find((row) => row.layerKey === historyLayerKey)?.layerLabel ?? '전체'} selectedCellAvailable={history.state.cellScope !== null} navigationStatus={historyStatus} onActivateTarget={(target) => {
+      const row = data.rows.find((item) => item.id === String(target.condition_id))
+      const column = data.columns.find((item) => item.key === target.parameter_code)
+      if (!row || (target.parameter_code !== null && !column)) { setHistoryStatus('현재 조건표에 없는 좌표입니다.'); return }
+      setActiveCategory(null)
+      setHistoryTarget(target)
+      workspace?.setTab('sheet')
+      setHistoryStatus(null)
+    }} />}
       header={<FocusHeader projectId={projectId} project={project} />}
       controls={
         <div className="space-y-2 border-b border-border-subtle bg-canvas px-3 py-2">
@@ -765,6 +803,7 @@ function SheetEditor({
   sheetRefetch: () => Promise<unknown>
   sheetRefetchError: unknown
 }) {
+  const workspace = useProductWorkspace()
   const queryClient = useQueryClient()
   const liveTitleRef = useRef<HTMLHeadingElement>(null)
   const [historyMutationRevision, setHistoryMutationRevision] = useState(0)
@@ -804,6 +843,7 @@ function SheetEditor({
   )
 
   const editing = useSheetEditing(projectId, {
+    initiallySuspended: workspace !== null && workspace.mutation !== 'none',
     onPersisted: handlePersisted,
     heartbeatMs: sheet.lock.heartbeat_seconds * 1000,
     initialEditingBy: sheet.lock.locked_by,
@@ -1040,7 +1080,7 @@ function SheetEditor({
   const workbenchState = useSheetWorkbenchState()
   const historyWorkbench = useHistoryWorkbenchController(
     projectId,
-    workbenchState.mode === 'history',
+    workbenchState.mode === 'history' || workspace?.tab === 'history',
     historyMutationRevision,
   )
   useEffect(() => {
@@ -1128,10 +1168,16 @@ function SheetEditor({
     runStructuralChange,
   } = editing
   const interaction = resolveSheetInteraction({
-    readOnly,
+    readOnly: readOnly || projectError != null || (workspace !== null && (workspace.mutation !== 'none' || workspace.tab !== 'sheet')),
     writeBusy,
     hasPaste: paste !== null,
   })
+
+  useIsomorphicLayoutEffect(() => {
+    if (!workspace) return
+    workspace.session.current = { editing, hasPaste: paste !== null }
+    return () => { workspace.session.current = null }
+  }, [workspace, editing, paste])
 
   // 클립보드 읽기는 비동기로 끝날 수 있으므로, 시작 시점의 좌표/권한 문맥을 generation으로
   // 캡처한다. 권한·카테고리·보이는 컬럼·행 중 하나라도 바뀐 뒤 도착한 콜백은 스테이징 전에
@@ -1157,6 +1203,11 @@ function SheetEditor({
       canStagePaste: interaction.canStagePaste,
     })
   }, [pasteCallbackGeneration, interaction.canStagePaste])
+
+  const isCurrentGridInput = useCallback(() => {
+    const current = pasteCallbackRuntimeRef.current
+    return isCurrentPasteCallback(pasteCallbackGeneration, current.generation, current.canStagePaste)
+  }, [pasteCallbackGeneration])
 
   const setPaste = useCallback((next: PasteStagingResult | null) => {
     pasteRef.current = next
@@ -1362,16 +1413,16 @@ function SheetEditor({
   const gridCallbacks = useMemo<ConditionGridCallbacks>(
     () => ({
       onCellEdit: (cell) => {
-        if (!interaction.canEditCells) return
+        if (!isCurrentGridInput()) return
         if (pasteRef.current !== null) return
         setCell(cell.conditionId, cell.parameterCode, cell.value)
       },
       onCellInvalid: (draft) => {
-        if (!interaction.canEditCells || pasteRef.current !== null) return
+        if (!isCurrentGridInput() || pasteRef.current !== null) return
         useEditStore.getState().setInvalidDraft(draft)
       },
       onInvalidDraftClear: (conditionId, parameterCode) => {
-        if (!interaction.canEditCells || pasteRef.current !== null) return
+        if (!isCurrentGridInput() || pasteRef.current !== null) return
         useEditStore.getState().clearInvalidDraft(conditionId, parameterCode)
       },
       onPaste: (target, tsv) => {
@@ -1406,7 +1457,7 @@ function SheetEditor({
       },
       // POR 이양: 클릭된 행을 POR로. 성공 시 두 행(기존/신규)의 is_por가 바뀌므로 재조회한다.
       onPorChange: (_layerKey, conditionId) => {
-        if (!interaction.canTransferPor) return
+        if (!isCurrentGridInput() || !interaction.canTransferPor) return
         if (pasteRef.current !== null) return
         void performStructural((token) => setConditionPor(projectId, Number(conditionId), token))
       },
@@ -1433,6 +1484,7 @@ function SheetEditor({
     }),
     [
       interaction,
+      isCurrentGridInput,
       setCell,
       visibleColumns,
       persistableDisplayRows,
@@ -1559,7 +1611,8 @@ function SheetEditor({
         setCoordinateNavigationStatus('이동할 대상 셀을 찾지 못했습니다.')
         return
       }
-      const waitsForLayerCommit = currentLayerOnly && targetRow.layerKey !== activeLayerKey
+      const waitsForLayerCommit = (currentLayerOnly && targetRow.layerKey !== activeLayerKey) || workspace?.tab === 'history'
+      if (workspace?.tab === 'history') workspace.setTab('sheet')
       setActiveLayerKey(targetRow.layerKey)
       if (navigation.kind === 'reveal-category') {
         setActiveCategory(navigation.categoryCode)
@@ -1585,6 +1638,7 @@ function SheetEditor({
       activeCategory,
       activeLayerKey,
       currentLayerOnly,
+      workspace?.tab,
     ],
   )
 
@@ -1615,7 +1669,7 @@ function SheetEditor({
     (target: HistoryJumpTargetOut) => {
       activateWorkbenchJumpTarget(target)
     },
-    [activateWorkbenchJumpTarget],
+    [activateWorkbenchJumpTarget, workspace],
   )
 
   const backboneDiffWorkbenchState = backboneDiffWorkbench.state
@@ -1861,8 +1915,41 @@ function SheetEditor({
     return BACKBONE_DIFF_ROOT_UNAVAILABLE_MESSAGE
   }, [backboneDiffRootCounts.unavailable_layer_count])
 
+  const historyContent = (<HistoryWorkbench
+                projectId={projectId}
+                currentLayerLabel={activeLayerPresentationLabel}
+                selectedCellAvailable={historyWorkbench.state.cellScope !== null}
+                state={historyWorkbench.state}
+                coverage={historyWorkbench.coverage}
+                cellHistory={historyWorkbench.cellHistory}
+                timelineStatus={historyWorkbench.timelineStatus}
+                timelineError={historyWorkbench.timelineError}
+                nextPageError={historyWorkbench.nextPageError}
+                timelineIsFetchingNextPage={historyWorkbench.timelineIsFetchingNextPage}
+                cellStatus={historyWorkbench.cellStatus}
+                cellError={historyWorkbench.cellError}
+                cellNextPageError={historyWorkbench.cellNextPageError}
+                cellIsFetchingNextPage={historyWorkbench.cellIsFetchingNextPage}
+                batchDetailStatus={historyWorkbench.batchDetailStatus}
+                batchDetailError={historyWorkbench.batchDetailError}
+                batchDetailIsFetchingNextPage={historyWorkbench.batchDetailIsFetchingNextPage}
+                batchDetailNextPageError={historyWorkbench.batchDetailNextPageError}
+                navigationStatus={coordinateNavigationStatus}
+                onFiltersChange={historyWorkbench.onFiltersChange}
+                onModeChange={historyWorkbench.onModeChange}
+                onScopeChange={historyWorkbench.onScopeChange}
+                onBatchToggle={historyWorkbench.onBatchToggle}
+                onRetryBatchDetail={historyWorkbench.onRetryBatchDetail}
+                onLoadMoreBatchDetail={historyWorkbench.onLoadMoreBatchDetail}
+                onActivateTarget={activateHistoryJumpTarget}
+                onLoadMoreTimeline={historyWorkbench.onLoadMoreTimeline}
+                onLoadMoreCell={historyWorkbench.onLoadMoreCell}
+                onRetryTimeline={historyWorkbench.onRetryTimeline}
+                onRetryCell={historyWorkbench.onRetryCell}
+              />)
+
   return (
-    <SheetFocusFrame
+    <SheetFocusFrame history={historyContent} guardWhen={editing.unsavedCount > 0 || paste !== null} guardFreezeWhen={editing.writeBusy || editing.saveStatus === 'saving'}
       header={
         <FocusHeader
           projectId={projectId}
@@ -2105,40 +2192,7 @@ function SheetEditor({
                 onRetry={() => void validation.retry()}
               />
             }
-            historyContent={
-              <HistoryWorkbench
-                projectId={projectId}
-                currentLayerLabel={activeLayerPresentationLabel}
-                selectedCellAvailable={historyWorkbench.state.cellScope !== null}
-                state={historyWorkbench.state}
-                coverage={historyWorkbench.coverage}
-                cellHistory={historyWorkbench.cellHistory}
-                timelineStatus={historyWorkbench.timelineStatus}
-                timelineError={historyWorkbench.timelineError}
-                nextPageError={historyWorkbench.nextPageError}
-                timelineIsFetchingNextPage={historyWorkbench.timelineIsFetchingNextPage}
-                cellStatus={historyWorkbench.cellStatus}
-                cellError={historyWorkbench.cellError}
-                cellNextPageError={historyWorkbench.cellNextPageError}
-                cellIsFetchingNextPage={historyWorkbench.cellIsFetchingNextPage}
-                batchDetailStatus={historyWorkbench.batchDetailStatus}
-                batchDetailError={historyWorkbench.batchDetailError}
-                batchDetailIsFetchingNextPage={historyWorkbench.batchDetailIsFetchingNextPage}
-                batchDetailNextPageError={historyWorkbench.batchDetailNextPageError}
-                navigationStatus={coordinateNavigationStatus}
-                onFiltersChange={historyWorkbench.onFiltersChange}
-                onModeChange={historyWorkbench.onModeChange}
-                onScopeChange={historyWorkbench.onScopeChange}
-                onBatchToggle={historyWorkbench.onBatchToggle}
-                onRetryBatchDetail={historyWorkbench.onRetryBatchDetail}
-                onLoadMoreBatchDetail={historyWorkbench.onLoadMoreBatchDetail}
-                onActivateTarget={activateHistoryJumpTarget}
-                onLoadMoreTimeline={historyWorkbench.onLoadMoreTimeline}
-                onLoadMoreCell={historyWorkbench.onLoadMoreCell}
-                onRetryTimeline={historyWorkbench.onRetryTimeline}
-                onRetryCell={historyWorkbench.onRetryCell}
-              />
-            }
+            historyContent={historyContent}
             backboneDiffContent={
               <BackboneDiffWorkbench
                 root={backboneDiffRoot}
@@ -2176,8 +2230,8 @@ function SheetEditor({
         ) : undefined
       }
     >
-      {typeof document !== 'undefined' ? (
-        <SheetUnsavedChangesGuard when={editing.unsavedCount > 0} />
+      {typeof document !== 'undefined' && !workspace ? (
+        <SheetUnsavedChangesGuard when={editing.unsavedCount > 0 || paste !== null} freezeWhen={editing.writeBusy || editing.saveStatus === 'saving'} />
       ) : null}
       <div
         className="h-full min-h-0 min-w-0 overflow-hidden bg-surface"
@@ -2196,9 +2250,10 @@ function SheetEditor({
   )
 }
 
-function SheetUnsavedChangesGuard({ when }: { when: boolean }) {
+function SheetUnsavedChangesGuard({ when, freezeWhen = false }: { when: boolean; freezeWhen?: boolean }) {
   useUnsavedChanges({
     when,
+    freezeWhen,
     message: '저장되지 않은 입력이 있습니다. 조건표를 나갈까요?',
   })
   return null
@@ -2538,8 +2593,10 @@ function FocusHeader({
   editing?: SheetEditing
   titleRef?: RefObject<HTMLHeadingElement>
 }) {
-  const title = project?.name ?? `프로젝트 #${projectId ?? '?'}`
-  const detailPath = projectId === null ? '/projects' : `/projects/${projectId}`
+  const workspace = useProductWorkspace()
+  const location = useLocation()
+  const title = workspace ? (project ? `LINE ${project.line_id} · ${project.process_id} · ${project.part_id} · v${project.version}` : '제품 공정조건') : project?.name ?? `프로젝트 #${projectId ?? '?'}`
+  const detailPath = workspace ? getProjectListReturnPath(location.state) : projectId === null ? '/projects' : `/projects/${projectId}`
 
   return (
     <header
@@ -2548,11 +2605,11 @@ function FocusHeader({
     >
       <div className="flex min-w-0 items-center gap-2">
         <Link
-          aria-label={projectId === null ? '프로젝트 목록으로 돌아가기' : '프로젝트 상세로 돌아가기'}
+          aria-label={workspace ? '제품 목록으로 돌아가기' : projectId === null ? '프로젝트 목록으로 돌아가기' : '프로젝트 상세로 돌아가기'}
           className="inline-flex h-8 shrink-0 items-center rounded-md px-2 text-xs font-semibold text-brand-100 hover:bg-white/10"
           to={detailPath}
         >
-          ← 상세
+          {workspace ? '← 목록' : '← 상세'}
         </Link>
         <Link
           aria-label="PCM 프로젝트 목록"
@@ -2571,11 +2628,7 @@ function FocusHeader({
         >
           {title}
         </h1>
-        {project?.status === 'draft' ? (
-          <span className="shrink-0 rounded-full border border-brand-500/70 bg-brand-500/15 px-2 py-0.5 text-[11px] font-semibold leading-4 text-brand-100">
-            초안
-          </span>
-        ) : null}
+        {project ? <ProjectStatusBadge status={project.status} /> : null}
       </div>
       {editing ? (
         <div
@@ -2586,7 +2639,7 @@ function FocusHeader({
           data-sheet-editing-status
           role="status"
         >
-          <LockChip editing={editing} />
+          {workspace && (workspace.mutation !== 'none' || workspace.releaseFailed) ? <span>조건표 편집 일시 중지</span> : <LockChip editing={editing} />}
           {editing.lockStatus === 'held' ? <SaveStatus editing={editing} /> : null}
         </div>
       ) : null}
@@ -2608,7 +2661,7 @@ function ProjectMetadataWarning({ error }: { error: unknown }) {
       data-testid="project-metadata-warning"
       tone="warning"
     >
-      프로젝트 정보 조회에 실패했습니다. ID 기반 제목으로 계속 편집할 수 있습니다:{' '}
+      기본정보를 새로 불러오지 못했습니다. 기존 입력은 유지되며 최신 정보 확인 전까지 새 편집을 중지합니다:{' '}
       {getApiErrorMessage(error)}
     </InlineAlert>
   )
@@ -2721,6 +2774,6 @@ export function SheetViewPage() {
       <ErrorMessage message="올바른 프로젝트 ID가 아닙니다. 프로젝트 목록에서 다시 선택하세요." />
     </SheetStateFrame>
   ) : (
-    <SheetView projectId={projectId} />
+    <ProductWorkspace key={projectId} projectId={projectId}><SheetView projectId={projectId} /></ProductWorkspace>
   )
 }
