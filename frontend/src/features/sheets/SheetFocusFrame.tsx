@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { useProductWorkspace } from '@/features/projects/ProductWorkspace'
 import { ProjectDetail } from '@/features/projects/ProjectDetailPage'
+import { getApiErrorMessage } from '@/api/client'
 import { useUnsavedChanges } from '@/shared/navigation/useUnsavedChanges'
 import { InlineAlert } from '@/shared/components/InlineAlert'
 import { useHistoryWorkbenchController } from './useHistoryWorkbenchController'
@@ -35,6 +36,10 @@ export function SheetFocusFrame({ header, controls, children, navigator, inspect
               if (next) { event.preventDefault(); workspace.setTab(next); document.getElementById(`workspace-tab-${next}`)?.focus() }
             }}>{({ sheet: '조건표', profile: '기본정보', history: '이력' })[item]}</button>)}
         </div>
+        {workspace.projectError ? <InlineAlert tone="warning">
+          기본정보 조회 실패: {getApiErrorMessage(workspace.projectError)}. 기존 입력은 유지됩니다.
+          <button type="button" className="ml-3 underline" onClick={() => void workspace.retryProject()}>기본정보 다시 조회</button>
+        </InlineAlert> : null}
         {workspace.error ? <InlineAlert tone="warning">{workspace.error}{workspace.releaseFailed ? <button type="button" className="ml-3 underline" disabled={workspace.mutation !== 'none'} onClick={() => void workspace.recoverEditing()}>잠금 해제 재시도</button> : null}{workspace.mutation === 'refresh' ? <button type="button" className="ml-3 underline" onClick={() => void workspace.endMutation()}>다시 불러오기</button> : null}</InlineAlert> : null}
       </> : null}
       <div role={workspace ? 'tabpanel' : undefined} id="workspace-panel-sheet" aria-labelledby="workspace-tab-sheet" hidden={tab !== 'sheet'} className={tab === 'sheet' ? 'flex min-h-0 flex-1 flex-col' : 'hidden'}>

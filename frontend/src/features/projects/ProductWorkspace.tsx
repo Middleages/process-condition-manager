@@ -22,6 +22,10 @@ function useWorkspaceState(projectId: number) {
   const changeMutation = (value: typeof mutation) => { mutationRef.current = value; setMutation(value) }
   async function beginMutation(kind: 'profile' | 'layer' | 'transition') {
     if (mutationRef.current !== 'none') return false
+    if (project.isError || !project.data) {
+      setError('최신 기본정보를 불러온 후 다시 시도하세요.')
+      return false
+    }
     const current = session.current
     if (current && (current.hasPaste || current.editing.unsavedCount > 0 || !current.editing.persistenceIdle)) {
       setError('조건표의 입력을 저장하고 오류·붙여넣기를 해결한 후 다시 시도하세요.')
@@ -67,7 +71,7 @@ function useWorkspaceState(projectId: number) {
       setError(`최신 정보를 불러오지 못해 편집을 중지했습니다. 다시 불러오세요. ${String(cause)}`)
     }
   }
-  return { tab, setTab, mutation, session, error, releaseFailed, recoverEditing, beginMutation, endMutation, project: project.data }
+  return { tab, setTab, mutation, session, error, releaseFailed, recoverEditing, beginMutation, endMutation, projectError: project.isError ? project.error : null, retryProject: project.refetch, project: project.data }
 }
 const WorkspaceContext = createContext<ReturnType<typeof useWorkspaceState> | null>(null)
 export const useProductWorkspace = () => useContext(WorkspaceContext)

@@ -426,7 +426,7 @@ export function SheetView({ projectId }: { projectId: number }) {
     queryFn: () => getProject(projectId),
   })
 
-  const project = projectQuery.isError ? undefined : projectQuery.data
+  const project = projectQuery.data
   const projectError = projectQuery.isError ? projectQuery.error : null
 
   if (sheetQuery.isLoading) {
@@ -1164,7 +1164,7 @@ function SheetEditor({
     runStructuralChange,
   } = editing
   const interaction = resolveSheetInteraction({
-    readOnly: readOnly || (workspace !== null && workspace.mutation !== 'none'),
+    readOnly: readOnly || projectError != null || (workspace !== null && (workspace.mutation !== 'none' || workspace.tab !== 'sheet')),
     writeBusy,
     hasPaste: paste !== null,
   })
@@ -1199,6 +1199,11 @@ function SheetEditor({
       canStagePaste: interaction.canStagePaste,
     })
   }, [pasteCallbackGeneration, interaction.canStagePaste])
+
+  const isCurrentGridInput = useCallback(() => {
+    const current = pasteCallbackRuntimeRef.current
+    return isCurrentPasteCallback(pasteCallbackGeneration, current.generation, current.canStagePaste)
+  }, [pasteCallbackGeneration])
 
   const setPaste = useCallback((next: PasteStagingResult | null) => {
     pasteRef.current = next
@@ -1404,16 +1409,16 @@ function SheetEditor({
   const gridCallbacks = useMemo<ConditionGridCallbacks>(
     () => ({
       onCellEdit: (cell) => {
-        if (!interaction.canEditCells) return
+        if (!isCurrentGridInput()) return
         if (pasteRef.current !== null) return
         setCell(cell.conditionId, cell.parameterCode, cell.value)
       },
       onCellInvalid: (draft) => {
-        if (!interaction.canEditCells || pasteRef.current !== null) return
+        if (!isCurrentGridInput() || pasteRef.current !== null) return
         useEditStore.getState().setInvalidDraft(draft)
       },
       onInvalidDraftClear: (conditionId, parameterCode) => {
-        if (!interaction.canEditCells || pasteRef.current !== null) return
+        if (!isCurrentGridInput() || pasteRef.current !== null) return
         useEditStore.getState().clearInvalidDraft(conditionId, parameterCode)
       },
       onPaste: (target, tsv) => {
@@ -1448,7 +1453,7 @@ function SheetEditor({
       },
       // POR 이양: 클릭된 행을 POR로. 성공 시 두 행(기존/신규)의 is_por가 바뀌므로 재조회한다.
       onPorChange: (_layerKey, conditionId) => {
-        if (!interaction.canTransferPor) return
+        if (!isCurrentGridInput() || !interaction.canTransferPor) return
         if (pasteRef.current !== null) return
         void performStructural((token) => setConditionPor(projectId, Number(conditionId), token))
       },
@@ -1475,6 +1480,7 @@ function SheetEditor({
     }),
     [
       interaction,
+      isCurrentGridInput,
       setCell,
       visibleColumns,
       persistableDisplayRows,
@@ -2651,7 +2657,7 @@ function ProjectMetadataWarning({ error }: { error: unknown }) {
       data-testid="project-metadata-warning"
       tone="warning"
     >
-      프로젝트 정보 조회에 실패했습니다. ID 기반 제목으로 계속 편집할 수 있습니다:{' '}
+      기본정보를 새로 불러오지 못했습니다. 기존 입력은 유지되며 최신 정보 확인 전까지 새 편집을 중지합니다:{' '}
       {getApiErrorMessage(error)}
     </InlineAlert>
   )
