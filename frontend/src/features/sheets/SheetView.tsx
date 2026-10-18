@@ -536,6 +536,10 @@ function ReadOnlySheet({
   const [columnSearchStatus, setColumnSearchStatus] = useState('')
   const [pendingColumnJump, setPendingColumnJump] = useState<string | null>(null)
   const [selectedCell, setSelectedCell] = useState<CellCommentTarget | null>(null)
+  const historyLayerKey = selectedCell?.layerKey ?? data.rows[0]?.layerKey ?? null
+  useEffect(() => {
+    if (historyLayerKey !== null) history.onLayerScopeChange(historyLayerKey)
+  }, [historyLayerKey, history.onLayerScopeChange])
   const cellCommentFacts = useMemo(() => sheetCommentFacts(sheet), [sheet])
 
   const porGaps = useMemo(() => layersMissingPor(data.rows), [data.rows])
@@ -624,7 +628,7 @@ function ReadOnlySheet({
   }, [historyTarget, workspace?.tab, activeCategory])
 
   return (
-    <SheetFocusFrame history={<HistoryWorkbench {...history} projectId={projectId} currentLayerLabel={selectedCell?.layerKey ?? '전체'} selectedCellAvailable={history.state.cellScope !== null} navigationStatus={historyStatus} onActivateTarget={(target) => {
+    <SheetFocusFrame history={<HistoryWorkbench {...history} projectId={projectId} currentLayerLabel={data.rows.find((row) => row.layerKey === historyLayerKey)?.layerLabel ?? '전체'} selectedCellAvailable={history.state.cellScope !== null} navigationStatus={historyStatus} onActivateTarget={(target) => {
       const row = data.rows.find((item) => item.id === String(target.condition_id))
       const column = data.columns.find((item) => item.key === target.parameter_code)
       if (!row || (target.parameter_code !== null && !column)) { setHistoryStatus('현재 조건표에 없는 좌표입니다.'); return }

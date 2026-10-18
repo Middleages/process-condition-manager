@@ -244,6 +244,9 @@ describe('useHistoryWorkbenchController seams', () => {
 
     expect(historyTimelineQueryEnabled(false, 'timeline', 'L1::10::ETCH')).toBe(false)
     expect(historyTimelineQueryEnabled(true, 'timeline', null)).toBe(false)
+    expect(historyTimelineQueryEnabled(true, 'timeline', null, 'project')).toBe(true)
+    expect(historyTimelineQueryEnabled(false, 'timeline', null, 'project')).toBe(false)
+    expect(historyTimelineQueryEnabled(true, 'cell', null, 'project')).toBe(false)
     expect(historyTimelineQueryEnabled(true, 'timeline', 'L1::10::ETCH')).toBe(true)
     expect(historyTimelineQueryEnabled(true, 'cell', 'L1::10::ETCH')).toBe(false)
     expect(historyCellHistoryQueryEnabled(false, 'cell', scope)).toBe(false)

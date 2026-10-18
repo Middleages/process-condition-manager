@@ -71,7 +71,7 @@ function useWorkspaceState(projectId: number) {
       setError(`최신 정보를 불러오지 못해 편집을 중지했습니다. 다시 불러오세요. ${String(cause)}`)
     }
   }
-  return { tab, setTab, mutation, session, error, releaseFailed, recoverEditing, beginMutation, endMutation, projectError: project.isError ? project.error : null, retryProject: project.refetch, project: project.data }
+  return { tab, setTab, mutation, session, error, releaseFailed, recoverEditing, beginMutation, endMutation, projectError: project.isError ? project.error : null, retryProject: project.refetch, projectId, project: project.data }
 }
 const WorkspaceContext = createContext<ReturnType<typeof useWorkspaceState> | null>(null)
 export const useProductWorkspace = () => useContext(WorkspaceContext)

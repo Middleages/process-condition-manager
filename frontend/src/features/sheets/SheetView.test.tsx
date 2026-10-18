@@ -2653,6 +2653,44 @@ describe('product workspace navigation preservation', () => {
     } finally { view.cleanup() }
   })
 
+  it('queries actual read-only timeline authority without unscoped prefetch', async () => {
+    mockUseRealHistoryController = true
+    const view = renderInteractiveSheet()
+    try {
+      await settleInteractiveSheet()
+      act(() => view.queryClient.setQueryData(['project', 7], { ...view.project, status: 'approved' }))
+      await settleInteractiveSheet()
+      expect(historyApi.getHistoryTimeline).not.toHaveBeenCalled()
+      click(view, view.container.querySelector<HTMLButtonElement>('#workspace-tab-history')!)
+      await settleInteractiveSheet()
+      expect(historyApi.getHistoryTimeline).toHaveBeenCalledWith(7, expect.objectContaining({ layerKey: 'L1::10::ETCH' }), { cursor: null })
+      expect(historyApi.getHistoryTimeline.mock.calls.every((call) => call[1].layerKey !== null)).toBe(true)
+      expect(view.container.querySelector('#workspace-panel-history')?.textContent).toContain('row-L1::10::ETCH')
+      expect(historyWorkbenchCapture.props?.timelineStatus).toBe('ready')
+    } finally { view.cleanup() }
+  })
+
+  it.each(['empty', 'sheet-error', 'metadata-error'])('queries project-wide history with no authoritative layer: %s', async (state) => {
+    mockUseRealHistoryController = true
+    const view = renderInteractiveSheet()
+    try {
+      await settleInteractiveSheet()
+      act(() => {
+        if (state === 'empty') view.queryClient.setQueryData(['sheet', 7], { ...view.sheet, rows: [] })
+        else setQueryError(view.queryClient, ['sheet', 7], new Error('sheet unavailable'))
+        if (state === 'metadata-error') setQueryError(view.queryClient, ['project', 7], new Error('metadata unavailable'))
+      })
+      await settleInteractiveSheet()
+      expect(historyApi.getHistoryTimeline).not.toHaveBeenCalled()
+      click(view, view.container.querySelector<HTMLButtonElement>('#workspace-tab-history')!)
+      await settleInteractiveSheet()
+      expect(historyApi.getHistoryTimeline).toHaveBeenCalledWith(7, expect.objectContaining({ layerKey: null }), { cursor: null })
+      expect(view.container.querySelector('#workspace-panel-history')?.textContent).toContain('row-UNSCOPED')
+      expect(historyWorkbenchCapture.props?.timelineStatus).toBe('ready')
+      expect(historyWorkbenchCapture.props?.onActivateTarget).toBeUndefined()
+    } finally { view.cleanup() }
+  })
+
   it('reuses history for read-only sheets and reveals the grid before a coordinate jump', async () => {
     const view = renderInteractiveSheet()
     try {

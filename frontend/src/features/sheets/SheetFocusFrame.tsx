@@ -54,7 +54,7 @@ export function SheetFocusFrame({ header, controls, children, navigator, inspect
         {workspace.project ? <ProjectDetail project={workspace.project} /> : <p>기본정보를 불러오는 중입니다.</p>}
       </div> : null}
       {workspace ? <div hidden={tab !== 'history'} role="tabpanel" id="workspace-panel-history" aria-labelledby="workspace-tab-history" className={tab === 'history' ? "min-h-0 flex-1 overflow-auto p-4" : "hidden"}>
-        {history ? (tab === 'history' ? history : null) : (workspace.project ? <EmptySheetHistory projectId={workspace.project.id} enabled={tab === 'history'} /> : <p>이력을 불러오는 중입니다.</p>)}
+        {history ? (tab === 'history' ? history : null) : <EmptySheetHistory projectId={workspace.projectId} enabled={tab === 'history'} />}
       </div> : null}
     </div>
   )
@@ -62,7 +62,7 @@ export function SheetFocusFrame({ header, controls, children, navigator, inspect
 
 /** Empty/malformed sheets still expose the existing history query contract. */
 function EmptySheetHistory({ projectId, enabled }: { projectId: number; enabled: boolean }) {
-  const history = useHistoryWorkbenchController(projectId, enabled, 0)
+  const history = useHistoryWorkbenchController(projectId, enabled, 0, 'project')
   return enabled ? <HistoryWorkbench {...history} projectId={projectId} currentLayerLabel="전체" selectedCellAvailable={false} navigationStatus="현재 조건표에서 좌표를 표시할 수 없습니다." /> : null
 }
 
