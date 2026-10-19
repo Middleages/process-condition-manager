@@ -1,6 +1,7 @@
 # PCM 제품 목록: LINE 중심 탐색
 
 2026-10-16 검토 시작, 2026-10-17 사용자 합의사항 반영.
+2026-10-19 현재 동작 설명을 기준 main `8aa5052`의 소스에 동기화했다. 시안·당시 검증 기록은 아래에 구분해 보존한다.
 
 ## 목적과 확정된 범위
 
@@ -31,7 +32,7 @@ python3 -m http.server 8289 --directory .
 - 목록: <http://localhost:8289/opendesign/mockups/pcm-line-first/index.html>
 - 모델: <http://localhost:8289/docs/design/data-model/index.html>
 
-## 시각적·상호작용 기준
+## 시각적·상호작용 기준과 당시 시안
 
 - 종이색·먹색·파란 행동색을 사용한다. 왼쪽 LINE 선택을 먼저 인식하게 하고 현재 LINE을 목록 위에 표시한다.
 - Process와 Part ID를 15–17px의 주요 행 정보로, 수정일·버전을 보조 정보로 배치한다. 행 높이는 시안에서 약 66px다.
@@ -45,25 +46,23 @@ python3 -m http.server 8289 --directory .
 
 시안의 열기 다이얼로그는 식별 정보와 버전 이력을 보여준다. 실제 상세 화면·조건표 전체를 대체하는 구현은 아니다. 공정조건 등록 폼도 예시 데이터에서 조합 중복만 확인하며 저장하지 않는다. 기존 생성 계약의 나머지 필수 항목은 시안에 포함하지 않았다.
 
-## 현재 구현과 필요한 연결
+## 현재 앱 구현
 
-근거: `frontend/src/api/projects.ts`, `backend/app/features/projects/router.py`, `backend/app/features/projects/repository.py`, `backend/app/models/project.py`.
+근거: `frontend/src/features/projects/{ProjectListPage,ProjectTable,ProductWorkspace,ProjectCreateWizard}.tsx`, `frontend/src/features/projects/wizardState.ts`, `frontend/src/api/projects.ts`, `backend/app/features/projects/{router,repository,service,schema}.py`.
 
-현재 목록 API는 query/status/device_type_code/project_category_code/cursor/limit를 받으며 명시적인 LINE 필터가 없다. query는 Process·Part ID 외에도 이름·LINE·분류 코드·설명 등을 검색한다. 제품 목록의 검색 범위를 명확히 제한해야 한다.
+- `GET /api/projects/lines`로 LINE을 조회하고 선택한 LINE을 `line_id`로 전달한다. `query`는 Process/Part ID를 대상으로 하며 버튼/Enter로만 적용한다.
+- 서버는 LINE/Process/Part ID별 version 내림차순, 동률이면 id 내림차순으로 최신 행을 고른다. 그 뒤 상태/Profile 필터와 커서를 적용하고 id 내림차순으로 페이지를 나눈다. 기본 limit와 UI 요청은 25다. 과거 행을 브라우저에서 제거하는 방식이 아니다.
+- LINE 변경은 적용된 검색어를 유지하고 미제출 입력을 되돌리며 첫 페이지로 이동한다. 검색 실행·초기화도 첫 페이지로 돌아간다. 목록 URL과 복귀 시 행 포커스 문맥을 유지한다.
+- `열기`는 `/projects/:projectId/sheet`로 바로 이동한다. 공통 식별·버전·상태 아래 조건표/기본정보/이력을 제공한다. 기존 `/projects/:projectId`는 조건표로 연결한다. 탭 이동은 입력과 붙여넣기를 유지하며 기본정보 변경·상태 변경 등은 미저장 입력/진행 중 저장을 보호하고 편집 잠금을 인계한다. 해제/재조회 실패는 편집을 중지하고 재시도를 안내한다.
+- 공정조건 등록에는 별도 프로젝트명 입력이 없다. UI는 `trim()`한 Part ID를 필수 호환용 `name`에도 보낸다. 내부 Project 모델명·필수 name 컬럼/API 계약은 유지한다. 기존 LINE/Process의 다른 Part ID는 허용하며, 같은 조합은 서버의 HTTP 409 계약으로 차단한다.
 
-페이지 구분은 이미 존재한다. 기본 limit=50, 최대 200이며 limit+1 조회로 next_cursor를 반환한다. 실제 구현은 이를 재사용하여 limit=25로 요청하고, 서버에서 최신 버전 선택·LINE 범위·Process/Part ID 검색을 적용한 뒤 페이지를 나눠야 한다. 전체 데이터를 내려받아 브라우저에서 거르거나, 페이지를 받은 뒤 과거 버전을 제거하면 누락·페이지 크기 오류가 생길 수 있다.
+## 검증 근거와 남은 경계
 
-현재 목록은 id 내림차순 커서 조회이며 최신 리비전만 선택하지 않는다. DB의 비보관 상태 LINE/Process/Part ID 유일 인덱스와 리비전 제약은 과거 버전과 최신 버전의 DB 공존을 허용한다. 모든 이력을 포함한 조합 유일성으로 바꾸거나 과거 행을 삭제하지 않는다.
-
-실제 LINE 목록의 데이터 원천과 상세 이력 API 재사용은 구현 시 기존 경로를 확인한다. 현재 필수인 project.name을 생성 흐름에서 유지할지 자동 생성할지는 목록에서 이름을 숨기는 결정과 별개다. 생성 계약 변경이 필요하면 그 범위만 추가로 정한다.
-
-## 다음 구현 순서
-
-1. **목록 API:** LINE 필터, 최신 버전 한 행 선택, Process/Part ID 검색, 기존 커서 기반 25건 조회를 하나의 일관된 계약으로 구현한다. 과거 버전·중복·누락·페이지 경계를 검증한다.
-2. **제품 목록 화면:** 승인된 구성·표시 용어·상태 배지를 실제 API와 연결한다. URL/뒤로 가기/포커스 복원과 오류·재시도 동작을 보존한다.
-3. **규모·사용성 검증:** 수천 건과 여러 리비전이 있는 데이터로 조회량·실행 계획·응답을 확인하고, 1024/1440 화면과 검색·LINE 전환·페이지 이동을 검증한다. 폰트 파일 배포 여부는 폐쇄망 조건 안에서 정한다.
-
-모델 다이어그램에서 발견한 ORM/마이그레이션 차이는 별도 확인 항목이다. 실제 DB 확인 없이 이 UI 작업에 스키마 보정이나 파괴적 데이터 변경을 섞지 않는다.
+- [Issue 87 검증](../verification/issue87/README.md): 격리된 PostgreSQL fixture의 실제 API로 LINE·검색·페이지와 대량 조회를 검증한 당시 기록이다. 브라우저와 규모 시험의 데이터 차이, 로컬 수치와 운영 보장 차이는 원문에 유지한다.
+- [제품 작업화면 검증](../evidence/product-workspace-89/README.md): 조건표/기본정보/이력의 문맥·입력 보호·잠금 인계 UI를 검증했다. 모든 backend API가 모의 응답이므로 실제 DB/fencing 검증을 뜻하지 않는다.
+- 아래 독립 시안은 앱 이전의 예시다. 시안의 상세 다이얼로그·저장하지 않는 등록 폼은 현재 앱의 동작 설명이 아니다.
+- 폰트의 실제 앱 배포·로딩 계약은 [DESIGN](../../DESIGN.md#typography)에 기록한다. 아래 시안의 시스템 fallback 관찰과 구분한다.
+- 모델 다이어그램의 ORM/마이그레이션 차이는 실제 DB 확인 없이 해결된 것으로 판단하지 않는다. 이 작업은 스키마·데이터를 변경하지 않는다.
 
 ## 시안 검증 결과와 한계
 
@@ -71,4 +70,4 @@ python3 -m http.server 8289 --directory .
 
 1440/1024 화면을 직접 검토했으며 1024에서 가로 넘침과 배지 셀 넘침이 없었다. 상태 배지 14px/700 및 브라우저 실행 오류 0건을 확인했다. 이 검증은 유한한 예시 데이터를 쓰는 독립 시안에 한정되며 실제 앱의 전체 테스트나 수천 건 API 성능 통과를 뜻하지 않는다.
 
-외부 폰트 요청은 없다. 시안은 Noto Sans KR/Apple SD Gothic Neo/Malgun Gothic/WenQuanYi/sans-serif 폴백을 사용하며 확인 환경에서는 WenQuanYi를 사용할 수 있었다. 폐쇄망 배포용 최종 폰트 선택·번들링은 아직 완료하지 않았다.
+외부 폰트 요청은 없다. 시안은 Noto Sans KR/Apple SD Gothic Neo/Malgun Gothic/WenQuanYi/sans-serif 폴백을 사용하며 확인 환경에서는 WenQuanYi를 사용할 수 있었다. 이 문장은 당시 시안의 관찰이다. 현재 앱의 로컬 폰트 계약은 [DESIGN](../../DESIGN.md#typography)을 따른다.

@@ -65,6 +65,43 @@ import {
 import { GlideConditionGrid } from './GlideConditionGrid'
 import source from './GlideConditionGrid.tsx?raw'
 
+describe('local canvas font loading', () => {
+  it('uses fresh measurement keys after all local face weights load without remounting the editor', async () => {
+    const pending: Array<(faces: FontFace[]) => void> = []
+    const load = vi.fn(() => new Promise<FontFace[]>((resolve) => pending.push(resolve)))
+    const grid = renderGrid({ data: gridData() }, undefined, { load })
+    try {
+      const editor = grid.container.querySelector('[data-testid="data-editor"]')
+      const fallback = dataEditorProps().theme?.fontFamily
+      expect(load.mock.calls).toEqual([
+        ['400 13px Pretendard', '공정 Aa 012.5 kPa'],
+        ['600 13px Pretendard', '공정 Aa 012.5 kPa'],
+        ['700 14px Pretendard', '공정 Aa 012.5 kPa'],
+      ])
+      expect(fallback).toEqual(expect.any(String))
+      expect(fallback).not.toContain('Pretendard')
+      await act(async () => { pending[0]([{} as FontFace]); pending[1]([{} as FontFace]) })
+      expect(dataEditorProps().theme?.fontFamily).toBe(fallback)
+      await act(async () => { pending[2]([{} as FontFace]) })
+      expect(dataEditorProps().theme?.fontFamily).toMatch(/^Pretendard,/)
+      expect(dataEditorProps().theme?.baseFontStyle).toBe('13px')
+      expect(dataEditorProps().theme?.headerFontStyle).toBe('600 13px')
+      expect(grid.container.querySelector('[data-testid="data-editor"]')).toBe(editor)
+    } finally { grid.cleanup() }
+  })
+
+  it('keeps readable fallback when a font request fails or finds no face', async () => {
+    for (const load of [vi.fn().mockRejectedValue(new Error('offline missing asset')), vi.fn().mockResolvedValue([])]) {
+      const grid = renderGrid({ data: gridData() }, undefined, { load })
+      try {
+        await act(async () => { await Promise.resolve() })
+        expect(dataEditorProps().theme?.fontFamily).not.toContain('Pretendard')
+        expect(grid.container.querySelector('[data-testid="data-editor"]')).not.toBeNull()
+      } finally { grid.cleanup() }
+    }
+  })
+})
+
 describe('composite cell status rendering priority', () => {
   it('describes POR as a Layer-scoped single-selection state for Glide accessibility', () => {
     expect(porCellAccessibility('L1', 'POR', true)).toBe(
@@ -1092,8 +1129,9 @@ function gridData(options: {
   }
 }
 
-function renderGrid(props: ConditionGridProps, ref?: Ref<ConditionGridHandle>) {
+function renderGrid(props: ConditionGridProps, ref?: Ref<ConditionGridHandle>, fonts?: Pick<FontFaceSet, 'load'>) {
   const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>')
+  if (fonts !== undefined) Object.defineProperty(dom.window.document, 'fonts', { value: fonts })
   const container = dom.window.document.querySelector<HTMLDivElement>('#root')
   if (container === null) throw new Error('Grid root is unavailable.')
   const globals = globalThis as unknown as {
