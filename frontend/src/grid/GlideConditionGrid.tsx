@@ -82,7 +82,12 @@ import type {
 } from './types'
 import { GRID_COLORS } from './theme'
 
+const GRID_FALLBACK_FONT = '"Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif'
+const GRID_LOCAL_FONT = `Pretendard, ${GRID_FALLBACK_FONT}`
+
 const GLIDE_THEME: Partial<Theme> = {
+  baseFontStyle: '13px',
+  headerFontStyle: '600 13px',
   accentColor: GRID_COLORS.brand,
   accentFg: GRID_COLORS.surface,
   accentLight: GRID_COLORS.brandSubtle,
@@ -190,7 +195,7 @@ const InvalidDraftTextEditor: ProvideEditorComponent<GridCell> = ({
     <div className="grid min-w-0 gap-1 bg-surface p-2">
       <input
         autoFocus
-        className="input w-full font-mono"
+        className={`input w-full ${invalidCell.invalidDraftEditor.kind === 'number' ? 'font-mono' : 'font-sans'}`}
         value={draft}
         onChange={(event) => setDraft(event.currentTarget.value)}
         onKeyDown={(event) => {
@@ -552,6 +557,25 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
   ConditionGridProps
 >(function GlideConditionGrid({ data, view, callbacks, pasteStaging }, ref) {
   const gridRef = useRef<DataEditorRef>(null)
+  const [localFontLoaded, setLocalFontLoaded] = useState(false)
+  useEffect(() => {
+    if (document.fonts?.load === undefined) return
+    let active = true
+    // Glide clears metrics only for its initial fonts.ready. A distinct family key after
+    // explicit loading also handles late font registration without remounting the editor.
+    void Promise.all([
+      document.fonts.load('400 13px Pretendard', '공정 Aa 012.5 kPa'),
+      document.fonts.load('600 13px Pretendard', '공정 Aa 012.5 kPa'),
+      document.fonts.load('700 14px Pretendard', '공정 Aa 012.5 kPa'),
+    ]).then((faces) => {
+      if (active && faces.every((weight) => weight.length > 0)) setLocalFontLoaded(true)
+    }).catch(() => { /* Keep the readable fallback when the asset is unavailable. */ })
+    return () => { active = false }
+  }, [])
+  const gridTheme = useMemo(() => ({
+    ...GLIDE_THEME,
+    fontFamily: localFontLoaded ? GRID_LOCAL_FONT : GRID_FALLBACK_FONT,
+  }), [localFontLoaded])
   const requestedFocusRef = useRef<Item | null>(null)
   const restoreGridFocus = useCallback(() => gridRef.current?.focus(), [])
   const cellHistoryMenuElementRef = useRef<HTMLDivElement>(null)
@@ -1242,7 +1266,7 @@ export const GlideConditionGrid: ConditionGridComponent = forwardRef<
         width="100%"
         height="100%"
         customRenderers={[decimalCellRenderer, choiceCellRenderer]}
-        theme={GLIDE_THEME}
+        theme={gridTheme}
       />
       {tooltip !== null ? (
         <div

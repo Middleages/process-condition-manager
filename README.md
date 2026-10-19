@@ -61,26 +61,39 @@ APP_DB_PORT=15432 INGEST_DB_PORT=15433 BACKEND_PORT=18000 FRONTEND_PORT=15173 \
 `pcm-phase26-test-db` PostgreSQL은 `127.0.0.1:15442`를 사용하며, app/ingest Compose DB는
 각각 `15432`/`15433`입니다.
 
-## Phase 2.6 기능 경계
+## 현재 제품 흐름
 
-- 모든 프로젝트는 동적 필드가 아닌 고정 1:1 Project Profile을 갖습니다. 생성 단계에서는
-  Device Type·Project Category·Comment만 받고, 상세 화면에서는 identity를 제외한 전체 Profile을
-  기존 프로젝트 잠금과 fencing token 아래 편집합니다. Device Ref는 모델과 화면에 없습니다.
-- 자동 metadata 경계는 **프로젝트 생성 시 Profile 초기값을 한 번 복사하는 용도**로만
-  존재합니다. 현재 구현은 외부 I/O가 없는 `ManualProjectMetadataProvider`이며, 조건표 셀은
-  모두 수동 입력입니다. 생성 후 Profile 값도 사용자가 명시적으로 편집해야 바뀝니다.
-- 고정 Profile choice는 `device_type`, `project_category`, `active_direction`,
-  `gate_direction` 네 managed ChoiceSet을 재사용합니다. option code는 안정적인 저장값이고 label과
-  정렬은 관리 화면에서 바꿀 수 있습니다. 이미 저장된 비활성 code는 읽을 수 있지만 신규 저장은
-  차단됩니다.
-- 조건표 choice column은 option 배열을 내장하지 않고 `choice_set_code`와 version만 받습니다.
-  code/label 검색, keyboard 선택, version 충돌 재시작, 실패 시 raw code 보존을 지원합니다.
-- 이 구현은 Phase 3가 추가 option-model migration 없이 choice 검증을 붙일 수 있는 기반까지
-  완료한 것이며, Phase 3 검증 엔진 자체나 승인 snapshot/Revision은 구현하지 않았습니다.
+- **제품 목록:** LINE을 먼저 선택하고 Process 또는 Part ID를 검색 버튼/Enter로 조회합니다.
+  입력 중에는 검색하지 않습니다. 서버가 LINE + Process + Part ID별 최신 버전을 선택한 뒤
+  25건씩 커서 페이지를 나눕니다. 최신은 최신 승인본을 뜻하지 않습니다.
+- **공정조건 열기:** 목록의 `열기`는 `/projects/:projectId/sheet`로 바로 이동합니다.
+  조건표·기본정보·이력 탭은 같은 제품 식별·버전·상태 문맥을 공유합니다. 탭 이동 중 조건표
+  입력과 붙여넣기 상태를 유지하며, 기본정보 변경 등은 미저장 입력과 진행 중 저장을 확인하고
+  편집 잠금을 넘깁니다. 잠금 해제나 최신 정보 재조회 실패 시 안내와 재시도를 제공합니다.
+- **공정조건 등록:** Process 구조·백본 미리보기 후 Part ID와 필수 Device Type·Project Category를
+  입력합니다. 별도 프로젝트명 입력은 없고, UI가 앞뒤 공백을 제거한 Part ID를 호환용 `name`으로
+  전송합니다. 내부 Project 모델과 필수 `name` API/컬럼은 유지합니다. 기존 LINE/Process라도
+  다른 Part ID로 등록할 수 있고, 같은 조합은 기존 HTTP 409 계약으로 차단합니다.
+- **편집·검토:** 고정 1:1 Project Profile, managed ChoiceSet, 조건표 잠금/fencing,
+  셀·규칙 검증, 변경 이력·백본 비교, 검토 요청·승인·반려·댓글 및 Revision 생성을 제공합니다.
+  승인 시 파라미터 정의를 snapshot으로 보존하고, Revision은 새 Draft를 만들고 원본을 보관합니다.
+- **자동 metadata 경계:** 생성 시 Profile 초기값을 한 번 복사합니다. 현재
+  `ManualProjectMetadataProvider`는 외부 I/O가 없으며 조건표 셀은 수동 입력입니다.
+  생성 후 Profile은 사용자가 명시적으로 편집합니다. Device Ref는 모델과 화면에 없습니다.
+- **ChoiceSet:** `device_type`, `project_category`, `active_direction`, `gate_direction`을
+  재사용합니다. 안정적인 option code와 관리 가능한 label/정렬을 분리합니다. 기존 비활성 code는
+  읽을 수 있지만 신규 저장은 차단됩니다. 조건표 열은 옵션 배열 대신 `choice_set_code`와 version을 받습니다.
 
-구현·회귀·접근성 근거는
-[Phase 2.6 Browser QA Evidence](./docs/superpowers/evidence/2026-07-14-phase-2-6-browser-qa.md)에
-기록했습니다.
+현재 흐름과 설계 범위는 [PRODUCT](./PRODUCT.md), [DESIGN](./DESIGN.md),
+[LINE 중심 목록 안내](./docs/design/2026-10-16-pcm-line-first-brief.md)를 참고하세요.
+구현 근거는 `frontend/src/features/projects/`, `backend/app/features/projects/`,
+`backend/app/features/validation/`, `backend/app/features/approval/`입니다.
+
+[Phase 2.6 QA](./docs/superpowers/evidence/2026-07-14-phase-2-6-browser-qa.md)는 당시 검증 기록입니다.
+이후 [LINE 목록 검증](./docs/verification/issue87/README.md)은 격리된 PostgreSQL fixture의 실제 API,
+[작업화면 검증](./docs/evidence/product-workspace-89/README.md)은 모의 API를 사용한 UI 증거입니다.
+기록별 SHA·데이터·범위를 구분하며, 현재 배포 DB나 모든 후속 변경의 검증으로 해석하지 않습니다.
+[모델 검토](./docs/design/data-model/README.md)의 ORM/마이그레이션 차이는 실제 DB에서 아직 확인하지 않았습니다.
 
 ## Backend 개발 및 검증
 
@@ -136,9 +149,18 @@ health만 root에 유지되고 기능 API는 `/api` 아래에 있습니다.
 - `POST /api/parameters/{parameter_id}/deactivate`
 - `GET|POST /api/parameters/categories`
 - `GET|POST /api/projects`
+- `GET /api/projects/lines`
 - `GET /api/projects/{project_id}`
 - `GET|PATCH /api/projects/{project_id}/profile`
 - `GET /api/projects/{project_id}/sheet`
+- `POST /api/projects/{project_id}/validate`
+- `GET|POST /api/validation-rules`, `GET|PATCH /api/validation-rules/{code}`
+- `POST /api/projects/{project_id}/transitions`, `POST /api/projects/{project_id}/revisions`
+- `GET|POST /api/projects/{project_id}/comments`
+- `PATCH|DELETE /api/projects/{project_id}/comments/{comment_id}`
+- `GET /api/projects/{project_id}/events`
+- `GET /api/projects/{project_id}/event-batches/{batch_id}`
+- `GET /api/projects/{project_id}/cell-history`
 - `GET /api/processes`, `GET /api/processes/{process_key}/layers`
 
 Choice options are fetched through the ChoiceSet endpoints; SheetOut columns carry only
@@ -152,4 +174,5 @@ typecheck/build/test를 실행합니다. Backend job의 `APP_TEST_DATABASE_URL`�
 
 - Python 의존성은 `backend/uv.lock`, Node 의존성은 `frontend/package-lock.json`으로 고정합니다.
 - Docker 이미지와 GitHub Actions는 폐쇄망에서 내부 mirror가 필요합니다.
-- CDN 자산은 사용하지 않습니다.
+- 런타임 CDN·외부 폰트 요청은 사용하지 않습니다. 앱과 같은 출처의 로컬 폰트 배포 방식과 비용은
+  [DESIGN의 Typography](./DESIGN.md#typography)를 참고하세요.

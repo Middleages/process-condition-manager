@@ -1,5 +1,14 @@
 @import "tailwindcss";
 
+/* Original Pretendard v1.3.9; notice and provenance ship beside the font. */
+@font-face {
+  font-family: Pretendard;
+  src: url('/fonts/pretendard/PretendardVariable.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+
 @theme {
   --color-ink-950: #171916;
   --color-brand-700: #2864dc;
@@ -17,7 +26,7 @@
   --color-error: #b91c1c;
   --color-error-surface: #fef2f2;
   --font-sans: Pretendard, "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
-  --font-mono: "IBM Plex Mono", D2Coding, Consolas, monospace;
+  --font-mono: "IBM Plex Mono", D2Coding, Consolas, Menlo, Monaco, "Liberation Mono", "DejaVu Sans Mono", Pretendard, "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", monospace;
 }
 
 :root {
