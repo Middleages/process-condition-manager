@@ -25,7 +25,8 @@ describe('GRID_COLORS', () => {
 
   it('keeps Glide mapping inside the adapter and removes the retired raw palette', () => {
     expect(glideSource).toContain("import { GRID_COLORS } from './theme'")
-    expect(glideSource).toContain('theme={GLIDE_THEME}')
+    expect(glideSource).toContain('theme={gridTheme}')
+    expect(glideSource).toMatch(/const gridTheme = useMemo\(\(\) => \({\s*\.\.\.GLIDE_THEME,/)
     expect(glideSource).toContain('accentColor: GRID_COLORS.brand')
     expect(glideSource).toContain('bgCell: GRID_COLORS.surface')
     expect(glideSource).toContain('borderColor: GRID_COLORS.border')
