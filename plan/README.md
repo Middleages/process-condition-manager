@@ -27,6 +27,7 @@
 | [phase-4-tasks.md](./phase-4-tasks.md) — 변경 이력 + 백본 기준 비교 | 구현·검증 완료 (2026-07-18, [검증 근거](../docs/evidence/phase-4-history-backbone-diff/README.md), EC1~EC6 충족) |
 | [phase-5-tasks.md](./phase-5-tasks.md) — 승인 + Revision | 계획 (D-10 SSO 인증 구조 확정 후 T6 RBAC 착수) |
 | [phase-6-tasks.md](./phase-6-tasks.md) — 전산 출력 | 계획 |
+| [Phase 7 — 관리·운영 기능](./04-roadmap.md#phase-7--관리운영-기능-레거시-기능-복원) — 레거시 기능 복원 | 범위 확정 (2026-11-24, 세부 작업 계획 미작성, P7-D1~D4 결정 대기) |
 
 ## 재구축 배경
 
